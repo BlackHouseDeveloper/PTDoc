@@ -1,53 +1,62 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
 namespace PTDoc.Models;
 
-public class SOAPNote
+/// <summary>
+/// Represents a clinical SOAP note in the physical therapy system.
+/// </summary>
+public sealed class SOAPNote : Entity
 {
-    [Key]
-    public int Id { get; set; }
+    /// <summary>
+    /// Gets or sets the patient identifier associated with this note.
+    /// </summary>
+    public Guid PatientId { get; set; }
 
-    [Required]
-    [ForeignKey(nameof(Patient))]
-    public int PatientId { get; set; }
-
-    [Required]
+    /// <summary>
+    /// Gets or sets the visit date for this note.
+    /// </summary>
     public DateTime VisitDate { get; set; } = DateTime.UtcNow;
 
-    // Subjective
-    [MaxLength(2000)]
+    /// <summary>
+    /// Gets or sets the subjective section of the note (patient-reported information).
+    /// </summary>
     public string? Subjective { get; set; }
 
-    // Objective
-    [MaxLength(2000)]
+    /// <summary>
+    /// Gets or sets the objective section of the note (measurable findings).
+    /// </summary>
     public string? Objective { get; set; }
 
-    // Assessment
-    [MaxLength(2000)]
+    /// <summary>
+    /// Gets or sets the assessment section of the note (clinical judgment).
+    /// </summary>
     public string? Assessment { get; set; }
 
-    // Plan
-    [MaxLength(2000)]
+    /// <summary>
+    /// Gets or sets the plan section of the note (treatment plans).
+    /// </summary>
     public string? Plan { get; set; }
 
-    [MaxLength(100)]
+    /// <summary>
+    /// Gets or sets the diagnosis code (ICD-10).
+    /// </summary>
     public string? DiagnosisCode { get; set; }
 
-    [MaxLength(100)]
+    /// <summary>
+    /// Gets or sets the treatment code (CPT).
+    /// </summary>
     public string? TreatmentCode { get; set; }
 
+    /// <summary>
+    /// Gets or sets the duration of the visit in minutes.
+    /// </summary>
     public int? DurationMinutes { get; set; }
 
-    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
-
-    public DateTime? LastModifiedDate { get; set; }
-
-    [MaxLength(100)]
-    public string? CreatedBy { get; set; }
-
+    /// <summary>
+    /// Gets or sets a value indicating whether the note has been signed/completed.
+    /// </summary>
     public bool IsCompleted { get; set; } = false;
 
-    // Navigation property
+    /// <summary>
+    /// Gets or sets the patient associated with this note.
+    /// </summary>
     public Patient Patient { get; set; } = null!;
 }

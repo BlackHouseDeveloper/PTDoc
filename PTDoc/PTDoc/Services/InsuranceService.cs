@@ -1,58 +1,94 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PTDoc.Data;
 using PTDoc.Models;
 
 namespace PTDoc.Services;
 
-public class InsuranceService : IInsuranceService
+/// <summary>
+/// Service for managing insurance operations.
+/// </summary>
+public class InsuranceService : BaseService, IInsuranceService
 {
     private readonly PTDocDbContext _context;
 
-    public InsuranceService(PTDocDbContext context)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InsuranceService"/> class.
+    /// </summary>
+    /// <param name="context">Database context for data access.</param>
+    /// <param name="logger">Logger instance for logging operations.</param>
+    public InsuranceService(PTDocDbContext context, ILogger<InsuranceService> logger)
+        : base(logger)
     {
         _context = context;
     }
 
-    public async Task<List<Insurance>> GetInsurancesByPatientIdAsync(int patientId)
+    /// <inheritdoc/>
+    public async Task<List<Insurance>> GetInsurancesByPatientIdAsync(Guid patientId)
     {
-        return await _context.Insurances
-            .Include(i => i.Patient)
-            .Where(i => i.PatientId == patientId && i.IsActive)
-            .OrderBy(i => i.InsuranceType)
-            .ToListAsync();
+        return await ExecuteWithErrorHandlingAsync(
+            async () => await _context.Insurances
+                .Include(i => i.Patient)
+                .Where(i => i.PatientId == patientId)
+                .OrderBy(i => i.InsuranceType)
+                .ToListAsync(),
+            nameof(GetInsurancesByPatientIdAsync),
+            new List<Insurance>());
     }
 
-    public async Task<Insurance?> GetInsuranceByIdAsync(int id)
+    /// <inheritdoc/>
+    public async Task<Insurance?> GetInsuranceByIdAsync(Guid id)
     {
-        return await _context.Insurances
-            .Include(i => i.Patient)
-            .FirstOrDefaultAsync(i => i.Id == id);
+        return await ExecuteWithErrorHandlingAsync(
+            async () => await _context.Insurances
+                .Include(i => i.Patient)
+                .FirstOrDefaultAsync(i => i.Id == id),
+            nameof(GetInsuranceByIdAsync),
+            null);
     }
 
+    /// <inheritdoc/>
     public async Task<Insurance> CreateInsuranceAsync(Insurance insurance)
     {
-        insurance.CreatedDate = DateTime.UtcNow;
-        _context.Insurances.Add(insurance);
-        await _context.SaveChangesAsync();
-        return insurance;
+        return await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                _context.Insurances.Add(insurance);
+                await _context.SaveChangesAsync();
+                return insurance;
+            },
+            nameof(CreateInsuranceAsync));
     }
 
+    /// <inheritdoc/>
     public async Task<Insurance> UpdateInsuranceAsync(Insurance insurance)
     {
-        insurance.LastModifiedDate = DateTime.UtcNow;
-        _context.Insurances.Update(insurance);
-        await _context.SaveChangesAsync();
-        return insurance;
+        return await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                _context.Insurances.Update(insurance);
+                await _context.SaveChangesAsync();
+                return insurance;
+            },
+            nameof(UpdateInsuranceAsync));
     }
 
-    public async Task DeleteInsuranceAsync(int id)
+    /// <inheritdoc/>
+    public async Task DeleteInsuranceAsync(Guid id)
     {
-        var insurance = await _context.Insurances.FindAsync(id);
-        if (insurance != null)
-        {
-            insurance.IsActive = false;
-            insurance.LastModifiedDate = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
+        await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                var insurance = await _context.Insurances
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(i => i.Id == id);
+                    
+                if (insurance != null)
+                {
+                    insurance.IsDeleted = true;
+                    await _context.SaveChangesAsync();
+                }
+            },
+            nameof(DeleteInsuranceAsync));
     }
 }

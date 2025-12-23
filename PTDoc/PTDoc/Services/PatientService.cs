@@ -1,72 +1,117 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PTDoc.Data;
 using PTDoc.Models;
 
 namespace PTDoc.Services;
 
-public class PatientService : IPatientService
+/// <summary>
+/// Service for managing patient operations including search, creation, and retrieval.
+/// </summary>
+public class PatientService : BaseService, IPatientService
 {
     private readonly PTDocDbContext _context;
 
-    public PatientService(PTDocDbContext context)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PatientService"/> class.
+    /// </summary>
+    /// <param name="context">Database context for data access.</param>
+    /// <param name="logger">Logger instance for logging operations.</param>
+    public PatientService(PTDocDbContext context, ILogger<PatientService> logger)
+        : base(logger)
     {
         _context = context;
     }
 
+    /// <inheritdoc/>
     public async Task<List<Patient>> GetAllPatientsAsync()
     {
-        return await _context.Patients
-            .Where(p => p.IsActive)
-            .OrderBy(p => p.LastName)
-            .ThenBy(p => p.FirstName)
-            .ToListAsync();
+        return await ExecuteWithErrorHandlingAsync(
+            async () => await _context.Patients
+                .OrderBy(p => p.LastName)
+                .ThenBy(p => p.FirstName)
+                .ToListAsync(),
+            nameof(GetAllPatientsAsync),
+            new List<Patient>());
     }
 
-    public async Task<Patient?> GetPatientByIdAsync(int id)
+    /// <inheritdoc/>
+    public async Task<Patient?> GetPatientByIdAsync(Guid id)
     {
-        return await _context.Patients
-            .Include(p => p.SOAPNotes)
-            .Include(p => p.Insurances)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        return await ExecuteWithErrorHandlingAsync(
+            async () => await _context.Patients
+                .Include(p => p.SOAPNotes)
+                .Include(p => p.Insurances)
+                .FirstOrDefaultAsync(p => p.Id == id),
+            nameof(GetPatientByIdAsync),
+            null);
     }
 
+    /// <inheritdoc/>
     public async Task<Patient> CreatePatientAsync(Patient patient)
     {
-        patient.CreatedDate = DateTime.UtcNow;
-        _context.Patients.Add(patient);
-        await _context.SaveChangesAsync();
-        return patient;
+        return await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                _context.Patients.Add(patient);
+                await _context.SaveChangesAsync();
+                return patient;
+            },
+            nameof(CreatePatientAsync));
     }
 
+    /// <inheritdoc/>
     public async Task<Patient> UpdatePatientAsync(Patient patient)
     {
-        patient.LastModifiedDate = DateTime.UtcNow;
-        _context.Patients.Update(patient);
-        await _context.SaveChangesAsync();
-        return patient;
+        return await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                _context.Patients.Update(patient);
+                await _context.SaveChangesAsync();
+                return patient;
+            },
+            nameof(UpdatePatientAsync));
     }
 
-    public async Task DeletePatientAsync(int id)
+    /// <inheritdoc/>
+    public async Task DeletePatientAsync(Guid id)
     {
-        var patient = await _context.Patients.FindAsync(id);
-        if (patient != null)
-        {
-            patient.IsActive = false;
-            patient.LastModifiedDate = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
+        await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                var patient = await _context.Patients
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(p => p.Id == id);
+                    
+                if (patient != null)
+                {
+                    patient.IsDeleted = true;
+                    await _context.SaveChangesAsync();
+                }
+            },
+            nameof(DeletePatientAsync));
     }
 
+    /// <inheritdoc/>
     public async Task<List<Patient>> SearchPatientsAsync(string searchTerm)
     {
-        searchTerm = searchTerm.ToLower();
-        return await _context.Patients
-            .Where(p => p.IsActive &&
-                   (p.FirstName.ToLower().Contains(searchTerm) ||
-                    p.LastName.ToLower().Contains(searchTerm) ||
-                    (p.Email != null && p.Email.ToLower().Contains(searchTerm))))
-            .OrderBy(p => p.LastName)
-            .ThenBy(p => p.FirstName)
-            .ToListAsync();
+        return await ExecuteWithErrorHandlingAsync(
+            async () =>
+            {
+                if (string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    return new List<Patient>();
+                }
+
+                var term = searchTerm.ToLower();
+                return await _context.Patients
+                    .Where(p => EF.Functions.Like((p.FirstName + " " + p.LastName).ToLower(), $"%{term}%") ||
+                               (p.Email != null && EF.Functions.Like(p.Email.ToLower(), $"%{term}%")))
+                    .OrderBy(p => p.LastName)
+                    .ThenBy(p => p.FirstName)
+                    .ToListAsync();
+            },
+            nameof(SearchPatientsAsync),
+            new List<Patient>());
     }
 }

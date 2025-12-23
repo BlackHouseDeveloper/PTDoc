@@ -1,23 +1,37 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace PTDoc.Models;
 
-public class AppState
+/// <summary>
+/// Represents application state stored in the database (key-value pairs).
+/// </summary>
+public sealed class AppState
 {
-    [Key]
-    public int Id { get; set; }
+    /// <summary>
+    /// Gets or sets the unique identifier for the app state entry.
+    /// </summary>
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Required]
-    [MaxLength(100)]
+    /// <summary>
+    /// Gets or sets the unique key for this app state entry.
+    /// </summary>
     public string Key { get; set; } = string.Empty;
 
-    [MaxLength(2000)]
+    /// <summary>
+    /// Gets or sets the value for this app state entry.
+    /// </summary>
     public string? Value { get; set; }
 
-    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// Gets or sets the timestamp when this entry was created.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    public DateTime? LastModifiedDate { get; set; }
+    /// <summary>
+    /// Gets or sets the timestamp when this entry was last updated.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; set; }
 
-    [MaxLength(500)]
+    /// <summary>
+    /// Gets or sets a description of this app state entry.
+    /// </summary>
     public string? Description { get; set; }
 }
