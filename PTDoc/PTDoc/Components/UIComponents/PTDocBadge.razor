@@ -1,0 +1,29 @@
+@* PTDoc Badge - Status indicators and pills *@
+
+<span class="ptdoc-badge @GetBadgeClasses()" role="status" @attributes="AdditionalAttributes">
+    @ChildContent
+</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string Variant { get; set; } = "default"; // default, primary, success, warning, error, info
+    [Parameter] public string Size { get; set; } = "medium"; // small, medium, large
+    [Parameter] public bool Pill { get; set; } = false;
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetBadgeClasses()
+    {
+        var classes = new List<string>
+        {
+            $"ptdoc-badge-{Variant}",
+            $"ptdoc-badge-{Size}"
+        };
+
+        if (Pill)
+        {
+            classes.Add("ptdoc-badge-pill");
+        }
+
+        return string.Join(" ", classes);
+    }
+}

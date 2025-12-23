@@ -1,0 +1,47 @@
+/* PTDoc Card Component Styles */
+
+.ptdoc-card {
+    background-color: var(--ptdoc-color-background);
+    border-radius: var(--ptdoc-radius-lg);
+    overflow: hidden;
+    transition: all var(--ptdoc-transition-base);
+}
+
+.ptdoc-card-default {
+    box-shadow: var(--ptdoc-shadow-sm);
+    border: 1px solid var(--ptdoc-color-border);
+}
+
+.ptdoc-card-elevated {
+    box-shadow: var(--ptdoc-shadow-md);
+}
+
+.ptdoc-card-bordered {
+    border: 2px solid var(--ptdoc-color-border);
+}
+
+.ptdoc-card-hoverable {
+    cursor: pointer;
+}
+
+.ptdoc-card-hoverable:hover {
+    box-shadow: var(--ptdoc-shadow-lg);
+    transform: translateY(-2px);
+}
+
+.ptdoc-card-header {
+    padding: var(--ptdoc-space-lg);
+    border-bottom: 1px solid var(--ptdoc-color-border);
+    font-weight: var(--ptdoc-font-weight-semibold);
+    font-size: var(--ptdoc-font-size-lg);
+}
+
+.ptdoc-card-body {
+    padding: var(--ptdoc-space-lg);
+}
+
+.ptdoc-card-footer {
+    padding: var(--ptdoc-space-lg);
+    border-top: 1px solid var(--ptdoc-color-border);
+    background-color: var(--ptdoc-color-background-secondary);
+}

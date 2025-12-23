@@ -1,0 +1,63 @@
+/* PTDoc Badge Component Styles */
+
+.ptdoc-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: var(--ptdoc-font-weight-medium);
+    border-radius: var(--ptdoc-radius-sm);
+    white-space: nowrap;
+    line-height: 1;
+}
+
+/* Badge Variants */
+.ptdoc-badge-default {
+    background-color: var(--ptdoc-color-background-tertiary);
+    color: var(--ptdoc-color-text-primary);
+}
+
+.ptdoc-badge-primary {
+    background-color: var(--ptdoc-color-primary-light);
+    color: var(--ptdoc-color-primary);
+}
+
+.ptdoc-badge-success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--ptdoc-color-success);
+}
+
+.ptdoc-badge-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--ptdoc-color-warning);
+}
+
+.ptdoc-badge-error {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--ptdoc-color-error);
+}
+
+.ptdoc-badge-info {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--ptdoc-color-info);
+}
+
+/* Badge Sizes */
+.ptdoc-badge-small {
+    padding: 2px var(--ptdoc-space-xs);
+    font-size: var(--ptdoc-font-size-xs);
+}
+
+.ptdoc-badge-medium {
+    padding: var(--ptdoc-space-xs) var(--ptdoc-space-sm);
+    font-size: var(--ptdoc-font-size-sm);
+}
+
+.ptdoc-badge-large {
+    padding: var(--ptdoc-space-sm) var(--ptdoc-space-md);
+    font-size: var(--ptdoc-font-size-base);
+}
+
+/* Pill variant */
+.ptdoc-badge-pill {
+    border-radius: var(--ptdoc-radius-full);
+}

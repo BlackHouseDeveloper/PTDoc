@@ -1,0 +1,48 @@
+@* PTDoc Alert - Notifications and feedback messages *@
+
+<div class="ptdoc-alert @GetAlertClasses()" role="@GetRole()" @attributes="AdditionalAttributes">
+    <div class="ptdoc-alert-content">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="ptdoc-alert-icon" aria-hidden="true">@Icon</span>
+        }
+        <div class="ptdoc-alert-body">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <div class="ptdoc-alert-title">@Title</div>
+            }
+            <div class="ptdoc-alert-message">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+    @if (Dismissible)
+    {
+        <button type="button" 
+                class="ptdoc-alert-dismiss" 
+                @onclick="OnDismiss"
+                aria-label="Dismiss alert">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string Variant { get; set; } = "info"; // info, success, warning, error
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public bool Dismissible { get; set; } = false;
+    [Parameter] public EventCallback OnDismiss { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetAlertClasses()
+    {
+        return $"ptdoc-alert-{Variant}";
+    }
+
+    private string GetRole()
+    {
+        return Variant == "error" || Variant == "warning" ? "alert" : "status";
+    }
+}

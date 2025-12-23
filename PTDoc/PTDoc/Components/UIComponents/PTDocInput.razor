@@ -1,0 +1,97 @@
+@* PTDoc Input - Form input with validation and labels *@
+
+<div class="ptdoc-input-wrapper @GetWrapperClasses()">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@Id" class="ptdoc-input-label">
+            @Label
+            @if (Required)
+            {
+                <span class="ptdoc-input-required" aria-label="required">*</span>
+            }
+        </label>
+    }
+    
+    @if (InputType == "textarea")
+    {
+        <textarea id="@Id"
+                  class="ptdoc-input @GetInputClasses()"
+                  placeholder="@Placeholder"
+                  disabled="@Disabled"
+                  required="@Required"
+                  rows="@Rows"
+                  aria-describedby="@(HasError ? $"{Id}-error" : HasHelperText ? $"{Id}-helper" : null)"
+                  aria-invalid="@HasError"
+                  @bind="@Value"
+                  @attributes="AdditionalAttributes"></textarea>
+    }
+    else
+    {
+        <input id="@Id"
+               type="@InputType"
+               class="ptdoc-input @GetInputClasses()"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               required="@Required"
+               aria-describedby="@(HasError ? $"{Id}-error" : HasHelperText ? $"{Id}-helper" : null)"
+               aria-invalid="@HasError"
+               @bind="@Value"
+               @attributes="AdditionalAttributes" />
+    }
+
+    @if (HasHelperText)
+    {
+        <div id="@Id-helper" class="ptdoc-input-helper">@HelperText</div>
+    }
+    
+    @if (HasError)
+    {
+        <div id="@Id-error" class="ptdoc-input-error" role="alert">@ErrorMessage</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string InputType { get; set; } = "text"; // text, email, password, number, date, tel, textarea
+    [Parameter] public bool Disabled { get; set; } = false;
+    [Parameter] public bool Required { get; set; } = false;
+    [Parameter] public string Size { get; set; } = "medium"; // small, medium, large
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public int Rows { get; set; } = 3;
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string Id { get; set; } = Guid.NewGuid().ToString("N");
+    private bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+    private bool HasHelperText => !string.IsNullOrEmpty(HelperText);
+
+    private string GetWrapperClasses()
+    {
+        var classes = new List<string>();
+        
+        if (HasError)
+        {
+            classes.Add("ptdoc-input-wrapper-error");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private string GetInputClasses()
+    {
+        var classes = new List<string>
+        {
+            $"ptdoc-input-{Size}"
+        };
+
+        if (HasError)
+        {
+            classes.Add("ptdoc-input-error-state");
+        }
+
+        return string.Join(" ", classes);
+    }
+}

@@ -1,0 +1,111 @@
+/* PTDoc Button Component Styles */
+
+.ptdoc-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ptdoc-space-sm);
+    font-family: var(--ptdoc-font-family-base);
+    font-weight: var(--ptdoc-font-weight-medium);
+    border: 1px solid transparent;
+    border-radius: var(--ptdoc-radius-md);
+    cursor: pointer;
+    transition: all var(--ptdoc-transition-fast);
+    text-decoration: none;
+    /* WCAG AA - minimum 44x44px touch target */
+    min-height: var(--ptdoc-touch-target-min);
+    min-width: var(--ptdoc-touch-target-min);
+    white-space: nowrap;
+}
+
+.ptdoc-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.ptdoc-button:focus-visible {
+    outline: 2px solid var(--ptdoc-color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Button Variants */
+.ptdoc-button-primary {
+    background-color: var(--ptdoc-color-primary);
+    color: white;
+    border-color: var(--ptdoc-color-primary);
+}
+
+.ptdoc-button-primary:hover:not(:disabled) {
+    background-color: var(--ptdoc-color-primary-hover);
+    border-color: var(--ptdoc-color-primary-hover);
+}
+
+.ptdoc-button-secondary {
+    background-color: var(--ptdoc-color-secondary);
+    color: white;
+    border-color: var(--ptdoc-color-secondary);
+}
+
+.ptdoc-button-secondary:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.ptdoc-button-outline {
+    background-color: transparent;
+    color: var(--ptdoc-color-primary);
+    border-color: var(--ptdoc-color-primary);
+}
+
+.ptdoc-button-outline:hover:not(:disabled) {
+    background-color: var(--ptdoc-color-primary-light);
+}
+
+.ptdoc-button-ghost {
+    background-color: transparent;
+    color: var(--ptdoc-color-text-primary);
+    border-color: transparent;
+}
+
+.ptdoc-button-ghost:hover:not(:disabled) {
+    background-color: var(--ptdoc-color-background-tertiary);
+}
+
+.ptdoc-button-danger {
+    background-color: var(--ptdoc-color-error);
+    color: white;
+    border-color: var(--ptdoc-color-error);
+}
+
+.ptdoc-button-danger:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+/* Button Sizes */
+.ptdoc-button-small {
+    padding: var(--ptdoc-space-xs) var(--ptdoc-space-md);
+    font-size: var(--ptdoc-font-size-sm);
+}
+
+.ptdoc-button-medium {
+    padding: var(--ptdoc-space-sm) var(--ptdoc-space-lg);
+    font-size: var(--ptdoc-font-size-base);
+}
+
+.ptdoc-button-large {
+    padding: var(--ptdoc-space-md) var(--ptdoc-space-xl);
+    font-size: var(--ptdoc-font-size-lg);
+}
+
+.ptdoc-button-full-width {
+    width: 100%;
+}
+
+.ptdoc-button-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.ptdoc-button-text {
+    display: inline-flex;
+    align-items: center;
+}

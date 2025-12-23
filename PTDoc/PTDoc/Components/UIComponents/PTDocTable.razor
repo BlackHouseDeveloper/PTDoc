@@ -1,0 +1,75 @@
+@* PTDoc Table - Data grid with sorting and responsive design *@
+@typeparam TItem
+
+<div class="ptdoc-table-container">
+    <table class="ptdoc-table @GetTableClasses()" role="table">
+        <thead>
+            <tr>
+                @TableHeader
+            </tr>
+        </thead>
+        <tbody>
+            @if (Items != null && Items.Any())
+            {
+                @foreach (var item in Items)
+                {
+                    <tr>
+                        @RowTemplate!(item)
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="100" class="ptdoc-table-empty">
+                        @if (EmptyTemplate != null)
+                        {
+                            @EmptyTemplate
+                        }
+                        else
+                        {
+                            <span>No data available</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? TableHeader { get; set; }
+    [Parameter] public RenderFragment<TItem>? RowTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyTemplate { get; set; }
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public bool Striped { get; set; } = false;
+    [Parameter] public bool Hoverable { get; set; } = true;
+    [Parameter] public bool Bordered { get; set; } = false;
+    [Parameter] public string Size { get; set; } = "medium"; // small, medium, large
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetTableClasses()
+    {
+        var classes = new List<string>
+        {
+            $"ptdoc-table-{Size}"
+        };
+
+        if (Striped)
+        {
+            classes.Add("ptdoc-table-striped");
+        }
+
+        if (Hoverable)
+        {
+            classes.Add("ptdoc-table-hoverable");
+        }
+
+        if (Bordered)
+        {
+            classes.Add("ptdoc-table-bordered");
+        }
+
+        return string.Join(" ", classes);
+    }
+}

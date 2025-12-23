@@ -1,0 +1,44 @@
+@* PTDoc Card - Content container with proper semantics *@
+
+<div class="ptdoc-card @GetCardClasses()" role="@Role" @attributes="AdditionalAttributes">
+    @if (Header != null)
+    {
+        <div class="ptdoc-card-header">
+            @Header
+        </div>
+    }
+    <div class="ptdoc-card-body">
+        @ChildContent
+    </div>
+    @if (Footer != null)
+    {
+        <div class="ptdoc-card-footer">
+            @Footer
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public string Variant { get; set; } = "default"; // default, elevated, bordered
+    [Parameter] public bool Hoverable { get; set; } = false;
+    [Parameter] public string? Role { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetCardClasses()
+    {
+        var classes = new List<string>
+        {
+            $"ptdoc-card-{Variant}"
+        };
+
+        if (Hoverable)
+        {
+            classes.Add("ptdoc-card-hoverable");
+        }
+
+        return string.Join(" ", classes);
+    }
+}

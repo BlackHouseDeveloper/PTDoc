@@ -1,0 +1,113 @@
+/* PTDoc Table Component Styles */
+
+.ptdoc-table-container {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: var(--ptdoc-radius-md);
+    border: 1px solid var(--ptdoc-color-border);
+    background-color: var(--ptdoc-color-background);
+}
+
+.ptdoc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--ptdoc-font-size-sm);
+}
+
+.ptdoc-table thead {
+    background-color: var(--ptdoc-color-background-secondary);
+    border-bottom: 2px solid var(--ptdoc-color-border);
+}
+
+.ptdoc-table th {
+    padding: var(--ptdoc-space-md);
+    text-align: left;
+    font-weight: var(--ptdoc-font-weight-semibold);
+    color: var(--ptdoc-color-text-primary);
+    white-space: nowrap;
+}
+
+.ptdoc-table td {
+    padding: var(--ptdoc-space-md);
+    color: var(--ptdoc-color-text-primary);
+    border-top: 1px solid var(--ptdoc-color-border);
+}
+
+.ptdoc-table tbody tr {
+    transition: background-color var(--ptdoc-transition-fast);
+}
+
+/* Table Sizes */
+.ptdoc-table-small th,
+.ptdoc-table-small td {
+    padding: var(--ptdoc-space-sm);
+    font-size: var(--ptdoc-font-size-xs);
+}
+
+.ptdoc-table-medium th,
+.ptdoc-table-medium td {
+    padding: var(--ptdoc-space-md);
+    font-size: var(--ptdoc-font-size-sm);
+}
+
+.ptdoc-table-large th,
+.ptdoc-table-large td {
+    padding: var(--ptdoc-space-lg);
+    font-size: var(--ptdoc-font-size-base);
+}
+
+/* Table Variants */
+.ptdoc-table-striped tbody tr:nth-child(even) {
+    background-color: var(--ptdoc-color-background-secondary);
+}
+
+.ptdoc-table-hoverable tbody tr:hover {
+    background-color: var(--ptdoc-color-background-tertiary);
+    cursor: pointer;
+}
+
+.ptdoc-table-bordered th,
+.ptdoc-table-bordered td {
+    border: 1px solid var(--ptdoc-color-border);
+}
+
+/* Empty State */
+.ptdoc-table-empty {
+    text-align: center;
+    padding: var(--ptdoc-space-2xl) !important;
+    color: var(--ptdoc-color-text-secondary);
+    font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .ptdoc-table {
+        font-size: var(--ptdoc-font-size-xs);
+    }
+
+    .ptdoc-table th,
+    .ptdoc-table td {
+        padding: var(--ptdoc-space-sm);
+    }
+}
+
+/* Sortable columns */
+.ptdoc-table-sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: var(--ptdoc-space-xl);
+}
+
+.ptdoc-table-sortable:hover {
+    background-color: var(--ptdoc-color-background-tertiary);
+}
+
+.ptdoc-table-sort-icon {
+    position: absolute;
+    right: var(--ptdoc-space-md);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--ptdoc-font-size-sm);
+    color: var(--ptdoc-color-text-tertiary);
+}
