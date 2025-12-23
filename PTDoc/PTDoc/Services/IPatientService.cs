@@ -8,9 +8,9 @@ namespace PTDoc.Services;
 public interface IPatientService
 {
     /// <summary>
-    /// Gets all active patients.
+    /// Gets all non-deleted patients (soft delete filter applied automatically).
     /// </summary>
-    /// <returns>A list of all active patients.</returns>
+    /// <returns>A list of all non-deleted patients.</returns>
     Task<List<Patient>> GetAllPatientsAsync();
 
     /// <summary>
