@@ -11,7 +11,7 @@
             <button class="theme-toggle" @onclick="ToggleTheme" aria-label="Toggle theme">
                 @(currentTheme == "light" ? "🌙 Dark Mode" : "☀️ Light Mode")
             </button>
-            <a href="https://github.com/BlackHouseDeveloper/PTDoc" target="_blank">GitHub</a>
+            <a href="https://github.com/BlackHouseDeveloper/PTDoc" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
 
         <article class="content px-4">
@@ -32,7 +32,7 @@
     private async Task ToggleTheme()
     {
         currentTheme = currentTheme == "light" ? "dark" : "light";
-        await JS.InvokeVoidAsync("localStorage.setItem", "theme", currentTheme);
+        await JS.InvokeVoidAsync("PTDoc.setTheme", currentTheme);
         StateHasChanged();
     }
 
@@ -40,7 +40,7 @@
     {
         if (firstRender)
         {
-            var savedTheme = await JS.InvokeAsync<string>("localStorage.getItem", "theme");
+            var savedTheme = await JS.InvokeAsync<string>("PTDoc.getTheme");
             if (!string.IsNullOrEmpty(savedTheme))
             {
                 currentTheme = savedTheme;

@@ -79,12 +79,12 @@
         if (IsOpen)
         {
             // Lock body scroll when modal is open
-            await JS.InvokeVoidAsync("eval", "document.body.style.overflow = 'hidden'");
+            await JS.InvokeVoidAsync("PTDoc.lockBodyScroll");
         }
         else
         {
             // Restore body scroll when modal is closed
-            await JS.InvokeVoidAsync("eval", "document.body.style.overflow = ''");
+            await JS.InvokeVoidAsync("PTDoc.unlockBodyScroll");
         }
     }
 }
