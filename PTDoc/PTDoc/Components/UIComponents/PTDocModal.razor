@@ -1,0 +1,90 @@
+@* PTDoc Modal - Accessible dialog with focus management *@
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="ptdoc-modal-overlay" @onclick="OnOverlayClick" role="presentation">
+        <div class="ptdoc-modal-container @GetModalClasses()"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@($"{Id}-title")"
+             @onclick:stopPropagation="true">
+            
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <div class="ptdoc-modal-header">
+                    <h2 id="@($"{Id}-title")" class="ptdoc-modal-title">@Title</h2>
+                    @if (ShowCloseButton)
+                    {
+                        <button type="button" 
+                                class="ptdoc-modal-close" 
+                                @onclick="Close"
+                                aria-label="Close dialog">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    }
+                </div>
+            }
+            
+            <div class="ptdoc-modal-body">
+                @ChildContent
+            </div>
+            
+            @if (Footer != null)
+            {
+                <div class="ptdoc-modal-footer">
+                    @Footer
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string Size { get; set; } = "medium"; // small, medium, large, full
+    [Parameter] public bool ShowCloseButton { get; set; } = true;
+    [Parameter] public bool CloseOnOverlayClick { get; set; } = true;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    private string GetModalClasses()
+    {
+        return $"ptdoc-modal-{Size}";
+    }
+
+    private async Task OnOverlayClick()
+    {
+        if (CloseOnOverlayClick)
+        {
+            await Close();
+        }
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(IsOpen);
+        await OnClose.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen)
+        {
+            // Lock body scroll when modal is open
+            await JS.InvokeVoidAsync("PTDoc.lockBodyScroll");
+        }
+        else
+        {
+            // Restore body scroll when modal is closed
+            await JS.InvokeVoidAsync("PTDoc.unlockBodyScroll");
+        }
+    }
+}

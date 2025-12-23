@@ -1,0 +1,185 @@
+/* PTDoc Design System - Design Tokens and Core Styles */
+
+:root {
+    /* Color Tokens - Light Theme */
+    --ptdoc-color-primary: #0066CC;
+    --ptdoc-color-primary-hover: #0052A3;
+    --ptdoc-color-primary-light: #E6F2FF;
+    --ptdoc-color-secondary: #6B7280;
+    --ptdoc-color-success: #10B981;
+    --ptdoc-color-warning: #F59E0B;
+    --ptdoc-color-error: #EF4444;
+    --ptdoc-color-info: #3B82F6;
+    
+    /* Neutral Colors */
+    --ptdoc-color-text-primary: #111827;
+    --ptdoc-color-text-secondary: #6B7280;
+    --ptdoc-color-text-tertiary: #9CA3AF;
+    --ptdoc-color-background: #FFFFFF;
+    --ptdoc-color-background-secondary: #F9FAFB;
+    --ptdoc-color-background-tertiary: #F3F4F6;
+    --ptdoc-color-border: #E5E7EB;
+    --ptdoc-color-border-focus: #0066CC;
+    
+    /* Spacing Tokens (8px base) */
+    --ptdoc-space-xs: 4px;
+    --ptdoc-space-sm: 8px;
+    --ptdoc-space-md: 16px;
+    --ptdoc-space-lg: 24px;
+    --ptdoc-space-xl: 32px;
+    --ptdoc-space-2xl: 48px;
+    
+    /* Typography Tokens */
+    --ptdoc-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ptdoc-font-family-mono: "Courier New", Courier, monospace;
+    --ptdoc-font-size-xs: 0.75rem;    /* 12px */
+    --ptdoc-font-size-sm: 0.875rem;   /* 14px */
+    --ptdoc-font-size-base: 1rem;     /* 16px - WCAG AA minimum */
+    --ptdoc-font-size-lg: 1.125rem;   /* 18px */
+    --ptdoc-font-size-xl: 1.25rem;    /* 20px */
+    --ptdoc-font-size-2xl: 1.5rem;    /* 24px */
+    --ptdoc-font-size-3xl: 1.875rem;  /* 30px */
+    --ptdoc-font-weight-normal: 400;
+    --ptdoc-font-weight-medium: 500;
+    --ptdoc-font-weight-semibold: 600;
+    --ptdoc-font-weight-bold: 700;
+    --ptdoc-line-height-tight: 1.25;
+    --ptdoc-line-height-normal: 1.5;
+    --ptdoc-line-height-relaxed: 1.75;
+    
+    /* Border Radius Tokens */
+    --ptdoc-radius-sm: 4px;
+    --ptdoc-radius-md: 8px;
+    --ptdoc-radius-lg: 12px;
+    --ptdoc-radius-full: 9999px;
+    
+    /* Shadow Tokens */
+    --ptdoc-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --ptdoc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --ptdoc-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --ptdoc-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    
+    /* Touch Target Size (WCAG AA - minimum 44x44px) */
+    --ptdoc-touch-target-min: 44px;
+    
+    /* Transition Tokens */
+    --ptdoc-transition-fast: 150ms ease-in-out;
+    --ptdoc-transition-base: 250ms ease-in-out;
+    --ptdoc-transition-slow: 350ms ease-in-out;
+    
+    /* Z-Index Scale */
+    --ptdoc-z-dropdown: 1000;
+    --ptdoc-z-modal: 2000;
+    --ptdoc-z-toast: 3000;
+    --ptdoc-z-tooltip: 4000;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+    --ptdoc-color-primary: #3B82F6;
+    --ptdoc-color-primary-hover: #2563EB;
+    --ptdoc-color-primary-light: #1E3A5F;
+    --ptdoc-color-secondary: #9CA3AF;
+    --ptdoc-color-success: #10B981;
+    --ptdoc-color-warning: #F59E0B;
+    --ptdoc-color-error: #EF4444;
+    --ptdoc-color-info: #60A5FA;
+    
+    --ptdoc-color-text-primary: #F9FAFB;
+    --ptdoc-color-text-secondary: #D1D5DB;
+    --ptdoc-color-text-tertiary: #9CA3AF;
+    --ptdoc-color-background: #111827;
+    --ptdoc-color-background-secondary: #1F2937;
+    --ptdoc-color-background-tertiary: #374151;
+    --ptdoc-color-border: #374151;
+    --ptdoc-color-border-focus: #3B82F6;
+}
+
+/* Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--ptdoc-font-family-base);
+    font-size: var(--ptdoc-font-size-base);
+    line-height: var(--ptdoc-line-height-normal);
+    color: var(--ptdoc-color-text-primary);
+    background-color: var(--ptdoc-color-background);
+    transition: background-color var(--ptdoc-transition-base), color var(--ptdoc-transition-base);
+}
+
+/* Typography Utilities */
+.ptdoc-text-xs { font-size: var(--ptdoc-font-size-xs); }
+.ptdoc-text-sm { font-size: var(--ptdoc-font-size-sm); }
+.ptdoc-text-base { font-size: var(--ptdoc-font-size-base); }
+.ptdoc-text-lg { font-size: var(--ptdoc-font-size-lg); }
+.ptdoc-text-xl { font-size: var(--ptdoc-font-size-xl); }
+.ptdoc-text-2xl { font-size: var(--ptdoc-font-size-2xl); }
+.ptdoc-text-3xl { font-size: var(--ptdoc-font-size-3xl); }
+
+.ptdoc-font-normal { font-weight: var(--ptdoc-font-weight-normal); }
+.ptdoc-font-medium { font-weight: var(--ptdoc-font-weight-medium); }
+.ptdoc-font-semibold { font-weight: var(--ptdoc-font-weight-semibold); }
+.ptdoc-font-bold { font-weight: var(--ptdoc-font-weight-bold); }
+
+.ptdoc-text-primary { color: var(--ptdoc-color-text-primary); }
+.ptdoc-text-secondary { color: var(--ptdoc-color-text-secondary); }
+.ptdoc-text-tertiary { color: var(--ptdoc-color-text-tertiary); }
+
+/* Spacing Utilities */
+.ptdoc-m-0 { margin: 0; }
+.ptdoc-p-0 { padding: 0; }
+.ptdoc-mt-sm { margin-top: var(--ptdoc-space-sm); }
+.ptdoc-mt-md { margin-top: var(--ptdoc-space-md); }
+.ptdoc-mt-lg { margin-top: var(--ptdoc-space-lg); }
+.ptdoc-mb-sm { margin-bottom: var(--ptdoc-space-sm); }
+.ptdoc-mb-md { margin-bottom: var(--ptdoc-space-md); }
+.ptdoc-mb-lg { margin-bottom: var(--ptdoc-space-lg); }
+.ptdoc-p-sm { padding: var(--ptdoc-space-sm); }
+.ptdoc-p-md { padding: var(--ptdoc-space-md); }
+.ptdoc-p-lg { padding: var(--ptdoc-space-lg); }
+
+/* Accessibility Utilities */
+.ptdoc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Focus Styles (WCAG AA compliant) */
+*:focus-visible {
+    outline: 2px solid var(--ptdoc-color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Container */
+.ptdoc-container {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding-left: var(--ptdoc-space-md);
+    padding-right: var(--ptdoc-space-md);
+}
+
+/* Responsive utilities */
+@media (min-width: 640px) {
+    .ptdoc-container {
+        padding-left: var(--ptdoc-space-lg);
+        padding-right: var(--ptdoc-space-lg);
+    }
+}

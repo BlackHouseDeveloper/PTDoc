@@ -1,0 +1,107 @@
+/* PTDoc Alert Component Styles */
+
+.ptdoc-alert {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: var(--ptdoc-space-md);
+    border-radius: var(--ptdoc-radius-md);
+    border-left: 4px solid;
+    margin-bottom: var(--ptdoc-space-md);
+}
+
+.ptdoc-alert-content {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ptdoc-space-md);
+    flex: 1;
+}
+
+.ptdoc-alert-icon {
+    font-size: var(--ptdoc-font-size-xl);
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.ptdoc-alert-body {
+    flex: 1;
+}
+
+.ptdoc-alert-title {
+    font-weight: var(--ptdoc-font-weight-semibold);
+    margin-bottom: var(--ptdoc-space-xs);
+}
+
+.ptdoc-alert-message {
+    font-size: var(--ptdoc-font-size-sm);
+    line-height: var(--ptdoc-line-height-normal);
+}
+
+.ptdoc-alert-dismiss {
+    background: none;
+    border: none;
+    font-size: var(--ptdoc-font-size-2xl);
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    /* WCAG AA - minimum 44x44px touch target */
+    min-width: var(--ptdoc-touch-target-min);
+    min-height: var(--ptdoc-touch-target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity var(--ptdoc-transition-fast);
+    flex-shrink: 0;
+}
+
+.ptdoc-alert-dismiss:hover {
+    opacity: 0.7;
+}
+
+.ptdoc-alert-dismiss:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: var(--ptdoc-radius-sm);
+}
+
+/* Alert Variants */
+.ptdoc-alert-info {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-left-color: var(--ptdoc-color-info);
+    color: var(--ptdoc-color-info);
+}
+
+.ptdoc-alert-success {
+    background-color: rgba(16, 185, 129, 0.1);
+    border-left-color: var(--ptdoc-color-success);
+    color: var(--ptdoc-color-success);
+}
+
+.ptdoc-alert-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-left-color: var(--ptdoc-color-warning);
+    color: var(--ptdoc-color-warning);
+}
+
+.ptdoc-alert-error {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--ptdoc-color-error);
+    color: var(--ptdoc-color-error);
+}
+
+/* Alert text colors */
+.ptdoc-alert-info .ptdoc-alert-message {
+    color: var(--ptdoc-color-text-primary);
+}
+
+.ptdoc-alert-success .ptdoc-alert-message {
+    color: var(--ptdoc-color-text-primary);
+}
+
+.ptdoc-alert-warning .ptdoc-alert-message {
+    color: var(--ptdoc-color-text-primary);
+}
+
+.ptdoc-alert-error .ptdoc-alert-message {
+    color: var(--ptdoc-color-text-primary);
+}

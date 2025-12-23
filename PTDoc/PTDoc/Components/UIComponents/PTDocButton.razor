@@ -1,0 +1,43 @@
+@* PTDoc Button - Accessible, themed, touch-friendly button component *@
+
+<button type="@Type"
+        class="ptdoc-button @GetButtonClasses()"
+        disabled="@Disabled"
+        aria-label="@AriaLabel"
+        @onclick="OnClick"
+        @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="ptdoc-button-icon" aria-hidden="true">@Icon</span>
+    }
+    <span class="ptdoc-button-text">@ChildContent</span>
+</button>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string Variant { get; set; } = "primary"; // primary, secondary, outline, ghost, danger
+    [Parameter] public string Size { get; set; } = "medium"; // small, medium, large
+    [Parameter] public bool Disabled { get; set; } = false;
+    [Parameter] public bool FullWidth { get; set; } = false;
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string Type { get; set; } = "button"; // button, submit, reset
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetButtonClasses()
+    {
+        var classes = new List<string>
+        {
+            $"ptdoc-button-{Variant}",
+            $"ptdoc-button-{Size}"
+        };
+
+        if (FullWidth)
+        {
+            classes.Add("ptdoc-button-full-width");
+        }
+
+        return string.Join(" ", classes);
+    }
+}

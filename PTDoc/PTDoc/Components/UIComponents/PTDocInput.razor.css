@@ -1,0 +1,92 @@
+/* PTDoc Input Component Styles */
+
+.ptdoc-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ptdoc-space-xs);
+    margin-bottom: var(--ptdoc-space-md);
+}
+
+.ptdoc-input-label {
+    font-size: var(--ptdoc-font-size-sm);
+    font-weight: var(--ptdoc-font-weight-medium);
+    color: var(--ptdoc-color-text-primary);
+}
+
+.ptdoc-input-required {
+    color: var(--ptdoc-color-error);
+    margin-left: var(--ptdoc-space-xs);
+}
+
+.ptdoc-input {
+    font-family: var(--ptdoc-font-family-base);
+    width: 100%;
+    border: 1px solid var(--ptdoc-color-border);
+    border-radius: var(--ptdoc-radius-md);
+    background-color: var(--ptdoc-color-background);
+    color: var(--ptdoc-color-text-primary);
+    transition: all var(--ptdoc-transition-fast);
+    /* WCAG AA - minimum 44px touch target */
+    min-height: var(--ptdoc-touch-target-min);
+}
+
+.ptdoc-input:focus {
+    outline: none;
+    border-color: var(--ptdoc-color-border-focus);
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.ptdoc-input:disabled {
+    background-color: var(--ptdoc-color-background-tertiary);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.ptdoc-input::placeholder {
+    color: var(--ptdoc-color-text-tertiary);
+}
+
+/* Input Sizes */
+.ptdoc-input-small {
+    padding: var(--ptdoc-space-xs) var(--ptdoc-space-sm);
+    font-size: var(--ptdoc-font-size-sm);
+}
+
+.ptdoc-input-medium {
+    padding: var(--ptdoc-space-sm) var(--ptdoc-space-md);
+    font-size: var(--ptdoc-font-size-base);
+}
+
+.ptdoc-input-large {
+    padding: var(--ptdoc-space-md) var(--ptdoc-space-lg);
+    font-size: var(--ptdoc-font-size-lg);
+}
+
+/* Error State */
+.ptdoc-input-error-state {
+    border-color: var(--ptdoc-color-error);
+}
+
+.ptdoc-input-error-state:focus {
+    border-color: var(--ptdoc-color-error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.ptdoc-input-error {
+    font-size: var(--ptdoc-font-size-sm);
+    color: var(--ptdoc-color-error);
+    display: flex;
+    align-items: center;
+    gap: var(--ptdoc-space-xs);
+}
+
+.ptdoc-input-helper {
+    font-size: var(--ptdoc-font-size-sm);
+    color: var(--ptdoc-color-text-secondary);
+}
+
+/* Textarea specific styles */
+textarea.ptdoc-input {
+    resize: vertical;
+    min-height: auto;
+}

@@ -1,0 +1,115 @@
+﻿@page "/"
+@using PTDoc.Components.UIComponents
+
+<PageTitle>PTDoc - Physical Therapy Documentation</PageTitle>
+
+<div class="ptdoc-container">
+    <h1 class="ptdoc-text-3xl ptdoc-font-bold ptdoc-mb-lg">Welcome to PTDoc</h1>
+    
+    <PTDocAlert Variant="success" Title="Multi-Platform Blazor App" Icon="✓" Dismissible="false">
+        PTDoc is a production-ready, multi-platform Blazor application for physical therapy documentation 
+        and practice management with offline-first architecture using SQLite and Entity Framework Core.
+    </PTDocAlert>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 32px;">
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">🎨 Design System</h2>
+            </Header>
+            <ChildContent>
+                <p>PTDoc Design System with design tokens, WCAG AA compliance, 44px touch targets, and light/dark themes.</p>
+                <div style="margin-top: 16px;">
+                    <PTDocButton Variant="primary" OnClick="@(() => NavigationManager.NavigateTo("/components"))">
+                        View Components
+                    </PTDocButton>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">💾 Offline-First</h2>
+            </Header>
+            <ChildContent>
+                <p>Built with SQLite and EF Core for local development with no internet dependency. Scaffolded for future SQL Server/Azure SQL migration.</p>
+                <div style="margin-top: 16px;">
+                    <PTDocBadge Variant="success" Pill="true">SQLite</PTDocBadge>
+                    <PTDocBadge Variant="info" Pill="true">EF Core</PTDocBadge>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">📋 Core Features</h2>
+            </Header>
+            <ChildContent>
+                <ul style="list-style-position: inside; margin: 0; padding: 0;">
+                    <li>Patient Management</li>
+                    <li>SOAP Notes</li>
+                    <li>Insurance Tracking</li>
+                    <li>App State Management</li>
+                </ul>
+                <div style="margin-top: 16px;">
+                    <PTDocBadge Variant="primary">Ready to Use</PTDocBadge>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">♿ Accessibility</h2>
+            </Header>
+            <ChildContent>
+                <p>All components meet WCAG AA standards with proper semantic HTML, ARIA attributes, and keyboard navigation support.</p>
+                <div style="margin-top: 16px;">
+                    <PTDocBadge Variant="success" Pill="true">WCAG AA</PTDocBadge>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">🌓 Theme Support</h2>
+            </Header>
+            <ChildContent>
+                <p>Built-in light and dark theme support with smooth transitions. Use the theme toggle in the top bar to switch.</p>
+                <div style="margin-top: 16px;">
+                    <PTDocBadge Variant="default">Light</PTDocBadge>
+                    <PTDocBadge Variant="primary">Dark</PTDocBadge>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+
+        <PTDocCard Variant="elevated">
+            <Header>
+                <h2 class="ptdoc-text-xl ptdoc-font-semibold">🔧 Architecture</h2>
+            </Header>
+            <ChildContent>
+                <p>Clean architecture with separation of concerns: Models, Data layer (DbContext), and Service layer with dependency injection.</p>
+                <div style="margin-top: 16px;">
+                    <PTDocBadge Variant="info" Pill="true">.NET 8</PTDocBadge>
+                </div>
+            </ChildContent>
+        </PTDocCard>
+    </div>
+
+    <PTDocCard style="margin-top: 32px;">
+        <Header>
+            <h2 class="ptdoc-text-xl ptdoc-font-semibold">Getting Started</h2>
+        </Header>
+        <ChildContent>
+            <ol style="list-style-position: inside; margin: 0; padding: 0; line-height: 2;">
+                <li>Explore the <a href="/components" style="color: var(--ptdoc-color-primary); text-decoration: underline;">Components</a> page to see all available UI components</li>
+                <li>Check out the database models in the <code>Models</code> folder</li>
+                <li>Review the services in the <code>Services</code> folder</li>
+                <li>The SQLite database is automatically created on first run</li>
+                <li>Toggle between light and dark themes using the button in the top bar</li>
+            </ol>
+        </ChildContent>
+    </PTDocCard>
+</div>
+
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+}
