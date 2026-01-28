@@ -1,0 +1,33 @@
+@* This is a shared component - each platform has its own routed logout page *@
+@* MauiLogout.razor and WebLogout.razor handle the /logout route *@
+@using Microsoft.Extensions.Logging
+@inject NavigationManager Navigation
+@inject ILogger<Logout> Logger
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h3>Logging out...</h3>
+            <p>Please wait while we securely end your session.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        try
+        {
+            Logger.LogInformation("User initiated logout - redirecting to platform-specific handler");
+            
+            // This page is a fallback - platform-specific pages should handle logout
+            // Redirect to login with force reload
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during logout");
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+    }
+}

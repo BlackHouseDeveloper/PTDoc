@@ -1,0 +1,1 @@
+// Intentionally left blank. UserService moved to web-specific auth implementation.

@@ -1,0 +1,34 @@
+@page "/logout"
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject ILogger<WebLogout> Logger
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h3>Logging out...</h3>
+            <p>Please wait while we securely end your session.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                Logger.LogInformation("Web user initiated logout");
+                
+                // Redirect to the server logout endpoint that clears cookies
+                Navigation.NavigateTo("/auth/logout", forceLoad: true);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error during web logout");
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+        }
+    }
+}
