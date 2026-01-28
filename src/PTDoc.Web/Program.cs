@@ -105,7 +105,6 @@ app.MapPost("/auth/login", async (HttpContext httpContext, ICredentialValidator 
 
     return Results.Redirect(returnUrl);
 })
-.DisableAntiforgery()
 .AllowAnonymous();
 
 app.MapGet("/auth/logout", async (HttpContext httpContext) =>
@@ -113,7 +112,6 @@ app.MapGet("/auth/logout", async (HttpContext httpContext) =>
     await httpContext.SignOutAsync("PTDocAuth");
     return Results.Redirect("/login");
 })
-.DisableAntiforgery()
 .RequireAuthorization();
 
 app.MapRazorComponents<PTDoc.Web.Components.App>()

@@ -15,6 +15,13 @@ public sealed record RefreshTokenRecord(
     IReadOnlyCollection<Claim> Claims,
     DateTimeOffset ExpiresAtUtc);
 
+/// <summary>
+/// In-memory refresh token store for development and testing.
+/// WARNING: This implementation loses all tokens on application restart, forcing users to re-authenticate.
+/// TODO: Replace with persistent storage (database, Redis, etc.) for production use.
+/// This is particularly important for HIPAA-compliant healthcare applications where unexpected
+/// session terminations could disrupt clinical workflows.
+/// </summary>
 public sealed class InMemoryRefreshTokenStore : IRefreshTokenStore
 {
     private readonly ConcurrentDictionary<string, RefreshTokenRecord> tokens = new();

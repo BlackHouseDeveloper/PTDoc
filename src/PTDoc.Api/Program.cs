@@ -7,6 +7,30 @@ using PTDoc.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Validate JWT configuration on startup
+var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
+if (jwtConfig != null)
+{
+    var placeholderKeys = new[] 
+    { 
+        "REPLACE_WITH_A_MIN_32_CHAR_SECRET", 
+        "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET" 
+    };
+    
+    if (placeholderKeys.Contains(jwtConfig.SigningKey))
+    {
+        throw new InvalidOperationException(
+            "JWT signing key has not been configured. The placeholder value must be replaced with a " +
+            "cryptographically secure random key. Generate one using: openssl rand -base64 64");
+    }
+    
+    if (jwtConfig.SigningKey.Length < 32)
+    {
+        throw new InvalidOperationException(
+            $"JWT signing key must be at least 32 characters. Current length: {jwtConfig.SigningKey.Length}");
+    }
+}
+
 builder.Services.AddAuthorization();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

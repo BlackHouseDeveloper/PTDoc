@@ -149,17 +149,14 @@ public abstract class LoginBase : ComponentBase
 
         var query = parsed.Query.TrimStart('?').Split('&');
 
-        foreach (var pair in query)
-        {
-            var parts = pair.Split('=', 2);
-            if (parts.Length == 2 &&
+        var returnUrl = query
+            .Select(pair => pair.Split('=', 2))
+            .Where(parts => parts.Length == 2 &&
                 string.Equals(parts[0], "returnUrl", StringComparison.OrdinalIgnoreCase))
-            {
-                return Uri.UnescapeDataString(parts[1]);
-            }
-        }
+            .Select(parts => Uri.UnescapeDataString(parts[1]))
+            .FirstOrDefault();
 
-        return "/";
+        return returnUrl ?? "/";
     }
 
     protected sealed class LoginModel
