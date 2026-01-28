@@ -1,0 +1,13 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+
+<button class="btn btn-outline-danger btn-sm" @onclick="HandleLogout">
+    <span class="oi oi-account-logout"></span> Logout
+</button>
+
+@code {
+    private void HandleLogout()
+    {
+        Navigation.NavigateTo("/logout", forceLoad: true);
+    }
+}

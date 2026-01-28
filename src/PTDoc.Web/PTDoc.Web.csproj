@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PTDoc.Core\PTDoc.Core.csproj" />
+    <ProjectReference Include="..\PTDoc.UI\PTDoc.UI.csproj" />
+    <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Cookies" Version="2.3.9" />
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
+
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

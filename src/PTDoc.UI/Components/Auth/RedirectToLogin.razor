@@ -1,0 +1,14 @@
+@using Microsoft.Extensions.Logging
+@inject NavigationManager Nav
+@inject ILogger<RedirectToLogin> Logger
+
+@code {
+    protected override void OnInitialized()
+    {
+        Logger.LogInformation("RedirectToLogin triggered for URI: {Uri}", Nav.Uri);
+        var returnUrl = Uri.EscapeDataString(Nav.ToBaseRelativePath(Nav.Uri));
+        var loginUrl = $"/login?returnUrl={returnUrl}";
+        Logger.LogInformation("Navigating to: {LoginUrl}", loginUrl);
+        Nav.NavigateTo(loginUrl, forceLoad: false);
+    }
+}
