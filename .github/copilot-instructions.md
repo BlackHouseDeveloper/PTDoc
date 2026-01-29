@@ -1,5 +1,32 @@
 # PTDoc - AI Coding Assistant Instructions
 
+## Canonical Context Source
+
+**PRIMARY REFERENCE:** Always consult `docs/context/ptdoc-figma-make-prototype-v5-context.md` FIRST for all PTDoc v5 implementation decisions. This consolidated document is the single source of truth for:
+- Design system (colors, typography, components)
+- UI architecture and page specifications
+- Component catalog with props and variants
+- Data models and API contracts
+- UX rules and accessibility requirements
+- React→Blazor conversion patterns
+
+**Figma Design Reference:** https://www.figma.com/make/1Fd3pzaGzvHboxFKuCz4dY/PTDoc-Prototype-v5?p=f&t=s9McithEAB55SH6O-0
+- When implementing or reviewing **.tsx** files, use **Figma Desktop → Map / Pages / Layers navigation** to locate the corresponding design screen/component
+- This provides authoritative visual context for conversion fidelity
+- If design appears to conflict with consolidated context doc, surface the conflict as a question rather than assuming
+
+**Citation Requirements:**
+When generating code or making implementation decisions for PTDoc v5:
+1. **Cite your sources** - Reference which section(s) of the consolidated context doc you followed (e.g., "Per Section 6.3 PTDocButton specification...")
+2. **Acknowledge gaps** - If the consolidated doc doesn't cover a specific scenario, explicitly state "Not found in consolidated doc, applying [fallback approach]"
+3. **Surface conflicts** - If Figma design contradicts the consolidated doc, or if different sections appear inconsistent, ask for clarification rather than making assumptions
+4. **Trace decisions** - In complex implementations, show your reasoning path through the doc hierarchy (e.g., "Section 7 design tokens → Section 6 component catalog → Section 11 implementation notes")
+
+This ensures all AI-generated code is traceable to authoritative sources and makes it easier to identify when the consolidated doc needs updates.
+
+**Archive Policy:**
+Archived documents under `docs/_archive/` MUST NOT be used as authoritative sources. They exist only for historical reference and must never override the consolidated context. If Copilot encounters conflicting information between active docs and archived docs, always defer to active documentation and surface the conflict.
+
 ## Project Overview
 
 **PTDoc** is an enterprise healthcare documentation platform for physical therapy practices. It uses Clean Architecture with .NET 8, featuring multi-platform Blazor UI (Web, MAUI for iOS/Android/macOS), JWT authentication, and SQLite for local data persistence. The solution is healthcare-focused with HIPAA compliance considerations.
@@ -239,6 +266,7 @@ dotnet build --no-incremental
 - [PTDoc.Web/Program.cs](../src/PTDoc.Web/Program.cs) - Cookie auth, reverse proxy config
 - [PTDoc.Api/Program.cs](../src/PTDoc.Api/Program.cs) - JWT validation, auth endpoint mapping
 - [docs/Blazor-Context.md](../docs/Blazor-Context.md) - Comprehensive Blazor lifecycle & pitfall guide
+- [docs/BlazorMaui-Context.md](../docs/BlazorMaui-Context.md) - Blazor Hybrid (MAUI) architecture & integration patterns
 - [docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md) - Entity Framework migrations and database setup
 - [docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md) - Web vs device platform differences
 - [docs/ACCESSIBILITY_USAGE.md](../docs/ACCESSIBILITY_USAGE.md) - WCAG 2.1 AA compliance guide

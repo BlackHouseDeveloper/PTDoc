@@ -524,3 +524,5 @@ reference/memory.db
 .act.secrets
 .act.env
 build-output-*
+# PTDoc project-specific
+docs/_archive/        # Superseded documentation (archived for reference but not tracked)
