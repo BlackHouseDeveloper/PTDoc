@@ -79,24 +79,35 @@ The script prints the resolved path and row counts, making it easy to spot misma
 
 PTDoc supports multiple deployment targets for different use cases:
 
+**Quick Launch Script:**
+```bash
+./run-ptdoc.sh
+```
+
+This interactive script lets you choose:
+1. Blazor Web (browser)
+2. Android (emulator)
+3. iOS (simulator)
+4. Mac Catalyst (desktop)
+
+The script automatically starts the API server when needed.
+
 #### Desktop Application (Mac Catalyst)
 
 Run as a native macOS desktop application:
 
 ```bash
-dotnet build -t:Run -f net8.0-maccatalyst PTDoc/PTDoc.csproj
+dotnet build -t:Run -f net8.0-maccatalyst src/PTDoc.Maui/PTDoc.csproj
 ```
 
-This compiles and launches the app as a Mac Catalyst desktop application. The UI displays remote statistics from the API; the local SQLite cache remains in the app sandbox unless you explicitly override `PFP_DB_PATH`.
-
-**Alternative**: Open `PTDoc.sln` in Visual Studio 2022 (Mac) and run the PTDoc project targeting Mac Catalyst.
+**Alternative**: Open `PTDoc.sln` in Visual Studio 2022 (Mac) and run the PTDoc.Maui project targeting Mac Catalyst.
 
 #### Mobile Applications
 
-Deploy to iOS or Android once the API is running and reachable:
+Deploy to iOS or Android once the API is running:
 
 ```bash
-# Terminal 1 – start the API (Development config uses dev.PTDoc.db)
+# Terminal 1 – start the API
 dotnet run --project src/PTDoc.Api --urls http://localhost:5170
 
 # Terminal 2 – launch a platform target
