@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
+using Microsoft.JSInterop;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Services;
 using System.ComponentModel.DataAnnotations;
 
 namespace PTDoc.UI.Pages;
@@ -8,11 +10,13 @@ namespace PTDoc.UI.Pages;
 /// <summary>
 /// Base class containing shared logic for Login and MAUI Login components
 /// </summary>
-public abstract class LoginBase : ComponentBase
+public abstract class LoginBase : ComponentBase, IDisposable
 {
     [Inject] protected IUserService UserService { get; set; } = default!;
     [Inject] protected NavigationManager Navigation { get; set; } = default!;
     [Inject] protected ILogger<LoginBase> Logger { get; set; } = default!;
+    [Inject] protected IThemeService ThemeService { get; set; } = default!;
+    [Inject] protected IJSRuntime JS { get; set; } = default!;
 
     protected string returnUrl = "/";
     protected AuthMode authMode = AuthMode.Login;
@@ -20,6 +24,7 @@ public abstract class LoginBase : ComponentBase
     protected readonly SignUpModel signUpModel = new();
     protected string? errorMessage;
     protected bool isLoading;
+    protected bool isDarkTheme;
 
     protected enum AuthMode
     {
@@ -39,6 +44,31 @@ public abstract class LoginBase : ComponentBase
         authMode = Navigation.Uri.Contains("/signup", StringComparison.OrdinalIgnoreCase)
             ? AuthMode.SignUp
             : AuthMode.Login;
+
+        // Subscribe to theme changes
+        ThemeService.OnThemeChanged += OnThemeChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize theme after component is interactive (JS is available)
+            await ThemeService.InitializeAsync();
+            isDarkTheme = ThemeService.IsDarkMode;
+            StateHasChanged(); // Refresh UI with theme state
+        }
+    }
+
+    protected async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+    }
+
+    private void OnThemeChanged()
+    {
+        isDarkTheme = ThemeService.IsDarkMode;
+        InvokeAsync(StateHasChanged);
     }
 
     protected void SwitchMode(AuthMode mode)
@@ -209,4 +239,9 @@ public abstract class LoginBase : ComponentBase
         ("VT", "Vermont"), ("VA", "Virginia"), ("WA", "Washington"), ("WV", "West Virginia"),
         ("WI", "Wisconsin"), ("WY", "Wyoming")
     };
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= OnThemeChanged;
+    }
 }

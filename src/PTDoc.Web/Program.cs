@@ -1,4 +1,5 @@
 using PTDoc.Application.Auth;
+using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Web.Auth;
 
@@ -15,6 +16,7 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
+builder.Services.AddScoped<IThemeService, ThemeService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient("ServerAPI", client =>

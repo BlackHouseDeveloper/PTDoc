@@ -1213,7 +1213,7 @@ Response (201 Created):
    - Safe for MAUI (single user)
    - Risky for Blazor Server (multi-user) - avoid for user-specific data
 
-**Source:** [docs/Blazor-Context.md, docs/BlazorMaui-Context.md]
+**Source:** [docs/Blazor-Context.md]
 
 ---
 
@@ -1256,7 +1256,7 @@ EF_PROVIDER=sqlite dotnet ef database update \
 - Lazy-load images
 - Test on low-end Android devices (min API 21)
 
-**Source:** [docs/Blazor-Context.md, docs/BlazorMaui-Context.md]
+**Source:** [docs/Blazor-Context.md]
 
 ---
 
@@ -1421,18 +1421,16 @@ This consolidated document synthesizes information from **46 source documents**.
 
 1. **ACCESSIBILITY_USAGE.md** - WCAG 2.1 AA compliance guide, screen reader patterns, keyboard navigation, focus management for Blazor components
 2. **ARCHITECTURE.md** - Clean Architecture layers, project structure, dependency rules, cross-cutting concerns (logging, validation, security)
-3. **Blazor-Context.md** - Blazor component lifecycle (OnInitialized, OnParametersSet, OnAfterRender), parameter rules, state management, rendering flow, common pitfalls
-4. **BlazorMaui-Context.md** - Blazor Hybrid architecture, BlazorWebView specifics, native↔Blazor communication, JavaScript interop, platform differences
+3. **Blazor-Context.md** - Blazor component lifecycle (OnInitialized, OnParametersSet, OnAfterRender), parameter rules, state management, rendering flow, common pitfalls, and MAUI Hybrid architecture (BlazorWebView, native↔Blazor communication, JavaScript interop, platform differences)
 5. **BUILD.md** - Build instructions for all platforms (Web, MAUI, iOS, Android, macOS), prerequisites, platform-specific commands
 6. **CI.md** - CI/CD pipeline stages (commit→build→test→deploy), enforced SDK version, build standards, future GitHub Actions workflows
-7. **DEVELOPMENT.md** - Development workflow, daily routines, setup scripts (PTDoc-Foundry.sh), environment verification
-8. **developer-mode.md** - Developer diagnostics configuration, environment variable precedence (PTDOC_DEVELOPER_MODE), platform-specific setup
-9. **EF_MIGRATIONS.md** - Entity Framework migrations commands, database schema management, provider configuration (SQLite)
-10. **RUNTIME_TARGETS.md** - Platform differences (Web vs MAUI), data access patterns, authentication models, concurrency control (ETags)
-11. **SECURITY.md** - Authentication policies, session timeouts (15min/8hr), JWT configuration, HIPAA compliance requirements
-12. Ingested Visual Guide Files (Content Synthesized, Not Saved Separately)
+7. **DEVELOPMENT.md** - Development workflow, daily routines, setup scripts (PTDoc-Foundry.sh), environment verification, developer diagnostics configuration (PTDOC_DEVELOPER_MODE), platform-specific diagnostic setup
+8. **EF_MIGRATIONS.md** - Entity Framework migrations commands, database schema management, provider configuration (SQLite)
+9. **RUNTIME_TARGETS.md** - Platform differences (Web vs MAUI), data access patterns, authentication models, concurrency control (ETags)
+10. **SECURITY.md** - Authentication policies, session timeouts (15min/8hr), JWT configuration, HIPAA compliance requirements
+11. Ingested Visual Guide Files (Content Synthesized, Not Saved Separately)
 
-13. **THEME_VISUAL_GUIDE.md** - Color system (emerald green theme), typography (Inter font), spacing scale, component visual specs
+12. **THEME_VISUAL_GUIDE.md** - Color system (emerald green theme), typography (Inter font), spacing scale, component visual specs
     - *Note: Standalone file exists at `docs/design-system/THEME_VISUAL_GUIDE.md` for quick reference*
 
 13. **THEME_VISUAL_GUIDE.md** - Color system (emerald green theme), typography (Inter font), spacing scale, component visual specs

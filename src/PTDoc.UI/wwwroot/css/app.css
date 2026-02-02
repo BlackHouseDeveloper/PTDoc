@@ -320,12 +320,18 @@ h1:focus {
     padding: var(--spacing-8) var(--spacing-4);
     background: var(--background);
     color: var(--foreground);
+    position: relative;
 }
 
 .auth-brand {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-weight-semibold);
+    background: var(--secondary);
     color: var(--primary);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    padding: var(--spacing-3) var(--spacing-6);
+    border-radius: var(--radius-lg);
+    display: inline-block;
+    line-height: var(--line-height-tight);
 }
 
 .auth-card {
@@ -351,6 +357,7 @@ h1:focus {
 .auth-welcome {
     font-size: var(--text-lg);
     font-weight: var(--font-weight-medium);
+    text-align: center;
 }
 
 .auth-tabs {
@@ -442,6 +449,7 @@ h1:focus {
     font-weight: var(--font-weight-medium);
     cursor: pointer;
     padding: 0;
+    text-align: center;
 }
 
 .auth-primary {
@@ -500,5 +508,89 @@ h1:focus {
     gap: var(--spacing-2);
     font-size: var(--text-sm);
     color: var(--muted-foreground);
+    justify-content: center;
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    position: relative;
+    width: var(--touch-target-mobile);
+    height: var(--touch-target-mobile);
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.theme-toggle .theme-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+    transition: var(--transition-normal);
+}
+
+/* Light mode - show sun icon */
+.theme-toggle .theme-icon-light {
+    display: block;
+}
+
+.theme-toggle .theme-icon-dark {
+    display: none;
+}
+
+/* Dark mode - show moon icon */
+.dark .theme-toggle .theme-icon-light {
+    display: none;
+}
+
+.dark .theme-toggle .theme-icon-dark {
+    display: block;
+}
+
+/* Icon color */
+.theme-toggle .theme-icon {
+    filter: brightness(0) saturate(100%);
+}
+
+:root .theme-toggle .theme-icon {
+    /* Light mode icon color */
+    opacity: 0.7;
+}
+
+.dark .theme-toggle .theme-icon {
+    /* Dark mode icon color */
+    opacity: 0.8;
+}
+
+.theme-toggle:hover {
+    background: var(--accent);
+}
+
+.theme-toggle:hover .theme-icon {
+    opacity: 1;
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+/* Legacy support for old class name */
+.light_theme.button {
+    position: relative;
+    width: var(--touch-target-mobile);
+    height: var(--touch-target-mobile);
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-normal);
+    display: flex;
+    align-items: center;
     justify-content: center;
 }

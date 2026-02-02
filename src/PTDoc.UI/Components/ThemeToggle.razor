@@ -1,0 +1,17 @@
+@* Theme Toggle Component - Demonstrates the light_theme.button class *@
+
+<button class="light_theme button" 
+        @onclick="ToggleTheme"
+        aria-label="Toggle theme"
+        title="Switch theme">
+</button>
+
+@code {
+    [Parameter]
+    public EventCallback OnThemeToggle { get; set; }
+
+    private async Task ToggleTheme()
+    {
+        await OnThemeToggle.InvokeAsync();
+    }
+}

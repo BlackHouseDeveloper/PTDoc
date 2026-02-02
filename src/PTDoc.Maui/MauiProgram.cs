@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Authorization;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Maui.Auth;
 
@@ -27,6 +28,7 @@ public static class MauiProgram
 		// ITokenService is registered via typed HttpClient below
 		builder.Services.AddScoped<IUserService, MauiUserService>();
 		builder.Services.AddScoped<AuthenticatedHttpMessageHandler>();
+		builder.Services.AddScoped<IThemeService, ThemeService>();
 		
 		// Register App as transient to inject services into constructor
 		builder.Services.AddTransient<App>();

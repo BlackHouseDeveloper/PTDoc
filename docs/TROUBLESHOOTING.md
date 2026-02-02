@@ -529,7 +529,7 @@ dotnet run --project src/PTDoc.Web
 # Check startup logs for "Developer mode: enabled"
 ```
 
-See [developer-mode.md](developer-mode.md) for precedence order.
+See [DEVELOPMENT.md](DEVELOPMENT.md#developer-diagnostics-mode) for precedence order and detailed configuration.
 
 ## Clean Architecture Violations
 

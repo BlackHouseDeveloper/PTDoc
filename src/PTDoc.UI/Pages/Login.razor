@@ -4,11 +4,20 @@
 @rendermode InteractiveServer
 @inherits LoginBase
 
-
 <PageTitle>@(authMode == AuthMode.Login ? "Login" : "Sign Up")</PageTitle>
 
 
 <div class="auth-shell">
+  <button type="button" 
+          class="theme-toggle" 
+          aria-label="@(isDarkTheme ? "Switch to light theme" : "Switch to dark theme")"
+          title="@(isDarkTheme ? "Switch to light theme" : "Switch to dark theme")"
+          style="position: absolute; top: 24px; right: 24px;"
+          @onclick="ToggleTheme">
+    <img src="images/LightThemeIcon.svg" alt="" class="theme-icon theme-icon-light" />
+    <img src="images/DarkThemeIcon.svg" alt="" class="theme-icon theme-icon-dark" />
+  </button>
+  
   <div class="auth-brand">PTDoc</div>
 
   <div class="auth-card" aria-live="polite">

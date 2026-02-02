@@ -134,3 +134,185 @@ Microsoft Docs – Avoid overwriting parameters in Blazor (why components should
 Microsoft Docs – Blazor asynchronous rendering and loading states (quiescence, streaming rendering, placeholders during async tasks)
 
 PTDoc Agents Guide – Agents.md (project-specific standards to be extended with Blazor rules)
+
+## Blazor Hybrid (MAUI) – Architecture, Lifecycle, and Integration
+
+### BlazorWebView Architecture in .NET MAUI (Blazor Hybrid)
+
+In PTDoc's .NET MAUI client, Blazor is integrated via the BlazorWebView control, creating a hybrid application. This means Razor components run natively on the device within the MAUI app's .NET process, and render their output to an embedded Web View UI element. Unlike Blazor WebAssembly (WASM) or Server, components in a BlazorWebView do not run in a browser sandbox or require WebAssembly at all – they execute on the normal .NET runtime (with full access to the device's capabilities) and communicate with the WebView through a local interop channel. The Blazor UI is essentially hosted inside a WebView, but all UI updates are driven by .NET code. In practice, this hybrid setup behaves much like client-side Blazor in terms of UI logic, just hosted in a native app instead of a standalone browser tab.
+
+**How it's set up:** A MAUI Blazor app typically includes a wwwroot/index.html (the Blazor host page) and uses BlazorWebView on a XAML page to load it. For example, the MAUI MainPage.xaml might contain:
+
+```xml
+<BlazorWebView HostPage="wwwroot/index.html">
+    <BlazorWebView.RootComponents>
+        <RootComponent Selector="#app" ComponentType="{x:Type local:Main}" />
+    </BlazorWebView.RootComponents>
+</BlazorWebView>
+```
+
+This XAML points the BlazorWebView to the Blazor app's host page and identifies the root Razor component to load (e.g. Main.razor) and where to render it in the DOM (Selector="#app" matches an element in index.html). Under the hood, the BlazorWebView will load the HTML from the app's resources and initialize the Blazor runtime. In the MAUI startup (MauiProgram.cs), you must register Blazor services by calling `builder.Services.AddMauiBlazorWebView();` (and usually enable debugging helpers in development via `builder.Services.AddBlazorWebViewDeveloperTools();`). Once configured, the MAUI app and Blazor share the same dependency injection (DI) container, allowing services and data to be easily shared across the native and web portions of the app.
+
+**Browser Engine Differences:** Because rendering is done in a WebView, the exact web engine varies by platform. For example, MAUI uses WebView2 (Edge Chromium) on Windows, Chromium WebView on Android, and WKWebView (Safari) on iOS/Mac. This means that some HTML/CSS or JavaScript might behave slightly differently on each platform. Platform-specific web APIs may only be available on certain engines, and styling can differ. Always test UI on all target platforms to catch any inconsistencies. Also note that on Windows, end users must have the WebView2 runtime installed for BlazorWebView to function (the developer template usually displays a notice or handles this).
+
+### Component Lifecycle in a MAUI Blazor Hybrid App
+
+Blazor components in a BlazorWebView follow the same lifecycle conventions as in standard Blazor (since the Blazor framework running inside the WebView is essentially the same as Blazor WASM/Server). Each component goes through initialization (OnInitialized{Async}), parameter setting (OnParametersSet{Async} on each render), rendering, and after-render events (OnAfterRender{Async}) just as it would on the web.
+
+**No prerendering phase:** There is no server prerendering phase in a typical MAUI Blazor app, so you don't have the split between a static prerender and interactive render as in Blazor Server. This means that `OnAfterRenderAsync(firstRender:true)` will run exactly once on the first render when the WebView has fully loaded the component, so you can safely put JavaScript initialization calls there without worrying about a non-interactive prerender pass. (In contrast, on Blazor Server prerendering, OnAfterRender is delayed until the client connects – not an issue for Blazor Hybrid, since it's all local.)
+
+**Avoid heavy work on UI thread:** Just as in web or server Blazor, long synchronous operations in lifecycle methods (e.g. doing a big computation in OnInitialized) will block the UI from rendering. In a MAUI hybrid app, that can lead to visible delays or even the OS feeling the app is unresponsive. Always prefer asynchronous loading patterns: do minimal setup synchronously, then use await for longer tasks so the UI thread can render interim feedback.
+
+**First Render and OnAfterRender:** On the first render of a component, Blazor will invoke `OnAfterRenderAsync(true)` after the HTML is rendered to the WebView's DOM. Use the firstRender flag to run one-time setup code here, such as initializing JS libraries or performing DOM manipulation that requires the element to be present. Subsequent renders will call `OnAfterRenderAsync(false)` and you typically should not repeat the initialization logic in those calls (to avoid duplicates).
+
+**Rule:** Do not call JavaScript-dependent code during component initialization or before the WebView is ready. Instead, use OnAfterRenderAsync and conditional logic (`if (firstRender)`) so that such code runs only when the DOM is interactive.
+
+### Native and Blazor Integration Patterns
+
+One of the powerful features of Blazor Hybrid is that your Blazor components and native MAUI code can interact and share data, but this requires explicit bridges – the Blazor UI is essentially running in an isolated WebView, so it cannot directly reference MAUI UI elements, and vice versa.
+
+**Mixing Native and Blazor UI:** If you need to show native MAUI controls (say a Camera preview or a platform-specific picker) alongside Blazor content, the approach is to compose them in the MAUI XAML layout, not to embed one into the other. For example, you might create a MAUI ContentPage that has a Grid with a BlazorWebView in one row and a native control (or overlay) in another row or on top. Do not attempt to directly add a MAUI control in the Razor component markup – that won't work, as the Razor markup only knows how to render HTML/Blazor components inside the WebView.
+
+**Blazor-to-Native Calls (DI Bridge Pattern):** The recommended pattern is to use dependency injection and an intermediary service to funnel calls or data between Blazor and native code. For example, you can create a singleton service (say, `IDeviceService`) that is added to the DI container in MauiProgram. In a Razor component, you inject this DeviceService and call a method (e.g. `DeviceService.TriggerCameraCapture()`), which internally fires an event. On the native side (in the MAUI page or wherever appropriate), you have access to the same singleton service. The native code can subscribe to the event and when it sees the "TriggerCameraCapture" event, it invokes the actual platform-specific API.
+
+**Example DI Bridge:**
+```csharp
+// In MauiProgram.cs
+builder.Services.AddSingleton<DeviceBridge>();
+
+// A simple bridge service
+public class DeviceBridge {
+    public event EventHandler? OnCaptureRequested; 
+    
+    public void RequestCapture() {
+        OnCaptureRequested?.Invoke(this, EventArgs.Empty);
+    }
+    
+    public event EventHandler<string>? OnDataReceived;
+    public void RaiseDataReceived(string data) {
+        OnDataReceived?.Invoke(this, data);
+    }
+}
+
+// In Razor component
+@inject DeviceBridge Bridge
+<button @onclick="@(()=> Bridge.RequestCapture())">Take Photo</button>
+
+// In MAUI page code-behind
+var bridge = this.Handler.MauiContext.Services.GetService<DeviceBridge>();
+if(bridge != null) {
+    bridge.OnCaptureRequested += async (s,e) => {
+        string photoPath = await CapturePhotoAsync();
+        bridge.RaiseDataReceived(photoPath);
+    };
+}
+```
+
+**Native-to-Blazor Calls:** Another approach provided by the framework is `BlazorWebView.TryDispatchAsync`, which allows native code to run a callback within the Blazor renderer's synchronization context. For example:
+
+```csharp
+await _blazorWebView.TryDispatchAsync(sp => {
+    var navManager = sp.GetRequiredService<NavigationManager>();
+    navManager.NavigateTo("some/blazor/page");
+});
+```
+
+This will safely obtain the Blazor NavigationManager from the Blazor WebView's service provider and call it to navigate within the Blazor routing context.
+
+**JavaScript Interop vs. Direct .NET Calls:** In a Blazor Hybrid app, you have the full .NET API surface available directly, so you usually don't need JS Interop to call device APIs – you'd call them in .NET via MAUI libraries or dependency injection. JS interop is still available, but consider whether a direct .NET approach is cleaner. For instance, to get geolocation in a hybrid app, you could just use Xamarin/MAUI Essentials `Geolocation.GetLastKnownLocationAsync()` in a service, rather than using JS to call navigator.geolocation.
+
+### JavaScript Interop in Blazor Hybrid Apps
+
+**JS Runtime Environment:** In BlazorWebView, JavaScript executes inside the embedded WebView's context (e.g., WebView2 or WKWebView JavaScript engine). Calls you make with `IJSRuntime.InvokeAsync` from .NET will be dispatched to that WebView's JavaScript runtime, just like in a web app. Performance of interop is generally fast on modern devices, but not as fast as an in-process method call, so still treat it as an asynchronous, potentially UI-blocking operation.
+
+**Including Scripts and Libraries:** Any JS libraries your components need should be added to your wwwroot/index.html or served as static files in the wwwroot folder, similar to a Blazor WASM app. If a component uses certain CSS (e.g., from a library or an icon font), make sure the MAUI host includes those static assets; otherwise the component might appear broken on the native app.
+
+**Limitations of the WebView Sandbox:** Certain browser APIs might be restricted or not available. For example, `window.alert` or `window.open` may behave differently on mobile. In general, assume the JS environment is constrained – if you need functionality outside of pure web capabilities, use .NET to accomplish it.
+
+**Use Case – JS for UI Libraries:** One common use is embedding a JS UI library (like charts or maps) in a Blazor component. In a hybrid app, include the JS and CSS, and initialize the library in `OnAfterRenderAsync(firstRender)`. If something isn't showing up, double-check that:
+- The script is actually loaded
+- You only call the JS after the element is in the DOM (hence the OnAfterRender(firstRender) pattern)
+- In MAUI, ensure any special web security settings are handled if needed
+
+### State Management and Persistence in Blazor Hybrid
+
+**Per-User State:** In a MAUI app, each app instance is a single user environment. Thus, PTDoc's hybrid app can use singletons or static singletons for things like a selected patient ID, without risk of leaking data between users (there's no server-side shared memory concern).
+
+**Scoped vs. Singleton Services:** Services registered as Scoped in a BlazorWebView are tied to the lifetime of the BlazorWebView's navigation context. For practical purposes, many apps just use Singleton services for most data or state so that it persists as long as the app runs (because mobile apps can be suspended or resumed, but if not fully killed, the singleton remains in memory).
+
+**Persisting State Across App Restarts:** In a MAUI app, there is no "browser refresh," but the user can close the app or it can be terminated by the OS. If your application has important transient state, you should explicitly persist it. Options:
+- Use the WebView's local storage via `IJSRuntime.InvokeAsync("localStorage.setItem", ...)`
+- Use .NET MAUI storage APIs – `Preferences.Set("key", value)` or `SecureStorage` for sensitive info
+- Use a SQLite database via EF Core/SQLite
+
+**Cascading Parameters and State Containers:** Within Blazor, use proper state propagation patterns (unidirectional data flow). If multiple Blazor components need to share state, prefer using a CascadingParameter or a dedicated state container service rather than relying on global variables.
+
+### Navigation and Routing in a Hybrid Blazor App
+
+Navigation in a Blazor hybrid application can happen at two levels: within the Blazor WebView (internal routing) and at the native app level (switching MAUI pages or shells).
+
+**Blazor Internal Navigation:** If your MAUI app is primarily a single BlazorWebView that hosts a full Blazor SPA, you will typically use Blazor's built-in routing (NavLink, NavigationManager.NavigateTo, etc.) to navigate between views. The BlazorWebView.StartPath can be set (e.g., `StartPath = "reports"` in XAML) so that when the Blazor app loads, it navigates to that route instead of the default.
+
+**Native Navigation (shell and multi-page apps):** Some .NET MAUI apps use the Shell or multiple ContentPages to structure the app. In such cases, navigating between a Blazor page and a XAML page is outside of Blazor's scope – you must use MAUI's navigation mechanisms (e.g., `Shell.Current.GoToAsync("//NativePage")`).
+
+**Intercepting Links:** By default, if a user clicks an anchor in a BlazorWebView, the UrlLoading event of BlazorWebView is fired. You can handle this event to decide what to do – perhaps open the link in an external browser instead of within the WebView.
+
+**Hardware Back Button (Android):** On Android devices, the hardware back button by default might close the app if not handled. If your Blazor app has its own navigation stack, you might want to intercept back presses to navigate back in Blazor rather than exiting.
+
+### Platform-Specific Considerations and Best Practices
+
+**Mobile UI/UX Adjustments:** A Blazor app running in a mobile app should feel like a native mobile experience, not a website. You might want to disable text selection for non-editable content and remove default tap highlights via CSS:
+
+```css
+*:not(input) { user-select: none; -webkit-user-select: none; }
+* { -webkit-tap-highlight-color: transparent; }
+```
+
+**Safe Area and Screen Notches:** On iOS (and some Android devices), use CSS environment variables to pad your Blazor content within safe areas:
+
+```css
+@supports (-webkit-touch-callout: none) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+```
+
+**Performance on Low-End Devices:** Mobile devices (especially older Androids) might struggle if your Blazor UI has very large DOMs or does extremely heavy processing on the UI thread. Keep list virtualization in mind (e.g., use `<Virtualize>` for long lists) and avoid unnecessary re-rendering.
+
+**WebView Quirks:** Each platform's WebView has its quirks. For example, if your app has a dark theme, you might see a white flash during startup. To avoid this, you can customize the WebView background:
+
+```csharp
+#if IOS || MACCATALYST
+    Microsoft.Maui.Handlers.BlazorWebViewHandler.Mapper.AppendToMapping("BgFix", (handler, view) => {
+        handler.PlatformView.Opaque = false;
+    });
+#endif
+```
+
+**Styling and Fonts:** Ensure that any fonts or icons your Blazor app needs are included. If the web version references Google Fonts via an internet URL, consider bundling those fonts for offline use in the app or include them in the MAUI Resources.
+
+### Common Pitfalls and Guidance for Blazor MAUI Hybrid
+
+**Don't Overlook Loading Indicators:** A common cause of "invisible" or blank UI in hybrid apps is a component that is waiting on data without any UI feedback. Always initialize components with some visible content (loading spinners, skeletons, "Loading…" text) immediately, then fill in data later.
+
+**Conditional Rendering Logic:** Be careful with @if blocks or other conditions that might inadvertently prevent content from rendering. Better pattern: render a placeholder when the real content should not be shown yet, rather than not instantiating the component at all.
+
+**Ensure Components Are Registered & Imported:** If a Blazor component isn't appearing at all in the MAUI app, it might be a registration issue. You need to have that library referenced by the MAUI project and its namespace imported (in _Imports.razor or in the usage page).
+
+**No In-Place Parameter Mutation:** Do not have a Blazor component set its own [Parameter] properties internally after initial render. This can cause state to get out of sync, especially if the parent isn't aware. Instead, use internal state or notify the parent.
+
+**JS Interop Timing:** Calling JS too early or without proper guards can fail. Make sure it's in OnAfterRenderAsync and not during OnInitialized. Also ensure the JS script is added to index.html.
+
+**File System and Paths:** If your Blazor code deals with file paths, remember that in hybrid the "current directory" or base URL might differ. If you need to load a local file, consider using .NET file APIs (with FileSystem.AppDataDirectory etc.) via dependency injection.
+
+**Device Permissions & WebView:** If your Blazor code tries to use a browser API that requires permission (like Geolocation), you should use the native permission request via MAUI Essentials (like `Permissions.RequestAsync<Permissions.LocationWhenInUse>()`) on the native side before invoking the JS or .NET functionality.
+
+**Testing on Real Devices:** It's crucial to test Blazor components on actual devices or emulators. Some issues (like the soft keyboard overlapping input, or performance on a low-end Android) are only evident there.
+
+**Logging and Diagnostics:** BlazorWebView can log diagnostic info if you configure logging providers in the MAUI app. You can also attach to the WebView's dev tools: on Windows, press Alt+Shift+D to open the dev tools window for WebView2, or use browser dev tools via the device (for Android, Chrome's inspect devices feature; for iOS, Safari's Web Inspector). In Debug builds, `AddBlazorWebViewDeveloperTools()` enables this.
+
+**Summary:** Blazor Hybrid combines two worlds – as an agent, always consider both sides: the web-based UI paradigms and the native app realities. Follow the official .NET MAUI Blazor guidance to ensure smooth, responsive, and correct functionality on all platforms. This will prevent issues like components not appearing on certain devices, unresponsive UI due to sync calls, or broken integrations between the Blazor and native parts of PTDoc.
