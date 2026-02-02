@@ -1,0 +1,215 @@
+/* GlobalHeader.razor.css - Scoped styles for the global application header */
+
+.global-header {
+    background: var(--secondary);
+    border-bottom: 1px solid var(--border);
+    height: 69px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--spacing-6);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    transition: background var(--transition-normal), border-color var(--transition-normal);
+}
+
+.header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* Menu Toggle Button */
+.menu-toggle {
+    background: transparent;
+    border: none;
+    padding: var(--spacing-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+    width: 40px;
+    height: 40px;
+}
+
+.menu-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-toggle:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.menu-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+    color: #ffffff;
+}
+
+/* Header Controls Container */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+/* Last Sync Indicator */
+.sync-info {
+    display: flex;
+    align-items: center;
+    height: 16px;
+}
+
+.sync-text {
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: 16px;
+    color: var(--secondary-foreground);
+    white-space: nowrap;
+}
+
+/* Sync Now Button */
+.sync-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    height: 44px;
+    padding: 0 var(--spacing-4);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--secondary-foreground);
+}
+
+.sync-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sync-button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.sync-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sync-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+    color: #ffffff;
+    transition: transform var(--transition-normal);
+}
+
+.sync-icon.syncing {
+    animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.sync-button-text {
+    line-height: 20px;
+}
+
+/* Online/Offline Status Badge */
+.status-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    height: 30px;
+    padding: 1px var(--spacing-3);
+    border-radius: var(--radius-md);
+    border: 1px solid;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.status-badge.online {
+    background: rgba(52, 168, 83, 0.1);
+    border-color: rgba(52, 168, 83, 0.2);
+}
+
+.status-badge.offline {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* Dark theme adjustments */
+:global(.dark) .status-badge.online {
+    background: rgba(52, 211, 153, 0.1);
+    border-color: rgba(52, 211, 153, 0.2);
+}
+
+.status-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.status-text {
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 16px;
+}
+
+.status-badge.online .status-text {
+    color: #34a853;
+}
+
+.status-badge.offline .status-text {
+    color: #ef4444;
+}
+
+/* Dark theme online text color */
+:global(.dark) .status-badge.online .status-text {
+    color: #34d399;
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .global-header {
+        padding: 0 var(--spacing-4);
+    }
+
+    .sync-button-text {
+        display: none;
+    }
+
+    .sync-button {
+        gap: 0;
+        padding: 0 var(--spacing-2);
+        width: 44px;
+    }
+
+    .sync-text {
+        font-size: 11px;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+    .header-controls {
+        gap: var(--spacing-2);
+    }
+}

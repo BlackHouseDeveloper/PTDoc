@@ -1,0 +1,72 @@
+@page "/"
+@attribute [Authorize]
+@using PTDoc.Application.Services
+@inject IThemeService ThemeService
+
+<PageTitle>Dashboard - PTDoc</PageTitle>
+
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>Dashboard</h1>
+        <button type="button" 
+                class="theme-toggle" 
+                aria-label="@(ThemeService.IsDarkMode ? "Switch to light theme" : "Switch to dark theme")"
+                @onclick="ToggleTheme">
+            <img src="images/LightThemeIcon.svg" alt="" class="theme-icon theme-icon-light" />
+            <img src="images/DarkThemeIcon.svg" alt="" class="theme-icon theme-icon-dark" />
+        </button>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="metric-card">
+            <h3>Total Patients</h3>
+            <p class="metric-value">247</p>
+            <p class="metric-change">+12 this week</p>
+        </div>
+
+        <div class="metric-card">
+            <h3>Active Cases</h3>
+            <p class="metric-value">89</p>
+            <p class="metric-change">+5 today</p>
+        </div>
+
+        <div class="metric-card">
+            <h3>Pending Reviews</h3>
+            <p class="metric-value">14</p>
+            <p class="metric-change">-3 this week</p>
+        </div>
+
+        <div class="metric-card">
+            <h3>Compliance Rate</h3>
+            <p class="metric-value">98.5%</p>
+            <p class="metric-change success">+2.1% this month</p>
+        </div>
+    </div>
+
+    <div class="welcome-section">
+        <h2>Welcome to PTDoc</h2>
+        <p>The global header above demonstrates:</p>
+        <ul>
+            <li>✅ Menu toggle (hamburger/chevron icon)</li>
+            <li>✅ Last sync indicator with real-time updates</li>
+            <li>✅ Sync Now button (simulates EF Core sync)</li>
+            <li>✅ Online/Offline status badge</li>
+            <li>✅ Full light/dark theme support</li>
+            <li>✅ Token-based design system</li>
+        </ul>
+        
+        <div class="test-controls">
+            <h3>Test Controls</h3>
+            <p>Use the button above to toggle between light and dark themes to verify header styling.</p>
+            <p>The menu toggle on the left controls the sidebar visibility.</p>
+            <p>Click "Sync Now" to simulate a sync operation (updates the timestamp).</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+    }
+}

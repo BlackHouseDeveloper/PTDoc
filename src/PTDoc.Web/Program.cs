@@ -17,6 +17,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 builder.Services.AddScoped<IThemeService, ThemeService>();
+builder.Services.AddScoped<ISyncService, SyncService>();
+builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient("ServerAPI", client =>

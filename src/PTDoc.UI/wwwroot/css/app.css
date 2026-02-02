@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @import url('./tokens.css');
+@import url('./components/nav-menu.css');
 
 *,
 *::before,
@@ -323,6 +324,11 @@ h1:focus {
     position: relative;
 }
 
+/* Theme toggle on auth pages should use contrasting color */
+.auth-shell .theme-toggle .theme-icon {
+    color: var(--foreground);
+}
+
 .auth-brand {
     background: var(--secondary);
     color: var(--primary);
@@ -531,6 +537,7 @@ h1:focus {
     width: 16px;
     height: 16px;
     display: block;
+    color: var(--foreground);
     transition: var(--transition-normal);
 }
 
@@ -552,27 +559,8 @@ h1:focus {
     display: block;
 }
 
-/* Icon color */
-.theme-toggle .theme-icon {
-    filter: brightness(0) saturate(100%);
-}
-
-:root .theme-toggle .theme-icon {
-    /* Light mode icon color */
-    opacity: 0.7;
-}
-
-.dark .theme-toggle .theme-icon {
-    /* Dark mode icon color */
-    opacity: 0.8;
-}
-
 .theme-toggle:hover {
     background: var(--accent);
-}
-
-.theme-toggle:hover .theme-icon {
-    opacity: 1;
 }
 
 .theme-toggle:focus-visible {

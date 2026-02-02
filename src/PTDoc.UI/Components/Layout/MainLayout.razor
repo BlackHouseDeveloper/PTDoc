@@ -4,20 +4,24 @@
 
 
 <div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+    <GlobalHeader @bind-IsMenuOpen="isMenuOpen" />
+    
+    <div class="page-content">
+        <div class="sidebar @(isMenuOpen ? "open" : "closed")">
+            <NavMenu />
         </div>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
+        <main>
+            <article class="content">
+                @Body
+            </article>
+        </main>
+    </div>
 </div>
+
+@code {
+    private bool isMenuOpen = true; // Default to open on desktop
+}
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

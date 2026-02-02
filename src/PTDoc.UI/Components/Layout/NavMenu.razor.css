@@ -16,8 +16,9 @@
 }
 
 .top-row {
-    min-height: 3.5rem;
+    min-height: fit-content;
     background-color: var(--sidebar);
+    padding: 0;
 }
 
 .navbar-brand {

@@ -2,44 +2,106 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Authorization
 
-
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">PTDoc</a>
+<div class="ptdoc-nav-container">
+    <div class="ptdoc-nav-brand">
+        <NavBarBrand />
     </div>
-</div>
+    
+    <div class="ptdoc-nav-scrollable">
+        <nav class="ptdoc-nav" aria-label="Main navigation">
+            <!-- Primary Navigation -->
+            <div class="ptdoc-nav-section">
+                <NavLink class="ptdoc-nav-item" href="" Match="NavLinkMatch.All">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-home.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Dashboard</span>
+                    </div>
+                    <div class="ptdoc-nav-indicator" aria-hidden="true"></div>
+                </NavLink>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+                <NavLink class="ptdoc-nav-item" href="appointments">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-appointments.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Appointments</span>
+                    </div>
+                </NavLink>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
+                <NavLink class="ptdoc-nav-item" href="patients">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-patients.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Patients</span>
+                    </div>
+                </NavLink>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
+                <NavLink class="ptdoc-nav-item" href="intake">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-intake.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Intake</span>
+                    </div>
+                    <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                </NavLink>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-        
-        <AuthorizeView>
-            <Authorized>
-                <div class="nav-item px-3 mt-auto" style="margin-top: auto; padding-top: 2rem;">
-                    <NavLink class="nav-link" href="logout">
-                        <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Logout
-                    </NavLink>
-                </div>
-            </Authorized>
-        </AuthorizeView>
-    </nav>
+                <NavLink class="ptdoc-nav-item" href="notes">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-notes.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Notes</span>
+                    </div>
+                    <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                </NavLink>
+
+                <NavLink class="ptdoc-nav-item" href="progress-tracking">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-progress.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Progress Tracking</span>
+                    </div>
+                </NavLink>
+            </div>
+
+            <!-- Admin Section -->
+            <div class="ptdoc-nav-section">
+                <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
+                
+                <NavLink class="ptdoc-nav-item" href="export-center">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Export Center</span>
+                    </div>
+                </NavLink>
+
+                <NavLink class="ptdoc-nav-item" href="reports">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-reports.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Reports</span>
+                    </div>
+                </NavLink>
+
+                <NavLink class="ptdoc-nav-item" href="role-management">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-roles.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Role Management</span>
+                    </div>
+                </NavLink>
+
+                <NavLink class="ptdoc-nav-item" href="settings">
+                    <div class="ptdoc-nav-content">
+                        <img src="images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                        <span class="ptdoc-nav-text">Settings</span>
+                    </div>
+                </NavLink>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Logout Button -->
+    <AuthorizeView>
+        <Authorized>
+            <div class="ptdoc-nav-footer">
+                <a href="/logout" class="ptdoc-nav-logout-btn" aria-label="Logout">
+                    <img src="images/nav-logout.svg" alt="" aria-hidden="true" />
+                    <span>Logout</span>
+                </a>
+            </div>
+        </Authorized>
+    </AuthorizeView>
 </div>
 
