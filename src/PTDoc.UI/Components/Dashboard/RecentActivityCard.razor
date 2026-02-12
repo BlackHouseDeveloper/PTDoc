@@ -1,0 +1,108 @@
+@* Recent Activity Card - Shows recent system activities and updates *@
+
+<div class="card recent-activity-card">
+    <div class="card-header">
+        <h3 class="card-title">Recent Activity</h3>
+    </div>
+    
+    <div class="card-content">
+        @if (_activities == null || !_activities.Any())
+        {
+            <div class="empty-state">
+                <p class="empty-state-text">No recent activity</p>
+            </div>
+        }
+        else
+        {
+            <div class="activity-list">
+                @foreach (var activity in _activities)
+                {
+                    <div class="activity-item">
+                        <div class="activity-indicator" style="background: @GetActivityColor(activity.Type);"></div>
+                        <div class="activity-content">
+                            <p class="activity-text">@activity.Description</p>
+                            <span class="activity-time">@FormatTimeAgo(activity.Timestamp)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Activity>? _activities;
+    
+    protected override void OnInitialized()
+    {
+        // Mock data - replace with actual service call
+        _activities = new List<Activity>
+        {
+            new Activity 
+            { 
+                Id = 1,
+                Type = ActivityType.NoteCompleted,
+                Description = "SOAP note completed for Sarah Johnson",
+                Timestamp = DateTime.Now.AddMinutes(-2)
+            },
+            new Activity 
+            { 
+                Id = 2,
+                Type = ActivityType.AppointmentScheduled,
+                Description = "Appointment scheduled with Michael Chen",
+                Timestamp = DateTime.Now.AddMinutes(-15)
+            },
+            new Activity 
+            { 
+                Id = 3,
+                Type = ActivityType.IntakeReceived,
+                Description = "Patient intake received from Emily Rodriguez",
+                Timestamp = DateTime.Now.AddHours(-1)
+            }
+        };
+    }
+    
+    private string GetActivityColor(ActivityType type)
+    {
+        return type switch
+        {
+            ActivityType.NoteCompleted => "var(--success)",
+            ActivityType.AppointmentScheduled => "var(--info)",
+            ActivityType.IntakeReceived => "var(--warning)",
+            ActivityType.AuthorizationUpdated => "var(--primary)",
+            _ => "var(--muted-foreground)"
+        };
+    }
+    
+    private string FormatTimeAgo(DateTime timestamp)
+    {
+        var timeSpan = DateTime.Now - timestamp;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "Just now";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes} min";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours} hr";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays} day{((int)timeSpan.TotalDays > 1 ? "s" : "")}";
+        
+        return timestamp.ToString("MMM dd");
+    }
+    
+    private class Activity
+    {
+        public int Id { get; set; }
+        public ActivityType Type { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+    }
+    
+    private enum ActivityType
+    {
+        NoteCompleted,
+        AppointmentScheduled,
+        IntakeReceived,
+        AuthorizationUpdated
+    }
+}

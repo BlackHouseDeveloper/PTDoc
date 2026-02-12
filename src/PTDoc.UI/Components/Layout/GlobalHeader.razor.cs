@@ -61,8 +61,9 @@ public class GlobalHeaderBase : ComponentBase, IDisposable
 
     protected async Task ToggleMenu()
     {
-        IsMenuOpen = !IsMenuOpen;
-        await IsMenuOpenChanged.InvokeAsync(IsMenuOpen);
+        var newState = !IsMenuOpen;
+        Console.WriteLine($"[GlobalHeader] Toggling menu from {IsMenuOpen} to {newState}");
+        await IsMenuOpenChanged.InvokeAsync(newState);
     }
 
     protected async Task HandleSyncNow()

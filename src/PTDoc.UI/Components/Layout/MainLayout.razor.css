@@ -65,11 +65,32 @@ main {
     }
 
     .sidebar.closed {
-        width: 60px;
+        width: 60px !important;
+        min-width: 60px;
+        max-width: 60px;
     }
 
-    .sidebar.closed ::deep .nav-text {
+    .sidebar.closed ::deep .ptdoc-nav-container {
+        padding: var(--spacing-3);
+        align-items: center;
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-section-label,
+    .sidebar.closed ::deep .ptdoc-nav-text,
+    .sidebar.closed ::deep .ptdoc-nav-badge,
+    .sidebar.closed ::deep .ptdoc-nav-indicator,
+    .sidebar.closed ::deep .ptdoc-nav-logout-btn span {
         display: none;
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-item,
+    .sidebar.closed ::deep .ptdoc-nav-logout-btn {
+        justify-content: center;
+        padding: var(--spacing-2);
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-icon {
+        margin-right: 0;
     }
 }
 

@@ -7,7 +7,7 @@
     <GlobalHeader @bind-IsMenuOpen="isMenuOpen" />
     
     <div class="page-content">
-        <div class="sidebar @(isMenuOpen ? "open" : "closed")">
+        <div class="sidebar @GetSidebarClass()">
             <NavMenu />
         </div>
 
@@ -21,6 +21,13 @@
 
 @code {
     private bool isMenuOpen = true; // Default to open on desktop
+    
+    private string GetSidebarClass()
+    {
+        var cssClass = isMenuOpen ? "open" : "closed";
+        Console.WriteLine($"[MainLayout] Menu state: {isMenuOpen}, CSS class: {cssClass}");
+        return cssClass;
+    }
 }
 
 <div id="blazor-error-ui" data-nosnippet>
