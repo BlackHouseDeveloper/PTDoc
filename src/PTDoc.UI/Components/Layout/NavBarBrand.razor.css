@@ -1,0 +1,194 @@
+/* Navbar Brand Container */
+.navbar-brand-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+    width: 100%;
+}
+
+/* Logo Header */
+.navbar-brand-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    height: 44px;
+}
+
+.navbar-brand-logo {
+    background-color: var(--secondary);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-3) var(--spacing-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 82px;
+    height: 44px;
+    text-decoration: none;
+    transition: var(--transition-normal);
+}
+
+.navbar-brand-logo:hover {
+    opacity: 0.9;
+}
+
+.navbar-brand-logo:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.navbar-brand-logo-text {
+    font-family: var(--font-family-base);
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    line-height: 28px;
+    color: var(--secondary-foreground);
+}
+
+/* User Profile Section */
+.navbar-brand-profile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.navbar-brand-profile-name {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 24px;
+    color: var(--foreground);
+}
+
+.navbar-brand-profile-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.navbar-brand-profile-title {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: 20px;
+    color: var(--muted-foreground);
+}
+
+.navbar-brand-profile-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-1) var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 16px;
+    color: var(--foreground);
+    background: var(--background);
+}
+
+/* Action Buttons */
+.navbar-brand-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-2);
+}
+
+.navbar-brand-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-target-mobile);
+    height: var(--touch-target-mobile);
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-normal);
+    color: var(--foreground);
+    padding: 0;
+}
+
+.navbar-brand-action-btn:hover {
+    background: var(--accent);
+}
+
+.navbar-brand-action-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+/* Theme Toggle Icon Visibility */
+.navbar-brand-action-btn.theme-toggle .theme-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
+    transition: var(--transition-normal);
+}
+
+/* Light mode - show sun icon */
+.navbar-brand-action-btn.theme-toggle .theme-icon-light {
+    display: block;
+}
+
+.navbar-brand-action-btn.theme-toggle .theme-icon-dark {
+    display: none;
+}
+
+/* Dark mode - show moon icon */
+.dark .navbar-brand-action-btn.theme-toggle .theme-icon-light {
+    display: none;
+}
+
+.dark .navbar-brand-action-btn.theme-toggle .theme-icon-dark {
+    display: block;
+}
+
+/* Sync Status Badge */
+.navbar-brand-sync-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-1) var(--spacing-2);
+    border: 1px solid var(--success);
+    border-radius: var(--radius-md);
+    background-color: var(--success);
+    background-color: rgba(52, 168, 83, 0.1);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 16px;
+    color: var(--success);
+    width: fit-content;
+}
+
+.navbar-brand-sync-badge svg {
+    color: var(--success);
+}
+
+/* Dark mode adjustments */
+.dark .navbar-brand-sync-badge {
+    background-color: rgba(52, 211, 153, 0.1);
+    border-color: var(--success);
+    color: var(--success);
+}
+
+/* Responsive adjustments for tablet and desktop */
+@media (min-width: 768px) {
+    .navbar-brand-action-btn {
+        width: var(--touch-target-tablet);
+        height: var(--touch-target-tablet);
+    }
+}
+
+@media (min-width: 1200px) {
+    .navbar-brand-action-btn {
+        width: var(--touch-target-desktop);
+        height: var(--touch-target-desktop);
+    }
+}

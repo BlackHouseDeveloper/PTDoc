@@ -1,0 +1,47 @@
+@page "/header-test"
+@using PTDoc.UI.Components.Layout
+@inject IThemeService ThemeService
+
+<PageTitle>Global Header Test</PageTitle>
+
+<div style="min-height: 100vh;">
+    <GlobalHeader @bind-IsMenuOpen="isMenuOpen" />
+    
+    <div style="padding: var(--spacing-6);">
+        <h1>Global Header Test Page</h1>
+        
+        <div style="margin-top: var(--spacing-4); display: flex; flex-direction: column; gap: var(--spacing-3);">
+            <div>
+                <strong>Menu State:</strong> @(isMenuOpen ? "Open" : "Closed")
+            </div>
+            
+            <button 
+                type="button" 
+                class="auth-primary"
+                style="max-width: 200px;"
+                @onclick="ToggleTheme">
+                Toggle Theme
+            </button>
+            
+            <div style="margin-top: var(--spacing-6);">
+                <h2>Instructions:</h2>
+                <ul>
+                    <li>Click the menu toggle button (hamburger/chevron) to toggle menu state</li>
+                    <li>Click "Sync Now" to trigger a sync operation</li>
+                    <li>Watch the "Last sync" time update automatically</li>
+                    <li>Toggle theme to see light/dark mode changes</li>
+                    <li>Check online/offline badge (should show "Online")</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool isMenuOpen = false;
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleAsync();
+    }
+}

@@ -1,0 +1,55 @@
+/* Status Badge Styles */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    padding: var(--spacing-1) var(--spacing-3);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 1;
+    border-radius: var(--radius-lg);
+    white-space: nowrap;
+}
+
+.status-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.status-badge-default {
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+.status-badge-primary {
+    background: var(--accent);
+    color: var(--primary);
+}
+
+.status-badge-success {
+    background: rgba(var(--primary-rgb), 0.1);
+    color: var(--success);
+}
+
+.status-badge-warning {
+    background: rgba(var(--warning-rgb), 0.1);
+    color: var(--warning-foreground);
+    border: 1px solid rgba(var(--warning-rgb), 0.2);
+}
+
+.status-badge-destructive {
+    background: rgba(var(--destructive-rgb), 0.1);
+    color: var(--destructive);
+}
+
+.status-badge-info {
+    background: rgba(var(--info-rgb), 0.1);
+    color: var(--info);
+}
+
+.status-badge-secondary {
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+}

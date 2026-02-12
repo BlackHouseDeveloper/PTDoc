@@ -1,0 +1,18 @@
+@using PTDoc.UI.Components
+
+@* Status Badge Component - Displays status with color coding *@
+
+<span class="status-badge status-badge-@Variant @AdditionalClasses">
+    @if (ShowDot)
+    {
+        <span class="status-badge-dot" aria-hidden="true"></span>
+    }
+    @Text
+</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
+    [Parameter] public bool ShowDot { get; set; } = false;
+    [Parameter] public string AdditionalClasses { get; set; } = string.Empty;
+}

@@ -1,0 +1,130 @@
+@using PTDoc.Application.Dashboard
+
+@* Expiring Authorizations Widget *@
+
+<div class="card expiring-auth-card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg class="section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M14.6667 7.38663V7.99997C14.666 9.43758 14.2003 10.8364 13.3395 11.9878C12.4787 13.1393 11.2688 13.9816 9.89016 14.3892C8.51154 14.7968 7.03809 14.748 5.68957 14.2497C4.34104 13.7513 3.18968 12.8307 2.40723 11.6247C1.62478 10.4187 1.25317 8.99205 1.34776 7.55749C1.44235 6.12293 1.99812 4.75762 2.93217 3.66467C3.86621 2.57173 5.1285 1.81046 6.53077 1.49339C7.93304 1.17632 9.40016 1.32152 10.7133 1.90663" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M14.6667 2.66663L8 9.33996L6 7.33996" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h3 class="card-title">Expiring Authorizations</h3>
+            @if (Authorizations?.Count > 0)
+            {
+                <span class="count-badge">@Authorizations.Count</span>
+            }
+        </div>
+        <button type="button" class="view-all-link" @onclick="HandleViewAll" aria-label="View all authorizations">
+            View All
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+    
+    <div class="card-content">
+        @if (IsLoading)
+        {
+            <div class="loading-container">
+                <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+            </div>
+        }
+        else if (HasError)
+        {
+            <div class="error-state">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="error-text">Failed to load authorizations</p>
+                <button type="button" class="btn btn-sm btn-outline" @onclick="OnRetry">Retry</button>
+            </div>
+        }
+        else if (Authorizations == null || !Authorizations.Any())
+        {
+            <div class="empty-state">
+                <p class="empty-state-text">No authorizations expiring soon</p>
+            </div>
+        }
+        else
+        {
+            <div class="authorization-list">
+                @foreach (var auth in Authorizations)
+                {
+                    <div class="authorization-item urgency-@auth.Urgency.ToString().ToLower()">
+                        <div class="authorization-header">
+                            <div class="authorization-patient">
+                                <a href="/patients/@auth.PatientId" class="patient-link">@auth.PatientName</a>
+                                <span class="authorization-mrn">MRN: @auth.MedicalRecordNumber</span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => HandleUpdate(auth.Id)">
+                                Update
+                            </button>
+                        </div>
+                        <div class="authorization-details">
+                            <div class="authorization-detail-item">
+                                <span class="detail-label">Expiration:</span>
+                                <span class="detail-value">
+                                    @auth.ExpirationDate.ToString("MMM dd, yyyy")
+                                    <StatusBadge 
+                                        Text="@DashboardHelpers.FormatDaysRemaining(auth.ExpirationDate)"
+                                        Variant="@GetUrgencyBadgeVariant(auth.Urgency)" 
+                                        ShowDot="true" />
+                                </span>
+                            </div>
+                            <div class="authorization-detail-item">
+                                <span class="detail-label">Visits:</span>
+                                <span class="detail-value">
+                                    @auth.VisitsUsed / @auth.VisitsTotal used
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: @GetProgressPercentage(auth)%"></div>
+                                    </div>
+                                </span>
+                            </div>
+                            <div class="authorization-detail-item">
+                                <span class="detail-label">Payer:</span>
+                                <span class="detail-value">@auth.Payer</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<ExpiringAuthorization>? Authorizations { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool HasError { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+    
+    private void HandleViewAll()
+    {
+        // TODO: Navigate to authorizations page
+        Console.WriteLine("Navigate to authorizations");
+    }
+    
+    private void HandleUpdate(string authId)
+    {
+        // TODO: Open update modal or navigate to update page
+        Console.WriteLine($"Update authorization: {authId}");
+    }
+    
+    private double GetProgressPercentage(ExpiringAuthorization auth)
+    {
+        if (auth.VisitsTotal == 0) return 0;
+        return Math.Round((double)auth.VisitsUsed / auth.VisitsTotal * 100, 1);
+    }
+    
+    private BadgeVariant GetUrgencyBadgeVariant(AuthorizationUrgency urgency)
+    {
+        return urgency switch
+        {
+            AuthorizationUrgency.High => BadgeVariant.Destructive,
+            AuthorizationUrgency.Medium => BadgeVariant.Warning,
+            _ => BadgeVariant.Info
+        };
+    }
+}

@@ -1,0 +1,34 @@
+@* Notifications & Alerts Section *@
+
+<div class="notifications-section">
+    <div class="notifications-card">
+        <div class="notifications-header">
+            <div class="notifications-header-left">
+                <svg class="section-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M15 6.66667C15 5.34058 14.4732 4.06881 13.5355 3.13113C12.5979 2.19345 11.3261 1.66667 10 1.66667C8.67392 1.66667 7.40215 2.19345 6.46447 3.13113C5.52678 4.06881 5 5.34058 5 6.66667C5 12.5 2.5 14.1667 2.5 14.1667H17.5C17.5 14.1667 15 12.5 15 6.66667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M11.4417 17.5C11.2952 17.7526 11.0849 17.9622 10.8319 18.108C10.5788 18.2537 10.2918 18.3304 10 18.3304C9.70819 18.3304 9.42116 18.2537 9.16808 18.108C8.91501 17.9622 8.70475 17.7526 8.55833 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h2 class="notifications-title">Notifications & Alerts</h2>
+                <span class="urgent-badge">@UrgentCount Urgent</span>
+            </div>
+            <button type="button" class="icon-btn" aria-label="More options">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M8 9.33333C8.73638 9.33333 9.33333 8.73638 9.33333 8C9.33333 7.26362 8.73638 6.66667 8 6.66667C7.26362 6.66667 6.66667 7.26362 6.66667 8C6.66667 8.73638 7.26362 9.33333 8 9.33333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 4C8.73638 4 9.33333 3.40305 9.33333 2.66667C9.33333 1.93029 8.73638 1.33333 8 1.33333C7.26362 1.33333 6.66667 1.93029 6.66667 2.66667C6.66667 3.40305 7.26362 4 8 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 14.6667C8.73638 14.6667 9.33333 14.0697 9.33333 13.3333C9.33333 12.597 8.73638 12 8 12C7.26362 12 6.66667 12.597 6.66667 13.3333C6.66667 14.0697 7.26362 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+        <div class="notifications-content">
+            <!-- Notification items will be populated here -->
+            <div class="empty-state">
+                <p class="empty-state-text">No new notifications</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int UrgentCount { get; set; } = 2;
+}

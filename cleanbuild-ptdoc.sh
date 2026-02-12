@@ -126,6 +126,13 @@ if [ ! -f "$SLN_FILE" ]; then
 fi
 log_success "Solution file found: PTDoc.sln"
 
+# Optional: serialize builds to avoid Android clean race conditions
+BUILD_FLAGS=()
+if [ "${PTDOC_SERIAL_BUILD:-0}" = "1" ]; then
+  BUILD_FLAGS+=("-m:1" "-p:BuildInParallel=false")
+  log_warn "Serial build enabled (PTDOC_SERIAL_BUILD=1)"
+fi
+
 # ---- Clean Build Artifacts ------------------------------------------------
 
 log_step "2" "8" "Cleaning Build Artifacts"
@@ -150,7 +157,12 @@ fi
 
 log_step "4" "8" "Building Solution (Debug)"
 
-if dotnet build "$SLN_FILE" --no-restore --configuration Debug >> "$LOG_FILE" 2>&1; then
+BUILD_CMD=(dotnet build "$SLN_FILE" --no-restore --configuration Debug)
+if [ "${#BUILD_FLAGS[@]}" -gt 0 ]; then
+  BUILD_CMD+=("${BUILD_FLAGS[@]}")
+fi
+
+if "${BUILD_CMD[@]}" >> "$LOG_FILE" 2>&1; then
   log_success "Debug build completed successfully"
 else
   log_error "Debug build failed"
@@ -162,7 +174,12 @@ fi
 
 log_step "5" "8" "Building Solution (Release)"
 
-if dotnet build "$SLN_FILE" --no-restore --configuration Release >> "$LOG_FILE" 2>&1; then
+BUILD_CMD=(dotnet build "$SLN_FILE" --no-restore --configuration Release)
+if [ "${#BUILD_FLAGS[@]}" -gt 0 ]; then
+  BUILD_CMD+=("${BUILD_FLAGS[@]}")
+fi
+
+if "${BUILD_CMD[@]}" >> "$LOG_FILE" 2>&1; then
   log_success "Release build completed successfully"
 else
   log_error "Release build failed"

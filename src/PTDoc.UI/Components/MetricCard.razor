@@ -1,0 +1,66 @@
+@* Metric Card Component - Displays key metric with icon and trend *@
+
+<div class="metric-card @AdditionalClasses" @onclick="HandleClick" role="button" tabindex="0" @onkeydown="HandleKeyDown">
+    <div class="metric-card-icon">
+        @Icon
+    </div>
+    <div class="metric-card-content">
+        <div class="metric-label">@Label</div>
+        <div class="metric-value">@Value</div>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <div class="metric-subtitle">@Subtitle</div>
+        }
+        @if (TrendValue.HasValue)
+        {
+            <div class="metric-trend @GetTrendClass()">
+                @if (TrendValue.Value > 0)
+                {
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M6 10V2M6 2L2 6M6 2L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                }
+                else if (TrendValue.Value < 0)
+                {
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M6 2V10M6 10L10 6M6 10L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                }
+                <span>@TrendText</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public int? TrendValue { get; set; }
+    [Parameter] public string? TrendText { get; set; }
+    [Parameter] public string AdditionalClasses { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnClick { get; set; }
+    
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync();
+        }
+    }
+    
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await HandleClick();
+        }
+    }
+    
+    private string GetTrendClass()
+    {
+        if (!TrendValue.HasValue) return "";
+        return TrendValue.Value > 0 ? "metric-trend-up" : TrendValue.Value < 0 ? "metric-trend-down" : "metric-trend-neutral";
+    }
+}

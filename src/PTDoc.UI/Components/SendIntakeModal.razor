@@ -1,0 +1,251 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
+        <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog" 
+             aria-labelledby="send-intake-title" aria-describedby="send-intake-description" aria-modal="true">
+            
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="modal-title-container">
+                    <svg class="modal-icon modal-icon-info" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M17.5 7.5L9.16667 15M17.5 7.5L12.5 18.3333L9.16667 15M17.5 7.5L2.5 2.5L9.16667 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h2 id="send-intake-title">Send Intake Form</h2>
+                </div>
+                <p id="send-intake-description" class="modal-description">Send intake form to patient via email and SMS</p>
+            </div>
+
+            <!-- Modal Body -->
+            <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                <!-- Select Patient Dropdown -->
+                <div class="form-field">
+                    <label for="patient-select" class="form-label">Select Patient <span class="required">*</span></label>
+                    <div class="select-wrapper">
+                        <select 
+                            id="patient-select" 
+                            class="form-select" 
+                            @bind="SelectedPatientId"
+                            @ref="firstInputRef"
+                            required 
+                            aria-required="true">
+                            <option value="">Select a patient</option>
+                            @foreach (var patient in AvailablePatients)
+                            {
+                                <option value="@patient.Id">@patient.Name</option>
+                            }
+                        </select>
+                        <svg class="select-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Email Address -->
+                <div class="form-field">
+                    <label for="email" class="form-label">Email Address <span class="required">*</span></label>
+                    <input 
+                        id="email" 
+                        type="email" 
+                        class="form-input" 
+                        placeholder="patient@example.com"
+                        @bind="Email"
+                        required 
+                        aria-required="true" />
+                </div>
+
+                <!-- Phone Number -->
+                <div class="form-field">
+                    <label for="phone" class="form-label">Phone Number (Optional)</label>
+                    <input 
+                        id="phone" 
+                        type="tel" 
+                        class="form-input" 
+                        placeholder="(555) 123-4567"
+                        @bind="PhoneNumber" />
+                    <p class="input-helper-text">We'll send an SMS reminder if phone number is provided</p>
+                </div>
+
+                <!-- Success Info Box -->
+                <div class="success-box" role="note">
+                    <div class="success-box-header">
+                        <svg class="success-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="2"/>
+                            <path d="M5 8L7 10L11 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <strong>What will be sent:</strong>
+                    </div>
+                    <ul class="success-box-list">
+                        <li>Secure link to online intake form</li>
+                        <li>Instructions for completion</li>
+                        <li>HIPAA compliance notice</li>
+                        <li>Estimated completion time (15-20 minutes)</li>
+                    </ul>
+                </div>
+
+                <!-- Modal Footer (Buttons) -->
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" @onclick="Close">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-info">
+                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M14 2L7 9M14 2L9.33333 14.6667L7 9M14 2L2 6.66667L7 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Send Intake Form
+                    </button>
+                </div>
+            </form>
+
+            <!-- Close Button -->
+            <button type="button" class="modal-close" @onclick="Close" aria-label="Close modal">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<IntakeFormData> OnSubmit { get; set; }
+
+    [Parameter]
+    public List<PatientOption> AvailablePatients { get; set; } = new();
+
+    private ElementReference firstInputRef;
+    private ElementReference modalContainerRef;
+    private IJSObjectReference? modalModule;
+    private DotNetObjectReference<SendIntakeModal>? dotNetRef;
+    private string modalId = $"modal-{Guid.NewGuid():N}";
+
+    private string SelectedPatientId { get; set; } = string.Empty;
+    private string Email { get; set; } = string.Empty;
+    private string PhoneNumber { get; set; } = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load the JS module once
+            try
+            {
+                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef = DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+            }
+        }
+
+        if (IsOpen && modalModule != null && dotNetRef != null)
+        {
+            try
+            {
+                // Lock body scroll
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                
+                // Register ESC key handler
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                
+                // Focus first input
+                await firstInputRef.FocusAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+            }
+        }
+        else if (!IsOpen && modalModule != null)
+        {
+            try
+            {
+                // Unlock body scroll
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                
+                // Unregister ESC handler
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs()
+    {
+        await Close();
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+        
+        // Clear form
+        SelectedPatientId = string.Empty;
+        Email = string.Empty;
+        PhoneNumber = string.Empty;
+    }
+
+    private void HandleOverlayClick()
+    {
+        // Close modal when clicking overlay
+        _ = Close();
+    }
+
+    private async Task HandleSubmit()
+    {
+        var formData = new IntakeFormData
+        {
+            PatientId = SelectedPatientId,
+            Email = Email,
+            PhoneNumber = PhoneNumber
+        };
+
+        await OnSubmit.InvokeAsync(formData);
+        await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Clean up JS interop
+        if (modalModule != null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                await modalModule.DisposeAsync();
+            }
+            catch { /* Ignore disposal errors */ }
+        }
+
+        dotNetRef?.Dispose();
+    }
+
+    public class IntakeFormData
+    {
+        public string PatientId { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+    }
+
+    public class PatientOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+}

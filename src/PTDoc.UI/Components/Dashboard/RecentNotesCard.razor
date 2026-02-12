@@ -1,0 +1,92 @@
+@* Recent Notes Card - Shows recently submitted/edited clinical notes *@
+
+<div class="card recent-notes-card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg class="section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M9.33333 2H4C3.64638 2 3.30724 2.14048 3.05719 2.39052C2.80714 2.64057 2.66667 2.97971 2.66667 3.33333V12.6667C2.66667 13.0203 2.80714 13.3594 3.05719 13.6095C3.30724 13.8595 3.64638 14 4 14H12C12.3536 14 12.6928 13.8595 12.9428 13.6095C13.1929 13.3594 13.3333 13.0203 13.3333 12.6667V6L9.33333 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9.33333 2V6H13.3333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h3 class="card-title">Recent Notes</h3>
+        </div>
+        <button type="button" class="view-all-link" aria-label="View all notes">
+            View All
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+    
+    <div class="card-content">
+        @if (_notes == null || !_notes.Any())
+        {
+            <div class="empty-state">
+                <p class="empty-state-text">No recent notes</p>
+            </div>
+        }
+        else
+        {
+            <div class="notes-list">
+                @foreach (var note in _notes)
+                {
+                    <div class="note-item">
+                        <div class="note-item-header">
+                            <div class="note-type">@note.Type</div>
+                            <div class="note-actions">
+                                <button type="button" class="icon-btn" aria-label="View note" title="View note">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M1.33334 8C1.33334 8 3.33334 3.33333 8.00001 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8.00001 12.6667C3.33334 12.6667 1.33334 8 1.33334 8Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="icon-btn" aria-label="Download note" title="Download note">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M14 10V12.6667C14 13.0203 13.8595 13.3594 13.6095 13.6095C13.3594 13.8595 13.0203 14 12.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M4.66667 6.66667L8 10L11.3333 6.66667" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M8 10V2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="note-date">@note.Date.ToString("MM/dd/yyyy")</div>
+                        <span class="note-badge note-badge-@note.Status.ToLower()">@note.Status</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<RecentNote>? _notes;
+    
+    protected override void OnInitialized()
+    {
+        // Mock data - replace with actual service call
+        _notes = new List<RecentNote>
+        {
+            new RecentNote 
+            { 
+                Id = 1, 
+                Type = "Progress Note", 
+                Date = new DateTime(2025, 11, 9), 
+                Status = "Submitted" 
+            },
+            new RecentNote 
+            { 
+                Id = 2, 
+                Type = "Progress Note", 
+                Date = new DateTime(2025, 11, 13), 
+                Status = "Submitted" 
+            }
+        };
+    }
+    
+    private class RecentNote
+    {
+        public int Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public DateTime Date { get; set; }
+        public string Status { get; set; } = string.Empty;
+    }
+}

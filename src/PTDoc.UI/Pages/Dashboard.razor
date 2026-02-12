@@ -1,0 +1,253 @@
+@page "/"
+@using PTDoc.Application.Services
+@using PTDoc.Application.Dashboard
+@using PTDoc.UI.Components.Dashboard
+@inject IDashboardService DashboardService
+@inject IThemeService ThemeService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>Dashboard - PTDoc</PageTitle>
+
+<div class="dashboard-container">
+    <header class="dashboard-header">
+        <div class="dashboard-header-content">
+            <div class="dashboard-header-text">
+                <h1>Dashboard</h1>
+                <p class="dashboard-welcome">Welcome back, Dr. Sarah Johnson • Today is @DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
+            </div>
+            <div class="dashboard-header-actions">
+                <button type="button" class="notification-btn" aria-label="Notifications" title="View notifications">
+                    <svg class="notification-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 5.33333C12 4.27247 11.5786 3.25505 10.8284 2.50491C10.0783 1.75476 9.06087 1.33333 8 1.33333C6.93913 1.33333 5.92172 1.75476 5.17157 2.50491C4.42143 3.25505 4 4.27247 4 5.33333C4 10 2 11.3333 2 11.3333H14C14 11.3333 12 10 12 5.33333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M9.15334 14C9.03614 14.2021 8.86791 14.3698 8.6655 14.4864C8.46309 14.603 8.23344 14.6643 8 14.6643C7.76656 14.6643 7.53691 14.603 7.3345 14.4864C7.13209 14.3698 6.96386 14.2021 6.84666 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="notification-badge" aria-label="1 unread notification"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Quick Action Buttons -->
+    <div class="quick-actions-section">
+        <button type="button" class="action-btn action-btn-primary" @onclick="HandleAddPatient" aria-label="Add new patient">
+            <div class="action-btn-content">
+                <div class="action-icon-container action-icon-primary">
+                    <svg class="action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 14.6667C11.6819 14.6667 14.6667 11.6819 14.6667 8C14.6667 4.3181 11.6819 1.33337 8 1.33337C4.3181 1.33337 1.33334 4.3181 1.33334 8C1.33334 11.6819 4.3181 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="action-text-container">
+                    <div class="action-title">Add Patient</div>
+                    <div class="action-description">Create new patient profile</div>
+                </div>
+            </div>
+            <svg class="action-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+        <button type="button" class="action-btn action-btn-info" @onclick="HandleSendIntake" aria-label="Send intake form to patient">
+            <div class="action-btn-content">
+                <div class="action-icon-container action-icon-info">
+                    <svg class="action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M14.6667 2L7.33334 9.33333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M14.6667 2L10 14.6667L7.33334 9.33333L2 6.66667L14.6667 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="action-text-container">
+                    <div class="action-title">Send Intake</div>
+                    <div class="action-description">Email intake form to patient</div>
+                </div>
+            </div>
+            <svg class="action-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Main Dashboard Content Grid -->
+    <div class="dashboard-main-content">
+        <!-- Left Column: Dashboard Grid, Notifications & Appointments -->
+        <div class="dashboard-left-column">
+            <OverviewSection />
+            <NotificationsSection />
+        </div>
+
+        <!-- Right Column: Supplemental Cards -->
+        <div class="dashboard-right-column">
+            <RecentNotesCard />
+            <RecentActivityCard />
+            <RecentlyEditedPOCsCard />
+        </div>
+    </div>
+
+</div>
+
+<!-- Add Patient Modal -->
+<AddPatientModal IsOpen="@isAddPatientModalOpen" 
+                 IsOpenChanged="@((value) => isAddPatientModalOpen = value)"
+                 OnSubmit="@HandlePatientSubmit" />
+
+<!-- Send Intake Modal -->
+<SendIntakeModal IsOpen="@isSendIntakeModalOpen"
+                 IsOpenChanged="@((value) => isSendIntakeModalOpen = value)"
+                 AvailablePatients="@availablePatients"
+                 OnSubmit="@HandleIntakeSubmit" />
+
+@code {
+    private DashboardData? _dashboardData;
+    
+    private bool _isLoadingMetrics = true;
+    private bool _isLoadingActivities = true;
+    private bool _isLoadingNotifications = true;
+    private bool _isLoadingNotes = true;
+    private bool _isLoadingPOCs = true;
+    
+    private bool _activitiesError = false;
+    
+    private bool isAddPatientModalOpen = false;
+    private bool isSendIntakeModalOpen = false;
+    private System.Timers.Timer? _autoRefreshTimer;
+    
+    // Mock patient data for dropdown (to be replaced with actual API call)
+    private List<SendIntakeModal.PatientOption> availablePatients = new()
+    {
+        new SendIntakeModal.PatientOption { Id = "1", Name = "John Smith" },
+        new SendIntakeModal.PatientOption { Id = "2", Name = "Sarah Johnson" },
+        new SendIntakeModal.PatientOption { Id = "3", Name = "Michael Brown" },
+        new SendIntakeModal.PatientOption { Id = "4", Name = "Emily Davis" },
+        new SendIntakeModal.PatientOption { Id = "5", Name = "David Wilson" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+        SetupAutoRefresh();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        _isLoadingMetrics = true;
+        _isLoadingActivities = true;
+        _isLoadingNotifications = true;
+        _isLoadingNotes = true;
+        _isLoadingPOCs = true;
+        
+        StateHasChanged();
+        
+        try
+        {
+            _dashboardData = await DashboardService.GetDashboardDataAsync();
+            
+            _activitiesError = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
+            _activitiesError = true;
+        }
+        finally
+        {
+            _isLoadingMetrics = false;
+            _isLoadingActivities = false;
+            _isLoadingNotifications = false;
+            _isLoadingNotes = false;
+            _isLoadingPOCs = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadRecentActivities()
+    {
+        _isLoadingActivities = true;
+        _activitiesError = false;
+        StateHasChanged();
+        
+        try
+        {
+            var activities = await DashboardService.GetRecentActivitiesAsync(10);
+            if (_dashboardData != null)
+            {
+                _dashboardData = _dashboardData with { RecentActivities = activities };
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading activities: {ex.Message}");
+            _activitiesError = true;
+        }
+        finally
+        {
+            _isLoadingActivities = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SetupAutoRefresh()
+    {
+        _autoRefreshTimer = new System.Timers.Timer(5 * 60 * 1000); // 5 minutes
+        _autoRefreshTimer.Elapsed += async (sender, e) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadDashboardData();
+            });
+        };
+        _autoRefreshTimer.Start();
+    }
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleAsync();
+    }
+
+    private void HandleAddPatient()
+    {
+        isAddPatientModalOpen = true;
+    }
+
+    private void HandleSendIntake()
+    {
+        isSendIntakeModalOpen = true;
+    }
+
+    private void HandlePatientSubmit(AddPatientModal.PatientFormData formData)
+    {
+        // TODO: Implement actual patient creation via API
+        Console.WriteLine($"Creating patient: {formData.FirstName} {formData.LastName}");
+        Console.WriteLine($"Email: {formData.Email}");
+        
+        // In a real app, you would call a service here:
+        // await PatientService.CreatePatientAsync(formData);
+        
+        // Show success notification (to be implemented)
+        // TODO: Add toast notification or success message
+        
+        // Refresh dashboard to show new patient
+        _ = LoadDashboardData();
+    }
+
+    private void HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
+    {
+        // TODO: Implement actual intake form sending via API
+        Console.WriteLine($"Sending intake form to patient ID: {formData.PatientId}");
+        Console.WriteLine($"Email: {formData.Email}");
+        Console.WriteLine($"Phone: {formData.PhoneNumber}");
+        
+        // In a real app, you would call a service here:
+        // await IntakeService.SendIntakeFormAsync(formData);
+        
+        // Show success notification (to be implemented)
+        // TODO: Add toast notification or success message
+    }
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Stop();
+        _autoRefreshTimer?.Dispose();
+    }
+}

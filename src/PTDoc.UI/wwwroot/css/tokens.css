@@ -11,6 +11,7 @@
   --popover-foreground: #4a4a4a;
   --primary: #16a34a;
   --primary-foreground: #ffffff;
+  --primary-rgb: 22, 163, 74;
   --secondary: #1a2b50;
   --secondary-foreground: #ffffff;
   --tertiary: #f9fafb;
@@ -21,12 +22,15 @@
   --accent-foreground: #1a2b50;
   --destructive: #d93025;
   --destructive-foreground: #ffffff;
+  --destructive-rgb: 217, 48, 37;
   --success: #34a853;
   --success-foreground: #ffffff;
   --warning: #f9ab00;
   --warning-foreground: #000000;
+  --warning-rgb: 249, 171, 0;
   --info: #4285f4;
   --info-foreground: #ffffff;
+  --info-rgb: 66, 133, 244;
   --border: rgba(0, 0, 0, 0.1);
   --input: transparent;
   --input-background: #f9fafb;
@@ -151,6 +155,19 @@
   --breakpoint-tablet: 768px;
   --breakpoint-tablet-max: 1199px;
   --breakpoint-desktop: 1200px;
+
+  /* Modal Tokens */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.5);
+  --modal-max-width: 510px;
+  --modal-padding: var(--spacing-6);
+  
+  /* Info Box Tokens (derived from --info-rgb) */
+  --info-box-bg: rgba(var(--info-rgb), 0.1);
+  --info-box-border: rgba(var(--info-rgb), 0.2);
+
+  /* Success Box Tokens (derived from --primary-rgb for green highlight boxes) */
+  --success-box-bg: rgba(var(--primary-rgb), 0.1);
+  --success-box-border: rgba(var(--primary-rgb), 0.2);
 }
 
 .dark {
@@ -163,6 +180,7 @@
   --popover-foreground: #e5e5e5;
   --primary: #22c55e;
   --primary-foreground: #000000;
+  --primary-rgb: 34, 197, 94;
   --secondary: #000000;
   --secondary-foreground: #ffffff;
   --tertiary: #ece6f0;
@@ -173,12 +191,15 @@
   --accent-foreground: #22c55e;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
+  --destructive-rgb: 239, 68, 68;
   --success: #34d399;
   --success-foreground: #000000;
   --warning: #fbbf24;
   --warning-foreground: #000000;
+  --warning-rgb: 251, 191, 36;
   --info: #60a5fa;
   --info-foreground: #000000;
+  --info-rgb: 96, 165, 250;
   --border: rgba(34, 197, 94, 0.2);
   --input: transparent;
   --input-background: #3a3a3a;

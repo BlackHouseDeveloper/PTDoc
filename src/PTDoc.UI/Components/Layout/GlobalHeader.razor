@@ -1,0 +1,58 @@
+@using PTDoc.Application.Services
+@inherits GlobalHeaderBase
+
+<header class="global-header">
+    <div class="header-container">
+        <!-- Menu Toggle Button -->
+        <button 
+            type="button" 
+            class="menu-toggle"
+            aria-label="@(IsMenuOpen ? "Close menu" : "Open menu")"
+            aria-expanded="@IsMenuOpen.ToString().ToLower()"
+            @onclick="ToggleMenu">
+            @if (IsMenuOpen)
+            {
+                <img src="_content/PTDoc.UI/images/chevron-left.svg" alt="" class="menu-icon" />
+            }
+            else
+            {
+                <img src="_content/PTDoc.UI/images/hamburger-menu.svg" alt="" class="menu-icon" />
+            }
+        </button>
+
+        <!-- Right side controls container -->
+        <div class="header-controls">
+            <!-- Last Sync Indicator -->
+            <div class="sync-info">
+                <span class="sync-text">Last sync: @LastSyncDisplay</span>
+            </div>
+
+            <!-- Sync Now Button -->
+            <button 
+                type="button" 
+                class="sync-button"
+                disabled="@(IsSyncing || !IsOnline)"
+                aria-busy="@IsSyncing.ToString().ToLower()"
+                aria-disabled="@((!IsOnline).ToString().ToLower())"
+                @onclick="HandleSyncNow">
+                <img src="_content/PTDoc.UI/images/sync-icon.svg" alt="" class="sync-icon @(IsSyncing ? "syncing" : "")" />
+                <span class="sync-button-text">@(IsSyncing ? "Syncing..." : "Sync Now")</span>
+            </button>
+
+            <!-- Online/Offline Status Badge -->
+            <div class="status-badge @(IsOnline ? "online" : "offline")" 
+                 role="status" 
+                 aria-live="polite">
+                @if (IsDarkMode)
+                {
+                    <img src="_content/PTDoc.UI/images/online-icon-dark.svg" alt="" class="status-icon" />
+                }
+                else
+                {
+                    <img src="_content/PTDoc.UI/images/online-icon-light.svg" alt="" class="status-icon" />
+                }
+                <span class="status-text">@(IsOnline ? "Online" : "Offline")</span>
+            </div>
+        </div>
+    </div>
+</header>
