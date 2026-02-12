@@ -1,0 +1,30 @@
+@using PTDoc.UI.Components
+
+@* Loading Skeleton Component *@
+
+<div class="skeleton @GetSizeClass() @AdditionalClasses" role="status" aria-label="Loading"></div>
+
+@code {
+    [Parameter] public SkeletonVariant Variant { get; set; } = SkeletonVariant.Rectangle;
+    [Parameter] public SkeletonSize Size { get; set; } = SkeletonSize.Medium;
+    [Parameter] public string AdditionalClasses { get; set; } = string.Empty;
+    
+    private string GetSizeClass()
+    {
+        var variantClass = Variant switch
+        {
+            SkeletonVariant.Circle => "skeleton-circle",
+            SkeletonVariant.Text => "skeleton-text",
+            _ => "skeleton-rectangle"
+        };
+        
+        var sizeClass = Size switch
+        {
+            SkeletonSize.Small => "skeleton-sm",
+            SkeletonSize.Large => "skeleton-lg",
+            _ => "skeleton-md"
+        };
+        
+        return $"{variantClass} {sizeClass}";
+    }
+}

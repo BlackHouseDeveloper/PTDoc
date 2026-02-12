@@ -1,12 +1,45 @@
+@using PTDoc.Application.Dashboard
+
 @* Recent Activity Card - Shows recent system activities and updates *@
 
 <div class="card recent-activity-card">
     <div class="card-header">
-        <h3 class="card-title">Recent Activity</h3>
+        <div class="card-header-left">
+            <svg class="section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M8 14.6667C11.6819 14.6667 14.6667 11.6819 14.6667 8C14.6667 4.3181 11.6819 1.33337 8 1.33337C4.3181 1.33337 1.33334 4.3181 1.33334 8C1.33334 11.6819 4.3181 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 4V8L10.6667 9.33333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h3 class="card-title">Recent Activity</h3>
+        </div>
+        <button type="button" class="view-all-link" @onclick="HandleViewAll" aria-label="View all activities">
+            View All
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
     </div>
     
     <div class="card-content">
-        @if (_activities == null || !_activities.Any())
+        @if (IsLoading)
+        {
+            <div class="loading-container">
+                @for (int i = 0; i < 3; i++)
+                {
+                    <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Medium" />
+                }
+            </div>
+        }
+        else if (HasError)
+        {
+            <div class="error-state">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="error-text">Failed to load recent activities</p>
+                <button type="button" class="btn btn-sm btn-outline" @onclick="OnRetry">Retry</button>
+            </div>
+        }
+        else if (Activities == null || !Activities.Any())
         {
             <div class="empty-state">
                 <p class="empty-state-text">No recent activity</p>
@@ -15,13 +48,20 @@
         else
         {
             <div class="activity-list">
-                @foreach (var activity in _activities)
+                @foreach (var activity in Activities)
                 {
                     <div class="activity-item">
                         <div class="activity-indicator" style="background: @GetActivityColor(activity.Type);"></div>
                         <div class="activity-content">
-                            <p class="activity-text">@activity.Description</p>
-                            <span class="activity-time">@FormatTimeAgo(activity.Timestamp)</span>
+                            <p class="activity-text">
+                                @activity.Description
+                                @if (!string.IsNullOrEmpty(activity.PatientName))
+                                {
+                                    <text> for </text>
+                                    <a href="/patients/@activity.PatientId" class="activity-patient-link">@activity.PatientName</a>
+                                }
+                            </p>
+                            <span class="activity-time">@DashboardHelpers.FormatTimeAgo(activity.Timestamp)</span>
                         </div>
                     </div>
                 }
@@ -31,78 +71,27 @@
 </div>
 
 @code {
-    private List<Activity>? _activities;
+    [Parameter] public List<RecentActivity>? Activities { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool HasError { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
     
-    protected override void OnInitialized()
+    private void HandleViewAll()
     {
-        // Mock data - replace with actual service call
-        _activities = new List<Activity>
-        {
-            new Activity 
-            { 
-                Id = 1,
-                Type = ActivityType.NoteCompleted,
-                Description = "SOAP note completed for Sarah Johnson",
-                Timestamp = DateTime.Now.AddMinutes(-2)
-            },
-            new Activity 
-            { 
-                Id = 2,
-                Type = ActivityType.AppointmentScheduled,
-                Description = "Appointment scheduled with Michael Chen",
-                Timestamp = DateTime.Now.AddMinutes(-15)
-            },
-            new Activity 
-            { 
-                Id = 3,
-                Type = ActivityType.IntakeReceived,
-                Description = "Patient intake received from Emily Rodriguez",
-                Timestamp = DateTime.Now.AddHours(-1)
-            }
-        };
+        // TODO: Navigate to activity log page
+        Console.WriteLine("Navigate to activity log");
     }
     
     private string GetActivityColor(ActivityType type)
     {
         return type switch
         {
-            ActivityType.NoteCompleted => "var(--success)",
-            ActivityType.AppointmentScheduled => "var(--info)",
-            ActivityType.IntakeReceived => "var(--warning)",
-            ActivityType.AuthorizationUpdated => "var(--primary)",
+            ActivityType.NoteCompleted or ActivityType.NoteUpdated => "var(--success)",
+            ActivityType.AppointmentScheduled or ActivityType.AppointmentCheckedIn => "var(--info)",
+            ActivityType.IntakeReceived or ActivityType.IntakeCompleted => "var(--warning)",
+            ActivityType.AuthorizationUpdated or ActivityType.AuthorizationExpiring => "var(--primary)",
+            ActivityType.PatientAdded or ActivityType.PatientUpdated => "var(--secondary)",
             _ => "var(--muted-foreground)"
         };
-    }
-    
-    private string FormatTimeAgo(DateTime timestamp)
-    {
-        var timeSpan = DateTime.Now - timestamp;
-        
-        if (timeSpan.TotalMinutes < 1)
-            return "Just now";
-        if (timeSpan.TotalMinutes < 60)
-            return $"{(int)timeSpan.TotalMinutes} min";
-        if (timeSpan.TotalHours < 24)
-            return $"{(int)timeSpan.TotalHours} hr";
-        if (timeSpan.TotalDays < 7)
-            return $"{(int)timeSpan.TotalDays} day{((int)timeSpan.TotalDays > 1 ? "s" : "")}";
-        
-        return timestamp.ToString("MMM dd");
-    }
-    
-    private class Activity
-    {
-        public int Id { get; set; }
-        public ActivityType Type { get; set; }
-        public string Description { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; }
-    }
-    
-    private enum ActivityType
-    {
-        NoteCompleted,
-        AppointmentScheduled,
-        IntakeReceived,
-        AuthorizationUpdated
     }
 }

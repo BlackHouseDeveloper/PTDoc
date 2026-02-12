@@ -1,0 +1,195 @@
+/* Patient Volume Chart Widget Styles */
+.volume-chart-card {
+    height: 100%;
+}
+
+.chart-controls {
+    margin-bottom: var(--spacing-4);
+}
+
+.period-tabs {
+    display: flex;
+    gap: var(--spacing-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.period-tab {
+    padding: var(--spacing-2) var(--spacing-4);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.period-tab:hover {
+    color: var(--foreground);
+}
+
+.period-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.period-tab:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+.chart-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    background: var(--muted);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-4);
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.summary-label {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+}
+
+.summary-value {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.summary-trend {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+}
+
+.summary-trend.trend-up {
+    color: var(--success);
+}
+
+.summary-trend.trend-down {
+    color: var(--destructive);
+}
+
+.summary-trend.trend-stable {
+    color: var(--muted-foreground);
+}
+
+.chart-container {
+    min-height: 200px;
+    padding: var(--spacing-4) 0;
+}
+
+.chart-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--spacing-2);
+    height: 200px;
+}
+
+.chart-bar-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.chart-bar {
+    position: relative;
+    width: 100%;
+    min-height: 4px;
+    background: var(--primary);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.chart-bar:hover {
+    background: var(--success);
+    filter: brightness(1.1);
+}
+
+.bar-value {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--foreground);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.chart-bar:hover .bar-value {
+    opacity: 1;
+}
+
+.bar-label {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.loading-chart {
+    height: 300px;
+}
+
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-8) var(--spacing-4);
+    gap: var(--spacing-3);
+}
+
+.error-state svg {
+    color: var(--destructive);
+}
+
+.error-text {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+    .chart-summary {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-3);
+    }
+    
+    .period-tabs {
+        gap: var(--spacing-1);
+    }
+    
+    .period-tab {
+        padding: var(--spacing-2) var(--spacing-3);
+        font-size: var(--text-xs);
+    }
+    
+    .chart-bars {
+        gap: var(--spacing-1);
+    }
+    
+    .bar-label {
+        font-size: 10px;
+    }
+}

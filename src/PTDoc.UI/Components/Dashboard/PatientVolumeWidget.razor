@@ -1,0 +1,119 @@
+@using PTDoc.Application.Dashboard
+
+@* Patient Volume Chart Widget *@
+
+<div class="card volume-chart-card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg class="section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M2.66666 11.3333V14H5.33332M13.3333 4.66667V2H10.6667M2.66666 4.66667C2.66666 3.95942 2.94761 3.28115 3.44771 2.78105C3.94781 2.28095 4.62608 2 5.33332 2H10.6667C11.3739 2 12.0522 2.28095 12.5523 2.78105C13.0524 3.28115 13.3333 3.95942 13.3333 4.66667V11.3333C13.3333 12.0406 13.0524 12.7188 12.5523 13.2189C12.0522 13.719 11.3739 14 10.6667 14H5.33332C4.62608 14 3.94781 13.719 3.44771 13.2189C2.94761 12.7188 2.66666 12.0406 2.66666 11.3333V4.66667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h3 class="card-title">Patient Volume</h3>
+        </div>
+    </div>
+    
+    <div class="card-content">
+        @if (IsLoading)
+        {
+            <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" AdditionalClasses="loading-chart" />
+        }
+        else if (HasError)
+        {
+            <div class="error-state">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="error-text">Failed to load patient volume data</p>
+                <button type="button" class="btn btn-sm btn-outline" @onclick="OnRetry">Retry</button>
+            </div>
+        }
+        else if (VolumeData != null)
+        {
+            <div class="chart-controls">
+                <div class="period-tabs">
+                    <button type="button" 
+                            class="period-tab @(SelectedPeriod == PatientVolumePeriod.Last7Days ? "active" : "")"
+                            @onclick="async () => await OnPeriodChange.InvokeAsync(PatientVolumePeriod.Last7Days)">
+                        7 Days
+                    </button>
+                    <button type="button" 
+                            class="period-tab @(SelectedPeriod == PatientVolumePeriod.Last30Days ? "active" : "")"
+                            @onclick="async () => await OnPeriodChange.InvokeAsync(PatientVolumePeriod.Last30Days)">
+                        30 Days
+                    </button>
+                    <button type="button" 
+                            class="period-tab @(SelectedPeriod == PatientVolumePeriod.Last90Days ? "active" : "")"
+                            @onclick="async () => await OnPeriodChange.InvokeAsync(PatientVolumePeriod.Last90Days)">
+                        90 Days
+                    </button>
+                </div>
+            </div>
+            
+            <div class="chart-summary">
+                <div class="summary-item">
+                    <span class="summary-label">Total</span>
+                    <span class="summary-value">@VolumeData.Summary.Total</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Avg/Day</span>
+                    <span class="summary-value">@VolumeData.Summary.AveragePerDay.ToString("F1")</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Peak</span>
+                    <span class="summary-value">@VolumeData.Summary.Peak</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Trend</span>
+                    <span class="summary-value summary-trend trend-@VolumeData.Summary.Trend.ToString().ToLower()">
+                        @if (VolumeData.Summary.Trend == TrendDirection.Up)
+                        {
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M6 10V2M6 2L2 6M6 2L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        }
+                        else if (VolumeData.Summary.Trend == TrendDirection.Down)
+                        {
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M6 2V10M6 10L10 6M6 10L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        }
+                        @VolumeData.Summary.Trend
+                    </span>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-bars">
+                    @{
+                        var maxValue = VolumeData.DailyData.Any() ? VolumeData.DailyData.Max(d => d.PatientCount) : 1;
+                    }
+                    @foreach (var day in VolumeData.DailyData)
+                    {
+                        var heightPercent = maxValue > 0 ? (double)day.PatientCount / maxValue * 100 : 0;
+                        <div class="chart-bar-wrapper" title="@day.Date.ToString("MMM dd"): @day.PatientCount patients">
+                            <div class="chart-bar" style="height: @heightPercent%">
+                                <span class="bar-value">@day.PatientCount</span>
+                            </div>
+                            <span class="bar-label">@day.Date.ToString("M/d")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                <p class="empty-state-text">No volume data available</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public PatientVolumeData? VolumeData { get; set; }
+    [Parameter] public PatientVolumePeriod SelectedPeriod { get; set; } = PatientVolumePeriod.Last7Days;
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool HasError { get; set; }
+    [Parameter] public EventCallback<PatientVolumePeriod> OnPeriodChange { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+}

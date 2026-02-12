@@ -201,6 +201,97 @@
 
 .notification-badge {
     position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    background: var(--destructive);
+    border-radius: 50%;
+    border: 2px solid var(--secondary);
+}
+
+/* Refresh Button */
+.refresh-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--secondary-foreground);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.refresh-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.refresh-icon {
+    width: 16px;
+    height: 16px;
+    color: inherit;
+}
+
+.refresh-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Metrics Section */
+.metrics-section {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.metric-skeleton {
+    min-height: 120px;
+}
+
+/* Last Updated Indicator */
+.last-updated {
+    text-align: center;
+    padding: var(--spacing-4);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Dashboard Bottom Section */
+.dashboard-bottom-section {
+    padding: 0 var(--spacing-6) var(--spacing-6) var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.notification-badge {
+    position: absolute;
     top: 0;
     right: 0;
     width: 8px;
