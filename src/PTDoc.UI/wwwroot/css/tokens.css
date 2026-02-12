@@ -155,6 +155,19 @@
   --breakpoint-tablet: 768px;
   --breakpoint-tablet-max: 1199px;
   --breakpoint-desktop: 1200px;
+
+  /* Modal Tokens */
+  --modal-overlay-bg: rgba(0, 0, 0, 0.5);
+  --modal-max-width: 510px;
+  --modal-padding: var(--spacing-6);
+  
+  /* Info Box Tokens (derived from --info-rgb) */
+  --info-box-bg: rgba(var(--info-rgb), 0.1);
+  --info-box-border: rgba(var(--info-rgb), 0.2);
+
+  /* Success Box Tokens (derived from --primary-rgb for green highlight boxes) */
+  --success-box-bg: rgba(var(--primary-rgb), 0.1);
+  --success-box-border: rgba(var(--primary-rgb), 0.2);
 }
 
 .dark {

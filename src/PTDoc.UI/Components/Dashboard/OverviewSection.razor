@@ -1,0 +1,159 @@
+@* Overview Section - Dashboard metrics grid with 7 key metrics *@
+
+<div class="overview-section">
+    <div class="overview-header">
+        <svg class="overview-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M2.5 7.5L10 2.5L17.5 7.5V15.8333C17.5 16.2754 17.3244 16.6993 17.0118 17.0118C16.6993 17.3244 16.2754 17.5 15.8333 17.5H4.16667C3.72464 17.5 3.30072 17.3244 2.98816 17.0118C2.67559 16.6993 2.5 16.2754 2.5 15.8333V7.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7.5 17.5V10H12.5V17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h2 class="overview-title">Overview</h2>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Patients Today Card (Primary - highlighted) -->
+        <div class="metric-card metric-card-primary">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-primary">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M16.6667 17.5V15.8333C16.6667 14.9493 16.3155 14.1014 15.6904 13.4763C15.0652 12.8512 14.2174 12.5 13.3333 12.5H6.66667C5.78261 12.5 4.93477 12.8512 4.30964 13.4763C3.68452 14.1014 3.33333 14.9493 3.33333 15.8333V17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M10 9.16667C11.8409 9.16667 13.3333 7.67428 13.3333 5.83333C13.3333 3.99238 11.8409 2.5 10 2.5C8.15905 2.5 6.66667 3.99238 6.66667 5.83333C6.66667 7.67428 8.15905 9.16667 10 9.16667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Patients Today</p>
+                    <p class="metric-value">@PatientsToday</p>
+                    <span class="metric-badge metric-badge-success">Scheduled</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Appointments Card -->
+        <div class="metric-card">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-info">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M15.8333 3.33333H4.16667C3.24619 3.33333 2.5 4.07953 2.5 5V16.6667C2.5 17.5871 3.24619 18.3333 4.16667 18.3333H15.8333C16.7538 18.3333 17.5 17.5871 17.5 16.6667V5C17.5 4.07953 16.7538 3.33333 15.8333 3.33333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M13.3333 1.66667V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M6.66667 1.66667V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2.5 8.33333H17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Appointments</p>
+                    <p class="metric-value">@Appointments</p>
+                    <p class="metric-sublabel">Today</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes Due Card -->
+        <div class="metric-card">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-warning">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M11.6667 2.5H5C4.55797 2.5 4.13405 2.67559 3.82149 2.98816C3.50893 3.30072 3.33333 3.72464 3.33333 4.16667V15.8333C3.33333 16.2754 3.50893 16.6993 3.82149 17.0118C4.13405 17.3244 4.55797 17.5 5 17.5H15C15.442 17.5 15.866 17.3244 16.1785 17.0118C16.4911 16.6993 16.6667 16.2754 16.6667 15.8333V7.5L11.6667 2.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M11.6667 2.5V7.5H16.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M13.3333 10.8333H6.66667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M13.3333 14.1667H6.66667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8.33333 7.5H7.5H6.66667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Notes Due</p>
+                    <p class="metric-value">@NotesDue</p>
+                    <span class="metric-badge metric-badge-warning">Due Today</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Card -->
+        <div class="metric-card">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-pending">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M10 5V10L13.3333 11.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Pending</p>
+                    <p class="metric-value">@Pending</p>
+                    <p class="metric-sublabel">In Progress</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drafts Card -->
+        <div class="metric-card">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-draft">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M14.1667 2.5C14.3856 2.28113 14.6454 2.10752 14.9313 1.98906C15.2173 1.87061 15.5238 1.80965 15.8333 1.80965C16.1429 1.80965 16.4493 1.87061 16.7353 1.98906C17.0212 2.10752 17.281 2.28113 17.5 2.5C17.7189 2.71887 17.8925 2.97871 18.0109 3.26468C18.1294 3.55064 18.1903 3.85706 18.1903 4.16667C18.1903 4.47627 18.1294 4.78269 18.0109 5.06866C17.8925 5.35463 17.7189 5.61446 17.5 5.83333L6.25 17.0833L1.66667 18.3333L2.91667 13.75L14.1667 2.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Drafts</p>
+                    <p class="metric-value">@Drafts</p>
+                    <span class="metric-badge metric-badge-draft">Unsaved</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unsigned Card (Destructive - highlighted) -->
+        <div class="metric-card metric-card-destructive">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-destructive">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M8.33333 11.6667L11.6667 8.33333M11.6667 11.6667L8.33333 8.33333M10 18.3333C5.39763 18.3333 1.66667 14.6024 1.66667 10C1.66667 5.39763 5.39763 1.66667 10 1.66667C14.6024 1.66667 18.3333 5.39763 18.3333 10C18.3333 14.6024 14.6024 18.3333 10 18.3333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Unsigned</p>
+                    <p class="metric-value">@Unsigned</p>
+                    <span class="metric-badge metric-badge-destructive">Need Signature</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Intakes Card (Warning border) -->
+        <div class="metric-card metric-card-warning">
+            <div class="metric-card-content">
+                <div class="metric-icon-container metric-icon-intake">
+                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M10 6.66667V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M10 13.3333H10.0083" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="metric-info">
+                    <p class="metric-label">Intakes</p>
+                    <p class="metric-value">@Intakes</p>
+                    <span class="metric-badge metric-badge-intake">Incomplete</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int PatientsToday { get; set; } = 3;
+    
+    [Parameter]
+    public int Appointments { get; set; } = 3;
+    
+    [Parameter]
+    public int NotesDue { get; set; } = 2;
+    
+    [Parameter]
+    public int Pending { get; set; } = 4;
+    
+    [Parameter]
+    public int Drafts { get; set; } = 1;
+    
+    [Parameter]
+    public int Unsigned { get; set; } = 3;
+    
+    [Parameter]
+    public int Intakes { get; set; } = 3;
+}

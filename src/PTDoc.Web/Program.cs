@@ -2,6 +2,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Web.Auth;
+using PTDoc.Web.Services;
 
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server;
@@ -16,7 +17,7 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
-builder.Services.AddScoped<IThemeService, ThemeService>();
+builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 

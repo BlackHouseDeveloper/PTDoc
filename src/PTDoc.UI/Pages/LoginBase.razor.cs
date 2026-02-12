@@ -62,7 +62,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     protected async Task ToggleTheme()
     {
-        await ThemeService.ToggleThemeAsync();
+        await ThemeService.ToggleAsync();
     }
 
     private void OnThemeChanged()

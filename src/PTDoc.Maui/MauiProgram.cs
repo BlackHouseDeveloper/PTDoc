@@ -5,6 +5,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Maui.Auth;
+using PTDoc.Maui.Services;
 
 namespace PTDoc;
 
@@ -28,7 +29,7 @@ public static class MauiProgram
 		// ITokenService is registered via typed HttpClient below
 		builder.Services.AddScoped<IUserService, MauiUserService>();
 		builder.Services.AddScoped<AuthenticatedHttpMessageHandler>();
-		builder.Services.AddScoped<IThemeService, ThemeService>();
+		builder.Services.AddScoped<IThemeService, MauiThemeService>();
 		builder.Services.AddScoped<ISyncService, SyncService>();
 		builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 		

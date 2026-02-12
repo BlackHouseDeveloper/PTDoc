@@ -1,15 +1,13 @@
 using Microsoft.JSInterop;
 using PTDoc.Application.Services;
 
-namespace PTDoc.Infrastructure.Services;
+namespace PTDoc.Web.Services;
 
 /// <summary>
-/// [DEPRECATED] Generic theme service - replaced by platform-specific implementations
-/// Use BlazorThemeService (PTDoc.Web) or MauiThemeService (PTDoc.Maui) instead
-/// This class is kept for backward compatibility but should not be used in new code
+/// Blazor Web implementation of IThemeService
+/// Uses localStorage via JS interop for persistence
 /// </summary>
-[Obsolete("Use BlazorThemeService (PTDoc.Web) or MauiThemeService (PTDoc.Maui) for platform-specific theme management")]
-public class ThemeService : IThemeService
+public class BlazorThemeService : IThemeService
 {
     private readonly IJSRuntime _jsRuntime;
     private ThemeMode _currentTheme = ThemeMode.Light;
@@ -20,26 +18,26 @@ public class ThemeService : IThemeService
 
     public bool IsDarkMode => _currentTheme == ThemeMode.Dark;
 
-    public ThemeService(IJSRuntime jsRuntime)
+    public BlazorThemeService(IJSRuntime jsRuntime)
     {
         _jsRuntime = jsRuntime;
     }
 
     /// <summary>
-    /// Initialize theme service - must be called after render
+    /// Initialize theme service - loads persisted theme from localStorage
     /// </summary>
     public async Task InitializeAsync()
     {
         try
         {
-            // Get current theme from DOM
+            // Get current theme from DOM (set by JS on page load)
             var theme = await _jsRuntime.InvokeAsync<string>("ptdocTheme.getTheme");
             _currentTheme = theme == "dark" ? ThemeMode.Dark : ThemeMode.Light;
             OnThemeChanged?.Invoke();
         }
         catch (JSException)
         {
-            // JS interop not ready yet, will retry
+            // JS interop not ready yet - will use default Light theme
         }
     }
 
@@ -56,7 +54,7 @@ public class ThemeService : IThemeService
         }
         catch (JSException ex)
         {
-            Console.WriteLine($"Error toggling theme: {ex.Message}");
+            Console.WriteLine($"[BlazorThemeService] Error toggling theme: {ex.Message}");
         }
     }
 
@@ -74,7 +72,7 @@ public class ThemeService : IThemeService
         }
         catch (JSException ex)
         {
-            Console.WriteLine($"Error setting theme: {ex.Message}");
+            Console.WriteLine($"[BlazorThemeService] Error setting theme: {ex.Message}");
         }
     }
 

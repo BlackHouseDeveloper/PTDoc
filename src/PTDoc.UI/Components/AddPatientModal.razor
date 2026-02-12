@@ -1,0 +1,253 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
+        <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog" 
+             aria-labelledby="modal-title" aria-describedby="modal-description" aria-modal="true">
+            
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="modal-title-container">
+                    <svg class="modal-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <h2 id="modal-title">Add New Patient</h2>
+                </div>
+                <p id="modal-description" class="modal-description">Create a new patient profile to begin treatment</p>
+            </div>
+
+            <!-- Modal Body -->
+            <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                <!-- First Name & Last Name Row -->
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="firstName" class="form-label">First Name <span class="required">*</span></label>
+                        <input 
+                            id="firstName" 
+                            type="text" 
+                            class="form-input" 
+                            placeholder="John"
+                            @bind="FirstName"
+                            @ref="firstInputRef"
+                            required 
+                            aria-required="true" />
+                    </div>
+                    <div class="form-field">
+                        <label for="lastName" class="form-label">Last Name <span class="required">*</span></label>
+                        <input 
+                            id="lastName" 
+                            type="text" 
+                            class="form-input" 
+                            placeholder="Doe"
+                            @bind="LastName"
+                            required 
+                            aria-required="true" />
+                    </div>
+                </div>
+
+                <!-- Email Address -->
+                <div class="form-field">
+                    <label for="email" class="form-label">Email Address <span class="required">*</span></label>
+                    <input 
+                        id="email" 
+                        type="email" 
+                        class="form-input" 
+                        placeholder="john.doe@example.com"
+                        @bind="Email"
+                        required 
+                        aria-required="true" />
+                </div>
+
+                <!-- Phone Number -->
+                <div class="form-field">
+                    <label for="phone" class="form-label">Phone Number</label>
+                    <input 
+                        id="phone" 
+                        type="tel" 
+                        class="form-input" 
+                        placeholder="(555) 123-4567"
+                        @bind="PhoneNumber" />
+                </div>
+
+                <!-- Date of Birth -->
+                <div class="form-field">
+                    <label for="dob" class="form-label">Date of Birth</label>
+                    <input 
+                        id="dob" 
+                        type="date" 
+                        class="form-input" 
+                        @bind="DateOfBirth" />
+                </div>
+
+                <!-- Info Box -->
+                <div class="info-box" role="note">
+                    <p><strong>Note:</strong> After adding the patient, you can send them an intake form via email.</p>
+                </div>
+
+                <!-- Modal Footer (Buttons) -->
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" @onclick="Close">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
+                        </svg>
+                        Add Patient
+                    </button>
+                </div>
+            </form>
+
+            <!-- Close Button -->
+            <button type="button" class="modal-close" @onclick="Close" aria-label="Close modal">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<PatientFormData> OnSubmit { get; set; }
+
+    private ElementReference firstInputRef;
+    private ElementReference modalContainerRef;
+    private IJSObjectReference? modalModule;
+    private DotNetObjectReference<AddPatientModal>? dotNetRef;
+    private string modalId = $"modal-{Guid.NewGuid():N}";
+
+    private string FirstName { get; set; } = string.Empty;
+    private string LastName { get; set; } = string.Empty;
+    private string Email { get; set; } = string.Empty;
+    private string PhoneNumber { get; set; } = string.Empty;
+    private DateTime? DateOfBirth { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load the JS module once
+            try
+            {
+                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef = DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+            }
+        }
+
+        if (IsOpen && modalModule != null && dotNetRef != null)
+        {
+            try
+            {
+                // Lock body scroll
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                
+                // Register ESC key handler
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                
+                // Focus first input
+                await firstInputRef.FocusAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+            }
+        }
+        else if (!IsOpen && modalModule != null)
+        {
+            try
+            {
+                // Unlock body scroll
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                
+                // Unregister ESC handler
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs()
+    {
+        await Close();
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+        
+        // Clear form
+        FirstName = string.Empty;
+        LastName = string.Empty;
+        Email = string.Empty;
+        PhoneNumber = string.Empty;
+        DateOfBirth = null;
+    }
+
+    private void HandleOverlayClick()
+    {
+        // Close modal when clicking overlay
+        _ = Close();
+    }
+
+    private async Task HandleSubmit()
+    {
+        var formData = new PatientFormData
+        {
+            FirstName = FirstName,
+            LastName = LastName,
+            Email = Email,
+            PhoneNumber = PhoneNumber,
+            DateOfBirth = DateOfBirth
+        };
+
+        await OnSubmit.InvokeAsync(formData);
+        await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Clean up JS interop
+        if (modalModule != null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                await modalModule.DisposeAsync();
+            }
+            catch { /* Ignore disposal errors */ }
+        }
+
+        dotNetRef?.Dispose();
+    }
+
+    public class PatientFormData
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public DateTime? DateOfBirth { get; set; }
+    }
+}

@@ -1,4 +1,5 @@
 @namespace PTDoc.UI.Components.Layout
+@rendermode InteractiveServer
 @inject IThemeService ThemeService
 @inject IJSRuntime JS
 @implements IDisposable
@@ -73,7 +74,7 @@
 
     private async Task ToggleTheme()
     {
-        await ThemeService.ToggleThemeAsync();
+        await ThemeService.ToggleAsync();
     }
 
     private void OnThemeChanged()

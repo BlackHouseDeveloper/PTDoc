@@ -325,9 +325,14 @@ h1:focus {
     position: relative;
 }
 
-/* Theme toggle on auth pages should use contrasting color */
-.auth-shell .theme-toggle .theme-icon {
-    color: var(--foreground);
+/* Theme toggle on auth pages - keep icon at Primary color in both themes */
+.auth-shell .theme-toggle.login-theme-toggle .theme-icon {
+    color: var(--primary);
+}
+
+/* Keep Primary color in both light and dark themes for Login page */
+.dark .auth-shell .theme-toggle.login-theme-toggle .theme-icon {
+    color: var(--primary);
 }
 
 .auth-brand {
