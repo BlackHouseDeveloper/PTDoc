@@ -1,0 +1,151 @@
+@* Clinician Scheduler Component *@
+
+<div class="clinician-scheduler">
+    <div class="scheduler-viewport">
+        <div class="scheduler-grid">
+            @* Time Column *@
+            <div class="time-column">
+                <div class="time-header"></div>
+                @foreach (var time in TimeSlots)
+                {
+                    <div class="time-slot">@time</div>
+                }
+            </div>
+            
+            @* Clinician Columns *@
+            @if (Clinicians != null)
+            {
+                @foreach (var clinician in Clinicians)
+                {
+                    <div class="clinician-column">
+                        <div class="clinician-header">
+                            <div class="clinician-info">
+                                <h3>@clinician.Name</h3>
+                                <p>@clinician.AppointmentCount appts</p>
+                            </div>
+                        </div>
+                        
+                        <div class="appointments-container">
+                            @for (int i = 0; i < GetTimeSlotCount(); i++)
+                            {
+                                <div class="appointment-slot"></div>
+                            }
+                            
+                            @* Render appointments for this clinician *@
+                            @foreach (var appt in GetAppointmentsForClinician(clinician.Id))
+                            {
+                                <div class="appointment-block @GetAppointmentClass(appt)" 
+                                     style="top: @GetAppointmentTop(appt)px; height: @GetAppointmentHeight(appt)px;">
+                                    <div class="appointment-content">
+                                        <div class="appointment-time">
+                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+                                                <path d="M6 3V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                            </svg>
+                                            <span>@appt.Time</span>
+                                        </div>
+                                        <div class="appointment-patient">@appt.PatientName</div>
+                                        @if (appt.IsCompleted)
+                                        {
+                                            <div class="appointment-status">
+                                                <span class="checkmark">✓</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public DateTime SelectedDate { get; set; } = DateTime.Today;
+
+    [Parameter]
+    public List<ClinicianSchedule>? Clinicians { get; set; }
+
+    private List<string> TimeSlots => new()
+    {
+        "7:00 AM", "8:00 AM", "9:00 AM", "10:00 AM", "11:00 AM",
+        "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM",
+        "5:00 PM", "6:00 PM", "7:00 PM"
+    };
+
+    private int GetTimeSlotCount() => 13 * 4; // 13 hours × 4 slots per hour
+
+    protected override void OnInitialized()
+    {
+        Clinicians ??= GetMockClinicians();
+    }
+
+    private List<ClinicianSchedule> GetMockClinicians()
+    {
+        return new List<ClinicianSchedule>
+        {
+            new() { Id = 1, Name = "Dr. Emily Chen", AppointmentCount = 4 },
+            new() { Id = 2, Name = "Dr. Sarah Mitchell", AppointmentCount = 4 }
+        };
+    }
+
+    private List<AppointmentBlock> GetAppointmentsForClinician(int clinicianId)
+    {
+        // Mock data matching Figma
+        if (clinicianId == 1)
+        {
+            return new List<AppointmentBlock>
+            {
+                new() { Time = "9:30 AM", PatientName = "Tom Anderson", Status = "completed", StartMinute = 150, DurationMinutes = 30 },
+                new() { Time = "10:00 AM", PatientName = "Maria Garcia", Status = "completed", StartMinute = 180, DurationMinutes = 45 },
+                new() { Time = "1:00 PM", PatientName = "Carlos Ramirez", Status = "in-progress", StartMinute = 360, DurationMinutes = 30, IsCompleted = false }
+            };
+        }
+        return new List<AppointmentBlock>();
+    }
+
+    private string GetAppointmentClass(AppointmentBlock appt)
+    {
+        return appt.Status switch
+        {
+            "in-progress" => "in-progress",
+            "checked-in" => "checked-in",
+            "missing-intake" => "missing-intake",
+            "completed" => "completed",
+            _ => ""
+        };
+    }
+
+    private int GetAppointmentTop(AppointmentBlock appt)
+    {
+        // 56px header + (minutes from 7am × pixels per minute)
+        // Each 96px slot = 60 minutes, so 1.6px per minute
+        return 56 + (int)(appt.StartMinute * 1.6);
+    }
+
+    private int GetAppointmentHeight(AppointmentBlock appt)
+    {
+        // 1.6px per minute
+        return (int)(appt.DurationMinutes * 1.6);
+    }
+
+    public class ClinicianSchedule
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public int AppointmentCount { get; set; }
+    }
+
+    public class AppointmentBlock
+    {
+        public string Time { get; set; } = "";
+        public string PatientName { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int StartMinute { get; set; } // Minutes from 7:00 AM
+        public int DurationMinutes { get; set; }
+        public bool IsCompleted { get; set; }
+    }
+}

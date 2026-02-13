@@ -1,0 +1,28 @@
+.appointments-page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--background);
+}
+
+.appointments-content {
+    display: flex;
+    gap: var(--spacing-8);
+    padding: var(--spacing-6);
+    flex: 1;
+    overflow: hidden;
+}
+
+@media (max-width: 1199px) {
+    .appointments-content {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 767px) {
+    .appointments-content {
+        padding: var(--spacing-4);
+        gap: var(--spacing-6);
+    }
+}

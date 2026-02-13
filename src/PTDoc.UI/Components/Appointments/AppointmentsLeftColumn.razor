@@ -1,0 +1,58 @@
+@* Appointments Left Column - Composition Component *@
+
+<div class="appointments-left-column">
+    <AppointmentsViewTabs SelectedView="@SelectedView" 
+                          OnViewChanged="OnViewChanged" />
+    
+    <button type="button" class="filters-button">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 4H14M4 8H12M6 12H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Filters</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
+    
+    <AppointmentsDaySwitcher SelectedDate="SelectedDate"
+                             OnPrevDay="OnPrevDay"
+                             OnNextDay="OnNextDay"
+                             OnToday="OnToday" />
+    
+    <PatientStatusOverview TotalCount="TotalCount"
+                          InProgressCount="InProgressCount"
+                          CheckedInCount="CheckedInCount"
+                          MissingIntakeCount="MissingIntakeCount" />
+</div>
+
+@code {
+    [Parameter]
+    public string SelectedView { get; set; } = "Today";
+
+    [Parameter]
+    public EventCallback<string> OnViewChanged { get; set; }
+
+    [Parameter]
+    public DateTime SelectedDate { get; set; } = DateTime.Today;
+
+    [Parameter]
+    public EventCallback OnPrevDay { get; set; }
+
+    [Parameter]
+    public EventCallback OnNextDay { get; set; }
+
+    [Parameter]
+    public EventCallback OnToday { get; set; }
+
+    [Parameter]
+    public int TotalCount { get; set; } = 12;
+
+    [Parameter]
+    public int InProgressCount { get; set; } = 1;
+
+    [Parameter]
+    public int CheckedInCount { get; set; } = 1;
+
+    [Parameter]
+    public int MissingIntakeCount { get; set; } = 2;
+}
