@@ -15,35 +15,35 @@ public static class ComplianceEndpoints
         var complianceGroup = app.MapGroup("/api/v1/compliance")
             .WithTags("Compliance")
             .RequireAuthorization();
-        
+
         // Rule evaluation endpoints
-        complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}", 
+        complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}",
             async (Guid patientId, IRulesEngine rulesEngine) =>
             {
                 var result = await rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
                 return Results.Ok(result);
             })
             .WithName("EvaluateProgressNoteFrequency");
-        
-        complianceGroup.MapPost("/evaluate/8-minute-rule", 
+
+        complianceGroup.MapPost("/evaluate/8-minute-rule",
             async ([FromBody] EightMinuteRuleRequest request, IRulesEngine rulesEngine) =>
             {
                 var result = await rulesEngine.ValidateEightMinuteRuleAsync(
-                    request.TotalMinutes, 
+                    request.TotalMinutes,
                     request.CptCodes);
                 return Results.Ok(result);
             })
             .WithName("EvaluateEightMinuteRule");
-        
-        complianceGroup.MapPost("/evaluate/signature-eligible/{noteId:guid}", 
+
+        complianceGroup.MapPost("/evaluate/signature-eligible/{noteId:guid}",
             async (Guid noteId, IRulesEngine rulesEngine) =>
             {
                 var result = await rulesEngine.ValidateSignatureEligibilityAsync(noteId);
                 return Results.Ok(result);
             })
             .WithName("EvaluateSignatureEligibility");
-        
-        complianceGroup.MapPost("/evaluate/immutability/{noteId:guid}", 
+
+        complianceGroup.MapPost("/evaluate/immutability/{noteId:guid}",
             async (Guid noteId, IRulesEngine rulesEngine) =>
             {
                 var result = await rulesEngine.ValidateImmutabilityAsync(noteId);
@@ -51,15 +51,15 @@ public static class ComplianceEndpoints
             })
             .WithName("EvaluateImmutability");
     }
-    
+
     public static void MapNoteEndpoints(this WebApplication app)
     {
         var notesGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
             .RequireAuthorization();
-        
+
         // Signature endpoint
-        notesGroup.MapPost("/{noteId:guid}/sign", 
+        notesGroup.MapPost("/{noteId:guid}/sign",
             async (Guid noteId, ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
@@ -67,14 +67,14 @@ public static class ComplianceEndpoints
                 {
                     return Results.Unauthorized();
                 }
-                
+
                 var result = await signatureService.SignNoteAsync(noteId, userId);
-                
+
                 if (!result.Success)
                 {
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
-                
+
                 return Results.Ok(new
                 {
                     success = true,
@@ -83,10 +83,10 @@ public static class ComplianceEndpoints
                 });
             })
             .WithName("SignNote");
-        
+
         // Addendum endpoint
-        notesGroup.MapPost("/{noteId:guid}/addendum", 
-            async (Guid noteId, [FromBody] AddendumRequest request, 
+        notesGroup.MapPost("/{noteId:guid}/addendum",
+            async (Guid noteId, [FromBody] AddendumRequest request,
                    ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
@@ -94,14 +94,14 @@ public static class ComplianceEndpoints
                 {
                     return Results.Unauthorized();
                 }
-                
+
                 var result = await signatureService.CreateAddendumAsync(noteId, request.Content, userId);
-                
+
                 if (!result.Success)
                 {
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
-                
+
                 return Results.Ok(new
                 {
                     success = true,
@@ -109,9 +109,9 @@ public static class ComplianceEndpoints
                 });
             })
             .WithName("CreateAddendum");
-        
+
         // Verify signature endpoint
-        notesGroup.MapGet("/{noteId:guid}/verify-signature", 
+        notesGroup.MapGet("/{noteId:guid}/verify-signature",
             async (Guid noteId, ISignatureService signatureService) =>
             {
                 var isValid = await signatureService.VerifySignatureAsync(noteId);

@@ -18,21 +18,21 @@ public class MockDashboardService : IDashboardService
             PatientVolume = GenerateMockPatientVolume(PatientVolumePeriod.Last7Days),
             LastUpdated = DateTime.UtcNow
         };
-        
+
         return Task.FromResult(data);
     }
-    
+
     public Task<DashboardMetrics> GetMetricsAsync(string? userId = null, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(GenerateMockMetrics());
     }
-    
+
     public Task<List<RecentActivity>> GetRecentActivitiesAsync(int count = 10, CancellationToken cancellationToken = default)
     {
         var activities = GenerateMockActivities();
         return Task.FromResult(activities.Take(count).ToList());
     }
-    
+
     public Task<List<ExpiringAuthorization>> GetExpiringAuthorizationsAsync(int daysThreshold = 30, CancellationToken cancellationToken = default)
     {
         var authorizations = GenerateMockExpiringAuthorizations();
@@ -40,31 +40,31 @@ public class MockDashboardService : IDashboardService
             .Where(a => DashboardHelpers.DaysUntilExpiration(a.ExpirationDate) <= daysThreshold)
             .ToList());
     }
-    
+
     public Task<PatientVolumeData> GetPatientVolumeAsync(PatientVolumePeriod period, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(GenerateMockPatientVolume(period));
     }
-    
+
     private static DashboardMetrics GenerateMockMetrics()
     {
         return new DashboardMetrics
         {
             ActivePatients = 247,
             ActivePatientsTrend = 12, // +12 from last period
-            
+
             PendingNotes = 18,
             UrgentPendingNotes = 5, // 5 need attention within 24 hours
-            
+
             AuthorizationsExpiring = 23,
             AuthorizationsExpiringUrgent = 8 // 8 expiring within 7 days
         };
     }
-    
+
     private static List<RecentActivity> GenerateMockActivities()
     {
         var now = DateTime.UtcNow;
-        
+
         return new List<RecentActivity>
         {
             new()
@@ -141,11 +141,11 @@ public class MockDashboardService : IDashboardService
             }
         };
     }
-    
+
     private static List<ExpiringAuthorization> GenerateMockExpiringAuthorizations()
     {
         var today = DateTime.UtcNow.Date;
-        
+
         var authorizations = new List<ExpiringAuthorization>
         {
             new()
@@ -259,7 +259,7 @@ public class MockDashboardService : IDashboardService
                 Payer = "Cigna"
             }
         };
-        
+
         // Calculate urgency for each authorization
         var updatedAuthorizations = new List<ExpiringAuthorization>();
         foreach (var auth in authorizations)
@@ -267,10 +267,10 @@ public class MockDashboardService : IDashboardService
             var updated = auth with { Urgency = DashboardHelpers.CalculateAuthorizationUrgency(auth.ExpirationDate) };
             updatedAuthorizations.Add(updated);
         }
-        
+
         return updatedAuthorizations.OrderBy(a => a.ExpirationDate).ToList();
     }
-    
+
     private static PatientVolumeData GenerateMockPatientVolume(PatientVolumePeriod period)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -281,29 +281,29 @@ public class MockDashboardService : IDashboardService
             PatientVolumePeriod.Last90Days => 90,
             _ => 7
         };
-        
+
         var random = new Random(42); // Fixed seed for consistent mock data
         var dailyData = new List<DailyVolume>();
-        
+
         for (int i = days - 1; i >= 0; i--)
         {
             var date = today.AddDays(-i);
             var baseCount = 25;
             var variance = random.Next(-8, 12);
             var count = Math.Max(0, baseCount + variance);
-            
+
             dailyData.Add(new DailyVolume
             {
                 Date = date,
                 PatientCount = count
             });
         }
-        
+
         var total = dailyData.Sum(d => d.PatientCount);
         var average = dailyData.Average(d => d.PatientCount);
         var peak = dailyData.MaxBy(d => d.PatientCount);
         var trend = DashboardHelpers.CalculateTrend(dailyData);
-        
+
         return new PatientVolumeData
         {
             Period = period,

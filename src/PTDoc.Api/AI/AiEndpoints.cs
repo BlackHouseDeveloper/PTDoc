@@ -70,7 +70,7 @@ public static class AiEndpoints
                     { "Timestamp", DateTime.UtcNow }
                 }
             };
-            
+
             // Log as rule evaluation since it's the closest existing method
             // Alternatively, we could add a new LogAiGenerationAsync method
             await auditService.LogRuleEvaluationAsync(auditEvent, cancellationToken);
@@ -139,7 +139,7 @@ public static class AiEndpoints
                     { "Timestamp", DateTime.UtcNow }
                 }
             };
-            
+
             // Log as rule evaluation since it's the closest existing method
             await auditService.LogRuleEvaluationAsync(auditEvent, cancellationToken);
         }

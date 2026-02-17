@@ -16,11 +16,11 @@ public static class PdfEndpoints
         var group = app.MapGroup("/api/v1/notes")
             .RequireAuthorization()
             .WithTags("PDF Export");
-        
+
         group.MapPost("/{noteId}/export/pdf", ExportNoteToPdf)
             .WithName("ExportNoteToPdf");
     }
-    
+
     private static async Task<IResult> ExportNoteToPdf(
         [FromRoute] Guid noteId,
         [FromServices] IPdfRenderer pdfRenderer,
@@ -35,9 +35,9 @@ public static class PdfEndpoints
                 IncludeMedicareCompliance = true,
                 IncludeSignatureBlock = true
             };
-            
+
             var result = await pdfRenderer.ExportNoteToPdfAsync(request);
-            
+
             // Audit PDF export (NO PHI - only metadata)
             var userId = httpContext.User.FindFirst("sub")?.Value ?? "system";
             if (Guid.TryParse(userId, out var userGuid))
@@ -55,7 +55,7 @@ public static class PdfEndpoints
                         }
                     });
             }
-            
+
             return Results.File(
                 result.PdfBytes,
                 result.ContentType,

@@ -12,7 +12,7 @@ public class RoleService : IRoleService
     {
         return user.Roles.Contains(role, StringComparer.OrdinalIgnoreCase);
     }
-    
+
     public DashboardLayoutConfig GetDashboardLayout(UserInfo user)
     {
         // Admin gets full access
@@ -27,7 +27,7 @@ public class RoleService : IRoleService
                 WelcomeMessage = "Admin Dashboard"
             };
         }
-        
+
         // PT gets standard clinical view
         if (HasRole(user, Roles.PT))
         {
@@ -40,7 +40,7 @@ public class RoleService : IRoleService
                 WelcomeMessage = "Welcome back"
             };
         }
-        
+
         // PTA gets clinical view with focus on assigned patients
         if (HasRole(user, Roles.PTA))
         {
@@ -53,7 +53,7 @@ public class RoleService : IRoleService
                 WelcomeMessage = "Welcome back"
             };
         }
-        
+
         // Front Desk focuses on schedule
         if (HasRole(user, Roles.FrontDesk))
         {
@@ -66,7 +66,7 @@ public class RoleService : IRoleService
                 WelcomeMessage = "Front Desk Dashboard"
             };
         }
-        
+
         // Billing focuses on authorizations
         if (HasRole(user, Roles.Billing))
         {
@@ -79,7 +79,7 @@ public class RoleService : IRoleService
                 WelcomeMessage = "Billing Dashboard"
             };
         }
-        
+
         // Default: show everything
         return new DashboardLayoutConfig();
     }

@@ -21,22 +21,22 @@ public class NoPHIIntegrationTests : IAsyncDisposable
     private readonly SqliteConnection _connection;
     private readonly ApplicationDbContext _context;
     private readonly TestTelemetrySink _telemetrySink;
-    
+
     public NoPHIIntegrationTests()
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
-        
+
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlite(_connection)
             .Options;
-        
+
         _context = new ApplicationDbContext(options);
         _context.Database.Migrate();
-        
+
         _telemetrySink = new TestTelemetrySink();
     }
-    
+
     [Fact]
     public async Task Telemetry_Contains_No_Patient_Names()
     {
@@ -48,10 +48,10 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             DateOfBirth = DateTime.UtcNow.AddYears(-45),
             Email = "john.doe@example.com"
         };
-        
+
         await _context.Patients.AddAsync(patient);
         await _context.SaveChangesAsync();
-        
+
         // Act: Log telemetry event
         await _telemetrySink.LogEventAsync("PatientCreated", "test-correlation-id", new Dictionary<string, object>
         {
@@ -59,17 +59,17 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             { "EntityType", "Patient" },
             { "Operation", "Create" }
         });
-        
+
         // Assert: Telemetry contains NO PHI
         Assert.Single(_telemetrySink.Events);
         var telemetryEvent = _telemetrySink.Events.First();
-        
+
         Assert.Contains(patient.Id.ToString(), telemetryEvent.EventName + telemetryEvent.MetadataJson);
         Assert.DoesNotContain("John", telemetryEvent.EventName + telemetryEvent.MetadataJson);
         Assert.DoesNotContain("Doe", telemetryEvent.EventName + telemetryEvent.MetadataJson);
         Assert.DoesNotContain("john.doe@example.com", telemetryEvent.EventName + telemetryEvent.MetadataJson);
     }
-    
+
     [Fact]
     public async Task Sync_Queue_Contains_Only_Entity_Type_And_ID()
     {
@@ -81,10 +81,10 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             DateOfBirth = DateTime.UtcNow.AddYears(-30),
             SyncState = SyncState.Pending
         };
-        
+
         await _context.Patients.AddAsync(patient);
         await _context.SaveChangesAsync();
-        
+
         // Create sync queue item manually (interceptor would normally do this)
         var queueItem = new SyncQueueItem
         {
@@ -94,23 +94,23 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             EnqueuedAt = DateTime.UtcNow,
             Status = SyncQueueStatus.Pending
         };
-        
+
         await _context.SyncQueueItems.AddAsync(queueItem);
         await _context.SaveChangesAsync();
-        
+
         // Act: Retrieve queue item
         var retrieved = await _context.SyncQueueItems.FirstAsync(q => q.EntityId == patient.Id);
-        
+
         // Assert: Queue item contains NO PHI
         Assert.Equal("Patient", retrieved.EntityType);
         Assert.Equal(patient.Id, retrieved.EntityId);
         Assert.Equal(SyncOperation.Create, retrieved.Operation);
-        
+
         // Ensure no PHI fields are exposed
         Assert.DoesNotContain("Jane", retrieved.EntityType);
         Assert.DoesNotContain("Smith", retrieved.EntityType);
     }
-    
+
     [Fact]
     public async Task Telemetry_For_Clinical_Notes_Contains_No_Content()
     {
@@ -121,10 +121,10 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             LastName = "Patient",
             DateOfBirth = DateTime.UtcNow.AddYears(-50)
         };
-        
+
         await _context.Patients.AddAsync(patient);
         await _context.SaveChangesAsync();
-        
+
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -132,10 +132,10 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             NoteType = NoteType.ProgressNote,
             ContentJson = "{\"content\": \"Patient has severe shoulder pain and limited ROM\"}"
         };
-        
+
         await _context.ClinicalNotes.AddAsync(note);
         await _context.SaveChangesAsync();
-        
+
         // Act: Log telemetry for note creation
         await _telemetrySink.LogEventAsync("ClinicalNoteCreated", "correlation-123", new Dictionary<string, object>
         {
@@ -144,24 +144,24 @@ public class NoPHIIntegrationTests : IAsyncDisposable
             { "NoteType", note.NoteType.ToString() },
             { "PatientId", patient.Id }
         });
-        
+
         // Assert: Telemetry contains NO clinical content
         Assert.Single(_telemetrySink.Events);
         var telemetryEvent = _telemetrySink.Events.First();
-        
+
         Assert.Contains(note.Id.ToString(), telemetryEvent.MetadataJson);
         Assert.Contains(patient.Id.ToString(), telemetryEvent.MetadataJson);
         Assert.DoesNotContain("shoulder pain", telemetryEvent.MetadataJson);
         Assert.DoesNotContain("limited ROM", telemetryEvent.MetadataJson);
     }
-    
+
     /// <summary>
     /// Test implementation of ITelemetrySink for validation
     /// </summary>
     private class TestTelemetrySink : ITelemetrySink
     {
         public List<TelemetryEvent> Events { get; } = new();
-        
+
         public Task LogEventAsync(string eventName, string correlationId, Dictionary<string, object> metadata)
         {
             Events.Add(new TelemetryEvent
@@ -171,21 +171,21 @@ public class NoPHIIntegrationTests : IAsyncDisposable
                 MetadataJson = System.Text.Json.JsonSerializer.Serialize(metadata),
                 Timestamp = DateTime.UtcNow
             });
-            
+
             return Task.CompletedTask;
         }
-        
+
         public Task LogMetricAsync(string metricName, double value, Dictionary<string, object>? metadata = null)
         {
             return Task.CompletedTask;
         }
-        
+
         public Task LogExceptionAsync(Exception exception, string correlationId, Dictionary<string, object>? metadata = null)
         {
             return Task.CompletedTask;
         }
     }
-    
+
     private class TelemetryEvent
     {
         public string EventName { get; set; } = string.Empty;
@@ -193,7 +193,7 @@ public class NoPHIIntegrationTests : IAsyncDisposable
         public string MetadataJson { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; }
     }
-    
+
     public async ValueTask DisposeAsync()
     {
         await _context.DisposeAsync();

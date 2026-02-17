@@ -18,10 +18,10 @@ public class PdfExportTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        
+
         return new ApplicationDbContext(options);
     }
-    
+
     [Fact]
     public async Task MockPdfRenderer_SignedNote_IncludesSignatureBlock()
     {
@@ -38,11 +38,11 @@ public class PdfExportTests
             SignedUtc = DateTime.UtcNow,
             SignedByUserId = Guid.NewGuid()
         };
-        
+
         context.Patients.Add(patient);
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
-        
+
         var renderer = new MockPdfRenderer(context);
         var request = new PdfExportRequest
         {
@@ -50,20 +50,20 @@ public class PdfExportTests
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = false
         };
-        
+
         // Act
         var result = await renderer.ExportNoteToPdfAsync(request);
-        
+
         // Assert
         Assert.NotNull(result.PdfBytes);
         Assert.True(result.PdfBytes.Length > 0, "PDF should not be empty");
-        
+
         var pdfText = Encoding.UTF8.GetString(result.PdfBytes);
         Assert.Contains("SIGNATURE BLOCK", pdfText);
         Assert.Contains("test-hash-123", pdfText);
         Assert.Contains("electronically signed and immutable", pdfText);
     }
-    
+
     [Fact]
     public async Task MockPdfRenderer_UnsignedNote_ShowsUnsignedDraft()
     {
@@ -78,11 +78,11 @@ public class PdfExportTests
             DateOfService = DateTime.UtcNow,
             SignatureHash = null  // Not signed
         };
-        
+
         context.Patients.Add(patient);
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
-        
+
         var renderer = new MockPdfRenderer(context);
         var request = new PdfExportRequest
         {
@@ -90,16 +90,16 @@ public class PdfExportTests
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = false
         };
-        
+
         // Act
         var result = await renderer.ExportNoteToPdfAsync(request);
-        
+
         // Assert
         var pdfText = Encoding.UTF8.GetString(result.PdfBytes);
         Assert.Contains("UNSIGNED DRAFT", pdfText);
         Assert.Contains("has not been signed", pdfText);
     }
-    
+
     [Fact]
     public async Task MockPdfRenderer_WithMedicareCompliance_IncludesComplianceBlock()
     {
@@ -113,11 +113,11 @@ public class PdfExportTests
             Patient = patient,
             DateOfService = DateTime.UtcNow
         };
-        
+
         context.Patients.Add(patient);
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
-        
+
         var renderer = new MockPdfRenderer(context);
         var request = new PdfExportRequest
         {
@@ -125,10 +125,10 @@ public class PdfExportTests
             IncludeSignatureBlock = false,
             IncludeMedicareCompliance = true
         };
-        
+
         // Act
         var result = await renderer.ExportNoteToPdfAsync(request);
-        
+
         // Assert
         var pdfText = Encoding.UTF8.GetString(result.PdfBytes);
         Assert.Contains("MEDICARE COMPLIANCE", pdfText);
@@ -136,7 +136,7 @@ public class PdfExportTests
         Assert.Contains("8-Minute Rule", pdfText);
         Assert.Contains("Progress Note Frequency", pdfText);
     }
-    
+
     [Fact]
     public async Task MockPdfRenderer_PdfExport_DoesNotModifyNoteOrSyncState()
     {
@@ -152,20 +152,20 @@ public class PdfExportTests
             LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
             SyncState = SyncState.Synced
         };
-        
+
         context.Patients.Add(patient);
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
-        
+
         var originalModified = note.LastModifiedUtc;
         var originalSyncState = note.SyncState;
-        
+
         var renderer = new MockPdfRenderer(context);
         var request = new PdfExportRequest { NoteId = note.Id };
-        
+
         // Act
         await renderer.ExportNoteToPdfAsync(request);
-        
+
         // Assert - note should not be modified
         var noteAfter = await context.ClinicalNotes.FindAsync(note.Id);
         Assert.Equal(originalModified, noteAfter!.LastModifiedUtc);

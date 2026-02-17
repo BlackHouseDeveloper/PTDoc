@@ -15,23 +15,23 @@ namespace PTDoc.Infrastructure.Pdf;
 public class MockPdfRenderer : IPdfRenderer
 {
     private readonly ApplicationDbContext _context;
-    
+
     public MockPdfRenderer(ApplicationDbContext context)
     {
         _context = context;
     }
-    
+
     public async Task<PdfExportResult> ExportNoteToPdfAsync(PdfExportRequest request)
     {
         var note = await _context.ClinicalNotes
             .Include(n => n.Patient)
             .FirstOrDefaultAsync(n => n.Id == request.NoteId);
-        
+
         if (note == null)
         {
             throw new InvalidOperationException($"Clinical note {request.NoteId} not found.");
         }
-        
+
         var sb = new StringBuilder();
         sb.AppendLine("%PDF-1.4");
         sb.AppendLine("% Mock PDF for testing");
@@ -39,7 +39,7 @@ public class MockPdfRenderer : IPdfRenderer
         sb.AppendLine($"Patient ID: {note.PatientId}");
         sb.AppendLine($"Date of Service: {note.DateOfService:yyyy-MM-dd}");
         sb.AppendLine();
-        
+
         // Signature block
         if (request.IncludeSignatureBlock && !string.IsNullOrEmpty(note.SignatureHash))
         {
@@ -60,7 +60,7 @@ public class MockPdfRenderer : IPdfRenderer
             sb.AppendLine("═══════════════════════════════════════");
             sb.AppendLine();
         }
-        
+
         // Medicare compliance block
         if (request.IncludeMedicareCompliance)
         {
@@ -76,12 +76,12 @@ public class MockPdfRenderer : IPdfRenderer
             sb.AppendLine("Progress Note Frequency: COMPLIANT");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine("End of document");
         sb.AppendLine("%%EOF");
-        
+
         var pdfBytes = Encoding.UTF8.GetBytes(sb.ToString());
-        
+
         return new PdfExportResult
         {
             PdfBytes = pdfBytes,

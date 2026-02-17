@@ -18,7 +18,7 @@ public class SignatureService : ISignatureService
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _auditService;
     private readonly IIdentityContextAccessor _identityContext;
-    
+
     public SignatureService(
         ApplicationDbContext context,
         IAuditService auditService,
@@ -28,14 +28,14 @@ public class SignatureService : ISignatureService
         _auditService = auditService;
         _identityContext = identityContext;
     }
-    
+
     /// <summary>
     /// Signs a clinical note with SHA-256 hash of canonical content.
     /// </summary>
     public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default)
     {
         var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
-        
+
         if (note == null)
         {
             return new SignatureResult
@@ -44,7 +44,7 @@ public class SignatureService : ISignatureService
                 ErrorMessage = "Note not found"
             };
         }
-        
+
         if (!string.IsNullOrEmpty(note.SignatureHash))
         {
             return new SignatureResult
@@ -53,22 +53,22 @@ public class SignatureService : ISignatureService
                 ErrorMessage = "Note is already signed"
             };
         }
-        
+
         // Generate canonical serialization for signature
         var canonicalContent = GenerateCanonicalContent(note);
         var signatureHash = ComputeSha256Hash(canonicalContent);
-        
+
         // Update note with signature
         note.SignatureHash = signatureHash;
         note.SignedUtc = DateTime.UtcNow;
         note.SignedByUserId = userId;
-        
+
         await _context.SaveChangesAsync(ct);
-        
+
         // Audit the signature event
         await _auditService.LogNoteSignedAsync(
             AuditEvent.NoteSigned(noteId, note.NoteType.ToString(), signatureHash, userId), ct);
-        
+
         return new SignatureResult
         {
             Success = true,
@@ -76,7 +76,7 @@ public class SignatureService : ISignatureService
             SignedUtc = note.SignedUtc
         };
     }
-    
+
     /// <summary>
     /// Creates an addendum to a signed note.
     /// Preserves original signature integrity.
@@ -84,7 +84,7 @@ public class SignatureService : ISignatureService
     public async Task<AddendumResult> CreateAddendumAsync(Guid noteId, string addendumContent, Guid userId, CancellationToken ct = default)
     {
         var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
-        
+
         if (note == null)
         {
             return new AddendumResult
@@ -93,7 +93,7 @@ public class SignatureService : ISignatureService
                 ErrorMessage = "Note not found"
             };
         }
-        
+
         if (string.IsNullOrEmpty(note.SignatureHash))
         {
             return new AddendumResult
@@ -102,7 +102,7 @@ public class SignatureService : ISignatureService
                 ErrorMessage = "Cannot create addendum for unsigned note"
             };
         }
-        
+
         if (string.IsNullOrWhiteSpace(addendumContent))
         {
             return new AddendumResult
@@ -111,7 +111,7 @@ public class SignatureService : ISignatureService
                 ErrorMessage = "Addendum content cannot be empty"
             };
         }
-        
+
         // Create addendum
         var addendum = new Addendum
         {
@@ -121,39 +121,39 @@ public class SignatureService : ISignatureService
             CreatedUtc = DateTime.UtcNow,
             CreatedByUserId = userId
         };
-        
+
         _context.Addendums.Add(addendum);
         await _context.SaveChangesAsync(ct);
-        
+
         // Audit the addendum creation
         await _auditService.LogAddendumCreatedAsync(
             AuditEvent.AddendumCreated(noteId, addendum.Id, userId), ct);
-        
+
         return new AddendumResult
         {
             Success = true,
             AddendumId = addendum.Id
         };
     }
-    
+
     /// <summary>
     /// Verifies a note's signature hash matches its current content.
     /// </summary>
     public async Task<bool> VerifySignatureAsync(Guid noteId, CancellationToken ct = default)
     {
         var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
-        
+
         if (note == null || string.IsNullOrEmpty(note.SignatureHash))
         {
             return false;
         }
-        
+
         var canonicalContent = GenerateCanonicalContent(note);
         var currentHash = ComputeSha256Hash(canonicalContent);
-        
+
         return currentHash == note.SignatureHash;
     }
-    
+
     /// <summary>
     /// Generates canonical content for signature hashing.
     /// Deterministic serialization ensures stable hash values.
@@ -169,17 +169,17 @@ public class SignatureService : ISignatureService
             note.ContentJson,
             note.CptCodesJson
         };
-        
+
         // Use stable JSON serialization (sorted keys, consistent formatting)
         var options = new JsonSerializerOptions
         {
             WriteIndented = false,
             PropertyNamingPolicy = null // Use exact property names
         };
-        
+
         return JsonSerializer.Serialize(canonical, options);
     }
-    
+
     /// <summary>
     /// Computes SHA-256 hash of content.
     /// </summary>
