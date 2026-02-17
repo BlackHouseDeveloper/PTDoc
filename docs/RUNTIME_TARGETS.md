@@ -29,6 +29,12 @@ PTDoc supports multiple deployment targets with different data access patterns.
 
 ## Data Synchronization Model
 
+PTDoc implements offline-first synchronization using two core services:
+- **ISyncService** - Manages sync state, triggers, and timestamps
+- **IConnectivityService** - Monitors network connectivity in real-time
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for service interfaces and [DEVELOPMENT.md](DEVELOPMENT.md) for implementation patterns.
+
 ### Source of Truth
 
 - **API server** is always the authoritative source
@@ -70,10 +76,13 @@ GET /api/patients?updatedSince=2026-01-28T10:30:00Z
 - Deleted record IDs (soft deletes tracked)
 
 **Client responsibilities:**
-- Track last successful sync timestamp
+- Track last successful sync timestamp (via `ISyncService.LastSyncTime`)
+- Monitor connectivity status (via `IConnectivityService.IsOnline`)
 - Request delta changes on reconnection
 - Apply server changes to local database
 - Retry failed updates with conflict resolution
+
+For detailed conflict resolution rules, see [PTDocs+_Offline_Sync_Conflict_Resolution.md](PTDocs+_Offline_Sync_Conflict_Resolution.md).
 
 ## Platform-Specific Considerations
 
