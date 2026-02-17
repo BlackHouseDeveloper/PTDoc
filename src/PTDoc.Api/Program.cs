@@ -1,11 +1,35 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using PTDoc.Api.Auth;
 using PTDoc.Application.Auth;
+using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure database
+var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
+    ?? builder.Configuration.GetValue<string>("Database:Path") 
+    ?? "PTDoc.db";
+
+// Ensure directory exists
+var dbDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
+{
+    Directory.CreateDirectory(dbDirectory);
+}
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseSqlite($"Data Source={dbPath}");
+    if (builder.Environment.IsDevelopment())
+    {
+        options.EnableSensitiveDataLogging();
+        options.EnableDetailedErrors();
+    }
+});
 
 // Validate JWT configuration on startup
 var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
