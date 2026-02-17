@@ -1,0 +1,127 @@
+@* Patient Clinical Info Card - Tabbed interface for timeline, notes, and documents *@
+
+<div class="patient-clinical-info-card" data-testid="patient-clinical-info-card">
+    <div class="patient-clinical-info-tabs">
+        <button type="button" 
+                class="patient-clinical-info-tab @(selectedTab == "timeline" ? "active" : "")"
+                @onclick="@(() => SelectTab("timeline"))">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
+                <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>Timeline</span>
+        </button>
+        <button type="button" 
+                class="patient-clinical-info-tab @(selectedTab == "notes" ? "active" : "")"
+                @onclick="@(() => SelectTab("notes"))">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6L10 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M10 2V6H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Notes</span>
+        </button>
+        <button type="button" 
+                class="patient-clinical-info-tab @(selectedTab == "docs" ? "active" : "")"
+                @onclick="@(() => SelectTab("docs"))">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.33333 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6.66667L9.33333 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9.33333 2V6.66667H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Docs</span>
+        </button>
+    </div>
+
+    <div class="patient-clinical-info-content">
+        @if (selectedTab == "timeline")
+        {
+            <div class="patient-clinical-info-timeline">
+                @foreach (var entry in timelineEntries)
+                {
+                    <div class="patient-clinical-info-timeline-item">
+                        <div class="patient-clinical-info-timeline-icon @GetTimelineIconClass(entry.Type)">
+                            @((MarkupString)GetTimelineIcon(entry.Type))
+                        </div>
+                        <div class="patient-clinical-info-timeline-details">
+                            <div class="patient-clinical-info-timeline-main">
+                                <div class="patient-clinical-info-timeline-text">
+                                    <h4 class="patient-clinical-info-timeline-title">@entry.Title</h4>
+                                    <p class="patient-clinical-info-timeline-description">@entry.Description</p>
+                                </div>
+                                <div class="patient-clinical-info-timeline-meta">
+                                    <p class="patient-clinical-info-timeline-date">@entry.Date</p>
+                                    <p class="patient-clinical-info-timeline-time">@entry.Time</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else if (selectedTab == "notes")
+        {
+            <div class="patient-clinical-info-empty">
+                <p>Notes view - TODO: Implement notes list</p>
+            </div>
+        }
+        else
+        {
+            <div class="patient-clinical-info-empty">
+                <p>Documents view - TODO: Implement documents list</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PatientProfileVm Patient { get; set; } = null!;
+
+    private string selectedTab = "timeline";
+    private List<TimelineEntry> timelineEntries = new();
+
+    protected override void OnInitialized()
+    {
+        // Sample timeline data - TODO: Load from service
+        timelineEntries = new List<TimelineEntry>
+        {
+            new() { Type = "evaluation", Title = "Initial Evaluation", Description = "Comprehensive evaluation for lower back pain", Date = "1/14/2024", Time = "10:30 AM" },
+            new() { Type = "note", Title = "SOAP Note", Description = "Progress note - improved ROM in lumbar spine", Date = "1/17/2024", Time = "2:15 PM" },
+            new() { Type = "exercise", Title = "Home Exercise Program", Description = "Updated HEP with core strengthening exercises", Date = "1/21/2024", Time = "11:00 AM" }
+        };
+    }
+
+    private void SelectTab(string tab)
+    {
+        selectedTab = tab;
+    }
+
+    private string GetTimelineIconClass(string type)
+    {
+        return type switch
+        {
+            "evaluation" => "icon-evaluation",
+            "note" => "icon-note",
+            "exercise" => "icon-exercise",
+            _ => "icon-default"
+        };
+    }
+
+    private string GetTimelineIcon(string type)
+    {
+        return type switch
+        {
+            "evaluation" => @"<svg width=""20"" height=""20"" viewBox=""0 0 20 20"" fill=""none"" xmlns=""http://www.w3.org/2000/svg""><path d=""M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18Z"" stroke=""currentColor"" stroke-width=""2""/><path d=""M10 6V10L13 13"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round""/></svg>",
+            "note" => @"<svg width=""20"" height=""20"" viewBox=""0 0 20 20"" fill=""none"" xmlns=""http://www.w3.org/2000/svg""><path d=""M12 3H4C3.44772 3 3 3.44772 3 4V16C3 16.5523 3.44772 17 4 17H16C16.5523 17 17 16.5523 17 16V8L12 3Z"" stroke=""currentColor"" stroke-width=""2""/><path d=""M12 3V8H17"" stroke=""currentColor"" stroke-width=""2""/></svg>",
+            "exercise" => @"<svg width=""20"" height=""20"" viewBox=""0 0 20 20"" fill=""none"" xmlns=""http://www.w3.org/2000/svg""><path d=""M16 6L10 12L6 8L2 12"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""/><path d=""M12 6H16V10"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""/></svg>",
+            _ => @"<svg width=""20"" height=""20"" viewBox=""0 0 20 20"" fill=""none"" xmlns=""http://www.w3.org/2000/svg""><circle cx=""10"" cy=""10"" r=""8"" stroke=""currentColor"" stroke-width=""2""/></svg>"
+        };
+    }
+
+    public class TimelineEntry
+    {
+        public string Type { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Date { get; set; } = string.Empty;
+        public string Time { get; set; } = string.Empty;
+    }
+}

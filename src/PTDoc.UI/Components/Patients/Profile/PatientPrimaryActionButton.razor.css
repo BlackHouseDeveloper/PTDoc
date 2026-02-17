@@ -1,0 +1,38 @@
+.patient-primary-action-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-4);
+    width: 100%;
+    height: 44px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 20px;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.patient-primary-action-button:hover {
+    opacity: 0.9;
+}
+
+.patient-primary-action-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patient-primary-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.patient-primary-action-icon svg {
+    width: 16px;
+    height: 16px;
+}
