@@ -1,0 +1,25 @@
+.patient-profile-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: linear-gradient(to bottom, var(--background), var(--muted));
+}
+
+.patient-profile-page-body {
+    flex: 1;
+    padding: var(--spacing-8);
+}
+
+.patient-profile-page-container {
+    max-width: 1448px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+}
+
+@media (max-width: 767px) {
+    .patient-profile-page-body {
+        padding: var(--spacing-4);
+    }
+}

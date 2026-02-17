@@ -1,0 +1,136 @@
+@* Patient Demographics Card - Editable patient information *@
+
+<div class="patient-demographics-card" data-testid="patient-demographics-card">
+    <div class="patient-demographics-card-header">
+        <h2 class="patient-demographics-card-title">Patient Information</h2>
+        <button type="button" 
+                class="patient-demographics-card-edit-btn @(isEditing ? "editing" : "")" 
+                @onclick="ToggleEdit"
+                aria-label="@(isEditing ? "Cancel editing" : "Edit patient information")">
+            @if (isEditing)
+            {
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Cancel</span>
+            }
+            else
+            {
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.3333 2.00004C11.5084 1.82494 11.716 1.68605 11.9447 1.59129C12.1735 1.49653 12.419 1.44775 12.6667 1.44775C12.9143 1.44775 13.1598 1.49653 13.3886 1.59129C13.6174 1.68605 13.8249 1.82494 14 2.00004C14.1751 2.17513 14.314 2.38268 14.4088 2.61149C14.5035 2.8403 14.5523 3.08579 14.5523 3.33337C14.5523 3.58096 14.5035 3.82645 14.4088 4.05526C14.314 4.28407 14.1751 4.49162 14 4.66671L5.00001 13.6667L1.33334 14.6667L2.33334 11L11.3333 2.00004Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Edit</span>
+            }
+        </button>
+    </div>
+
+    <div class="patient-demographics-card-body">
+        @if (!isEditing)
+        {
+            <!-- View Mode -->
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label">Full Name</label>
+                    <div class="patient-demographics-value-display">@Patient.DisplayName</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label">Date of Birth</label>
+                    <div class="patient-demographics-value-display">@Patient.DateOfBirth</div>
+                </div>
+            </div>
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field patient-demographics-field-full">
+                    <label class="patient-demographics-label">Email Address</label>
+                    <div class="patient-demographics-value-display">@Patient.Email</div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Edit Mode -->
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-name">Full Name</label>
+                    <input id="edit-name" type="text" class="patient-demographics-input" @bind="editName" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-dob">Date of Birth</label>
+                    <input id="edit-dob" type="text" class="patient-demographics-input" @bind="editDateOfBirth" />
+                </div>
+            </div>
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field patient-demographics-field-full">
+                    <label class="patient-demographics-label" for="edit-email">Email Address</label>
+                    <input id="edit-email" type="email" class="patient-demographics-input" @bind="editEmail" />
+                </div>
+            </div>
+
+            <div class="patient-demographics-edit-actions">
+                <button type="button" class="patient-demographics-save-btn" @onclick="HandleSave">
+                    Save Changes
+                </button>
+            </div>
+        }
+
+        <div class="patient-demographics-divider"></div>
+
+        <div class="patient-demographics-section">
+            <label class="patient-demographics-label">Flags & Comorbidities</label>
+            <div class="patient-demographics-badges">
+                @foreach (var flag in Patient.FlagsAndComorbidities)
+                {
+                    <span class="patient-demographics-badge">@flag</span>
+                }
+            </div>
+        </div>
+
+        <div class="patient-demographics-divider"></div>
+
+        <button type="button" class="patient-demographics-insurance-btn" @onclick="HandleInsuranceClick">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 6H14L8 14V8H4L10 2V6Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Insurance & Authorization</span>
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PatientProfileVm Patient { get; set; } = null!;
+
+    private bool isEditing = false;
+    private string editName = string.Empty;
+    private string editDateOfBirth = string.Empty;
+    private string editEmail = string.Empty;
+
+    private void ToggleEdit()
+    {
+        if (isEditing)
+        {
+            // Cancel - reset values
+            isEditing = false;
+        }
+        else
+        {
+            // Start editing - load current values
+            editName = Patient.DisplayName;
+            editDateOfBirth = Patient.DateOfBirth ?? string.Empty;
+            editEmail = Patient.Email ?? string.Empty;
+            isEditing = true;
+        }
+    }
+
+    private void HandleSave()
+    {
+        // TODO: Validation rules
+        // TODO: Save via IPatientService.UpdateDemographics(...)
+        Console.WriteLine($"Saving demographics: {editName}, {editDateOfBirth}, {editEmail}");
+        isEditing = false;
+    }
+
+    private void HandleInsuranceClick()
+    {
+        // TODO: Navigate to insurance/authorization page or modal
+        Console.WriteLine("Insurance & Authorization clicked");
+    }
+}

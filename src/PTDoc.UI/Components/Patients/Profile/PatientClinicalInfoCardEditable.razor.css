@@ -1,0 +1,164 @@
+.patient-clinical-info-card {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 2px;
+}
+
+.patient-clinical-info-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: var(--muted);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-1);
+    gap: 0;
+}
+
+.patient-clinical-info-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-3);
+    height: 44px;
+    padding: 1px var(--spacing-4);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xl);
+    color: var(--card-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 20px;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.patient-clinical-info-tab:hover {
+    background: rgba(var(--primary-rgb), 0.1);
+}
+
+.patient-clinical-info-tab.active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.patient-clinical-info-tab:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patient-clinical-info-content {
+    padding: var(--spacing-6);
+}
+
+.patient-clinical-info-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+}
+
+.patient-clinical-info-timeline-item {
+    display: flex;
+    gap: var(--spacing-4);
+    background: var(--muted);
+    padding: var(--spacing-6);
+    border-radius: var(--radius-lg);
+}
+
+.patient-clinical-info-timeline-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+.patient-clinical-info-timeline-icon.icon-evaluation {
+    background: rgba(var(--info-rgb), 0.1);
+    color: var(--info);
+}
+
+.patient-clinical-info-timeline-icon.icon-note {
+    background: rgba(var(--primary-rgb), 0.1);
+    color: var(--success);
+}
+
+.patient-clinical-info-timeline-icon.icon-exercise {
+    background: var(--accent);
+    color: var(--primary);
+}
+
+.patient-clinical-info-timeline-details {
+    flex: 1;
+}
+
+.patient-clinical-info-timeline-main {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+}
+
+.patient-clinical-info-timeline-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.patient-clinical-info-timeline-title {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--card-foreground);
+    margin: 0;
+}
+
+.patient-clinical-info-timeline-description {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: 20px;
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
+.patient-clinical-info-timeline-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+}
+
+.patient-clinical-info-timeline-date,
+.patient-clinical-info-timeline-time {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: 20px;
+    color: var(--muted-foreground);
+    margin: 0;
+    text-align: right;
+}
+
+.patient-clinical-info-empty {
+    padding: var(--spacing-16);
+    text-align: center;
+    color: var(--muted-foreground);
+}
+
+@media (max-width: 767px) {
+    .patient-clinical-info-tabs {
+        grid-template-columns: 1fr;
+    }
+
+    .patient-clinical-info-timeline-main {
+        flex-direction: column;
+    }
+
+    .patient-clinical-info-timeline-meta {
+        align-items: flex-start;
+    }
+}

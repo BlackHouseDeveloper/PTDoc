@@ -1,9 +1,169 @@
 @page "/patients"
 @attribute [Authorize]
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
 
 <PageTitle>Patients - PTDoc</PageTitle>
 
-<div class="page-container">
-    <h1>Patients</h1>
-    <p>View and manage patient records.</p>
+<div class="patients-page">
+    <PatientPageHeader 
+        Title="Patients" 
+        Subtitle="@GetSubtitle()"
+        ShowBackButton="false">
+        <Actions>
+            <button type="button" class="patients-add-button" @onclick="OpenAddPatientModal" aria-label="Add new patient">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M8 3.33333V12.6667M3.33333 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Add Patient</span>
+            </button>
+        </Actions>
+    </PatientPageHeader>
+
+    <div class="patients-page-body">
+        <div class="patients-page-search">
+            <PatientSearchInput 
+                @bind-Value="searchQuery" 
+                Placeholder="Search by name or DOB" 
+            />
+        </div>
+
+        <div class="patients-page-content">
+            @if (isLoading)
+            {
+                <div class="patients-page-loading">
+                    <p>Loading patients...</p>
+                    @* TODO: Replace with LoadingSkeleton component *@
+                </div>
+            }
+            else
+            {
+                <PatientCardSection 
+                    Items="@GetFilteredPatients()" 
+                    OnCardClick="@HandlePatientClick" 
+                />
+            }
+        </div>
+    </div>
 </div>
+
+<AddPatientModal 
+    @bind-IsOpen="isAddPatientModalOpen"
+    OnSubmit="@HandleAddPatient"
+/>
+
+@code {
+    private bool isLoading = false;
+    private bool isAddPatientModalOpen = false;
+    private string searchQuery = string.Empty;
+    private List<PatientListItemVm> patients = new();
+
+    protected override void OnInitialized()
+    {
+        // TODO: Replace with actual service call to fetch patients
+        LoadSampleData();
+        Console.WriteLine($"Patients page initialized with {patients.Count} patients");
+    }
+
+    private void LoadSampleData()
+    {
+        patients = new List<PatientListItemVm>
+        {
+            new()
+            {
+                Id = "1",
+                DisplayName = "Sarah Johnson",
+                DateOfBirth = "Mar 14, 1985",
+                LastVisit = "Sep 30, 2024",
+                StatusLabel = "Active",
+                StatusVariant = BadgeVariant.Success
+            },
+            new()
+            {
+                Id = "2",
+                DisplayName = "Michael Chen",
+                DateOfBirth = "Jul 21, 1992",
+                LastVisit = "Sep 27, 2024",
+                StatusLabel = "Active",
+                StatusVariant = BadgeVariant.Success
+            },
+            new()
+            {
+                Id = "3",
+                DisplayName = "Emily Rodriguez",
+                DateOfBirth = "Nov 7, 1978",
+                LastVisit = "Sep 14, 2024",
+                StatusLabel = "Pending",
+                StatusVariant = BadgeVariant.Warning
+            },
+            new()
+            {
+                Id = "4",
+                DisplayName = "James Williams",
+                DateOfBirth = "Feb 3, 1990",
+                LastVisit = "Sep 5, 2024",
+                StatusLabel = "Active",
+                StatusVariant = BadgeVariant.Success
+            },
+            new()
+            {
+                Id = "5",
+                DisplayName = "Lisa Anderson",
+                DateOfBirth = "May 18, 1982",
+                LastVisit = "Aug 22, 2024",
+                StatusLabel = "Active",
+                StatusVariant = BadgeVariant.Success
+            },
+            new()
+            {
+                Id = "6",
+                DisplayName = "Robert Martinez",
+                DateOfBirth = "Dec 9, 1975",
+                LastVisit = "Aug 10, 2024",
+                StatusLabel = "Inactive",
+                StatusVariant = BadgeVariant.Default
+            }
+        };
+    }
+
+    private string GetSubtitle()
+    {
+        var count = patients.Count;
+        return count == 1 ? "1 total patient" : $"{count} total patients";
+    }
+
+    private IReadOnlyList<PatientListItemVm> GetFilteredPatients()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            Console.WriteLine($"GetFilteredPatients: returning all {patients.Count} patients");
+            return patients;
+        }
+
+        // TODO: Implement proper search logic with service integration
+        var query = searchQuery.ToLowerInvariant();
+        var filtered = patients.Where(p => 
+            p.DisplayName.ToLowerInvariant().Contains(query) ||
+            (p.DateOfBirth?.ToLowerInvariant().Contains(query) ?? false)
+        ).ToList();
+        Console.WriteLine($"GetFilteredPatients: filtered to {filtered.Count} patients");
+        return filtered;
+    }
+
+    private void OpenAddPatientModal()
+    {
+        isAddPatientModalOpen = true;
+    }
+
+    private void HandleAddPatient(AddPatientModal.PatientFormData formData)
+    {
+        // TODO: Integrate with patient service to add new patient
+        Console.WriteLine($"Adding patient: {formData.FirstName} {formData.LastName}");
+        // Modal will close automatically after OnSubmit
+    }
+
+    private void HandlePatientClick(PatientListItemVm patient)
+    {
+        NavigationManager.NavigateTo($"/patient/{patient.Id}");
+    }
+}

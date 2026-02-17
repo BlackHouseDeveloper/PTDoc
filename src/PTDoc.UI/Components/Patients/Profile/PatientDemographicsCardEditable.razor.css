@@ -1,0 +1,220 @@
+.patient-demographics-card {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-1);
+}
+
+.patient-demographics-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-6) var(--spacing-6) var(--spacing-2) var(--spacing-6);
+}
+
+.patient-demographics-card-title {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 16px;
+    color: var(--card-foreground);
+    margin: 0;
+}
+
+.patient-demographics-card-edit-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    height: 44px;
+    padding: var(--spacing-1) var(--spacing-4);
+    background: var(--card);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius-md);
+    color: var(--primary);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 20px;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.patient-demographics-card-edit-btn:hover {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.patient-demographics-card-edit-btn.editing {
+    background: var(--muted);
+    border-color: var(--border);
+    color: var(--foreground);
+}
+
+.patient-demographics-card-edit-btn.editing:hover {
+    background: var(--muted-foreground);
+    color: var(--background);
+}
+
+.patient-demographics-card-edit-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patient-demographics-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+    padding: var(--spacing-6);
+}
+
+.patient-demographics-fields {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-6);
+}
+
+.patient-demographics-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.patient-demographics-field-full {
+    grid-column: 1 / -1;
+}
+
+.patient-demographics-label {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 14px;
+    color: var(--card-foreground);
+}
+
+.patient-demographics-value-display {
+    background: var(--muted);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--card-foreground);
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+}
+
+.patient-demographics-input {
+    background: var(--input-background);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-3);
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    min-height: 48px;
+    transition: border-color var(--transition-fast);
+}
+
+.patient-demographics-input:focus {
+    outline: none;
+    border-color: var(--ring);
+}
+
+.patient-demographics-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-4);
+    margin-top: var(--spacing-2);
+}
+
+.patient-demographics-save-btn {
+    height: 44px;
+    padding: 0 var(--spacing-6);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.patient-demographics-save-btn:hover {
+    opacity: 0.9;
+}
+
+.patient-demographics-save-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patient-demographics-divider {
+    height: 1px;
+    background: var(--border);
+}
+
+.patient-demographics-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.patient-demographics-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.patient-demographics-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--spacing-1) var(--spacing-3);
+    background: rgba(var(--warning-rgb), 0.1);
+    border: 1px solid rgba(var(--warning-rgb), 0.3);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 16px;
+    color: var(--warning);
+}
+
+.patient-demographics-insurance-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-4);
+    width: 100%;
+    height: 44px;
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--card-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.patient-demographics-insurance-btn:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.patient-demographics-insurance-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+    .patient-demographics-fields {
+        grid-template-columns: 1fr;
+    }
+}

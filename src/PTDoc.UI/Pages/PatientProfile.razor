@@ -1,0 +1,73 @@
+@page "/patient/{id}"
+@attribute [Authorize]
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Patient Profile - PTDoc</PageTitle>
+
+<div class="patient-profile-page">
+    <PatientProfileHeader 
+        Patient="@patient" 
+        OnBack="@HandleBack" 
+    />
+
+    <div class="patient-profile-page-body">
+        <div class="patient-profile-page-container">
+            <PatientDemographicsCardEditable Patient="@patient" />
+            
+            <PatientPrimaryActionButton 
+                Label="Start New Note" 
+                OnClick="@HandleStartNote" 
+            />
+            
+            <PatientClinicalInfoCardEditable Patient="@patient" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = default!;
+
+    private PatientProfileVm patient = new();
+
+    protected override void OnInitialized()
+    {
+        // TODO: Replace with IPatientService.GetById(Id)
+        LoadSamplePatient();
+    }
+
+    private void LoadSamplePatient()
+    {
+        patient = new PatientProfileVm
+        {
+            Id = Id,
+            DisplayName = "Sarah Johnson",
+            DateOfBirth = "3/14/1985",
+            Email = "sarah.johnson@email.com",
+            PhoneNumber = "(555) 123-4567",
+            Address = "123 Main St, Anytown, ST 12345",
+            FlagsAndComorbidities = new List<string>
+            {
+                "Diabetes",
+                "Balance Issues",
+                "Hypertension"
+            },
+            PrimaryDiagnosis = "Lower back pain",
+            SecondaryDiagnosis = "Sciatica",
+            ReferringPhysician = "Dr. Smith",
+            InsuranceProvider = "Blue Cross",
+            AuthorizationNumber = "AUTH-2024-001"
+        };
+    }
+
+    private void HandleBack()
+    {
+        NavigationManager.NavigateTo("/patients");
+    }
+
+    private void HandleStartNote()
+    {
+        // TODO: Navigate to note creation page for this patient
+        Console.WriteLine($"Starting new note for patient {Id}");
+    }
+}

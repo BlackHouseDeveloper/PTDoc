@@ -1,0 +1,32 @@
+@* Patient Primary Action Button Component - Main action button *@
+
+<button type="button" 
+        class="patient-primary-action-button" 
+        data-testid="patient-primary-action"
+        @onclick="OnClick"
+        aria-label="@Label">
+    @if (!string.IsNullOrEmpty(IconSvg))
+    {
+        <span class="patient-primary-action-icon" aria-hidden="true">
+            @((MarkupString)IconSvg)
+        </span>
+    }
+    <span>@Label</span>
+</button>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Start New Note";
+    [Parameter] public string? IconSvg { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Default icon for "Start New Note"
+        if (string.IsNullOrEmpty(IconSvg))
+        {
+            IconSvg = @"<svg width=""16"" height=""16"" viewBox=""0 0 16 16"" fill=""none"" xmlns=""http://www.w3.org/2000/svg"">
+                <path d=""M8 3.33333V12.6667M3.33333 8H12.6667"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""/>
+            </svg>";
+        }
+    }
+}

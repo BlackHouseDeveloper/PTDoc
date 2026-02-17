@@ -1,0 +1,33 @@
+@* Patient Card Section Component - Grid layout for patient cards *@
+
+<div class="patient-card-section" data-testid="patients-card-section">
+    @if (Items == null || !Items.Any())
+    {
+        <div class="patient-card-section-empty">
+            <p class="patient-card-section-empty-text">No patients found</p>
+            @* TODO: Add illustration/icon for empty state *@
+        </div>
+    }
+    else
+    {
+        <div class="patient-card-section-grid">
+            @foreach (var item in Items)
+            {
+                @if (ItemTemplate != null)
+                {
+                    @ItemTemplate(item)
+                }
+                else
+                {
+                    <PatientCard Patient="@item" OnOpen="@OnCardClick" />
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<PatientListItemVm>? Items { get; set; }
+    [Parameter] public RenderFragment<PatientListItemVm>? ItemTemplate { get; set; }
+    [Parameter] public EventCallback<PatientListItemVm> OnCardClick { get; set; }
+}
