@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\PTDoc.AI\PTDoc.AI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

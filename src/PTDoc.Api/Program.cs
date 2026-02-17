@@ -2,13 +2,16 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using PTDoc.Api.AI;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Identity;
 using PTDoc.Api.Sync;
+using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Sync;
+using PTDoc.AI.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
@@ -31,6 +34,9 @@ builder.Services.AddScoped<ISyncEngine, SyncEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
+
+// Register AI services
+builder.Services.AddScoped<IAiService, OpenAiService>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -134,5 +140,6 @@ app.MapPinAuthEndpoints(); // New PIN-based auth
 app.MapSyncEndpoints(); // Sync endpoints
 app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
+app.MapAiEndpoints(); // AI generation endpoints
 
 app.Run();

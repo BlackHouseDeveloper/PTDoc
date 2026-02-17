@@ -12,6 +12,8 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="xunit" Version="2.5.3" />
@@ -26,6 +28,7 @@
     <ProjectReference Include="..\..\src\PTDoc.Core\PTDoc.Core.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.AI\PTDoc.AI.csproj" />
   </ItemGroup>
 
 </Project>
