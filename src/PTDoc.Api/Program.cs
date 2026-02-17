@@ -5,6 +5,7 @@ using System.Text;
 using PTDoc.Api.Auth;
 using PTDoc.Application.Auth;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,7 @@ if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseSqlite($"Data Source={dbPath}");
+    options.AddInterceptors(new SyncMetadataInterceptor());
     if (builder.Environment.IsDevelopment())
     {
         options.EnableSensitiveDataLogging();
