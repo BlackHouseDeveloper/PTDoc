@@ -7,17 +7,24 @@ using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Identity;
 using PTDoc.Api.Integrations;
+using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
+using PTDoc.Application.Observability;
+using PTDoc.Application.Pdf;
+using PTDoc.Application.Security;
 using PTDoc.Application.Sync;
 using PTDoc.AI.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Integrations;
+using PTDoc.Infrastructure.Observability;
+using PTDoc.Infrastructure.Pdf;
+using PTDoc.Infrastructure.Security;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.Sync;
 using PTDoc.Integrations.Services;
@@ -48,6 +55,11 @@ builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+
+// Register Phase 7 services: Security & Observability
+builder.Services.AddScoped<IDbKeyProvider, EnvironmentDbKeyProvider>();
+builder.Services.AddSingleton<ITelemetrySink, ConsoleTelemetrySink>();
+builder.Services.AddScoped<IPdfRenderer, MockPdfRenderer>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -153,5 +165,6 @@ app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
 app.MapAiEndpoints(); // AI generation endpoints
 app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
+app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 
 app.Run();
