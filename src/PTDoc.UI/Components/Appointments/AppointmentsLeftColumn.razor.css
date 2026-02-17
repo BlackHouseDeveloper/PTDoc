@@ -14,7 +14,7 @@
     height: 44px;
     padding: 0 var(--spacing-4);
     background: var(--card);
-    border: 2px solid rgba(0, 0, 0, 0.1);
+    border: 2px solid var(--border);
     border-radius: var(--radius-lg);
     font-family: var(--font-family-base);
     font-size: var(--text-sm);

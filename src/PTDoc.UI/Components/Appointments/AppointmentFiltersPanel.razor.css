@@ -4,7 +4,7 @@
     gap: var(--spacing-4);
     padding: var(--spacing-4);
     background: var(--card);
-    border: 2px solid rgba(0, 0, 0, 0.1);
+    border: 2px solid var(--border);
     border-radius: var(--radius-lg);
 }
 
