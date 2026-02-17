@@ -53,27 +53,21 @@ bash
 Copy code
 ./PTDoc-Foundry.sh --create-migration
 This will install the EF Core tools (if not already installed), add an Initial migration in the PTDoc.Infrastructure/Data/Migrations folder (if one doesn’t exist), and apply it to create a local SQLite database.
-Seeding the development database: To insert sample data (e.g. a couple of patients and reference codes), run:
+
+**Seeding the development database:** To insert sample data (e.g. a couple of patients and reference codes), run:
 bash
 Copy code
 ./PTDoc-Foundry.sh --seed
 This uses the PTDoc.Seeder console project to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the seeder will add any missing data without duplicating existing entries.
 #### Verify the Database Path
 
-The seeder creates `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
+The database is created at `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
 
 1. `PFP_DB_PATH` environment variable (CI/CD or container override)
 2. `ConnectionStrings:DefaultConnection` in `appsettings.{Environment}.json`
 3. Fallback `Data Source=PTDoc.db`
 
-For development, `appsettings.Development.json` already points at `dev.PTDoc.db`, so the API immediately serves the seeded data. Use the helper to confirm what each context is using:
-
-```bash
-scripts/check_db_status.py --context api --require-data --require-tables Patients --require-nonzero
-scripts/check_db_status.py --context seeder --require-data --require-tables Patients --require-nonzero
-```
-
-The script prints the resolved path and row counts, making it easy to spot mismatches.
+For development, `appsettings.Development.json` already points at `dev.PTDoc.db`, so the API immediately serves the seeded data.
 
 ### 3. Running the Application
 
