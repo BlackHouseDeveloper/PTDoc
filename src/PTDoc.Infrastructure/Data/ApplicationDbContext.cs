@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext
     // User & auth entities
     public DbSet<User> Users => Set<User>();
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<PTDoc.Application.Identity.LoginAttempt> LoginAttempts => Set<PTDoc.Application.Identity.LoginAttempt>();
     
     // System entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -142,6 +143,21 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.IsRevoked, e.ExpiresAt });
             
             entity.Property(e => e.TokenHash).HasMaxLength(64).IsRequired(); // SHA-256 hex string
+        });
+
+        // Configure LoginAttempt
+        modelBuilder.Entity<PTDoc.Application.Identity.LoginAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Username);
+            entity.HasIndex(e => e.UserId).HasFilter("UserId IS NOT NULL");
+            entity.HasIndex(e => e.AttemptedAt);
+            entity.HasIndex(e => new { e.Success, e.AttemptedAt });
+            
+            entity.Property(e => e.Username).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.IpAddress).HasMaxLength(45); // IPv6 max length
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.FailureReason).HasMaxLength(200);
         });
 
         // Configure AuditLog

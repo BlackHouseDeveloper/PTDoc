@@ -3,12 +3,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using PTDoc.Api.Auth;
+using PTDoc.Api.Identity;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
+using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add HttpContextAccessor for identity context
+builder.Services.AddHttpContextAccessor();
+
+// Register identity services
+builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -22,10 +32,14 @@ if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
     Directory.CreateDirectory(dbDirectory);
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
 {
     options.UseSqlite($"Data Source={dbPath}");
-    options.AddInterceptors(new SyncMetadataInterceptor());
+    
+    // Add interceptor with dependency injection
+    var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
+    options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+    
     if (builder.Environment.IsDevelopment())
     {
         options.EnableSensitiveDataLogging();
@@ -85,9 +99,25 @@ builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 
 var app = builder.Build();
 
+// Seed database in development
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    // Apply any pending migrations
+    await context.Database.MigrateAsync();
+    
+    // Seed test data
+    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapAuthEndpoints();
+// Register all API endpoints
+app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
+app.MapPinAuthEndpoints(); // New PIN-based auth
 
 app.Run();

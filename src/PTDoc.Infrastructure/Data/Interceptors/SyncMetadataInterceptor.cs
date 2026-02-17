@@ -1,15 +1,23 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Infrastructure.Data.Interceptors;
 
 /// <summary>
-/// EF Core interceptor that automatically stamps LastModifiedUtc on ISyncTrackedEntity entities.
+/// EF Core interceptor that automatically stamps LastModifiedUtc and ModifiedByUserId on ISyncTrackedEntity entities.
 /// This ensures consistent modification tracking for offline-first synchronization.
 /// </summary>
 public class SyncMetadataInterceptor : SaveChangesInterceptor
 {
+    private readonly IIdentityContextAccessor _identityContext;
+
+    public SyncMetadataInterceptor(IIdentityContextAccessor identityContext)
+    {
+        _identityContext = identityContext;
+    }
+
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData,
         InterceptionResult<int> result)
@@ -27,7 +35,7 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static void UpdateSyncMetadata(DbContext? context)
+    private void UpdateSyncMetadata(DbContext? context)
     {
         if (context == null) return;
 
@@ -35,11 +43,13 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
 
         var now = DateTime.UtcNow;
+        var currentUserId = _identityContext.GetCurrentUserId();
 
         foreach (var entry in entries)
         {
-            // Always update LastModifiedUtc
+            // Always update LastModifiedUtc and ModifiedByUserId
             entry.Entity.LastModifiedUtc = now;
+            entry.Entity.ModifiedByUserId = currentUserId;
 
             // For new entities, set default sync state if not already set
             if (entry.State == EntityState.Added)
@@ -59,9 +69,6 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
                     entry.Entity.SyncState = SyncState.Pending;
                 }
             }
-
-            // Note: ModifiedByUserId should be set by the application layer via IIdentityContextAccessor
-            // This interceptor doesn't have access to the current user context
         }
     }
 }
