@@ -13,11 +13,11 @@ public static class PdfEndpoints
 {
     public static void MapPdfEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/pdf")
+        var group = app.MapGroup("/api/v1/notes")
             .RequireAuthorization()
             .WithTags("PDF Export");
         
-        group.MapPost("/notes/{noteId}/export", ExportNoteToPdf)
+        group.MapPost("/{noteId}/export/pdf", ExportNoteToPdf)
             .WithName("ExportNoteToPdf");
     }
     
