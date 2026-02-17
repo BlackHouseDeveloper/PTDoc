@@ -29,13 +29,4 @@
             </svg>";
         }
     }
-
-    private async Task HandleClick()
-    {
-        if (OnClick.HasDelegate)
-        {
-            await OnClick.InvokeAsync();
-        }
-        // TODO: Determine final route/action (e.g., routing to note editor)
-    }
 }

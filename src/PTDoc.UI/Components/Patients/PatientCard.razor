@@ -4,6 +4,7 @@
      data-testid="patient-card-@Patient.Id"
      @onclick="HandleClick"
      @onkeydown="HandleKeyDown"
+     @onkeydown:preventDefault="true"
      role="button"
      tabindex="0"
      aria-label="View details for @Patient.DisplayName">
@@ -40,11 +41,6 @@
 @code {
     [Parameter, EditorRequired] public PatientListItemVm Patient { get; set; } = null!;
     [Parameter] public EventCallback<PatientListItemVm> OnOpen { get; set; }
-
-    private void HandleMouseEnter()
-    {
-        Console.WriteLine($"Mouse entered card: {Patient.DisplayName}");
-    }
 
     private async Task HandleClick()
     {
