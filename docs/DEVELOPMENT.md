@@ -254,6 +254,145 @@ public class AppointmentService : IAppointmentService
 }
 ```
 
+### Offline-First Development Patterns
+
+PTDoc implements offline-first architecture to ensure clinicians can work without connectivity.
+
+#### Core Services
+
+Two services manage offline-first capabilities:
+
+**ISyncService - Data Synchronization**
+```csharp
+// src/PTDoc.Application/Services/ISyncService.cs
+public interface ISyncService
+{
+    DateTime? LastSyncTime { get; }
+    bool IsSyncing { get; }
+    event Action? OnSyncStateChanged;
+    
+    Task InitializeAsync();
+    Task<bool> SyncNowAsync();
+    string GetElapsedTimeSinceSync();
+}
+```
+
+**IConnectivityService - Network Monitoring**
+```csharp
+// src/PTDoc.Application/Services/IConnectivityService.cs
+public interface IConnectivityService
+{
+    bool IsOnline { get; }
+    event Action<bool>? OnConnectivityChanged;
+    
+    Task InitializeAsync();
+    Task<bool> CheckConnectivityAsync();
+}
+```
+
+#### Service Registration
+
+Register in both Web and MAUI platforms:
+
+```csharp
+// PTDoc.Web/Program.cs or PTDoc.Maui/MauiProgram.cs
+builder.Services.AddScoped<ISyncService, SyncService>();
+builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
+```
+
+#### UI Integration Pattern
+
+Components can reactively respond to sync and connectivity state:
+
+```razor
+@* Example: Offline-aware component *@
+@inject ISyncService SyncService
+@inject IConnectivityService ConnectivityService
+@implements IDisposable
+
+<div class="status-bar">
+    <span>@(ConnectivityService.IsOnline ? "Online" : "Offline")</span>
+    <span>Last sync: @SyncService.GetElapsedTimeSinceSync()</span>
+    <button disabled="@(!ConnectivityService.IsOnline || SyncService.IsSyncing)"
+            @onclick="HandleSync">
+        @(SyncService.IsSyncing ? "Syncing..." : "Sync Now")
+    </button>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        SyncService.OnSyncStateChanged += HandleStateChange;
+        ConnectivityService.OnConnectivityChanged += HandleConnectivityChange;
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await SyncService.InitializeAsync();
+            await ConnectivityService.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+    
+    private async Task HandleSync()
+    {
+        if (ConnectivityService.IsOnline && !SyncService.IsSyncing)
+        {
+            await SyncService.SyncNowAsync();
+        }
+    }
+    
+    private void HandleStateChange() => InvokeAsync(StateHasChanged);
+    private void HandleConnectivityChange(bool _) => InvokeAsync(StateHasChanged);
+    
+    public void Dispose()
+    {
+        SyncService.OnSyncStateChanged -= HandleStateChange;
+        ConnectivityService.OnConnectivityChanged -= HandleConnectivityChange;
+    }
+}
+```
+
+#### Event-Driven State Management
+
+Key patterns for reactive UI:
+
+1. **Subscribe to events in OnInitialized()** - Safe during prerender
+2. **Initialize services in OnAfterRenderAsync(firstRender)** - JSRuntime available
+3. **Use InvokeAsync() for thread-safe state updates** - Events fire on background threads
+4. **Always implement IDisposable** - Prevent memory leaks from event subscriptions
+5. **Check service state before operations** - Don't sync when offline or already syncing
+
+#### Testing Offline Scenarios
+
+Simulate offline mode in browser DevTools:
+
+```bash
+# 1. Open DevTools (F12)
+# 2. Network tab → Throttling → Offline
+# 3. Verify:
+#    - UI shows "Offline" badge
+#    - Sync button is disabled
+#    - Last sync time still updates
+# 4. Go back online
+#    - UI shows "Online" badge
+#    - Sync button becomes enabled
+```
+
+#### Future Implementation Notes
+
+Current implementation simulates sync operations. When implementing actual sync:
+
+1. **Query local SQLite** for records with `SyncState = Pending`
+2. **Push to API** with optimistic concurrency (ETag headers)
+3. **Pull delta changes** using timestamp-based queries
+4. **Update local database** and mark as `SyncState = Synced`
+5. **Handle conflicts** per `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md`
+
+See `src/PTDoc.Infrastructure/Services/SyncService.cs` TODO comments for implementation details.
+
 ## Healthcare-Specific Guidelines
 
 ### HIPAA Compliance Checklist

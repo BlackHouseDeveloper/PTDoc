@@ -55,9 +55,14 @@
   - **Skip when:** Shared component logic
 
 ### Development Workflows
-- **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows
-  - **Use when:** Running tests, using helper scripts, debugging setup
+- **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows, offline-first patterns
+  - **Use when:** Running tests, using helper scripts, debugging setup, implementing sync/connectivity features
   - **Skip when:** Implementation work
+
+### Offline-First & Sync
+- **[docs/PTDocs+_Offline_Sync_Conflict_Resolution.md](../docs/PTDocs+_Offline_Sync_Conflict_Resolution.md)** - Offline-first specifications, conflict resolution
+  - **Use when:** Implementing sync logic, handling offline scenarios, resolving data conflicts
+  - **Skip when:** Not working with sync or connectivity features
 
 ---
 
@@ -132,6 +137,45 @@ PTDoc.UI           → Shared Blazor components
 
 **Path Resolution:** `PFP_DB_PATH` env → `appsettings` → fallback `PTDoc.db`
 
+### Offline-First Patterns
+
+**Core Services:**
+- `ISyncService` - Sync state and operations (Application layer)
+- `IConnectivityService` - Network monitoring (Application layer)
+- `SyncService` - Implementation with localStorage persistence (Infrastructure layer)
+- `ConnectivityService` - Browser Network Information API (Infrastructure layer)
+
+**Service Registration:**
+```csharp
+builder.Services.AddScoped<ISyncService, SyncService>();
+builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
+```
+
+**Event-Driven UI Pattern:**
+```csharp
+// 1. Subscribe in OnInitialized() - safe during prerender
+SyncService.OnSyncStateChanged += HandleStateChange;
+
+// 2. Initialize in OnAfterRenderAsync(firstRender) - JSRuntime available
+if (firstRender) {
+    await SyncService.InitializeAsync();
+    await ConnectivityService.InitializeAsync();
+}
+
+// 3. Use InvokeAsync() for thread-safe updates
+private void HandleStateChange() => InvokeAsync(StateHasChanged);
+
+// 4. Always implement IDisposable - prevent memory leaks
+public void Dispose() {
+    SyncService.OnSyncStateChanged -= HandleStateChange;
+}
+```
+
+**Testing Offline:**
+- Browser DevTools → Network tab → Throttling → Offline
+- Verify UI updates: "Offline" badge, disabled sync button
+- Go back online and verify "Online" badge, enabled sync button
+
 ### Healthcare & Accessibility
 
 - **HIPAA**: Maintain audit trails for patient data
@@ -150,6 +194,7 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
+- [ ] Implementing sync or connectivity features
 
 **Don't consult docs for:**
 - Standard .NET/C# patterns you already know
@@ -180,8 +225,10 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 - Platform-specific → `PTDoc.Web/` or `PTDoc.Maui/`
 - DTOs → `PTDoc.Application/DTOs/`
 - Domain entities → `PTDoc.Core/Models/`
-- Services interfaces → `PTDoc.Application/Services/`
-- Services implementations → `PTDoc.Infrastructure/Services/`
+- Service interfaces → `PTDoc.Application/Services/`
+  - `ISyncService`, `IConnectivityService` for offline-first
+- Service implementations → `PTDoc.Infrastructure/Services/`
+  - `SyncService`, `ConnectivityService` implementations
 
 ---
 
