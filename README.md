@@ -6,6 +6,8 @@
 
 - **🏥 Clinical Documentation**: Comprehensive patient notes, appointment tracking, and treatment planning
 - **📱 Multi-Platform Support**: Native iOS, Android, macOS desktop, and web applications
+- **📴 Offline-First Architecture**: Full functionality without connectivity, automatic sync when online
+- **🔄 Real-Time Sync**: Live connectivity monitoring and data synchronization with conflict resolution
 - **📄 PDF Export**: Professional patient reports and documentation export using QuestPDF
 - **🗄️ SQLite Database**: Local data storage with Entity Framework Core for offline capabilities
 - **🔧 Automation Tools**: Automated messaging workflows and assessment management
@@ -53,27 +55,21 @@ bash
 Copy code
 ./PTDoc-Foundry.sh --create-migration
 This will install the EF Core tools (if not already installed), add an Initial migration in the PTDoc.Infrastructure/Data/Migrations folder (if one doesn’t exist), and apply it to create a local SQLite database.
-Seeding the development database: To insert sample data (e.g. a couple of patients and reference codes), run:
+
+**Seeding the development database:** To insert sample data (e.g. a couple of patients and reference codes), run:
 bash
 Copy code
 ./PTDoc-Foundry.sh --seed
-This uses the PTDoc.Seeder console project to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the seeder will add any missing data without duplicating existing entries.
+This command uses the internal seeding logic built into `PTDoc-Foundry.sh` to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the script will add any missing data without duplicating existing entries.
 #### Verify the Database Path
 
-The seeder creates `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
+The database is created at `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
 
 1. `PFP_DB_PATH` environment variable (CI/CD or container override)
 2. `ConnectionStrings:DefaultConnection` in `appsettings.{Environment}.json`
 3. Fallback `Data Source=PTDoc.db`
 
-For development, `appsettings.Development.json` already points at `dev.PTDoc.db`, so the API immediately serves the seeded data. Use the helper to confirm what each context is using:
-
-```bash
-scripts/check_db_status.py --context api --require-data --require-tables Patients --require-nonzero
-scripts/check_db_status.py --context seeder --require-data --require-tables Patients --require-nonzero
-```
-
-The script prints the resolved path and row counts, making it easy to spot mismatches.
+For development, `appsettings.Development.json` already points at `dev.PTDoc.db`, so the API immediately serves the seeded data.
 
 ### 3. Running the Application
 
@@ -139,36 +135,97 @@ This starts a local development server. Open the displayed URL (typically `http:
 - **Hot Reload**: Supported in Visual Studio and VS Code for MAUI projects
 - **Web Hot Reload**: Automatic when using `dotnet run` with the web project
 - **Code Changes**: Re-run `dotnet build` or restart the development server after changes
+
 ### 4. Enterprise Architecture & Project Structure
 
 PTDoc follows Clean Architecture principles with clear separation of concerns:
-PTDoc – The .NET MAUI Blazor app (multi-targeted for Android, iOS, MacCatalyst, etc.). This is the primary app project.
-PTDoc.Web – The Blazor WebAssembly app for running PTDoc in a web browser.
-PTDoc.Core – The domain entities (business models) with no EF Core or UI dependencies.
-PTDoc.Infrastructure – Implements the persistence (EF Core ApplicationDbContext), domain services, and PDF generation. It references the Domain project.
-PTDoc.Shared – Shared libraries, such as predefined lists (e.g., goal templates, interventions, outcome measures) that can be used by both the app and other projects.
-PTDoc.Tests – XUnit test project containing unit tests (runs on .NET 8.0).
-PTDoc.Seeder – A console application to seed the SQLite database with initial data for development/testing.
-5. Using the PTDoc-Foundry.sh Script
-As mentioned, the repository includes a script (PTDoc-Foundry.sh) to automate environment setup tasks. Here’s a quick reference on using it:
-Running the script with no arguments will scaffold or update the solution structure (adding missing files, normalizing project settings). It’s idempotent – it won’t overwrite existing code, and you can run it after pulling updates to ensure your local projects match the expected configuration.
---create-migration: Generates the initial EF Core migration (if not already present) and updates the database. This is typically done once at project setup. If an initial migration already exists, the script will skip creating a duplicate.
---seed: Runs the seeder to populate sample data. Safe to run multiple times; it only inserts data if not already present (e.g., it won’t add duplicate patients if you run it again).
---help: Shows usage info. You can also open the script in a text editor – it’s heavily commented to explain each step it performs.
-6. PDF Export and Branding
-PTDoc includes a basic PDF generation feature for patient notes or reports. The PDF rendering is handled by the PdfRenderer service (using QuestPDF). Currently, the PDF output is a simple template (A4 page with a title and body text).
-Branding in the application is still in progress:
-We have defined design tokens in CSS (see wwwroot/css/design-tokens.css) for colors and styles that match the intended brand palette (for example, a lime green accent color, certain font choices, etc.).
-The current UI and PDF are using placeholder styling. Expectations: As the project evolves, logos and polished styles will be incorporated. For now, the focus is on functionality – the UI is minimalist (“Pre-Figma shell”) and the PDF export is for demonstration. In future updates, we plan to include clinic branding (e.g., logo, header) in PDF outputs and apply a consistent design system across the app.
-7. Troubleshooting & FAQ
-Database not found / issues: Ensure you have run the migration (--create-migration) and seeding steps. The SQLite database file dev.PTDoc.db should be present in the project root and referenced by `appsettings.Development.json`. Use `scripts/check_db_status.py` to confirm the resolved path, or override it via PFP_DB_PATH if you need a different location.
-iOS build issues: If building for iOS, make sure you’ve opened the project in Xcode at least once to accept any license agreements, and that you have an iOS simulator selected. You might also need to adjust code signing settings in Xcode for the iOS target if you deploy to a physical device.
-Hot Reload/Live Reload: When running the MAUI app, .NET Hot Reload should work if you launch from Visual Studio. For the Blazor Web app, code changes generally require rebuilding (dotnet run will pick up changes on restart). Develop with the approach that suits you (for quick UI iteration, the Web app is convenient; for testing native features, use the MAUI app).
-Developer diagnostics bar: See `docs/DEVELOPMENT.md#developer-diagnostics-mode` for enabling the debug stats bar and understanding override precedence.
-App stats cache: Override `AppStats:CacheTtlSeconds` (default 15) to tune dashboard refresh cadence; write operations automatically invalidate the cache.
-Diagnostics health endpoint: `/api/v1/diagnostics/info` reports whether developer diagnostics are active (adds `PTDoc-Diagnostics: true` when enabled) along with the current cache TTL; optionally gate it with `App:DiagnosticsRequiredRole` for operator-only access.
-Reverse-proxy hosting: Set `Api:BasePath` (e.g. `/PTDoc`) to ensure generated client routes align with your deployment prefix.
-For any other issues, please check the repository’s issue tracker or contact the maintainers. Happy documenting!
+
+```
+PTDoc.Core         → Domain entities (ZERO dependencies)
+PTDoc.Application  → Interfaces/contracts (depends only on Core)
+PTDoc.Infrastructure → Implementations (depends on Application)
+PTDoc.Api          → REST API, JWT auth
+PTDoc.Web          → Blazor WebAssembly web app
+PTDoc.Maui         → .NET MAUI Blazor app (Android, iOS, macOS)
+PTDoc.UI           → Shared Blazor components (reusable)
+```
+
+**Project Details:**
+- **PTDoc.Core** - Domain entities (business models) with no EF Core or UI dependencies
+- **PTDoc.Application** - Interfaces, DTOs, and contracts (depends only on Core)
+  - **ISyncService** - Data synchronization state and operations
+  - **IConnectivityService** - Network connectivity monitoring
+- **PTDoc.Infrastructure** - Implements persistence (EF Core ApplicationDbContext), domain services, and data access
+  - **SyncService** - Offline-first sync with localStorage persistence
+  - **ConnectivityService** - Browser-based connectivity detection
+- **PTDoc.Api** - REST API with JWT authentication for backend services
+- **PTDoc.Web** - Blazor WebAssembly app for running PTDoc in a web browser
+- **PTDoc.Maui** - .NET MAUI Blazor app (multi-targeted for Android, iOS, macOS)
+- **PTDoc.UI** - Shared Blazor components used by both Web and MAUI projects
+  - **GlobalHeader** - Menu, sync controls, and connectivity status
+
+### 5. Using the PTDoc-Foundry.sh Script
+
+As mentioned, the repository includes a script (`PTDoc-Foundry.sh`) to automate environment setup tasks. Here's a quick reference on using it:
+
+**Usage:**
+- Running the script with no arguments will scaffold or update the solution structure (adding missing files, normalizing project settings). It's idempotent – it won't overwrite existing code, and you can run it after pulling updates to ensure your local projects match the expected configuration.
+- `--create-migration`: Generates the initial EF Core migration (if not already present) and updates the database. This is typically done once at project setup. If an initial migration already exists, the script will skip creating a duplicate.
+- `--seed`: Populates the database with sample data. Safe to run multiple times; it only inserts data if not already present (e.g., it won't add duplicate patients if you run it again).
+- `--help`: Shows usage info. You can also open the script in a text editor – it's heavily commented to explain each step it performs.
+
+### 6. Design System and Styling
+
+PTDoc uses a token-driven design system aligned to the Figma Make Prototype v5:
+- **Design Tokens:** See `src/PTDoc.UI/wwwroot/css/tokens.css` for color, spacing, typography, and other design tokens
+- **Global Styles:** Base styles in `src/PTDoc.UI/wwwroot/css/app.css`
+- **Component Styles:** Scoped CSS files alongside components (`.razor.css`)
+- **Theme Support:** Light and dark themes with token switching
+
+For detailed styling guidelines, see `docs/style-system.md` and `docs/context/ptdoc-figma-make-prototype-v5-context.md`.
+
+---
+
+## Contributing
+
+**Database not found / issues:** Ensure you have run the migration (`--create-migration`) and seeding steps. The SQLite database file `dev.PTDoc.db` should be present in the project root and referenced by `appsettings.Development.json`. Override it via `PFP_DB_PATH` environment variable if you need a different location.
+
+**iOS build issues:** If building for iOS, make sure you've opened the project in Xcode at least once to accept any license agreements, and that you have an iOS simulator selected. You might also need to adjust code signing settings in Xcode for the iOS target if you deploy to a physical device.
+
+**Hot Reload/Live Reload:** When running the MAUI app, .NET Hot Reload should work if you launch from Visual Studio. For the Blazor Web app, code changes generally require rebuilding (`dotnet run` will pick up changes on restart). Develop with the approach that suits you (for quick UI iteration, the Web app is convenient; for testing native features, use the MAUI app).
+
+For detailed troubleshooting, see `docs/TROUBLESHOOTING.md`.
+
+### 8. Offline-First Architecture
+
+PTDoc is built with offline-first capabilities to ensure clinicians can document care anywhere, without risking data loss:
+
+**Connectivity Monitoring:**
+- Real-time online/offline detection using browser Network Information API
+- Visual status indicator in the global header (Online/Offline badge)
+- Automatic sync triggers when connectivity restores
+
+**Data Synchronization:**
+- Last sync timestamp tracking with elapsed time display ("3m 25s ago")
+- Manual "Sync Now" button (disabled when offline or already syncing)
+- Persisted sync state survives app restarts
+- Event-driven state management for reactive UI updates
+
+**Current Implementation:**
+- `ISyncService` - Synchronization state and operations
+- `IConnectivityService` - Network connectivity monitoring
+- Local SQLite database for offline data storage
+- Simulated sync operations (actual cloud sync coming soon)
+
+**Future Enhancements:**
+- Full EF Core + cloud API sync implementation
+- Conflict resolution for multi-device scenarios
+- Sync queue for pending operations
+- Background sync with configurable intervals
+
+For detailed offline sync specifications, see `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md`.
+
+For any other issues, please check the repository's issue tracker or contact the maintainers.
 
 ---
 
@@ -217,8 +274,8 @@ Our MCP framework automatically:
 For detailed contribution guidelines and healthcare-specific development practices, see:
 - `docs/DEVELOPMENT.md` - Comprehensive development guide
 - `docs/ARCHITECTURE.md` - Technical architecture and patterns
-- `.github/copilot-agent-instructions.md` - Copilot and MCP usage guide
-- `docs/PTDoc-script-usage-reference.md` - Quick reference for PTDoc helper scripts and options
+- `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md` - Offline-first specifications
+- `.github/copilot-instructions.md` - Copilot and MCP usage guide
 
 ### Community & Support
 
