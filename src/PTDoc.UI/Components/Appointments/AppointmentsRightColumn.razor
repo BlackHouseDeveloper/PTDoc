@@ -4,7 +4,9 @@
     <AppointmentsRightHeader ViewLabel="@ViewLabel" />
     
     <ClinicianScheduler SelectedDate="SelectedDate" 
-                       Clinicians="Clinicians" />
+                       Clinicians="Clinicians"
+                       View="View"
+                       Filter="Filter" />
 </div>
 
 @code {
@@ -16,4 +18,10 @@
 
     [Parameter]
     public List<ClinicianScheduler.ClinicianSchedule>? Clinicians { get; set; }
+
+    [Parameter]
+    public AppointmentsView View { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public AppointmentsFilter? Filter { get; set; }
 }

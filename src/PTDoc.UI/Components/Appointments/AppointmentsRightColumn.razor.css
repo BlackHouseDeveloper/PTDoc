@@ -1,6 +1,7 @@
 .appointments-right-column {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-6);
-    width: 724.75px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }

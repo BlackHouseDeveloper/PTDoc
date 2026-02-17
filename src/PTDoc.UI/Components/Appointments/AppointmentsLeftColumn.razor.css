@@ -8,12 +8,13 @@
 .filters-button {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     gap: var(--spacing-2);
+    width: 100%;
     height: 44px;
-    padding: 0 var(--spacing-2);
-    background: var(--background);
-    border: 1px solid var(--border);
+    padding: 0 var(--spacing-4);
+    background: var(--card);
+    border: 2px solid rgba(0, 0, 0, 0.1);
     border-radius: var(--radius-lg);
     font-family: var(--font-family-base);
     font-size: var(--text-sm);
@@ -21,11 +22,11 @@
     line-height: var(--line-height-normal);
     color: var(--foreground);
     cursor: pointer;
-    transition: background var(--transition-fast);
+    transition: all var(--transition-fast);
 }
 
 .filters-button:hover {
-    background: var(--tertiary);
+    background: var(--muted);
 }
 
 .filters-button:focus-visible {
@@ -33,8 +34,21 @@
     outline-offset: 2px;
 }
 
+.filters-button.active {
+    border-color: var(--primary);
+    background: var(--accent);
+}
+
 .filters-button svg {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
+}
+
+.filters-button .chevron {
+    transition: transform var(--transition-fast);
+}
+
+.filters-button .chevron.open {
+    transform: rotate(180deg);
 }

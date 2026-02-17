@@ -1,16 +1,29 @@
+:root {
+    --scheduler-slot-height: 96px;
+    --scheduler-minutes-per-slot: 60;
+    --scheduler-pixels-per-minute: 1.6; /* 96px / 60min */
+}
+
 .clinician-scheduler {
-    height: 1388px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     overflow: hidden;
 }
 
 .scheduler-viewport {
-    height: 1320px;
+    flex: 1;
     overflow: auto;
+    min-height: 0;
 }
 
 .scheduler-grid {
     display: flex;
-    height: 1304px;
+    min-height: 1304px;
+}
+
+.scheduler-grid.week-view {
+    min-width: max-content;
 }
 
 .time-column {
@@ -25,7 +38,7 @@
 }
 
 .time-slot {
-    height: 96px;
+    height: var(--scheduler-slot-height);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -42,6 +55,10 @@
     flex-shrink: 0;
     border-right: 1px solid rgba(0, 0, 0, 0.03);
     position: relative;
+}
+
+.clinician-column.week-day-column {
+    width: 200px;
 }
 
 .clinician-header {
@@ -81,7 +98,7 @@
 }
 
 .appointment-slot {
-    height: 96px;
+    height: var(--scheduler-slot-height);
     border-bottom: 1px solid rgba(0, 0, 0, 0.03);
 }
 

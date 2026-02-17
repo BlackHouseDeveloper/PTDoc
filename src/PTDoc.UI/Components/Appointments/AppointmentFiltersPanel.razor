@@ -1,0 +1,182 @@
+@* Appointment Filters Panel - Expandable Filter Controls *@
+
+<div class="filters-panel">
+    <div class="filters-header">
+        <label class="filter-label">Appointment Type</label>
+        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("appointmentType"))">
+            <span>@GetAppointmentTypeLabel()</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+
+    @if (openDropdown == "appointmentType")
+    {
+        <div class="filter-dropdown">
+            @foreach (var type in AppointmentTypes)
+            {
+                <label class="filter-option">
+                    <input type="checkbox" 
+                           checked="@Filter.SelectedAppointmentTypes.Contains(type)"
+                           @onchange="@((e) => ToggleAppointmentType(type, (bool)e.Value!))" />
+                    <span>@type</span>
+                </label>
+            }
+        </div>
+    }
+
+    <div class="filters-header">
+        <label class="filter-label">Intake Status</label>
+        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("intakeStatus"))">
+            <span>@GetIntakeStatusLabel()</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+
+    @if (openDropdown == "intakeStatus")
+    {
+        <div class="filter-dropdown">
+            @foreach (var status in IntakeStatuses)
+            {
+                <label class="filter-option">
+                    <input type="checkbox" 
+                           checked="@Filter.SelectedIntakeStatuses.Contains(status)"
+                           @onchange="@((e) => ToggleIntakeStatus(status, (bool)e.Value!))" />
+                    <span>@status</span>
+                </label>
+            }
+        </div>
+    }
+
+    <div class="filters-header">
+        <label class="filter-label">Status</label>
+        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("status"))">
+            <span>@GetStatusLabel()</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+
+    @if (openDropdown == "status")
+    {
+        <div class="filter-dropdown">
+            @foreach (var status in AppointmentStatuses)
+            {
+                <label class="filter-option">
+                    <input type="checkbox" 
+                           checked="@Filter.SelectedAppointmentStatuses.Contains(status)"
+                           @onchange="@((e) => ToggleStatus(status, (bool)e.Value!))" />
+                    <span>@status</span>
+                </label>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public AppointmentsFilter Filter { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<AppointmentsFilter> OnFilterChanged { get; set; }
+
+    private string? openDropdown = null;
+
+    private List<string> AppointmentTypes => new()
+    {
+        "Initial Evaluation",
+        "Follow Up",
+        "Re-Evaluation",
+        "Discharge"
+    };
+
+    private List<string> IntakeStatuses => new()
+    {
+        "Completed",
+        "In Progress",
+        "Missing"
+    };
+
+    private List<string> AppointmentStatuses => new()
+    {
+        "Scheduled",
+        "Checked In",
+        "Completed",
+        "No Show"
+    };
+
+    private void ToggleDropdown(string dropdown)
+    {
+        openDropdown = openDropdown == dropdown ? null : dropdown;
+    }
+
+    private async Task ToggleAppointmentType(string type, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!Filter.SelectedAppointmentTypes.Contains(type))
+            {
+                Filter.SelectedAppointmentTypes.Add(type);
+            }
+        }
+        else
+        {
+            Filter.SelectedAppointmentTypes.Remove(type);
+        }
+        await OnFilterChanged.InvokeAsync(Filter);
+    }
+
+    private async Task ToggleIntakeStatus(string status, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!Filter.SelectedIntakeStatuses.Contains(status))
+            {
+                Filter.SelectedIntakeStatuses.Add(status);
+            }
+        }
+        else
+        {
+            Filter.SelectedIntakeStatuses.Remove(status);
+        }
+        await OnFilterChanged.InvokeAsync(Filter);
+    }
+
+    private async Task ToggleStatus(string status, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!Filter.SelectedAppointmentStatuses.Contains(status))
+            {
+                Filter.SelectedAppointmentStatuses.Add(status);
+            }
+        }
+        else
+        {
+            Filter.SelectedAppointmentStatuses.Remove(status);
+        }
+        await OnFilterChanged.InvokeAsync(Filter);
+    }
+
+    private string GetAppointmentTypeLabel()
+    {
+        var count = Filter.SelectedAppointmentTypes.Count;
+        return count == 0 ? "All Types" : count == 1 ? Filter.SelectedAppointmentTypes[0] : $"{count} selected";
+    }
+
+    private string GetIntakeStatusLabel()
+    {
+        var count = Filter.SelectedIntakeStatuses.Count;
+        return count == 0 ? "All Statuses" : count == 1 ? Filter.SelectedIntakeStatuses[0] : $"{count} selected";
+    }
+
+    private string GetStatusLabel()
+    {
+        var count = Filter.SelectedAppointmentStatuses.Count;
+        return count == 0 ? "All Statuses" : count == 1 ? Filter.SelectedAppointmentStatuses[0] : $"{count} selected";
+    }
+}

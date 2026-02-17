@@ -2,26 +2,80 @@
 
 <div class="clinician-scheduler">
     <div class="scheduler-viewport">
-        <div class="scheduler-grid">
+        <div class="scheduler-grid @(View == AppointmentsView.Week ? "week-view" : "")">
             @* Time Column *@
             <div class="time-column">
-                <div class="time-header"></div>
+                <div class="time-header">
+                    @if (View == AppointmentsView.Week)
+                    {
+                        <span style="font-size: var(--text-xs); color: var(--muted-foreground); padding: var(--spacing-4);">Time</span>
+                    }
+                </div>
                 @foreach (var time in TimeSlots)
                 {
                     <div class="time-slot">@time</div>
                 }
             </div>
             
-            @* Clinician Columns *@
-            @if (Clinicians != null)
+            @if (View == AppointmentsView.Today)
             {
-                @foreach (var clinician in Clinicians)
+                @* Clinician Columns (Today View) *@
+                @if (Clinicians != null)
                 {
-                    <div class="clinician-column">
+                    @foreach (var clinician in Clinicians)
+                    {
+                        <div class="clinician-column">
+                            <div class="clinician-header">
+                                <div class="clinician-info">
+                                    <h3>@clinician.Name</h3>
+                                    <p>@clinician.AppointmentCount appts</p>
+                                </div>
+                            </div>
+                            
+                            <div class="appointments-container">
+                                @for (int i = 0; i < GetTimeSlotCount(); i++)
+                                {
+                                    <div class="appointment-slot"></div>
+                                }
+                                
+                                @* Render appointments for this clinician *@
+                                @foreach (var appt in GetAppointmentsForClinician(clinician.Id))
+                                {
+                                    <div class="appointment-block @GetAppointmentClass(appt)" 
+                                         style="top: @GetAppointmentTop(appt)px; height: @GetAppointmentHeight(appt)px;">
+                                        <div class="appointment-content">
+                                            <div class="appointment-time">
+                                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+                                                    <path d="M6 3V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                                </svg>
+                                                <span>@appt.Time</span>
+                                            </div>
+                                            <div class="appointment-patient">@appt.PatientName</div>
+                                            @if (appt.IsCompleted)
+                                            {
+                                                <div class="appointment-status">
+                                                    <span class="checkmark">✓</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+            else
+            {
+                @* Week View - Day Columns *@
+                @foreach (var day in GetWeekDays())
+                {
+                    <div class="clinician-column week-day-column">
                         <div class="clinician-header">
                             <div class="clinician-info">
-                                <h3>@clinician.Name</h3>
-                                <p>@clinician.AppointmentCount appts</p>
+                                <h3>@day.DayName</h3>
+                                <p>@day.Date.ToString("MMM d")</p>
                             </div>
                         </div>
                         
@@ -31,8 +85,8 @@
                                 <div class="appointment-slot"></div>
                             }
                             
-                            @* Render appointments for this clinician *@
-                            @foreach (var appt in GetAppointmentsForClinician(clinician.Id))
+                            @* Render appointments for this day *@
+                            @foreach (var appt in GetAppointmentsForDay(day.Date))
                             {
                                 <div class="appointment-block @GetAppointmentClass(appt)" 
                                      style="top: @GetAppointmentTop(appt)px; height: @GetAppointmentHeight(appt)px;">
@@ -69,6 +123,19 @@
     [Parameter]
     public List<ClinicianSchedule>? Clinicians { get; set; }
 
+    [Parameter]
+    public AppointmentsView View { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public AppointmentsFilter? Filter { get; set; }
+
+    // Scheduler configuration constants
+    private const int SlotHeightPx = 96;
+    private const int MinutesPerSlot = 60;
+    private const double PixelsPerMinute = SlotHeightPx / (double)MinutesPerSlot; // 1.6
+    private const int HeaderHeightPx = 56;
+    private const int StartHour = 7; // 7:00 AM
+
     private List<string> TimeSlots => new()
     {
         "7:00 AM", "8:00 AM", "9:00 AM", "10:00 AM", "11:00 AM",
@@ -81,6 +148,24 @@
     protected override void OnInitialized()
     {
         Clinicians ??= GetMockClinicians();
+    }
+
+    private List<WeekDay> GetWeekDays()
+    {
+        var startOfWeek = SelectedDate.AddDays(-(int)SelectedDate.DayOfWeek);
+        var weekDays = new List<WeekDay>();
+
+        for (int i = 0; i < 7; i++)
+        {
+            var date = startOfWeek.AddDays(i);
+            weekDays.Add(new WeekDay
+            {
+                Date = date,
+                DayName = date.ToString("ddd")
+            });
+        }
+
+        return weekDays;
     }
 
     private List<ClinicianSchedule> GetMockClinicians()
@@ -99,11 +184,51 @@
         {
             return new List<AppointmentBlock>
             {
-                new() { Time = "9:30 AM", PatientName = "Tom Anderson", Status = "completed", StartMinute = 150, DurationMinutes = 30 },
-                new() { Time = "10:00 AM", PatientName = "Maria Garcia", Status = "completed", StartMinute = 180, DurationMinutes = 45 },
+                new() { Time = "9:30 AM", PatientName = "Tom Anderson", Status = "completed", StartMinute = 150, DurationMinutes = 30, IsCompleted = true },
+                new() { Time = "10:00 AM", PatientName = "Maria Garcia", Status = "completed", StartMinute = 180, DurationMinutes = 45, IsCompleted = true },
                 new() { Time = "1:00 PM", PatientName = "Carlos Ramirez", Status = "in-progress", StartMinute = 360, DurationMinutes = 30, IsCompleted = false }
             };
         }
+        else if (clinicianId == 2)
+        {
+            return new List<AppointmentBlock>
+            {
+                new() { Time = "8:00 AM", PatientName = "John Smith", Status = "completed", StartMinute = 60, DurationMinutes = 45, IsCompleted = true },
+                new() { Time = "11:00 AM", PatientName = "Lisa Wong", Status = "checked-in", StartMinute = 240, DurationMinutes = 30, IsCompleted = false }
+            };
+        }
+        return new List<AppointmentBlock>();
+    }
+
+    private List<AppointmentBlock> GetAppointmentsForDay(DateTime date)
+    {
+        // Mock data for week view - distribute appointments across week
+        var dayOfWeek = (int)date.DayOfWeek;
+        
+        if (dayOfWeek == 1) // Monday
+        {
+            return new List<AppointmentBlock>
+            {
+                new() { Time = "9:00 AM", PatientName = "Tom Anderson", Status = "completed", StartMinute = 120, DurationMinutes = 45, IsCompleted = true },
+                new() { Time = "2:00 PM", PatientName = "Lisa Wong", Status = "scheduled", StartMinute = 420, DurationMinutes = 30, IsCompleted = false }
+            };
+        }
+        else if (dayOfWeek == 3) // Wednesday
+        {
+            return new List<AppointmentBlock>
+            {
+                new() { Time = "10:00 AM", PatientName = "Maria Garcia", Status = "in-progress", StartMinute = 180, DurationMinutes = 45, IsCompleted = false }
+            };
+        }
+        else if (dayOfWeek == 5) // Friday
+        {
+            return new List<AppointmentBlock>
+            {
+                new() { Time = "8:30 AM", PatientName = "John Smith", Status = "checked-in", StartMinute = 90, DurationMinutes = 30, IsCompleted = false },
+                new() { Time = "1:00 PM", PatientName = "Carlos Ramirez", Status = "scheduled", StartMinute = 360, DurationMinutes = 60, IsCompleted = false }
+            };
+        }
+
         return new List<AppointmentBlock>();
     }
 
@@ -121,15 +246,15 @@
 
     private int GetAppointmentTop(AppointmentBlock appt)
     {
-        // 56px header + (minutes from 7am × pixels per minute)
-        // Each 96px slot = 60 minutes, so 1.6px per minute
-        return 56 + (int)(appt.StartMinute * 1.6);
+        // Calculate position using minute-to-pixel mapping
+        // Formula: headerHeight + (minutes from start × pixels per minute)
+        return (int)(HeaderHeightPx + (appt.StartMinute * PixelsPerMinute));
     }
 
     private int GetAppointmentHeight(AppointmentBlock appt)
     {
-        // 1.6px per minute
-        return (int)(appt.DurationMinutes * 1.6);
+        // Calculate height using minute-to-pixel mapping
+        return (int)(appt.DurationMinutes * PixelsPerMinute);
     }
 
     public class ClinicianSchedule
@@ -147,5 +272,11 @@
         public int StartMinute { get; set; } // Minutes from 7:00 AM
         public int DurationMinutes { get; set; }
         public bool IsCompleted { get; set; }
+    }
+
+    public class WeekDay
+    {
+        public DateTime Date { get; set; }
+        public string DayName { get; set; } = "";
     }
 }

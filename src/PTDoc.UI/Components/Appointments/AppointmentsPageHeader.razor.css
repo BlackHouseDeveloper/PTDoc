@@ -9,12 +9,14 @@
     align-items: center;
     justify-content: space-between;
     height: 52px;
+    gap: var(--spacing-6);
 }
 
 .header-text {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-1);
+    flex: 0 0 auto;
 }
 
 .header-text h1 {
@@ -52,6 +54,8 @@
     line-height: var(--line-height-normal);
     cursor: pointer;
     transition: opacity var(--transition-fast);
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .new-appointment-btn:hover {
