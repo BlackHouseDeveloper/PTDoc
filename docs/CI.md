@@ -122,7 +122,7 @@ dotnet list src/PTDoc.Application/PTDoc.Application.csproj reference
 
 **Example:**
 ```csharp
-// src/PTDoc.Tests/Services/CredentialValidatorTests.cs
+// Example structure for future test implementation
 public class CredentialValidatorTests
 {
     [Fact]

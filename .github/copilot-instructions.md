@@ -167,8 +167,8 @@ PTDoc.Core/        → Domain entities (zero deps)
 PTDoc.Application/ → Interfaces, DTOs (depends on Core)
 PTDoc.Infrastructure/ → EF Core, services (implements Application)
 PTDoc.Api/         → REST API, JWT auth
-PTDoc.Web/         → Blazor web app
-PTDoc.Maui/        → Mobile/desktop app
+PTDoc.Web/         → Blazor WebAssembly web app
+PTDoc.Maui/        → .NET MAUI Blazor app (mobile/desktop)
 PTDoc.UI/          → Shared Blazor components (reusable)
   ├── Components/  → UI components
   ├── Pages/       → Routable pages
@@ -177,9 +177,11 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 
 **Location Rules:**
 - Reusable components → `PTDoc.UI/Components/`
-- Platform-specific → `PTDoc.Web/` or `PTDoc.Maui/` (rare)
+- Platform-specific → `PTDoc.Web/` or `PTDoc.Maui/`
 - DTOs → `PTDoc.Application/DTOs/`
 - Domain entities → `PTDoc.Core/Models/`
+- Services interfaces → `PTDoc.Application/Services/`
+- Services implementations → `PTDoc.Infrastructure/Services/`
 
 ---
 

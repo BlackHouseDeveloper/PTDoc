@@ -194,8 +194,7 @@ dotnet test
 # Run with detailed output
 dotnet test --verbosity detailed
 
-# Run specific test project
-dotnet test src/PTDoc.Tests/PTDoc.Tests.csproj
+# Note: Test projects to be added in future development phases
 ```
 
 ### Test Coverage
