@@ -30,6 +30,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncQueueItem> SyncQueueItems => Set<SyncQueueItem>();
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
+    public DbSet<Addendum> Addendums => Set<Addendum>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -220,6 +221,23 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ResolutionType).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Reason).HasMaxLength(500).IsRequired();
             entity.Property(e => e.ResolutionNotes).HasMaxLength(1000);
+        });
+        
+        // Configure Addendum
+        modelBuilder.Entity<Addendum>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicalNoteId);
+            entity.HasIndex(e => e.CreatedUtc);
+            entity.HasIndex(e => e.CreatedByUserId);
+            
+            entity.Property(e => e.Content).IsRequired();
+            
+            // Relationship to ClinicalNote
+            entity.HasOne(e => e.ClinicalNote)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicalNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

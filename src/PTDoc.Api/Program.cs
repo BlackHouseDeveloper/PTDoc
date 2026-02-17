@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using PTDoc.Api.Auth;
+using PTDoc.Api.Compliance;
 using PTDoc.Api.Identity;
 using PTDoc.Api.Sync;
 using PTDoc.Application.Auth;
@@ -25,6 +26,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Register sync services
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
+
+// Register compliance services
+builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -126,5 +132,7 @@ app.UseAuthorization();
 app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
 app.MapPinAuthEndpoints(); // New PIN-based auth
 app.MapSyncEndpoints(); // Sync endpoints
+app.MapComplianceEndpoints(); // Compliance rule evaluation
+app.MapNoteEndpoints(); // Note signature and addendum
 
 app.Run();
