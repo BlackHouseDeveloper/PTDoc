@@ -135,6 +135,10 @@
     private const double PixelsPerMinute = SlotHeightPx / (double)MinutesPerSlot; // 1.6
     private const int HeaderHeightPx = 56;
     private const int StartHour = 7; // 7:00 AM
+    
+    // Week start configuration (Sunday is standard for US healthcare scheduling)
+    // Change to DayOfWeek.Monday for international users where weeks start on Monday
+    private const DayOfWeek WeekStartDay = DayOfWeek.Sunday;
 
     private List<string> TimeSlots => new()
     {
@@ -152,7 +156,13 @@
 
     private List<WeekDay> GetWeekDays()
     {
-        var startOfWeek = SelectedDate.AddDays(-(int)SelectedDate.DayOfWeek);
+        // Calculate start of week based on configured WeekStartDay
+        // Formula: ((currentDay - weekStartDay + 7) % 7) gives days from week start
+        // Example: If today is Wednesday (3) and week starts Sunday (0): ((3 - 0 + 7) % 7) = 3 days
+        // Example: If today is Sunday (0) and week starts Sunday (0): ((0 - 0 + 7) % 7) = 0 days
+        var daysFromWeekStart = ((int)SelectedDate.DayOfWeek - (int)WeekStartDay + 7) % 7;
+        var startOfWeek = SelectedDate.AddDays(-daysFromWeekStart);
+        
         var weekDays = new List<WeekDay>();
 
         for (int i = 0; i < 7; i++)
