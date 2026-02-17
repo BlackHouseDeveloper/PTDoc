@@ -1,0 +1,71 @@
+.patients-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: linear-gradient(to bottom, var(--background), var(--muted));
+}
+
+.patients-page-body {
+    flex: 1;
+    padding: var(--spacing-8);
+}
+
+.patients-page-search {
+    max-width: 600px;
+    margin-bottom: var(--spacing-8);
+}
+
+.patients-page-content {
+    /* Content area for cards */
+}
+
+.patients-page-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-16);
+    font-family: var(--font-family-base);
+    font-size: var(--text-lg);
+    color: var(--muted-foreground);
+}
+
+.patients-add-button {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    height: 44px;
+    padding: 0 var(--spacing-5);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.patients-add-button:hover {
+    opacity: 0.9;
+}
+
+.patients-add-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patients-add-button svg {
+    flex-shrink: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .patients-page-body {
+        padding: var(--spacing-4);
+    }
+
+    .patients-page-search {
+        max-width: 100%;
+    }
+}

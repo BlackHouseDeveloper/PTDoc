@@ -1,0 +1,70 @@
+.patients-header {
+    background: var(--secondary);
+    border-bottom: 1px solid var(--border);
+    padding: var(--spacing-8) var(--spacing-8) 1px var(--spacing-8);
+}
+
+.patients-header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+}
+
+.patients-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+}
+
+.patients-header-back-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--primary-foreground);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.patients-header-back-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.patients-header-back-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.patients-header-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.patients-header-title {
+    font-family: var(--font-family-base);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 36px;
+    color: var(--primary-foreground);
+    margin: 0;
+}
+
+.patients-header-subtitle {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
+}
+
+.patients-header-actions {
+    display: flex;
+    gap: var(--spacing-4);
+}

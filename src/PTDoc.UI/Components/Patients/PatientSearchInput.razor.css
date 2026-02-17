@@ -1,0 +1,38 @@
+.patient-search-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--input-background);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-1) var(--spacing-3);
+    padding-left: 40px;
+    transition: border-color var(--transition-fast);
+}
+
+.patient-search-input:focus-within {
+    border-color: var(--ring);
+}
+
+.patient-search-input-icon {
+    position: absolute;
+    left: var(--spacing-3);
+    color: var(--muted-foreground);
+    pointer-events: none;
+}
+
+.patient-search-input-field {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: normal;
+    color: var(--foreground);
+    outline: none;
+}
+
+.patient-search-input-field::placeholder {
+    color: var(--muted-foreground);
+}

@@ -1,0 +1,60 @@
+@* Patient Card Component - Displays individual patient summary *@
+
+<div class="patient-card" 
+     data-testid="patient-card-@Patient.Id"
+     @onclick="HandleClick"
+     @onkeydown="HandleKeyDown"
+     role="button"
+     tabindex="0"
+     aria-label="View details for @Patient.DisplayName">
+    
+    <div class="patient-card-content">
+        <div class="patient-card-header">
+            <h3 class="patient-card-name">@Patient.DisplayName</h3>
+            <StatusBadge 
+                Text="@Patient.StatusLabel" 
+                Variant="@Patient.StatusVariant" 
+            />
+        </div>
+        
+        <div class="patient-card-details">
+            @if (!string.IsNullOrEmpty(Patient.DateOfBirth))
+            {
+                <div class="patient-card-detail-item">
+                    <p class="patient-card-detail-label">Date of Birth</p>
+                    <p class="patient-card-detail-value">@Patient.DateOfBirth</p>
+                </div>
+            }
+            
+            @if (!string.IsNullOrEmpty(Patient.LastVisit))
+            {
+                <div class="patient-card-detail-item">
+                    <p class="patient-card-detail-label">Last Visit</p>
+                    <p class="patient-card-detail-value">@Patient.LastVisit</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PatientListItemVm Patient { get; set; } = null!;
+    [Parameter] public EventCallback<PatientListItemVm> OnOpen { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (OnOpen.HasDelegate)
+        {
+            await OnOpen.InvokeAsync(Patient);
+        }
+        // TODO: Navigate to patient overview route
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await HandleClick();
+        }
+    }
+}
