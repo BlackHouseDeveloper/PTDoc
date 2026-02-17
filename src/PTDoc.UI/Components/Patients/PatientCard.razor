@@ -41,11 +41,6 @@
     [Parameter, EditorRequired] public PatientListItemVm Patient { get; set; } = null!;
     [Parameter] public EventCallback<PatientListItemVm> OnOpen { get; set; }
 
-    private void HandleMouseEnter()
-    {
-        Console.WriteLine($"Mouse entered card: {Patient.DisplayName}");
-    }
-
     private async Task HandleClick()
     {
         Console.WriteLine($"PatientCard clicked: {Patient.DisplayName}, HasDelegate: {OnOpen.HasDelegate}");

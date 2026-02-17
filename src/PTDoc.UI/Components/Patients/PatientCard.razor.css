@@ -2,7 +2,7 @@
     background: var(--card);
     border: 2px solid var(--border);
     border-radius: var(--radius-xl);
-    padding: 34px 2px 2px 34px;
+    padding: var(--spacing-8) var(--spacing-1) var(--spacing-1) var(--spacing-8);
     cursor: pointer;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
     position: relative;
