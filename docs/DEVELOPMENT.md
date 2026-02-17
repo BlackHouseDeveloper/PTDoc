@@ -88,10 +88,7 @@ dotnet run --project src/PTDoc.Api --urls http://localhost:5170
 # Run all tests
 dotnet test
 
-# Run specific test project
-dotnet test src/PTDoc.Tests/PTDoc.Tests.csproj
-
-# Run tests with coverage
+# Run tests with coverage (when test projects are added)
 dotnet test --collect:"XPlat Code Coverage"
 
 # Run tests for specific category
