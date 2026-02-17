@@ -6,17 +6,21 @@ using PTDoc.Api.AI;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Identity;
+using PTDoc.Api.Integrations;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Sync;
 using PTDoc.AI.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
+using PTDoc.Infrastructure.Integrations;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.Sync;
+using PTDoc.Integrations.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +41,13 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();
+
+// Register integration services
+builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
+builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
+builder.Services.AddScoped<IFaxService, HumbleFaxService>();
+builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
+builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -141,5 +152,6 @@ app.MapSyncEndpoints(); // Sync endpoints
 app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
 app.MapAiEndpoints(); // AI generation endpoints
+app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 
 app.Run();

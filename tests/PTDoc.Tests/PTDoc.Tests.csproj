@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.AI\PTDoc.AI.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.Integrations\PTDoc.Integrations.csproj" />
   </ItemGroup>
 
 </Project>
