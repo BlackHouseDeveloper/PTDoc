@@ -4,12 +4,15 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Identity;
+using PTDoc.Api.Sync;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Sync;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Infrastructure.Sync;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +22,9 @@ builder.Services.AddHttpContextAccessor();
 // Register identity services
 builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Register sync services
+builder.Services.AddScoped<ISyncEngine, SyncEngine>();
 
 // Configure database
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
@@ -119,5 +125,6 @@ app.UseAuthorization();
 // Register all API endpoints
 app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
 app.MapPinAuthEndpoints(); // New PIN-based auth
+app.MapSyncEndpoints(); // Sync endpoints
 
 app.Run();

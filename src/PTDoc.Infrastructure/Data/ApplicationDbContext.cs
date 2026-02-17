@@ -28,6 +28,7 @@ public class ApplicationDbContext : DbContext
     // System entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SyncQueueItem> SyncQueueItems => Set<SyncQueueItem>();
+    public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -205,6 +206,20 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.InternalPatientId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure SyncConflictArchive
+        modelBuilder.Entity<SyncConflictArchive>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.EntityType, e.EntityId });
+            entity.HasIndex(e => e.DetectedAt);
+            entity.HasIndex(e => e.IsResolved);
+            
+            entity.Property(e => e.EntityType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ResolutionType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Reason).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.ResolutionNotes).HasMaxLength(1000);
         });
     }
 }
