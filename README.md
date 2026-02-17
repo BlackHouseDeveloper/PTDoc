@@ -58,7 +58,7 @@ This will install the EF Core tools (if not already installed), add an Initial m
 bash
 Copy code
 ./PTDoc-Foundry.sh --seed
-This uses the PTDoc.Seeder console project to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the seeder will add any missing data without duplicating existing entries.
+This command uses the internal seeding logic built into `PTDoc-Foundry.sh` to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the script will add any missing data without duplicating existing entries.
 #### Verify the Database Path
 
 The database is created at `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
