@@ -49,6 +49,7 @@ public class AuthService : IAuthService
                 // Log failed attempt - user not found
                 await LogLoginAttemptAsync(username, null, false, ipAddress, userAgent, 
                     "User not found", attemptedAt, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
                 return null;
             }
 
@@ -57,6 +58,7 @@ public class AuthService : IAuthService
                 // Log failed attempt - user inactive
                 await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent, 
                     "User account is inactive", attemptedAt, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
                 return null;
             }
 
@@ -68,6 +70,7 @@ public class AuthService : IAuthService
                 // Log failed attempt - invalid PIN
                 await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent, 
                     "Invalid PIN", attemptedAt, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
                 return null;
             }
 
