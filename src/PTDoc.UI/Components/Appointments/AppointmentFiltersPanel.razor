@@ -116,50 +116,74 @@
 
     private async Task ToggleAppointmentType(string type, bool isChecked)
     {
+        var updatedFilter = new AppointmentsFilter
+        {
+            SelectedAppointmentTypes = new List<string>(Filter.SelectedAppointmentTypes),
+            SelectedIntakeStatuses = new List<string>(Filter.SelectedIntakeStatuses),
+            SelectedAppointmentStatuses = new List<string>(Filter.SelectedAppointmentStatuses)
+        };
+
         if (isChecked)
         {
-            if (!Filter.SelectedAppointmentTypes.Contains(type))
+            if (!updatedFilter.SelectedAppointmentTypes.Contains(type))
             {
-                Filter.SelectedAppointmentTypes.Add(type);
+                updatedFilter.SelectedAppointmentTypes.Add(type);
             }
         }
         else
         {
-            Filter.SelectedAppointmentTypes.Remove(type);
+            updatedFilter.SelectedAppointmentTypes.Remove(type);
         }
-        await OnFilterChanged.InvokeAsync(Filter);
+        
+        await OnFilterChanged.InvokeAsync(updatedFilter);
     }
 
     private async Task ToggleIntakeStatus(string status, bool isChecked)
     {
+        var updatedFilter = new AppointmentsFilter
+        {
+            SelectedAppointmentTypes = new List<string>(Filter.SelectedAppointmentTypes),
+            SelectedIntakeStatuses = new List<string>(Filter.SelectedIntakeStatuses),
+            SelectedAppointmentStatuses = new List<string>(Filter.SelectedAppointmentStatuses)
+        };
+
         if (isChecked)
         {
-            if (!Filter.SelectedIntakeStatuses.Contains(status))
+            if (!updatedFilter.SelectedIntakeStatuses.Contains(status))
             {
-                Filter.SelectedIntakeStatuses.Add(status);
+                updatedFilter.SelectedIntakeStatuses.Add(status);
             }
         }
         else
         {
-            Filter.SelectedIntakeStatuses.Remove(status);
+            updatedFilter.SelectedIntakeStatuses.Remove(status);
         }
-        await OnFilterChanged.InvokeAsync(Filter);
+        
+        await OnFilterChanged.InvokeAsync(updatedFilter);
     }
 
     private async Task ToggleStatus(string status, bool isChecked)
     {
+        var updatedFilter = new AppointmentsFilter
+        {
+            SelectedAppointmentTypes = new List<string>(Filter.SelectedAppointmentTypes),
+            SelectedIntakeStatuses = new List<string>(Filter.SelectedIntakeStatuses),
+            SelectedAppointmentStatuses = new List<string>(Filter.SelectedAppointmentStatuses)
+        };
+
         if (isChecked)
         {
-            if (!Filter.SelectedAppointmentStatuses.Contains(status))
+            if (!updatedFilter.SelectedAppointmentStatuses.Contains(status))
             {
-                Filter.SelectedAppointmentStatuses.Add(status);
+                updatedFilter.SelectedAppointmentStatuses.Add(status);
             }
         }
         else
         {
-            Filter.SelectedAppointmentStatuses.Remove(status);
+            updatedFilter.SelectedAppointmentStatuses.Remove(status);
         }
-        await OnFilterChanged.InvokeAsync(Filter);
+        
+        await OnFilterChanged.InvokeAsync(updatedFilter);
     }
 
     private string GetAppointmentTypeLabel()

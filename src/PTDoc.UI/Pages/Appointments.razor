@@ -75,7 +75,7 @@
         isNewAppointmentModalOpen = true;
     }
 
-    private void HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
+    private async Task HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
     {
         // TODO: Implement actual appointment creation via API
         Console.WriteLine($"Creating appointment for patient {formData.PatientId}");
@@ -87,6 +87,8 @@
         
         // Show success notification (to be implemented)
         // TODO: Add toast notification or success message
+        
+        await Task.CompletedTask;
     }
 
     private string GetViewLabel()

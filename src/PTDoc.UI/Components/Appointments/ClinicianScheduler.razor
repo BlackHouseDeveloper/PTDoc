@@ -8,7 +8,7 @@
                 <div class="time-header">
                     @if (View == AppointmentsView.Week)
                     {
-                        <span style="font-size: var(--text-xs); color: var(--muted-foreground); padding: var(--spacing-4);">Time</span>
+                        <span class="week-time-label">Time</span>
                     }
                 </div>
                 @foreach (var time in TimeSlots)
@@ -147,7 +147,7 @@
         "5:00 PM", "6:00 PM", "7:00 PM"
     };
 
-    private int GetTimeSlotCount() => 13 * 4; // 13 hours × 4 slots per hour
+    private int GetTimeSlotCount() => 13; // One slot per hour (7AM-7PM)
 
     protected override void OnInitialized()
     {
@@ -265,28 +265,5 @@
     {
         // Calculate height using minute-to-pixel mapping
         return (int)(appt.DurationMinutes * PixelsPerMinute);
-    }
-
-    public class ClinicianSchedule
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = "";
-        public int AppointmentCount { get; set; }
-    }
-
-    public class AppointmentBlock
-    {
-        public string Time { get; set; } = "";
-        public string PatientName { get; set; } = "";
-        public string Status { get; set; } = "";
-        public int StartMinute { get; set; } // Minutes from 7:00 AM
-        public int DurationMinutes { get; set; }
-        public bool IsCompleted { get; set; }
-    }
-
-    public class WeekDay
-    {
-        public DateTime Date { get; set; }
-        public string DayName { get; set; } = "";
     }
 }

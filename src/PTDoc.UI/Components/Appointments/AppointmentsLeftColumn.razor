@@ -1,8 +1,8 @@
 @* Appointments Left Column - Composition Component *@
 
 <div class="appointments-left-column">
-    <AppointmentsViewTabs SelectedView="@(SelectedView == AppointmentsView.Today ? "Today" : "Week")" 
-                          OnViewChanged="HandleViewChangeInternal" />
+    <AppointmentsViewTabs SelectedView="@SelectedView" 
+                          OnViewChanged="OnViewChanged" />
     
     <button type="button" 
             class="filters-button @(IsFiltersOpen ? "active" : "")" 
@@ -76,15 +76,8 @@
     [Parameter]
     public EventCallback<AppointmentsFilter> OnFilterChanged { get; set; }
 
-    private async Task HandleViewChangeInternal(string view)
-    {
-        var newView = view == "Week" ? AppointmentsView.Week : AppointmentsView.Today;
-        await OnViewChanged.InvokeAsync(newView);
-    }
-
     private async Task ToggleFilters()
     {
-        IsFiltersOpen = !IsFiltersOpen;
-        await IsFiltersOpenChanged.InvokeAsync(IsFiltersOpen);
+        await IsFiltersOpenChanged.InvokeAsync(!IsFiltersOpen);
     }
 }
