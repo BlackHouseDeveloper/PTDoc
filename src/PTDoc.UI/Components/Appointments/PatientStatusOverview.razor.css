@@ -1,0 +1,76 @@
+.patient-status-overview {
+    height: 442px;
+    background: var(--background);
+    border: 2px solid var(--border);
+    border-radius: calc(var(--radius-lg) + 4px);
+    padding: var(--spacing-6);
+}
+
+.overview-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-12);
+}
+
+.header-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    color: var(--foreground);
+}
+
+.overview-header h3 {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1;
+    color: var(--foreground);
+    margin: 0;
+}
+
+.status-metrics {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-6);
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.metric-value {
+    font-family: var(--font-family-base);
+    font-size: 30px;
+    font-weight: var(--font-weight-normal);
+    line-height: 1.2;
+    margin: 0 0 var(--spacing-1) 0;
+}
+
+.metric-value.total {
+    color: var(--foreground);
+}
+
+.metric-value.in-progress {
+    color: var(--primary);
+}
+
+.metric-value.checked-in {
+    color: var(--info);
+}
+
+.metric-value.missing-intake {
+    color: var(--destructive);
+}
+
+.metric-label {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--muted-foreground);
+    margin: 0;
+}

@@ -1,0 +1,40 @@
+@* Today/Week View Tabs Component *@
+
+<div class="appointments-view-tabs">
+    <div class="tab-list">
+        <button type="button" 
+                class="tab-button @(SelectedView == AppointmentsView.Today ? "selected" : "")"
+                @onclick="SelectTodayView">
+            Today
+        </button>
+        <button type="button" 
+                class="tab-button @(SelectedView == AppointmentsView.Week ? "selected" : "")"
+                @onclick="SelectWeekView">
+            Week View
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
+
+    private async Task SelectTodayView()
+    {
+        if (SelectedView != AppointmentsView.Today)
+        {
+            await OnViewChanged.InvokeAsync(AppointmentsView.Today);
+        }
+    }
+
+    private async Task SelectWeekView()
+    {
+        if (SelectedView != AppointmentsView.Week)
+        {
+            await OnViewChanged.InvokeAsync(AppointmentsView.Week);
+        }
+    }
+}

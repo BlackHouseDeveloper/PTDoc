@@ -1,0 +1,290 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
+        <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog" 
+             aria-labelledby="new-appointment-title" aria-describedby="new-appointment-description" aria-modal="true">
+            
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="modal-title-container">
+                    <svg class="modal-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <h2 id="new-appointment-title">New Appointment</h2>
+                </div>
+                <p id="new-appointment-description" class="modal-description">Schedule a new appointment for a patient</p>
+            </div>
+
+            <!-- Modal Body -->
+            <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                <!-- Patient Selection -->
+                <div class="form-field">
+                    <label for="patient" class="form-label">Patient <span class="required">*</span></label>
+                    <select 
+                        id="patient" 
+                        class="form-input" 
+                        @bind="PatientId"
+                        @ref="firstInputRef"
+                        required 
+                        aria-required="true">
+                        <option value="">Select a patient...</option>
+                        <option value="1">Tom Anderson</option>
+                        <option value="2">Maria Garcia</option>
+                        <option value="3">Carlos Ramirez</option>
+                        <option value="4">Lisa Wong</option>
+                        <option value="5">John Smith</option>
+                    </select>
+                </div>
+
+                <!-- Appointment Type -->
+                <div class="form-field">
+                    <label for="appointmentType" class="form-label">Appointment Type <span class="required">*</span></label>
+                    <select 
+                        id="appointmentType" 
+                        class="form-input" 
+                        @bind="AppointmentType"
+                        required 
+                        aria-required="true">
+                        <option value="">Select type...</option>
+                        <option value="Initial Evaluation">Initial Evaluation</option>
+                        <option value="Follow Up">Follow Up</option>
+                        <option value="Re-Evaluation">Re-Evaluation</option>
+                        <option value="Discharge">Discharge</option>
+                    </select>
+                </div>
+
+                <!-- Date & Time Row -->
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="appointmentDate" class="form-label">Date <span class="required">*</span></label>
+                        <input 
+                            id="appointmentDate" 
+                            type="date" 
+                            class="form-input" 
+                            @bind="AppointmentDate"
+                            required 
+                            aria-required="true" />
+                    </div>
+                    <div class="form-field">
+                        <label for="appointmentTime" class="form-label">Time <span class="required">*</span></label>
+                        <input 
+                            id="appointmentTime" 
+                            type="time" 
+                            class="form-input" 
+                            @bind="AppointmentTimeInput"
+                            required 
+                            aria-required="true" />
+                    </div>
+                </div>
+
+                <!-- Duration -->
+                <div class="form-field">
+                    <label for="duration" class="form-label">Duration (minutes) <span class="required">*</span></label>
+                    <select 
+                        id="duration" 
+                        class="form-input" 
+                        @bind="DurationMinutes"
+                        required 
+                        aria-required="true">
+                        <option value="30">30 minutes</option>
+                        <option value="45">45 minutes</option>
+                        <option value="60">60 minutes</option>
+                        <option value="90">90 minutes</option>
+                    </select>
+                </div>
+
+                <!-- Clinician Selection -->
+                <div class="form-field">
+                    <label for="clinician" class="form-label">Clinician <span class="required">*</span></label>
+                    <select 
+                        id="clinician" 
+                        class="form-input" 
+                        @bind="ClinicianId"
+                        required 
+                        aria-required="true">
+                        <option value="">Select clinician...</option>
+                        <option value="1">Dr. Emily Chen</option>
+                        <option value="2">Dr. Sarah Mitchell</option>
+                    </select>
+                </div>
+
+                <!-- Notes (Optional) -->
+                <div class="form-field">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea 
+                        id="notes" 
+                        class="form-input form-textarea" 
+                        rows="3"
+                        placeholder="Add any additional notes..."
+                        @bind="Notes"></textarea>
+                </div>
+
+                <!-- Modal Footer (Buttons) -->
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" @onclick="Close">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
+                        </svg>
+                        Schedule Appointment
+                    </button>
+                </div>
+            </form>
+
+            <!-- Close Button -->
+            <button type="button" class="modal-close" @onclick="Close" aria-label="Close modal">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<AppointmentFormData> OnSubmit { get; set; }
+
+    private ElementReference firstInputRef;
+    private ElementReference modalContainerRef;
+    private IJSObjectReference? modalModule;
+    private DotNetObjectReference<NewAppointmentModal>? dotNetRef;
+    private string modalId = $"new-appointment-modal-{Guid.NewGuid():N}";
+
+    private string PatientId { get; set; } = string.Empty;
+    private string AppointmentType { get; set; } = string.Empty;
+    private DateTime? AppointmentDate { get; set; } = DateTime.Today;
+    private TimeOnly? AppointmentTimeInput { get; set; } = new TimeOnly(9, 0);
+    private int DurationMinutes { get; set; } = 45;
+    private string ClinicianId { get; set; } = string.Empty;
+    private string Notes { get; set; } = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef = DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+            }
+        }
+
+        if (IsOpen && modalModule != null && dotNetRef != null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                await firstInputRef.FocusAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+            }
+        }
+        else if (!IsOpen && modalModule != null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs()
+    {
+        await Close();
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+        
+        // Clear form
+        PatientId = string.Empty;
+        AppointmentType = string.Empty;
+        AppointmentDate = DateTime.Today;
+        AppointmentTimeInput = new TimeOnly(9, 0);
+        DurationMinutes = 45;
+        ClinicianId = string.Empty;
+        Notes = string.Empty;
+    }
+
+    private void HandleOverlayClick()
+    {
+        _ = Close();
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Convert TimeOnly to TimeSpan
+        var timeOnly = AppointmentTimeInput ?? new TimeOnly(9, 0);
+        TimeSpan parsedTime = new TimeSpan(timeOnly.Hour, timeOnly.Minute, 0);
+        
+        var formData = new AppointmentFormData
+        {
+            PatientId = PatientId,
+            AppointmentType = AppointmentType,
+            AppointmentDate = AppointmentDate ?? DateTime.Today,
+            AppointmentTime = parsedTime,
+            DurationMinutes = DurationMinutes,
+            ClinicianId = ClinicianId,
+            Notes = Notes
+        };
+
+        await OnSubmit.InvokeAsync(formData);
+        await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (modalModule != null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                await modalModule.DisposeAsync();
+            }
+            catch { /* Ignore disposal errors */ }
+        }
+
+        dotNetRef?.Dispose();
+    }
+
+    public class AppointmentFormData
+    {
+        public string PatientId { get; set; } = string.Empty;
+        public string AppointmentType { get; set; } = string.Empty;
+        public DateTime AppointmentDate { get; set; }
+        public TimeSpan AppointmentTime { get; set; }
+        public int DurationMinutes { get; set; }
+        public string ClinicianId { get; set; } = string.Empty;
+        public string Notes { get; set; } = string.Empty;
+    }
+}

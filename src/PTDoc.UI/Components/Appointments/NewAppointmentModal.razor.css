@@ -1,0 +1,314 @@
+/* ========================================
+   New Appointment Modal - Token-Only Styles
+   Reusing AddPatientModal styling pattern
+   ======================================== */
+
+/* Modal Overlay (Backdrop) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--modal-overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-modal-backdrop);
+    padding: var(--spacing-4);
+    animation: fadeIn var(--transition-fast);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Modal Container */
+.modal-container {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: var(--modal-max-width);
+    padding: var(--modal-padding);
+    animation: slideUp var(--transition-normal);
+    z-index: var(--z-modal);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(var(--spacing-4));
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal Header */
+.modal-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-6);
+}
+
+.modal-title-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.modal-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--primary);
+}
+
+.modal-header h2 {
+    font-family: var(--font-family-base);
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    color: var(--foreground);
+    margin: 0;
+}
+
+.modal-description {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
+/* Modal Body (Form) */
+.modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding-top: var(--spacing-4);
+}
+
+/* Form Row (Two Column Layout) */
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-4);
+}
+
+/* Form Field */
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.form-label {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    color: var(--foreground);
+}
+
+.required {
+    color: var(--destructive);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* Form Inputs */
+.form-input {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    background: var(--input-background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-3);
+    height: 44px;
+    transition: all var(--transition-fast);
+}
+
+.form-input:hover {
+    background: var(--muted);
+}
+
+.form-input:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    background: var(--background);
+}
+
+.form-input::placeholder {
+    color: var(--muted-foreground);
+}
+
+.form-textarea {
+    height: auto;
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Modal Footer (Buttons Container) */
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-4);
+    margin-top: var(--spacing-4);
+}
+
+/* Cancel Button */
+.btn-cancel {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    height: 44px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-cancel:hover {
+    background: var(--muted);
+}
+
+.btn-cancel:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+/* Primary Button (Schedule Appointment) */
+.btn-primary {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    color: var(--primary-foreground);
+    background: var(--primary);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    height: 44px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+}
+
+.btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-primary:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.btn-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: currentColor;
+}
+
+/* Close Button (X in top-right) */
+.modal-close {
+    position: absolute;
+    top: var(--spacing-4);
+    right: var(--spacing-4);
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    opacity: 0.7;
+}
+
+.modal-close:hover {
+    opacity: 1;
+    background: var(--muted);
+    color: var(--foreground);
+}
+
+.modal-close:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 767px) {
+    .modal-overlay {
+        padding: var(--spacing-2);
+    }
+
+    .modal-container {
+        max-width: 100%;
+        padding: var(--spacing-4);
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-close {
+        top: var(--spacing-2);
+        right: var(--spacing-2);
+    }
+
+    .modal-footer {
+        flex-direction: column-reverse;
+        gap: var(--spacing-2);
+    }
+
+    .btn-cancel,
+    .btn-primary {
+        width: 100%;
+    }
+}
+
+/* Accessibility: Reduce Motion */
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay,
+    .modal-container,
+    .form-input,
+    .btn-cancel,
+    .btn-primary,
+    .modal-close {
+        animation: none;
+        transition: none;
+    }
+}

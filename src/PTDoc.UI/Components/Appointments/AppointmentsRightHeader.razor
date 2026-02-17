@@ -1,0 +1,10 @@
+@* Appointments Right Column Header *@
+
+<div class="appointments-right-header">
+    <h2>@ViewLabel</h2>
+</div>
+
+@code {
+    [Parameter]
+    public string ViewLabel { get; set; } = "Today's Appointments";
+}

@@ -1,0 +1,46 @@
+.appointments-view-tabs {
+    height: 78px;
+}
+
+.tab-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(1, minmax(0, 1fr));
+    gap: 0;
+    height: 62px;
+    background: var(--tertiary);
+    border-radius: var(--radius-lg);
+    padding: calc(var(--spacing-1) + 0.5px) var(--spacing-1);
+}
+
+.tab-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 53px;
+    padding: 17px var(--spacing-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-lg);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-button.selected {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.tab-button:not(.selected):hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.tab-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}

@@ -1,9 +1,98 @@
 @page "/appointments"
 @attribute [Authorize]
+@rendermode InteractiveServer
 
 <PageTitle>Appointments - PTDoc</PageTitle>
 
-<div class="page-container">
-    <h1>Appointments</h1>
-    <p>Schedule and manage patient appointments.</p>
+<div class="appointments-page">
+    <AppointmentsPageHeader Title="Appointments" 
+                           Subtitle="Daily schedule management" 
+                           OnNewAppointment="HandleNewAppointment" />
+    
+    <div class="appointments-content">
+        <AppointmentsLeftColumn SelectedView="@selectedView"
+                               OnViewChanged="HandleViewChanged"
+                               SelectedDate="@selectedDate"
+                               OnPrevDay="HandlePrevDay"
+                               OnNextDay="HandleNextDay"
+                               OnToday="HandleToday"
+                               TotalCount="12"
+                               InProgressCount="1"
+                               CheckedInCount="1"
+                               MissingIntakeCount="2"
+                               IsFiltersOpen="@isFiltersOpen"
+                               IsFiltersOpenChanged="@((value) => isFiltersOpen = value)"
+                               CurrentFilter="@currentFilter"
+                               OnFilterChanged="HandleFilterChanged" />
+        
+        <AppointmentsRightColumn ViewLabel="@GetViewLabel()"
+                                SelectedDate="@selectedDate"
+                                View="@selectedView"
+                                Filter="@currentFilter" />
+    </div>
 </div>
+
+<!-- New Appointment Modal -->
+<NewAppointmentModal IsOpen="@isNewAppointmentModalOpen"
+                    IsOpenChanged="@((value) => isNewAppointmentModalOpen = value)"
+                    OnSubmit="@HandleAppointmentSubmit" />
+
+@code {
+    private AppointmentsView selectedView = AppointmentsView.Today;
+    private DateTime selectedDate = DateTime.Today;
+    private bool isFiltersOpen = false;
+    private AppointmentsFilter currentFilter = new();
+    private bool isNewAppointmentModalOpen = false;
+
+    private void HandleViewChanged(AppointmentsView view)
+    {
+        selectedView = view;
+    }
+
+    private void HandlePrevDay()
+    {
+        selectedDate = selectedDate.AddDays(-1);
+    }
+
+    private void HandleNextDay()
+    {
+        selectedDate = selectedDate.AddDays(1);
+    }
+
+    private void HandleToday()
+    {
+        selectedDate = DateTime.Today;
+    }
+
+    private void HandleFilterChanged(AppointmentsFilter filter)
+    {
+        currentFilter = filter;
+        // In a real app, this would trigger data refresh with filters applied
+    }
+
+    private void HandleNewAppointment()
+    {
+        isNewAppointmentModalOpen = true;
+    }
+
+    private async Task HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
+    {
+        // TODO: Implement actual appointment creation via API
+        Console.WriteLine($"Creating appointment for patient {formData.PatientId}");
+        Console.WriteLine($"Type: {formData.AppointmentType}, Date: {formData.AppointmentDate:yyyy-MM-dd}, Time: {formData.AppointmentTime}");
+        Console.WriteLine($"Duration: {formData.DurationMinutes} minutes, Clinician: {formData.ClinicianId}");
+        
+        // In a real app, you would call a service here:
+        // await AppointmentService.CreateAppointmentAsync(formData);
+        
+        // Show success notification (to be implemented)
+        // TODO: Add toast notification or success message
+        
+        await Task.CompletedTask;
+    }
+
+    private string GetViewLabel()
+    {
+        return selectedView == AppointmentsView.Today ? "Today's Appointments" : "Week Appointments";
+    }
+}

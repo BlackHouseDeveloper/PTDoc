@@ -1,0 +1,27 @@
+@* Appointments Right Column - Composition Component *@
+
+<div class="appointments-right-column">
+    <AppointmentsRightHeader ViewLabel="@ViewLabel" />
+    
+    <ClinicianScheduler SelectedDate="SelectedDate" 
+                       Clinicians="Clinicians"
+                       View="View"
+                       Filter="Filter" />
+</div>
+
+@code {
+    [Parameter]
+    public string ViewLabel { get; set; } = "Today's Appointments";
+
+    [Parameter]
+    public DateTime SelectedDate { get; set; } = DateTime.Today;
+
+    [Parameter]
+    public List<ClinicianSchedule>? Clinicians { get; set; }
+
+    [Parameter]
+    public AppointmentsView View { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public AppointmentsFilter? Filter { get; set; }
+}

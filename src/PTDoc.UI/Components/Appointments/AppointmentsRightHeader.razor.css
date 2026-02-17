@@ -1,0 +1,15 @@
+.appointments-right-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+}
+
+.appointments-right-header h2 {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-tight);
+    color: var(--foreground);
+    margin: 0;
+}
