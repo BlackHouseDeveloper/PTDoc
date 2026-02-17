@@ -99,7 +99,9 @@ PTDoc.Application/
 │   ├── ITokenStore.cs
 │   └── IUserService.cs
 ├── Services/
-│   └── IPatientService.cs (future)
+│   ├── IPatientService.cs (future)
+│   ├── ISyncService.cs
+│   └── IConnectivityService.cs
 └── DTOs/
     ├── LoginRequest.cs
     ├── TokenResponse.cs
@@ -115,6 +117,42 @@ public interface ITokenService
     Task<TokenResponse> GenerateTokenAsync(string username);
     Task<TokenResponse?> RefreshTokenAsync(string refreshToken);
     Task RevokeTokenAsync(string refreshToken);
+}
+```
+
+**Offline-First Services:**
+
+PTDoc implements offline-first architecture through two core services:
+
+```csharp
+namespace PTDoc.Application.Services;
+
+/// <summary>
+/// Service for managing data synchronization state and operations
+/// Supports offline-first architecture with local SQLite persistence
+/// </summary>
+public interface ISyncService
+{
+    DateTime? LastSyncTime { get; }
+    bool IsSyncing { get; }
+    event Action? OnSyncStateChanged;
+    
+    Task InitializeAsync();
+    Task<bool> SyncNowAsync();
+    string GetElapsedTimeSinceSync();
+}
+
+/// <summary>
+/// Service for detecting and monitoring network connectivity status
+/// Supports real-time online/offline detection for sync operations
+/// </summary>
+public interface IConnectivityService
+{
+    bool IsOnline { get; }
+    event Action<bool>? OnConnectivityChanged;
+    
+    Task InitializeAsync();
+    Task<bool> CheckConnectivityAsync();
 }
 ```
 
@@ -137,7 +175,9 @@ PTDoc.Infrastructure/
 ├── Services/
 │   ├── CredentialValidator.cs
 │   ├── TokenService.cs (future)
-│   └── PatientService.cs (future)
+│   ├── PatientService.cs (future)
+│   ├── SyncService.cs
+│   └── ConnectivityService.cs
 └── Auth/
     └── AuthenticatedHttpMessageHandler.cs
 ```
@@ -166,6 +206,134 @@ public class CredentialValidator : ICredentialValidator
             return null;
         
         return new ClaimsIdentity(/* claims */, "PTDocAuth");
+    }
+}
+```
+
+**Offline-First Implementation:**
+
+```csharp
+namespace PTDoc.Infrastructure.Services;
+
+/// <summary>
+/// Implementation of ISyncService using localStorage for persistence
+/// Currently simulates sync operations (cloud API integration coming soon)
+/// </summary>
+public class SyncService : ISyncService
+{
+    private readonly IJSRuntime _jsRuntime;
+    private DateTime? _lastSyncTime;
+    private bool _isSyncing;
+    
+    public DateTime? LastSyncTime => _lastSyncTime;
+    public bool IsSyncing => _isSyncing;
+    public event Action? OnSyncStateChanged;
+    
+    public async Task InitializeAsync()
+    {
+        // Load last sync time from browser localStorage
+        var storedTime = await _jsRuntime.InvokeAsync<string?>(
+            "localStorage.getItem", "ptdoc_last_sync_time");
+        
+        if (!string.IsNullOrEmpty(storedTime) && 
+            DateTime.TryParse(storedTime, out var parsedTime))
+        {
+            _lastSyncTime = parsedTime;
+        }
+    }
+    
+    public async Task<bool> SyncNowAsync()
+    {
+        if (_isSyncing) return false;
+        
+        try
+        {
+            _isSyncing = true;
+            OnSyncStateChanged?.Invoke();
+            
+            // TODO: Replace simulation with actual sync
+            // 1. Query local SQLite for changed records
+            // 2. Push changes to cloud API
+            // 3. Pull changes from cloud API
+            // 4. Update local SQLite database
+            await Task.Delay(1500); // Simulate network operation
+            
+            _lastSyncTime = DateTime.UtcNow;
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", 
+                "ptdoc_last_sync_time", _lastSyncTime.Value.ToString("o"));
+            
+            return true;
+        }
+        finally
+        {
+            _isSyncing = false;
+            OnSyncStateChanged?.Invoke();
+        }
+    }
+    
+    public string GetElapsedTimeSinceSync()
+    {
+        if (!_lastSyncTime.HasValue) return "Never";
+        
+        var elapsed = DateTime.UtcNow - _lastSyncTime.Value;
+        if (elapsed.TotalSeconds < 10) return "Just now";
+        
+        // Format as "3m 25s ago" or "1h 4m ago"
+        var parts = new List<string>();
+        if (elapsed.Hours > 0) parts.Add($"{elapsed.Hours}h");
+        if (elapsed.Minutes > 0) parts.Add($"{elapsed.Minutes}m");
+        if (elapsed.TotalMinutes < 1) parts.Add($"{elapsed.Seconds}s");
+        
+        return parts.Any() ? string.Join(" ", parts) + " ago" : "Just now";
+    }
+}
+
+/// <summary>
+/// Implementation of IConnectivityService using browser Network Information API
+/// Falls back to periodic checks if API is not available
+/// </summary>
+public class ConnectivityService : IConnectivityService
+{
+    private readonly IJSRuntime _jsRuntime;
+    private bool _isOnline = true; // Assume online initially
+    
+    public bool IsOnline => _isOnline;
+    public event Action<bool>? OnConnectivityChanged;
+    
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            // Check initial status and register event handlers
+            _isOnline = await _jsRuntime.InvokeAsync<bool>("eval", "navigator.onLine");
+            
+            await _jsRuntime.InvokeVoidAsync("eval", $@"
+                window.addEventListener('online', 
+                    () => DotNet.invokeMethodAsync('PTDoc.Infrastructure', 
+                        'OnConnectivityStatusChanged', true));
+                window.addEventListener('offline', 
+                    () => DotNet.invokeMethodAsync('PTDoc.Infrastructure', 
+                        'OnConnectivityStatusChanged', false));
+            ");
+        }
+        catch (InvalidOperationException)
+        {
+            // JSRuntime not available during prerender - assume online
+            _isOnline = true;
+        }
+    }
+    
+    public async Task<bool> CheckConnectivityAsync()
+    {
+        try
+        {
+            _isOnline = await _jsRuntime.InvokeAsync<bool>("eval", "navigator.onLine");
+            return _isOnline;
+        }
+        catch
+        {
+            return _isOnline; // Return last known state
+        }
     }
 }
 ```
@@ -314,12 +482,17 @@ builder.Services.AddScoped<ITokenStore, SecureStorageTokenStore>();
 PTDoc.UI/
 ├── _Imports.razor
 ├── Components/
+│   ├── Layout/
+│   │   └── GlobalHeader.razor      # Menu, sync, connectivity
 │   ├── PTDocMetricCard.razor
 │   └── PatientCard.razor (future)
 ├── Pages/
 │   └── Overview.razor (future)
 └── wwwroot/
     ├── css/
+    │   ├── tokens.css              # Design tokens
+    │   └── app.css                 # Global styles
+    ├── images/                     # UI assets
     └── js/
 ```
 
@@ -345,6 +518,106 @@ PTDoc.UI/
     
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
+}
+```
+
+**GlobalHeader Component:**
+
+The GlobalHeader component demonstrates offline-first UI patterns:
+
+```razor
+@* PTDoc.UI/Components/Layout/GlobalHeader.razor *@
+@using PTDoc.Application.Services
+@inherits GlobalHeaderBase
+
+<header class="global-header">
+    <div class="header-container">
+        <!-- Menu Toggle Button -->
+        <button type="button" class="menu-toggle" @onclick="ToggleMenu">
+            @if (IsMenuOpen) { /* Chevron icon */ }
+            else { /* Hamburger icon */ }
+        </button>
+
+        <!-- Right side controls -->
+        <div class="header-controls">
+            <!-- Last Sync Indicator -->
+            <div class="sync-info">
+                <span class="sync-text">Last sync: @LastSyncDisplay</span>
+            </div>
+
+            <!-- Sync Now Button -->
+            <button type="button" 
+                    class="sync-button"
+                    disabled="@(IsSyncing || !IsOnline)"
+                    @onclick="HandleSyncNow">
+                <img src="sync-icon.svg" class="@(IsSyncing ? "syncing" : "")" />
+                <span>@(IsSyncing ? "Syncing..." : "Sync Now")</span>
+            </button>
+
+            <!-- Online/Offline Badge -->
+            <div class="status-badge @(IsOnline ? "online" : "offline")" 
+                 role="status" aria-live="polite">
+                <img src="online-icon.svg" />
+                <span>@(IsOnline ? "Online" : "Offline")</span>
+            </div>
+        </div>
+    </div>
+</header>
+```
+
+**Code-Behind Pattern:**
+```csharp
+public class GlobalHeaderBase : ComponentBase, IDisposable
+{
+    [Inject] private ISyncService SyncService { get; set; } = default!;
+    [Inject] private IConnectivityService ConnectivityService { get; set; } = default!;
+    
+    protected bool IsOnline => ConnectivityService.IsOnline;
+    protected bool IsSyncing => SyncService.IsSyncing;
+    protected string LastSyncDisplay => SyncService.GetElapsedTimeSinceSync();
+    
+    private Timer? _syncDisplayTimer;
+    
+    protected override void OnInitialized()
+    {
+        // Subscribe to service events
+        SyncService.OnSyncStateChanged += HandleSyncStateChanged;
+        ConnectivityService.OnConnectivityChanged += HandleConnectivityChanged;
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await SyncService.InitializeAsync();
+            await ConnectivityService.InitializeAsync();
+            
+            // Update "Last sync" display every 10 seconds
+            _syncDisplayTimer = new Timer(
+                _ => InvokeAsync(StateHasChanged),
+                null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            
+            StateHasChanged();
+        }
+    }
+    
+    protected async Task HandleSyncNow()
+    {
+        if (!IsSyncing && IsOnline)
+        {
+            await SyncService.SyncNowAsync();
+        }
+    }
+    
+    private void HandleSyncStateChanged() => InvokeAsync(StateHasChanged);
+    private void HandleConnectivityChanged(bool _) => InvokeAsync(StateHasChanged);
+    
+    public void Dispose()
+    {
+        SyncService.OnSyncStateChanged -= HandleSyncStateChanged;
+        ConnectivityService.OnConnectivityChanged -= HandleConnectivityChanged;
+        _syncDisplayTimer?.Dispose();
+    }
 }
 ```
 
@@ -416,6 +689,54 @@ PTDoc.UI/
 - Client sends `If-Match: <ETag>` for updates
 - Server returns `412 Precondition Failed` on conflict
 - Client fetches latest and prompts user to resolve
+
+### Offline-First Sync Flow
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌──────────────┐
+│ GlobalHeader UI │         │  SyncService    │         │ Connectivity │
+└────────┬────────┘         └────────┬────────┘         └──────┬───────┘
+         │                           │                         │
+         │  1. User clicks           │                         │
+         │     "Sync Now"            │                         │
+         ├──────────────────────────▶│                         │
+         │                           │                         │
+         │                           │  2. Check IsOnline      │
+         │                           ├────────────────────────▶│
+         │                           │                         │
+         │                           │◀────────────────────────┤
+         │                           │  3. Return online status│
+         │                           │                         │
+         │                           │  4. If online:          │
+         │                           │     - Set IsSyncing=true│
+         │                           │     - Fire OnSyncState  │
+         │                           │       Changed event     │
+         │                           │     - Simulate sync     │
+         │                           │       (1.5s delay)      │
+         │                           │     - Update LastSync   │
+         │                           │     - Persist to        │
+         │                           │       localStorage      │
+         │                           │     - Set IsSyncing=false│
+         │                           │     - Fire event again  │
+         │                           │                         │
+         │◀──────────────────────────┤                         │
+         │  5. UI updates via event  │                         │
+         │     (reactive binding)    │                         │
+         │                           │                         │
+```
+
+**Key Features:**
+- Event-driven state management (no manual polling)
+- LocalStorage persistence across sessions
+- Graceful handling of prerender/SSR scenarios
+- Simulated sync (TODO: actual EF Core + API integration)
+
+**Future Implementation:**
+1. Query local SQLite for records with `SyncState = Pending`
+2. Push changes to cloud API with optimistic concurrency
+3. Pull delta changes from API (timestamp-based)
+4. Update local database and mark as `SyncState = Synced`
+5. Handle conflicts according to `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md`
 
 ## Security Architecture
 
@@ -589,3 +910,4 @@ Developer Machine
 - [RUNTIME_TARGETS.md](RUNTIME_TARGETS.md) - Platform differences
 - [SECURITY.md](SECURITY.md) - Security considerations
 - [Blazor-Context.md](Blazor-Context.md) - Blazor architecture patterns
+- [PTDocs+_Offline_Sync_Conflict_Resolution.md](PTDocs+_Offline_Sync_Conflict_Resolution.md) - Offline-first specifications

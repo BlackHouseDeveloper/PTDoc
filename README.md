@@ -6,6 +6,8 @@
 
 - **🏥 Clinical Documentation**: Comprehensive patient notes, appointment tracking, and treatment planning
 - **📱 Multi-Platform Support**: Native iOS, Android, macOS desktop, and web applications
+- **📴 Offline-First Architecture**: Full functionality without connectivity, automatic sync when online
+- **🔄 Real-Time Sync**: Live connectivity monitoring and data synchronization with conflict resolution
 - **📄 PDF Export**: Professional patient reports and documentation export using QuestPDF
 - **🗄️ SQLite Database**: Local data storage with Entity Framework Core for offline capabilities
 - **🔧 Automation Tools**: Automated messaging workflows and assessment management
@@ -151,11 +153,16 @@ PTDoc.UI           → Shared Blazor components (reusable)
 **Project Details:**
 - **PTDoc.Core** - Domain entities (business models) with no EF Core or UI dependencies
 - **PTDoc.Application** - Interfaces, DTOs, and contracts (depends only on Core)
+  - **ISyncService** - Data synchronization state and operations
+  - **IConnectivityService** - Network connectivity monitoring
 - **PTDoc.Infrastructure** - Implements persistence (EF Core ApplicationDbContext), domain services, and data access
+  - **SyncService** - Offline-first sync with localStorage persistence
+  - **ConnectivityService** - Browser-based connectivity detection
 - **PTDoc.Api** - REST API with JWT authentication for backend services
 - **PTDoc.Web** - Blazor WebAssembly app for running PTDoc in a web browser
 - **PTDoc.Maui** - .NET MAUI Blazor app (multi-targeted for Android, iOS, macOS)
 - **PTDoc.UI** - Shared Blazor components used by both Web and MAUI projects
+  - **GlobalHeader** - Menu, sync controls, and connectivity status
 
 ### 5. Using the PTDoc-Foundry.sh Script
 
@@ -177,7 +184,9 @@ PTDoc uses a token-driven design system aligned to the Figma Make Prototype v5:
 
 For detailed styling guidelines, see `docs/style-system.md` and `docs/context/ptdoc-figma-make-prototype-v5-context.md`.
 
-### 7. Troubleshooting & FAQ
+---
+
+## Contributing
 
 **Database not found / issues:** Ensure you have run the migration (`--create-migration`) and seeding steps. The SQLite database file `dev.PTDoc.db` should be present in the project root and referenced by `appsettings.Development.json`. Override it via `PFP_DB_PATH` environment variable if you need a different location.
 
@@ -187,7 +196,36 @@ For detailed styling guidelines, see `docs/style-system.md` and `docs/context/pt
 
 For detailed troubleshooting, see `docs/TROUBLESHOOTING.md`.
 
-For any other issues, please check the repository's issue tracker or contact the maintainers. Happy documenting!
+### 8. Offline-First Architecture
+
+PTDoc is built with offline-first capabilities to ensure clinicians can document care anywhere, without risking data loss:
+
+**Connectivity Monitoring:**
+- Real-time online/offline detection using browser Network Information API
+- Visual status indicator in the global header (Online/Offline badge)
+- Automatic sync triggers when connectivity restores
+
+**Data Synchronization:**
+- Last sync timestamp tracking with elapsed time display ("3m 25s ago")
+- Manual "Sync Now" button (disabled when offline or already syncing)
+- Persisted sync state survives app restarts
+- Event-driven state management for reactive UI updates
+
+**Current Implementation:**
+- `ISyncService` - Synchronization state and operations
+- `IConnectivityService` - Network connectivity monitoring
+- Local SQLite database for offline data storage
+- Simulated sync operations (actual cloud sync coming soon)
+
+**Future Enhancements:**
+- Full EF Core + cloud API sync implementation
+- Conflict resolution for multi-device scenarios
+- Sync queue for pending operations
+- Background sync with configurable intervals
+
+For detailed offline sync specifications, see `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md`.
+
+For any other issues, please check the repository's issue tracker or contact the maintainers.
 
 ---
 
@@ -236,6 +274,7 @@ Our MCP framework automatically:
 For detailed contribution guidelines and healthcare-specific development practices, see:
 - `docs/DEVELOPMENT.md` - Comprehensive development guide
 - `docs/ARCHITECTURE.md` - Technical architecture and patterns
+- `docs/PTDocs+_Offline_Sync_Conflict_Resolution.md` - Offline-first specifications
 - `.github/copilot-instructions.md` - Copilot and MCP usage guide
 
 ### Community & Support
