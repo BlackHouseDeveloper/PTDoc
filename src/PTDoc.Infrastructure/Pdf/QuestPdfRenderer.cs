@@ -17,6 +17,13 @@ public class QuestPdfRenderer : IPdfRenderer
 {
     private readonly ApplicationDbContext _context;
     
+    static QuestPdfRenderer()
+    {
+        // Configure QuestPDF license for Community use
+        // PTDoc qualifies for Community license as an open-source healthcare application
+        QuestPDF.Settings.License = LicenseType.Community;
+    }
+    
     public QuestPdfRenderer(ApplicationDbContext context)
     {
         _context = context;

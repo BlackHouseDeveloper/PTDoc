@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Phase 8: Platform Integration & Completion
+
+#### SQLCipher End-to-End Encryption
+- **Database.Encryption.Enabled** - Toggleable encryption via appsettings (default: false)
+- **Connection pre-open flow** - PRAGMA key set before EF uses connection (prevents silent encryption failure)
+- **Microsoft.Data.Sqlite.Core** - SQLCipher support package
+- **SQLitePCLRaw.bundle_e_sqlcipher** - SQLCipher encryption bundle
+- **SecureStorageDbKeyProvider** - MAUI platform-specific key provider with fail-closed behavior
+- **Key validation** - 32+ character minimum enforced at startup
+- **Backwards compatibility** - Plain SQLite still works when encryption disabled
+
+#### QuestPDF Production PDF Renderer
+- **QuestPdfRenderer** - Production PDF renderer replacing MockPdfRenderer
+- **Signature blocks** - Electronic signature footer with hash for signed notes
+- **Unsigned watermark** - "UNSIGNED DRAFT" watermark for unsigned notes  
+- **Medicare compliance** - CPT summary and billing unit footer
+- **QuestPDF Community license** - Configured for open-source healthcare use
+
+#### Integration Test Coverage
+- **EncryptionIntegrationTests** - 3 tests validating encrypted/plain DB modes
+- **NoPHIIntegrationTests** - 3 tests ensuring NO PHI in telemetry/audit/sync queue
+- **PdfIntegrationTests** - 6 tests for PDF export (signed/unsigned, watermarks, immutability)
+- **SyncIntegrationTests** - 5 tests for encrypted DB queue persistence
+
+#### Design Documentation
+- **docs/PHASE_8_DESIGN_SPECIFICATIONS.md** - Pre-implementation guardrails and technical design
+- **6 Guardrails documented:**
+  1. Encryption must be toggleable
+  2. Connection must be pre-opened before EF
+  3. MAUI SecureStorage must fail-closed
+  4. QuestPDF must be Infrastructure-only (no DbContext)
+  5. Integration tests (5 categories)
+  6. Platform validation (CI-automatable)
+
+### Changed
+
+- **PTDoc.Infrastructure.csproj** - Added SQLCipher and QuestPDF packages
+- **PTDoc.Api/Program.cs** - Updated DbContext configuration with encryption toggle logic
+- **PTDoc.Api/appsettings.Development.json** - Added Database.Encryption config section
+- **DI Registration** - Replaced MockPdfRenderer with QuestPdfRenderer
+
+### Security
+
+- **Fail-closed encryption** - Invalid/missing keys throw at startup (no silent failures)
+- **MAUI SecureStorage** - Platform-native secure key storage (no dev key fallback in production)
+- **NO PHI in logs** - Integration tests validate telemetry contains only entity IDs
+- **HIPAA-conscious design** - Audit trails, secure sessions, strict auth checks maintained
+
+### Testing
+
+- **74 tests passing** (59 baseline + 15 new integration tests)
+- **Coverage areas:** Encryption, PDF export, NO PHI validation, Sync queue persistence
+- **Zero regressions** - All Phase 1-7 tests continue passing
+
+---
+
 ### Added - Phase 1: Patients Page UI Implementation
 
 #### Patients List Page Components
