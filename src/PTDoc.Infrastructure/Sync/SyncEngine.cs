@@ -32,16 +32,16 @@ public class SyncEngine : ISyncEngine
         {
             // First push local changes
             var pushResult = await PushAsync(cancellationToken);
-            
+
             // Then pull server changes
             var pullResult = await PullAsync(_lastSyncAt, cancellationToken);
-            
+
             _lastSyncAt = DateTime.UtcNow;
 
             var duration = DateTime.UtcNow - startTime;
             _logger.LogInformation(
                 "Sync cycle completed in {Duration}ms. Pushed: {Pushed}, Pulled: {Pulled}, Conflicts: {Conflicts}",
-                duration.TotalMilliseconds, pushResult.SuccessCount, pullResult.AppliedCount, 
+                duration.TotalMilliseconds, pushResult.SuccessCount, pullResult.AppliedCount,
                 pushResult.ConflictCount + pullResult.ConflictCount);
 
             return new SyncResult
@@ -212,7 +212,7 @@ public class SyncEngine : ISyncEngine
         // 1. Fetch the entity from the database
         // 2. Send it to the server API
         // 3. Handle conflicts based on server response
-        
+
         // For now, simulate success
         await Task.Delay(10, cancellationToken); // Simulate network delay
         return true;

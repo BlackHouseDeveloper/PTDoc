@@ -1,0 +1,204 @@
+name: "Update Documentation on Merge"
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  update-documentation:
+    name: Update CHANGELOG and Documentation
+    # Only run if PR was actually merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract PR Metadata
+        id: pr_metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          PR_LABELS="${{ join(github.event.pull_request.labels.*.name, ',') }}"
+          PR_BODY="${{ github.event.pull_request.body }}"
+          
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "pr_title=${PR_TITLE}" >> $GITHUB_OUTPUT
+          echo "pr_author=${PR_AUTHOR}" >> $GITHUB_OUTPUT
+          echo "pr_labels=${PR_LABELS}" >> $GITHUB_OUTPUT
+          
+          # Extract linked issues from PR body
+          LINKED_ISSUES=$(echo "$PR_BODY" | grep -oP '(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+#\K\d+' | head -n 5 | tr '\n' ',' || echo "")
+          echo "linked_issues=${LINKED_ISSUES}" >> $GITHUB_OUTPUT
+          
+          # Determine change type from PR labels or title
+          CHANGE_TYPE="Changed"
+          if echo "$PR_LABELS" | grep -qi "feature\|enhancement"; then
+            CHANGE_TYPE="Added"
+          elif echo "$PR_LABELS" | grep -qi "bug\|fix"; then
+            CHANGE_TYPE="Fixed"
+          elif echo "$PR_LABELS" | grep -qi "breaking"; then
+            CHANGE_TYPE="Changed"
+          elif echo "$PR_LABELS" | grep -qi "security"; then
+            CHANGE_TYPE="Security"
+          elif echo "$PR_LABELS" | grep -qi "deprecat"; then
+            CHANGE_TYPE="Deprecated"
+          elif echo "$PR_LABELS" | grep -qi "remov"; then
+            CHANGE_TYPE="Removed"
+          elif echo "$PR_TITLE" | grep -qiE "^feat(\(.*\))?:"; then
+            CHANGE_TYPE="Added"
+          elif echo "$PR_TITLE" | grep -qiE "^fix(\(.*\))?:"; then
+            CHANGE_TYPE="Fixed"
+          elif echo "$PR_TITLE" | grep -qiE "^docs(\(.*\))?:"; then
+            CHANGE_TYPE="Documentation"
+          fi
+          echo "change_type=${CHANGE_TYPE}" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        id: update_changelog
+        env:
+          PR_NUMBER: ${{ steps.pr_metadata.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr_metadata.outputs.pr_title }}
+          PR_AUTHOR: ${{ steps.pr_metadata.outputs.pr_author }}
+          CHANGE_TYPE: ${{ steps.pr_metadata.outputs.change_type }}
+          LINKED_ISSUES: ${{ steps.pr_metadata.outputs.linked_issues }}
+        run: |
+          # Check if CHANGELOG.md exists
+          if [ ! -f "docs/CHANGELOG.md" ]; then
+            echo "CHANGELOG.md not found, skipping update"
+            echo "updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Create backup
+          cp docs/CHANGELOG.md docs/CHANGELOG.md.bak
+          
+          # Prepare the new entry
+          ENTRY_DATE=$(date +%Y-%m-%d)
+          ISSUE_REFS=""
+          if [ -n "$LINKED_ISSUES" ]; then
+            ISSUE_REFS=" (closes #${LINKED_ISSUES//,/, #})"
+          fi
+          
+          NEW_ENTRY="- **PR #${PR_NUMBER}**: ${PR_TITLE}${ISSUE_REFS} by @${PR_AUTHOR}"
+          
+          # Check if entry already exists (idempotency)
+          if grep -q "PR #${PR_NUMBER}" docs/CHANGELOG.md; then
+            echo "Entry for PR #${PR_NUMBER} already exists in CHANGELOG, skipping"
+            echo "updated=false" >> $GITHUB_OUTPUT
+            rm docs/CHANGELOG.md.bak
+            exit 0
+          fi
+          
+          # Find the [Unreleased] section and appropriate subsection
+          # Insert new entry under the correct category in [Unreleased]
+          awk -v entry="$NEW_ENTRY" -v section="$CHANGE_TYPE" '
+          BEGIN { found_unreleased=0; found_section=0; inserted=0 }
+          /^## \[Unreleased\]/ { found_unreleased=1; print; next }
+          found_unreleased && !inserted && /^### / {
+            if ($0 ~ section) {
+              found_section=1
+              print
+              print entry
+              inserted=1
+              next
+            }
+          }
+          found_unreleased && !inserted && /^## \[/ {
+            # Reached next version section, insert new section if not found
+            if (!found_section) {
+              print ""
+              print "### " section
+              print entry
+              print ""
+              inserted=1
+            }
+          }
+          { print }
+          END {
+            if (found_unreleased && !inserted && !found_section) {
+              # At end of file, add new section
+              print ""
+              print "### " section
+              print entry
+            }
+          }
+          ' docs/CHANGELOG.md.bak > docs/CHANGELOG.md
+          
+          # Verify the change was made
+          if diff -q docs/CHANGELOG.md docs/CHANGELOG.md.bak > /dev/null; then
+            echo "No changes made to CHANGELOG"
+            echo "updated=false" >> $GITHUB_OUTPUT
+            mv docs/CHANGELOG.md.bak docs/CHANGELOG.md
+          else
+            echo "CHANGELOG updated successfully"
+            echo "updated=true" >> $GITHUB_OUTPUT
+            rm docs/CHANGELOG.md.bak
+          fi
+
+      - name: Commit and Push Changes
+        if: steps.update_changelog.outputs.updated == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr_metadata.outputs.pr_number }}
+        run: |
+          git add docs/CHANGELOG.md
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "docs: Update CHANGELOG for PR #${PR_NUMBER}
+
+          Automated documentation update triggered by merge of PR #${PR_NUMBER}.
+          
+          [skip ci]"
+          
+          # Push with retry logic
+          for i in {1..3}; do
+            if git push origin main; then
+              echo "Successfully pushed changes"
+              exit 0
+            else
+              echo "Push failed, attempt $i of 3"
+              if [ $i -lt 3 ]; then
+                sleep 2
+                git pull --rebase origin main
+              fi
+            fi
+          done
+          
+          echo "Failed to push changes after 3 attempts"
+          exit 1
+
+      - name: Comment on PR
+        if: steps.update_changelog.outputs.updated == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '✅ Documentation automatically updated:\n- CHANGELOG.md entry added\n\nCommit: https://github.com/${{ github.repository }}/commit/' + context.sha
+            });

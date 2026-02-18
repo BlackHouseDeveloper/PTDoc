@@ -22,3 +22,28 @@ public class PdfExportResult
     public string ContentType { get; set; } = "application/pdf";
     public int FileSizeBytes { get; set; }
 }
+
+/// <summary>
+/// Data transfer object containing all data needed for PDF export.
+/// Prevents Infrastructure layer (PDF renderer) from accessing DbContext directly.
+/// </summary>
+public class NoteExportDto
+{
+    public Guid NoteId { get; set; }
+    public DateTime DateOfService { get; set; }
+    public string ContentJson { get; set; } = string.Empty;
+    
+    // Patient information (NO PHI in logs - only for PDF rendering)
+    public string PatientFirstName { get; set; } = string.Empty;
+    public string PatientLastName { get; set; } = string.Empty;
+    public string PatientMedicalRecordNumber { get; set; } = string.Empty;
+    
+    // Signature information
+    public string? SignatureHash { get; set; }
+    public DateTime? SignedUtc { get; set; }
+    public Guid? SignedByUserId { get; set; }
+    
+    // Export options
+    public bool IncludeMedicareCompliance { get; set; }
+    public bool IncludeSignatureBlock { get; set; }
+}

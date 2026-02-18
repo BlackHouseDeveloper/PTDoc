@@ -17,7 +17,7 @@ public class AuthService : IAuthService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AuthService> _logger;
-    
+
     // HIPAA-compliant session timeouts
     private static readonly TimeSpan InactivityTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan AbsoluteTimeout = TimeSpan.FromHours(8);
@@ -29,14 +29,14 @@ public class AuthService : IAuthService
     }
 
     public async Task<AuthResult?> AuthenticateAsync(
-        string username, 
-        string pin, 
-        string? ipAddress = null, 
+        string username,
+        string pin,
+        string? ipAddress = null,
         string? userAgent = null,
         CancellationToken cancellationToken = default)
     {
         var attemptedAt = DateTime.UtcNow;
-        
+
         try
         {
             // Find user by username
@@ -47,7 +47,7 @@ public class AuthService : IAuthService
             if (user == null)
             {
                 // Log failed attempt - user not found
-                await LogLoginAttemptAsync(username, null, false, ipAddress, userAgent, 
+                await LogLoginAttemptAsync(username, null, false, ipAddress, userAgent,
                     "User not found", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 return null;
@@ -56,7 +56,7 @@ public class AuthService : IAuthService
             if (!user.IsActive)
             {
                 // Log failed attempt - user inactive
-                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent, 
+                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
                     "User account is inactive", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 return null;
@@ -64,11 +64,11 @@ public class AuthService : IAuthService
 
             // Verify PIN using BCrypt
             bool isValidPin = BCrypt.Net.BCrypt.Verify(pin, user.PinHash);
-            
+
             if (!isValidPin)
             {
                 // Log failed attempt - invalid PIN
-                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent, 
+                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
                     "Invalid PIN", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 return null;
@@ -97,7 +97,7 @@ public class AuthService : IAuthService
             user.LastLoginAt = now;
 
             // Log successful attempt
-            await LogLoginAttemptAsync(username, user.Id, true, ipAddress, userAgent, 
+            await LogLoginAttemptAsync(username, user.Id, true, ipAddress, userAgent,
                 null, attemptedAt, cancellationToken);
 
             await _context.SaveChangesAsync(cancellationToken);
@@ -121,7 +121,7 @@ public class AuthService : IAuthService
     }
 
     public async Task<SessionInfo?> ValidateSessionAsync(
-        string token, 
+        string token,
         CancellationToken cancellationToken = default)
     {
         var tokenHash = HashToken(token);
@@ -129,8 +129,8 @@ public class AuthService : IAuthService
 
         var session = await _context.Sessions
             .Include(s => s.User)
-            .Where(s => s.TokenHash == tokenHash 
-                && !s.IsRevoked 
+            .Where(s => s.TokenHash == tokenHash
+                && !s.IsRevoked
                 && s.ExpiresAt > now)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -147,7 +147,7 @@ public class AuthService : IAuthService
             session.IsRevoked = true;
             session.RevokedAt = now;
             await _context.SaveChangesAsync(cancellationToken);
-            
+
             _logger.LogInformation("Session expired due to inactivity for user {Username}", session.User.Username);
             return null;
         }
@@ -169,7 +169,7 @@ public class AuthService : IAuthService
     public async Task LogoutAsync(string token, CancellationToken cancellationToken = default)
     {
         var tokenHash = HashToken(token);
-        
+
         var session = await _context.Sessions
             .Where(s => s.TokenHash == tokenHash && !s.IsRevoked)
             .FirstOrDefaultAsync(cancellationToken);
@@ -179,13 +179,13 @@ public class AuthService : IAuthService
             session.IsRevoked = true;
             session.RevokedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync(cancellationToken);
-            
+
             _logger.LogInformation("User logged out, session revoked");
         }
     }
 
     public async Task<Application.Identity.UserInfo?> GetCurrentUserAsync(
-        string token, 
+        string token,
         CancellationToken cancellationToken = default)
     {
         var sessionInfo = await ValidateSessionAsync(token, cancellationToken);
@@ -217,7 +217,7 @@ public class AuthService : IAuthService
     public async Task CleanupExpiredSessionsAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        
+
         var expiredSessions = await _context.Sessions
             .Where(s => !s.IsRevoked && s.ExpiresAt < now)
             .ToListAsync(cancellationToken);
@@ -236,10 +236,10 @@ public class AuthService : IAuthService
     }
 
     private async Task LogLoginAttemptAsync(
-        string username, 
-        Guid? userId, 
-        bool success, 
-        string? ipAddress, 
+        string username,
+        Guid? userId,
+        bool success,
+        string? ipAddress,
         string? userAgent,
         string? failureReason,
         DateTime attemptedAt,
@@ -258,7 +258,7 @@ public class AuthService : IAuthService
         };
 
         _context.LoginAttempts.Add(attempt);
-        
+
         // Note: SaveChanges will be called by the caller
     }
 

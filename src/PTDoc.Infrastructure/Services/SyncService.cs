@@ -30,7 +30,7 @@ public class SyncService : ISyncService
         {
             // Check if JSRuntime is available (will throw during prerender)
             var storedTime = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", LAST_SYNC_KEY);
-            
+
             if (!string.IsNullOrEmpty(storedTime) && DateTime.TryParse(storedTime, out var parsedTime))
             {
                 _lastSyncTime = parsedTime;
@@ -68,13 +68,13 @@ public class SyncService : ISyncService
             // 2. Push changes to cloud API (when implemented)
             // 3. Pull changes from cloud API
             // 4. Update local SQLite database
-            
+
             // Update last sync time
             _lastSyncTime = DateTime.UtcNow;
-            
+
             // Persist to localStorage
-            await _jsRuntime.InvokeVoidAsync("localStorage.setItem", 
-                LAST_SYNC_KEY, 
+            await _jsRuntime.InvokeVoidAsync("localStorage.setItem",
+                LAST_SYNC_KEY,
                 _lastSyncTime.Value.ToString("o"));
 
             return true;

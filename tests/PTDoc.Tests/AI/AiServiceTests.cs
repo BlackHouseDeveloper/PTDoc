@@ -145,7 +145,7 @@ public class AiServiceTests
     public async Task GenerateAssessment_NullRequest_ThrowsArgumentNullException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _aiService.GenerateAssessmentAsync(null!));
     }
 
@@ -153,7 +153,7 @@ public class AiServiceTests
     public async Task GeneratePlan_NullRequest_ThrowsArgumentNullException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _aiService.GeneratePlanAsync(null!));
     }
 }

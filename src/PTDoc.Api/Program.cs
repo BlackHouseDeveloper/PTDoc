@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -59,11 +60,11 @@ builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingS
 // Register Phase 7 services: Security & Observability
 builder.Services.AddScoped<IDbKeyProvider, EnvironmentDbKeyProvider>();
 builder.Services.AddSingleton<ITelemetrySink, ConsoleTelemetrySink>();
-builder.Services.AddScoped<IPdfRenderer, MockPdfRenderer>();
+builder.Services.AddScoped<IPdfRenderer, QuestPdfRenderer>();
 
 // Configure database
-var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") 
-    ?? builder.Configuration.GetValue<string>("Database:Path") 
+var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH")
+    ?? builder.Configuration.GetValue<string>("Database:Path")
     ?? "PTDoc.db";
 
 // Ensure directory exists
@@ -73,38 +74,91 @@ if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
     Directory.CreateDirectory(dbDirectory);
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+// Check if encryption is enabled
+var encryptionEnabled = builder.Configuration.GetValue<bool>("Database:Encryption:Enabled");
+
+if (encryptionEnabled)
 {
-    options.UseSqlite($"Data Source={dbPath}");
-    
-    // Add interceptor with dependency injection
-    var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
-    options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
-    
-    if (builder.Environment.IsDevelopment())
+    // Encrypted mode - use SQLCipher with pre-opened connection
+    builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
+        // Get and validate encryption key
+        var keyProvider = serviceProvider.GetRequiredService<IDbKeyProvider>();
+        var key = keyProvider.GetKeyAsync().GetAwaiter().GetResult();
+
+        // Validate key length
+        var minKeyLength = builder.Configuration.GetValue<int>("Database:Encryption:KeyMinimumLength", 32);
+        if (key.Length < minKeyLength)
+        {
+            throw new InvalidOperationException(
+                $"Database encryption key must be at least {minKeyLength} characters for SQLCipher.");
+        }
+
+        // Create connection and set encryption key BEFORE opening
+        var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        // Set SQLCipher PRAGMA key
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA key = $key;";
+            var keyParameter = command.CreateParameter();
+            keyParameter.ParameterName = "$key";
+            keyParameter.Value = key;
+            command.Parameters.Add(keyParameter);
+            command.ExecuteNonQuery();
+        }
+
+        // Pass the pre-opened, encrypted connection to EF
+        options.UseSqlite(connection);
+
+        // Add interceptor with dependency injection
+        var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
+        options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+
+        if (builder.Environment.IsDevelopment())
+        {
+            options.EnableSensitiveDataLogging();
+            options.EnableDetailedErrors();
+        }
+    });
+}
+else
+{
+    // Plain SQLite mode (default - existing behavior)
+    builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+    {
+        options.UseSqlite($"Data Source={dbPath}");
+
+        // Add interceptor with dependency injection
+        var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
+        options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+
+        if (builder.Environment.IsDevelopment())
+        {
+            options.EnableSensitiveDataLogging();
+            options.EnableDetailedErrors();
+        }
+    });
+}
 
 // Validate JWT configuration on startup
 var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
 if (jwtConfig != null)
 {
-    var placeholderKeys = new[] 
-    { 
-        "REPLACE_WITH_A_MIN_32_CHAR_SECRET", 
-        "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET" 
+    var placeholderKeys = new[]
+    {
+        "REPLACE_WITH_A_MIN_32_CHAR_SECRET",
+        "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET"
     };
-    
+
     if (placeholderKeys.Contains(jwtConfig.SigningKey))
     {
         throw new InvalidOperationException(
             "JWT signing key has not been configured. The placeholder value must be replaced with a " +
             "cryptographically secure random key. Generate one using: openssl rand -base64 64");
     }
-    
+
     if (jwtConfig.SigningKey.Length < 32)
     {
         throw new InvalidOperationException(
@@ -146,10 +200,10 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
+
     // Apply any pending migrations
     await context.Database.MigrateAsync();
-    
+
     // Seed test data
     await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
 }

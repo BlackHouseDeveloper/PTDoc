@@ -1,9 +1,7 @@
 using System;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Pdf;
-using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Pdf;
 
@@ -14,45 +12,29 @@ namespace PTDoc.Infrastructure.Pdf;
 /// </summary>
 public class MockPdfRenderer : IPdfRenderer
 {
-    private readonly ApplicationDbContext _context;
-    
-    public MockPdfRenderer(ApplicationDbContext context)
+    public Task<PdfExportResult> ExportNoteToPdfAsync(NoteExportDto noteData)
     {
-        _context = context;
-    }
-    
-    public async Task<PdfExportResult> ExportNoteToPdfAsync(PdfExportRequest request)
-    {
-        var note = await _context.ClinicalNotes
-            .Include(n => n.Patient)
-            .FirstOrDefaultAsync(n => n.Id == request.NoteId);
-        
-        if (note == null)
-        {
-            throw new InvalidOperationException($"Clinical note {request.NoteId} not found.");
-        }
-        
         var sb = new StringBuilder();
         sb.AppendLine("%PDF-1.4");
         sb.AppendLine("% Mock PDF for testing");
-        sb.AppendLine($"Clinical Note ID: {note.Id}");
-        sb.AppendLine($"Patient ID: {note.PatientId}");
-        sb.AppendLine($"Date of Service: {note.DateOfService:yyyy-MM-dd}");
+        sb.AppendLine($"Clinical Note ID: {noteData.NoteId}");
+        sb.AppendLine($"Patient: {noteData.PatientFirstName} {noteData.PatientLastName}");
+        sb.AppendLine($"Date of Service: {noteData.DateOfService:yyyy-MM-dd}");
         sb.AppendLine();
-        
+
         // Signature block
-        if (request.IncludeSignatureBlock && !string.IsNullOrEmpty(note.SignatureHash))
+        if (noteData.IncludeSignatureBlock && !string.IsNullOrEmpty(noteData.SignatureHash))
         {
             sb.AppendLine("═══════════════════════════════════════");
             sb.AppendLine("SIGNATURE BLOCK");
             sb.AppendLine("═══════════════════════════════════════");
-            sb.AppendLine($"Signed By: User {note.SignedByUserId}");
-            sb.AppendLine($"Signed At: {note.SignedUtc:yyyy-MM-dd HH:mm:ss} UTC");
-            sb.AppendLine($"Signature Hash: {note.SignatureHash}");
+            sb.AppendLine($"Signed By: User {noteData.SignedByUserId}");
+            sb.AppendLine($"Signed At: {noteData.SignedUtc:yyyy-MM-dd HH:mm:ss} UTC");
+            sb.AppendLine($"Signature Hash: {noteData.SignatureHash}");
             sb.AppendLine("This document is electronically signed and immutable.");
             sb.AppendLine();
         }
-        else if (request.IncludeSignatureBlock)
+        else if (noteData.IncludeSignatureBlock)
         {
             sb.AppendLine("═══════════════════════════════════════");
             sb.AppendLine("** UNSIGNED DRAFT **");
@@ -60,9 +42,9 @@ public class MockPdfRenderer : IPdfRenderer
             sb.AppendLine("═══════════════════════════════════════");
             sb.AppendLine();
         }
-        
+
         // Medicare compliance block
-        if (request.IncludeMedicareCompliance)
+        if (noteData.IncludeMedicareCompliance)
         {
             sb.AppendLine("═══════════════════════════════════════");
             sb.AppendLine("MEDICARE COMPLIANCE");
@@ -76,18 +58,20 @@ public class MockPdfRenderer : IPdfRenderer
             sb.AppendLine("Progress Note Frequency: COMPLIANT");
             sb.AppendLine();
         }
-        
+
         sb.AppendLine("End of document");
         sb.AppendLine("%%EOF");
-        
+
         var pdfBytes = Encoding.UTF8.GetBytes(sb.ToString());
-        
-        return new PdfExportResult
+
+        var result = new PdfExportResult
         {
             PdfBytes = pdfBytes,
-            FileName = $"note_{note.Id}_{DateTime.UtcNow:yyyyMMdd}.pdf",
+            FileName = $"note_{noteData.NoteId}_{DateTime.UtcNow:yyyyMMdd}.pdf",
             ContentType = "application/pdf",
             FileSizeBytes = pdfBytes.Length
         };
+
+        return Task.FromResult(result);
     }
 }

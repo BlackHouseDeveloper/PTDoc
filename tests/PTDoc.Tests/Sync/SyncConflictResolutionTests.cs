@@ -38,7 +38,7 @@ public class SyncConflictResolutionTests
         // Assert
         var queueItem = await context.SyncQueueItems
             .FirstOrDefaultAsync(q => q.EntityType == "Patient" && q.EntityId == entityId);
-        
+
         Assert.NotNull(queueItem);
         Assert.Equal(SyncOperation.Update, queueItem.Operation);
         Assert.Equal(SyncQueueStatus.Pending, queueItem.Status);
@@ -65,7 +65,7 @@ public class SyncConflictResolutionTests
         var queueItems = await context.SyncQueueItems
             .Where(q => q.EntityType == "Patient" && q.EntityId == entityId)
             .ToListAsync();
-        
+
         Assert.Single(queueItems); // Should only have one item
         Assert.Equal(SyncOperation.Update, queueItems[0].Operation);
         Assert.True(queueItems[0].EnqueuedAt > firstEnqueuedAt);
@@ -77,7 +77,7 @@ public class SyncConflictResolutionTests
         // Arrange
         var context = CreateInMemoryContext();
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
-        
+
         // Enqueue some items
         await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Create);
         await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Update);
@@ -172,7 +172,7 @@ public class SyncConflictResolutionTests
 
         // Assert
         Assert.Equal(1, result.TotalPushed);
-        
+
         // Verify retry count was incremented (or item completed if successful)
         var item = await context.SyncQueueItems.FindAsync(failedItem.Id);
         Assert.NotNull(item);

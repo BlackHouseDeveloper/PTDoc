@@ -1,0 +1,75 @@
+name: "Phase 8 Validation"
+
+on:
+  push:
+    branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
+  pull_request:
+    branches: [ "main", "develop", "phase8-continue" ]
+
+jobs:
+  phase8-validation:
+    name: Phase 8 - Build & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies - Core
+      run: dotnet restore src/PTDoc.Core/PTDoc.Core.csproj
+
+    - name: Restore dependencies - Application
+      run: dotnet restore src/PTDoc.Application/PTDoc.Application.csproj
+
+    - name: Restore dependencies - Infrastructure
+      run: dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+
+    - name: Restore dependencies - AI
+      run: dotnet restore src/PTDoc.AI/PTDoc.AI.csproj
+
+    - name: Restore dependencies - Integrations
+      run: dotnet restore src/PTDoc.Integrations/PTDoc.Integrations.csproj
+
+    - name: Restore dependencies - Api
+      run: dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+
+    - name: Restore dependencies - Tests
+      run: dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build PTDoc.Core
+      run: dotnet build src/PTDoc.Core/PTDoc.Core.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.Application
+      run: dotnet build src/PTDoc.Application/PTDoc.Application.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.Infrastructure
+      run: dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.AI
+      run: dotnet build src/PTDoc.AI/PTDoc.AI.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.Integrations
+      run: dotnet build src/PTDoc.Integrations/PTDoc.Integrations.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.Api
+      run: dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+
+    - name: Build PTDoc.Tests
+      run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run all tests (including Phase 8 integration tests)
+      run: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal
+
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "Phase 8 Validation Complete"
+        echo "- SQLCipher encryption tests"
+        echo "- QuestPDF renderer tests"
+        echo "- NO PHI validation tests"
+        echo "- Sync queue persistence tests"

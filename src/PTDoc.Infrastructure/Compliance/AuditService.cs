@@ -13,32 +13,32 @@ namespace PTDoc.Infrastructure.Compliance;
 public class AuditService : IAuditService
 {
     private readonly ApplicationDbContext _context;
-    
+
     public AuditService(ApplicationDbContext context)
     {
         _context = context;
     }
-    
+
     public async Task LogRuleEvaluationAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
     }
-    
+
     public async Task LogRuleOverrideAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
     }
-    
+
     public async Task LogNoteSignedAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
     }
-    
+
     public async Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
     }
-    
+
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
         var auditLog = new AuditLog
@@ -50,7 +50,7 @@ public class AuditService : IAuditService
             CorrelationId = auditEvent.CorrelationId,
             MetadataJson = JsonSerializer.Serialize(auditEvent.Metadata)
         };
-        
+
         _context.AuditLogs.Add(auditLog);
         await _context.SaveChangesAsync(ct);
     }

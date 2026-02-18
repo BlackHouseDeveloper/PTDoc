@@ -1,0 +1,76 @@
+name: "Core CI"
+
+on:
+  push:
+    branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
+  pull_request:
+    branches: [ "main", "develop", "phase8-continue" ]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build-and-test:
+    name: Build & Test (Core Projects)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Core/PTDoc.Core.csproj
+        dotnet restore src/PTDoc.Application/PTDoc.Application.csproj
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.AI/PTDoc.AI.csproj
+        dotnet restore src/PTDoc.Integrations/PTDoc.Integrations.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build Core
+      run: dotnet build src/PTDoc.Core/PTDoc.Core.csproj --no-restore --configuration Release
+
+    - name: Build Application
+      run: dotnet build src/PTDoc.Application/PTDoc.Application.csproj --no-restore --configuration Release
+
+    - name: Build Infrastructure
+      run: dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+
+    - name: Build AI
+      run: dotnet build src/PTDoc.AI/PTDoc.AI.csproj --no-restore --configuration Release
+
+    - name: Build Integrations
+      run: dotnet build src/PTDoc.Integrations/PTDoc.Integrations.csproj --no-restore --configuration Release
+
+    - name: Build API
+      run: dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+
+    - name: Build Tests
+      run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run all tests
+      run: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Test Results
+        path: '**/test-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Format check
+      run: |
+        dotnet format src/PTDoc.Core/PTDoc.Core.csproj --verify-no-changes --verbosity diagnostic
+        dotnet format src/PTDoc.Application/PTDoc.Application.csproj --verify-no-changes --verbosity diagnostic
+        dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
+        dotnet format src/PTDoc.Api/PTDoc.Api.csproj --verify-no-changes --verbosity diagnostic
+        dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic

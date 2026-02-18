@@ -13,12 +13,12 @@ namespace PTDoc.Infrastructure.Observability;
 public class ConsoleTelemetrySink : ITelemetrySink
 {
     private readonly ILogger<ConsoleTelemetrySink> _logger;
-    
+
     public ConsoleTelemetrySink(ILogger<ConsoleTelemetrySink> logger)
     {
         _logger = logger;
     }
-    
+
     public Task LogEventAsync(string eventName, string correlationId, Dictionary<string, object> metadata)
     {
         var metadataStr = string.Join(", ", metadata.Select(kvp => $"{kvp.Key}={kvp.Value}"));
@@ -27,7 +27,7 @@ public class ConsoleTelemetrySink : ITelemetrySink
             eventName, correlationId, metadataStr);
         return Task.CompletedTask;
     }
-    
+
     public Task LogMetricAsync(string metricName, double value, Dictionary<string, object>? metadata = null)
     {
         var metadataStr = metadata != null
@@ -38,7 +38,7 @@ public class ConsoleTelemetrySink : ITelemetrySink
             metricName, value, metadataStr);
         return Task.CompletedTask;
     }
-    
+
     public Task LogExceptionAsync(Exception exception, string correlationId, Dictionary<string, object>? metadata = null)
     {
         var metadataStr = metadata != null
