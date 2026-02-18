@@ -20,7 +20,7 @@ public class SecureStorageDbKeyProvider : IDbKeyProvider
         try
         {
             // Try to retrieve existing key from platform secure storage
-            var existingKey = await SecureStorage.GetAsync(KeyName);
+            var existingKey = await SecureStorage.Default.GetAsync(KeyName);
             
             if (!string.IsNullOrWhiteSpace(existingKey))
             {
@@ -29,7 +29,7 @@ public class SecureStorageDbKeyProvider : IDbKeyProvider
             
             // Generate new key if none exists
             var newKey = GenerateSecureKey();
-            await SecureStorage.SetAsync(KeyName, newKey);
+            await SecureStorage.Default.SetAsync(KeyName, newKey);
             
             return newKey;
         }

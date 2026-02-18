@@ -1,8 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Pdf;
-using PTDoc.Infrastructure.Data;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -12,11 +10,10 @@ namespace PTDoc.Infrastructure.Pdf;
 /// <summary>
 /// Production PDF renderer using QuestPDF library.
 /// Generates professional PDF exports with signature blocks and Medicare compliance sections.
+/// CLEAN ARCHITECTURE: Receives pre-loaded data via DTO. NO database access in renderer.
 /// </summary>
 public class QuestPdfRenderer : IPdfRenderer
 {
-    private readonly ApplicationDbContext _context;
-
     static QuestPdfRenderer()
     {
         // Configure QuestPDF license for Community use
@@ -24,23 +21,8 @@ public class QuestPdfRenderer : IPdfRenderer
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public QuestPdfRenderer(ApplicationDbContext context)
+    public async Task<PdfExportResult> ExportNoteToPdfAsync(NoteExportDto noteData)
     {
-        _context = context;
-    }
-
-    public async Task<PdfExportResult> ExportNoteToPdfAsync(PdfExportRequest request)
-    {
-        // Load note with related data
-        var note = await _context.ClinicalNotes
-            .Include(n => n.Patient)
-            .FirstOrDefaultAsync(n => n.Id == request.NoteId);
-
-        if (note == null)
-        {
-            throw new InvalidOperationException($"Clinical note {request.NoteId} not found.");
-        }
-
         // Generate PDF using QuestPDF
         var pdfBytes = await Task.Run(() =>
         {
@@ -58,10 +40,10 @@ public class QuestPdfRenderer : IPdfRenderer
                     page.Header().Element(ComposeHeader);
 
                     // Content
-                    page.Content().Element(container => ComposeContent(container, note, request));
+                    page.Content().Element(container => ComposeContent(container, noteData));
 
                     // Footer
-                    page.Footer().Element(container => ComposeFooter(container, note, request));
+                    page.Footer().Element(container => ComposeFooter(container, noteData));
                 });
             });
 
@@ -71,7 +53,7 @@ public class QuestPdfRenderer : IPdfRenderer
         return new PdfExportResult
         {
             PdfBytes = pdfBytes,
-            FileName = $"note_{note.Id}_{DateTime.UtcNow:yyyyMMdd}.pdf",
+            FileName = $"note_{noteData.NoteId}_{DateTime.UtcNow:yyyyMMdd}.pdf",
             ContentType = "application/pdf",
             FileSizeBytes = pdfBytes.Length
         };
@@ -95,12 +77,12 @@ public class QuestPdfRenderer : IPdfRenderer
         });
     }
 
-    private void ComposeContent(IContainer container, PTDoc.Core.Models.ClinicalNote note, PdfExportRequest request)
+    private void ComposeContent(IContainer container, NoteExportDto noteData)
     {
         container.PaddingVertical(10).Column(column =>
         {
             // Patient information
-            column.Item().Element(container => ComposePatientInfo(container, note));
+            column.Item().Element(container => ComposePatientInfo(container, noteData));
 
             column.Item().PaddingTop(15).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
 
@@ -109,40 +91,40 @@ public class QuestPdfRenderer : IPdfRenderer
                 .FontSize(14)
                 .SemiBold();
 
-            column.Item().PaddingTop(10).Text(note.ContentJson ?? "{}")
+            column.Item().PaddingTop(10).Text(noteData.ContentJson ?? "{}")
                 .FontSize(11)
                 .LineHeight(1.5f);
 
             // Signature block
-            if (request.IncludeSignatureBlock)
+            if (noteData.IncludeSignatureBlock)
             {
-                column.Item().PaddingTop(20).Element(container => ComposeSignatureBlock(container, note));
+                column.Item().PaddingTop(20).Element(container => ComposeSignatureBlock(container, noteData));
             }
         });
     }
 
-    private void ComposePatientInfo(IContainer container, PTDoc.Core.Models.ClinicalNote note)
+    private void ComposePatientInfo(IContainer container, NoteExportDto noteData)
     {
         container.Column(column =>
         {
             column.Item().Row(row =>
             {
-                row.RelativeItem().Text($"Patient: {note.Patient?.FirstName} {note.Patient?.LastName}")
+                row.RelativeItem().Text($"Patient: {noteData.PatientFirstName} {noteData.PatientLastName}")
                     .SemiBold();
-                row.RelativeItem().AlignRight().Text($"MRN: {note.Patient?.MedicalRecordNumber ?? "N/A"}");
+                row.RelativeItem().AlignRight().Text($"MRN: {noteData.PatientMedicalRecordNumber ?? "N/A"}");
             });
 
             column.Item().PaddingTop(5).Row(row =>
             {
-                row.RelativeItem().Text($"Date of Service: {note.DateOfService:yyyy-MM-dd}");
-                row.RelativeItem().AlignRight().Text($"Note ID: {note.Id}");
+                row.RelativeItem().Text($"Date of Service: {noteData.DateOfService:yyyy-MM-dd}");
+                row.RelativeItem().AlignRight().Text($"Note ID: {noteData.NoteId}");
             });
         });
     }
 
-    private void ComposeSignatureBlock(IContainer container, PTDoc.Core.Models.ClinicalNote note)
+    private void ComposeSignatureBlock(IContainer container, NoteExportDto noteData)
     {
-        if (!string.IsNullOrEmpty(note.SignatureHash) && note.SignedUtc.HasValue)
+        if (!string.IsNullOrEmpty(noteData.SignatureHash) && noteData.SignedUtc.HasValue)
         {
             // Signed note - show signature details
             container.Border(1).BorderColor(Colors.Blue.Darken2).Padding(15).Column(column =>
@@ -152,13 +134,13 @@ public class QuestPdfRenderer : IPdfRenderer
                     .SemiBold()
                     .FontColor(Colors.Blue.Darken2);
 
-                column.Item().PaddingTop(5).Text($"Signed By: User {note.SignedByUserId}")
+                column.Item().PaddingTop(5).Text($"Signed By: User {noteData.SignedByUserId}")
                     .FontSize(10);
 
-                column.Item().Text($"Signed On: {note.SignedUtc:yyyy-MM-dd HH:mm:ss} UTC")
+                column.Item().Text($"Signed On: {noteData.SignedUtc:yyyy-MM-dd HH:mm:ss} UTC")
                     .FontSize(10);
 
-                column.Item().Text($"Signature Hash: {note.SignatureHash}")
+                column.Item().Text($"Signature Hash: {noteData.SignatureHash}")
                     .FontSize(8)
                     .FontColor(Colors.Grey.Darken1);
 
@@ -190,13 +172,19 @@ public class QuestPdfRenderer : IPdfRenderer
         }
     }
 
-    private void ComposeFooter(IContainer container, PTDoc.Core.Models.ClinicalNote note, PdfExportRequest request)
+    private void ComposeFooter(IContainer container, NoteExportDto noteData)
     {
-        if (!request.IncludeMedicareCompliance)
+        if (!noteData.IncludeMedicareCompliance)
         {
-            container.AlignCenter().Text($"Page {{number}} | PTDoc Clinical Note System")
-                .FontSize(9)
-                .FontColor(Colors.Grey.Darken1);
+            container.AlignCenter().Text(text =>
+            {
+                text.DefaultTextStyle(TextStyle.Default.FontSize(9).FontColor(Colors.Grey.Darken1));
+                text.Span("Page ");
+                text.CurrentPageNumber();
+                text.Span(" of ");
+                text.TotalPages();
+                text.Span(" | PTDoc Clinical Note System");
+            });
             return;
         }
 
@@ -222,9 +210,15 @@ public class QuestPdfRenderer : IPdfRenderer
                     .FontSize(9)
                     .SemiBold();
             });
-            column.Item().PaddingTop(10).AlignCenter().Text($"Page {{number}}")
-                .FontSize(9)
-                .FontColor(Colors.Grey.Darken1);
+            
+            column.Item().PaddingTop(10).AlignCenter().Text(text =>
+            {
+                text.DefaultTextStyle(TextStyle.Default.FontSize(9).FontColor(Colors.Grey.Darken1));
+                text.Span("Page ");
+                text.CurrentPageNumber();
+                text.Span(" of ");
+                text.TotalPages();
+            });
         });
     }
 }

@@ -32,7 +32,7 @@ public class PdfIntegrationTests : IAsyncDisposable
         _context = new ApplicationDbContext(options);
         _context.Database.Migrate();
 
-        _renderer = new QuestPdfRenderer(_context);
+        _renderer = new QuestPdfRenderer();
     }
 
     [Fact]
@@ -65,15 +65,23 @@ public class PdfIntegrationTests : IAsyncDisposable
         await _context.ClinicalNotes.AddAsync(note);
         await _context.SaveChangesAsync();
 
-        // Act: Generate PDF
-        var request = new PdfExportRequest
+        // Act: Generate PDF - map to DTO
+        var noteData = new NoteExportDto
         {
             NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            ContentJson = note.ContentJson,
+            PatientFirstName = patient.FirstName,
+            PatientLastName = patient.LastName,
+            PatientMedicalRecordNumber = patient.MedicalRecordNumber,
+            SignatureHash = note.SignatureHash,
+            SignedUtc = note.SignedUtc,
+            SignedByUserId = note.SignedByUserId,
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = true
         };
 
-        var result = await _renderer.ExportNoteToPdfAsync(request);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
 
         // Assert: PDF is generated
         Assert.NotNull(result);
@@ -114,15 +122,20 @@ public class PdfIntegrationTests : IAsyncDisposable
         await _context.ClinicalNotes.AddAsync(note);
         await _context.SaveChangesAsync();
 
-        // Act: Generate PDF
-        var request = new PdfExportRequest
+        // Act: Generate PDF - map to DTO
+        var noteData = new NoteExportDto
         {
             NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            ContentJson = note.ContentJson,
+            PatientFirstName = patient.FirstName,
+            PatientLastName = patient.LastName,
+            PatientMedicalRecordNumber = patient.MedicalRecordNumber ?? string.Empty,
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = true
         };
 
-        var result = await _renderer.ExportNoteToPdfAsync(request);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
 
         // Assert: PDF is generated with watermark indicator
         Assert.NotNull(result);
@@ -159,15 +172,20 @@ public class PdfIntegrationTests : IAsyncDisposable
         var originalSyncState = note.SyncState;
         var originalLastModified = note.LastModifiedUtc;
 
-        // Act: Export to PDF
-        var request = new PdfExportRequest
+        // Act: Export to PDF - map to DTO
+        var noteData = new NoteExportDto
         {
             NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            ContentJson = note.ContentJson,
+            PatientFirstName = patient.FirstName,
+            PatientLastName = patient.LastName,
+            PatientMedicalRecordNumber = patient.MedicalRecordNumber ?? string.Empty,
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = true
         };
 
-        await _renderer.ExportNoteToPdfAsync(request);
+        await _renderer.ExportNoteToPdfAsync(noteData);
 
         // Assert: Note unchanged in database
         await _context.Entry(note).ReloadAsync();
@@ -202,15 +220,20 @@ public class PdfIntegrationTests : IAsyncDisposable
         await _context.ClinicalNotes.AddAsync(note);
         await _context.SaveChangesAsync();
 
-        // Act: Generate PDF with Medicare compliance
-        var request = new PdfExportRequest
+        // Act: Generate PDF with Medicare compliance - map to DTO
+        var noteData = new NoteExportDto
         {
             NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            ContentJson = note.ContentJson,
+            PatientFirstName = patient.FirstName,
+            PatientLastName = patient.LastName,
+            PatientMedicalRecordNumber = patient.MedicalRecordNumber ?? string.Empty,
             IncludeSignatureBlock = false,
             IncludeMedicareCompliance = true
         };
 
-        var result = await _renderer.ExportNoteToPdfAsync(request);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
 
         // Assert: PDF generated (footer content verified by QuestPDF internally)
         Assert.NotNull(result);
@@ -219,21 +242,28 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task PDF_Export_Throws_When_Note_Not_Found()
+    public async Task PDF_Export_With_No_Patient_Data_Still_Works()
     {
-        // Arrange: Non-existent note ID
-        var nonExistentId = Guid.NewGuid();
-
-        var request = new PdfExportRequest
+        // Arrange: Note with minimal data (no patient loaded)
+        var noteData = new NoteExportDto
         {
-            NoteId = nonExistentId,
+            NoteId = Guid.NewGuid(),
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"minimal\": \"data\"}",
+            PatientFirstName = string.Empty,
+            PatientLastName = string.Empty,
+            PatientMedicalRecordNumber = string.Empty,
             IncludeSignatureBlock = true,
             IncludeMedicareCompliance = true
         };
 
-        // Act & Assert: Should throw
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _renderer.ExportNoteToPdfAsync(request));
+        // Act
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+
+        // Assert: PDF still generated
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.PdfBytes);
+        Assert.True(result.FileSizeBytes > 500);
     }
 
     public async ValueTask DisposeAsync()
