@@ -20,12 +20,12 @@ public static class PinAuthEndpoints
 
         // POST /api/v1/auth/logout
         authGroup.MapPost("/logout", Logout)
-            .RequireAuthorization()
+            .AllowAnonymous()
             .WithName("Logout");
 
         // GET /api/v1/auth/me
         authGroup.MapGet("/me", GetCurrentUser)
-            .RequireAuthorization()
+            .AllowAnonymous()
             .WithName("GetCurrentUser");
     }
 
