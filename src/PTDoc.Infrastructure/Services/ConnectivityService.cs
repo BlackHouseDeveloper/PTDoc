@@ -27,10 +27,10 @@ public class ConnectivityService : IConnectivityService
         try
         {
             _dotNetRef = DotNetObjectReference.Create(this);
-            
+
             // Check initial connectivity status
             _isOnline = await _jsRuntime.InvokeAsync<bool>("eval", "navigator.onLine");
-            
+
             // Register for connectivity change events
             await _jsRuntime.InvokeVoidAsync("eval", $@"
                 window.ptdocConnectivityHandler = {{

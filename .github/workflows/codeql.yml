@@ -1,0 +1,58 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
+  pull_request:
+    branches: [ "main", "develop", "phase8-continue" ]
+  schedule:
+    - cron: '30 2 * * 1'  # Weekly on Monday at 2:30 AM UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (C#)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: csharp
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Core/PTDoc.Core.csproj
+        dotnet restore src/PTDoc.Application/PTDoc.Application.csproj
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.AI/PTDoc.AI.csproj
+        dotnet restore src/PTDoc.Integrations/PTDoc.Integrations.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build (non-MAUI only)
+      run: |
+        dotnet build src/PTDoc.Core/PTDoc.Core.csproj -c Release --no-restore
+        dotnet build src/PTDoc.Application/PTDoc.Application.csproj -c Release --no-restore
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj -c Release --no-restore
+        dotnet build src/PTDoc.AI/PTDoc.AI.csproj -c Release --no-restore
+        dotnet build src/PTDoc.Integrations/PTDoc.Integrations.csproj -c Release --no-restore
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj -c Release --no-restore
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj -c Release --no-restore
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3

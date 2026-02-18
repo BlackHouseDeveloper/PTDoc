@@ -3,10 +3,17 @@
   <ItemGroup>
     <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\PTDoc.AI\PTDoc.AI.csproj" />
+    <ProjectReference Include="..\PTDoc.Integrations\PTDoc.Integrations.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.1" />
   </ItemGroup>
 
   <PropertyGroup>
