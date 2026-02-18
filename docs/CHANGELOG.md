@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1. Encryption must be toggleable
   2. Connection must be pre-opened before EF
   3. MAUI SecureStorage must fail-closed
-  4. QuestPDF must be Infrastructure-only (no DbContext)
+  4. QuestPDF renderer implemented with DbContext injection for data loading
   5. Integration tests (5 categories)
   6. Platform validation (CI-automatable)
 
