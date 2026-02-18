@@ -204,28 +204,24 @@ public class QuestPdfRenderer : IPdfRenderer
         {
             column.Item().PaddingBottom(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
 
-            column.Item().PaddingTop(10).Text("Medicare Compliance Summary")
+            column.Item().PaddingTop(10).Text("Medicare Compliance Summary (Placeholder)")
                 .FontSize(10)
                 .SemiBold()
                 .FontColor(Colors.Blue.Darken2);
 
-            // Mock compliance data (in production, this would come from the note or a service)
-            column.Item().PaddingTop(5).Row(row =>
+            // Placeholder content: real Medicare compliance logic not yet integrated.
+            // Intentionally avoid rendering specific CPT codes or "COMPLIANT" statuses
+            // to prevent misleading clinical/billing information in production PDFs.
+            column.Item().PaddingTop(5).Text(text =>
             {
-                row.RelativeItem().Text("CPT Codes: 97110 (2u), 97140 (1u)")
+                text.Span("Medicare compliance details are not yet calculated in this PDF export. ")
                     .FontSize(9);
-                row.RelativeItem().AlignRight().Text("8-Minute Rule: COMPLIANT")
+                text.Span("CPT codes, units, and compliance statuses shown here are placeholders only and ")
                     .FontSize(9);
+                text.Span("must not be used for billing or clinical decision-making.")
+                    .FontSize(9)
+                    .SemiBold();
             });
-
-            column.Item().PaddingTop(2).Row(row =>
-            {
-                row.RelativeItem().Text("Total Billable Units: 3")
-                    .FontSize(9);
-                row.RelativeItem().AlignRight().Text("PN Frequency: COMPLIANT")
-                    .FontSize(9);
-            });
-
             column.Item().PaddingTop(10).AlignCenter().Text($"Page {{number}}")
                 .FontSize(9)
                 .FontColor(Colors.Grey.Darken1);
