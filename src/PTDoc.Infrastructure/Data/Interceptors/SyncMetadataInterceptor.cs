@@ -51,13 +51,13 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             entry.Entity.LastModifiedUtc = now;
             entry.Entity.ModifiedByUserId = currentUserId;
 
-            // For new entities, set default sync state if not already set
+            // For new entities, ensure sync state is Pending
             if (entry.State == EntityState.Added)
             {
-                // Only set to Pending if it's still default (0)
-                if (entry.Entity.SyncState == SyncState.Synced && entry.Entity.Id == Guid.Empty)
+                // Set to Pending unless already Pending or Conflict
+                // (SyncState defaults to Pending=0, but enforce it in case it was manually set to Synced)
+                if (entry.Entity.SyncState == SyncState.Synced)
                 {
-                    // New entity, not yet synced
                     entry.Entity.SyncState = SyncState.Pending;
                 }
             }
