@@ -101,7 +101,11 @@ if (encryptionEnabled)
         // Set SQLCipher PRAGMA key
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = $"PRAGMA key = '{key}';";
+            command.CommandText = "PRAGMA key = $key;";
+            var keyParameter = command.CreateParameter();
+            keyParameter.ParameterName = "$key";
+            keyParameter.Value = key;
+            command.Parameters.Add(keyParameter);
             command.ExecuteNonQuery();
         }
 
