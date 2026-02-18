@@ -23,7 +23,7 @@ public class ApplicationDbContext : DbContext
     // User & auth entities
     public DbSet<User> Users => Set<User>();
     public DbSet<Session> Sessions => Set<Session>();
-    public DbSet<PTDoc.Application.Identity.LoginAttempt> LoginAttempts => Set<PTDoc.Application.Identity.LoginAttempt>();
+    public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
 
     // System entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -148,7 +148,7 @@ public class ApplicationDbContext : DbContext
         });
 
         // Configure LoginAttempt
-        modelBuilder.Entity<PTDoc.Application.Identity.LoginAttempt>(entity =>
+        modelBuilder.Entity<LoginAttempt>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username);

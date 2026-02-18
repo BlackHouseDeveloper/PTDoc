@@ -60,6 +60,6 @@ public static class DatabaseSeeder
         context.Users.AddRange(systemUser, testUser);
         await context.SaveChangesAsync();
 
-        logger.LogInformation("Test data seeded successfully. Test user: testuser/1234");
+        logger.LogInformation("Test data seeded successfully. Test user: {Username} (PIN configured separately)", "testuser");
     }
 }

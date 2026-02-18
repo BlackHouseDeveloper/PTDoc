@@ -53,7 +53,7 @@ public static class AiEndpoints
         var result = await aiService.GenerateAssessmentAsync(request, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
-        var userId = httpContext.User.FindFirst("user_id")?.Value;
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
             var auditEvent = new AuditEvent

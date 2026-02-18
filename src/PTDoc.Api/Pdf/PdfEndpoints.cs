@@ -68,7 +68,7 @@ public static class PdfEndpoints
             var result = await pdfRenderer.ExportNoteToPdfAsync(noteData);
 
             // Audit PDF export (NO PHI - only metadata)
-            var userId = httpContext.User.FindFirst("sub")?.Value ?? "system";
+            var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
             if (Guid.TryParse(userId, out var userGuid))
             {
                 await auditService.LogRuleEvaluationAsync(

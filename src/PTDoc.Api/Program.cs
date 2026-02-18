@@ -118,7 +118,6 @@ if (encryptionEnabled)
 
         if (builder.Environment.IsDevelopment())
         {
-            options.EnableSensitiveDataLogging();
             options.EnableDetailedErrors();
         }
     });
@@ -136,7 +135,6 @@ else
 
         if (builder.Environment.IsDevelopment())
         {
-            options.EnableSensitiveDataLogging();
             options.EnableDetailedErrors();
         }
     });

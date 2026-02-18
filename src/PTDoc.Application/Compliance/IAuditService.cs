@@ -37,6 +37,13 @@ public class AuditEvent
     public string CorrelationId { get; set; } = Guid.NewGuid().ToString();
     public Dictionary<string, object> Metadata { get; set; } = new();
     
+    // Additional fields to map to AuditLog
+    public string Severity { get; set; } = "Info"; // "Info", "Warning", "Error"
+    public bool Success { get; set; } = true;
+    public string? ErrorMessage { get; set; }
+    public string? EntityType { get; set; }
+    public Guid? EntityId { get; set; }
+    
     public static AuditEvent RuleEvaluation(string ruleId, bool passed, Guid? userId = null)
     {
         return new AuditEvent

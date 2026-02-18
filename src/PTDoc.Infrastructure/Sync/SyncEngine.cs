@@ -301,6 +301,14 @@ public class SyncEngine : ISyncEngine
         CancellationToken cancellationToken)
         where TEntity : class, ISyncTrackedEntity
     {
+        // Configure JSON serialization to handle circular references and navigation properties
+        var jsonOptions = new JsonSerializerOptions
+        {
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = false
+        };
+
         var archive = new SyncConflictArchive
         {
             EntityType = typeof(TEntity).Name,
@@ -308,10 +316,10 @@ public class SyncEngine : ISyncEngine
             DetectedAt = DateTime.UtcNow,
             ResolutionType = resolutionType,
             Reason = "Conflict during sync",
-            ArchivedDataJson = JsonSerializer.Serialize(archivedVersion),
+            ArchivedDataJson = JsonSerializer.Serialize(archivedVersion, jsonOptions),
             ArchivedVersionLastModifiedUtc = archivedVersion.LastModifiedUtc,
             ArchivedVersionModifiedByUserId = archivedVersion.ModifiedByUserId,
-            ChosenDataJson = JsonSerializer.Serialize(chosenVersion),
+            ChosenDataJson = JsonSerializer.Serialize(chosenVersion, jsonOptions),
             ChosenVersionLastModifiedUtc = chosenVersion.LastModifiedUtc,
             ChosenVersionModifiedByUserId = chosenVersion.ModifiedByUserId,
             IsResolved = false
