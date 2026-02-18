@@ -26,7 +26,9 @@ public interface ISyncEngine
 
     /// <summary>
     /// Enqueue an entity for synchronization.
-    /// Called automatically by interceptor when entities are modified.
+    /// Should be called explicitly after entity operations that need to be synced.
+    /// The SyncMetadataInterceptor updates LastModifiedUtc, ModifiedByUserId, and SyncState automatically,
+    /// but explicit enqueuing allows fine-grained control over what gets synced and when.
     /// </summary>
     Task EnqueueAsync(string entityType, Guid entityId, SyncOperation operation, CancellationToken cancellationToken = default);
 
