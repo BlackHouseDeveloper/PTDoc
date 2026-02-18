@@ -25,10 +25,11 @@ The PTDoc sync engine enables offline-first documentation with automatic conflic
 
 ### Sync Cycle
 
-1. **Automatic Enqueuing** (via `SyncMetadataInterceptor`)
+1. **Metadata Stamping** (via `SyncMetadataInterceptor`)
    - Every entity save triggers `ModifiedByUserId` stamping
    - `SyncState` transitions from `Synced` → `Pending`
-   - Change is automatically enqueued in `SyncQueueItem` table
+   - **Note**: Changes must be explicitly enqueued via `ISyncEngine.EnqueueAsync()` after save
+   - The interceptor only stamps metadata; it does not auto-enqueue to avoid circular SaveChanges calls
 
 2. **Push Phase** (`POST /api/v1/sync/push`)
    - Retrieves all pending queue items ordered by `EnqueuedAt`

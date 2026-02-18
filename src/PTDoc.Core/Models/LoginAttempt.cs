@@ -1,4 +1,4 @@
-namespace PTDoc.Application.Identity;
+namespace PTDoc.Core.Models;
 
 /// <summary>
 /// Represents a login attempt for security monitoring.

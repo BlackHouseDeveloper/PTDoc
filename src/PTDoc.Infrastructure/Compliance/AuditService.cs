@@ -48,7 +48,12 @@ public class AuditService : IAuditService
             EventType = auditEvent.EventType,
             UserId = auditEvent.UserId,
             CorrelationId = auditEvent.CorrelationId,
-            MetadataJson = JsonSerializer.Serialize(auditEvent.Metadata)
+            MetadataJson = JsonSerializer.Serialize(auditEvent.Metadata),
+            Severity = auditEvent.Severity,
+            Success = auditEvent.Success,
+            ErrorMessage = auditEvent.ErrorMessage,
+            EntityType = auditEvent.EntityType,
+            EntityId = auditEvent.EntityId
         };
 
         _context.AuditLogs.Add(auditLog);

@@ -79,7 +79,7 @@ public class IntegrationServicesTests
     }
 
     [Fact]
-    public async Task ExternalSystemMapping_UniqueConstraint_EnforcedByDatabase()
+    public async Task ExternalSystemMapping_UniqueConstraint_DocumentedBehavior()
     {
         // Arrange
         await using var context = CreateInMemoryContext();
@@ -106,9 +106,16 @@ public class IntegrationServicesTests
 
         context.ExternalSystemMappings.Add(mapping2);
 
-        // Act & Assert - In-memory DB doesn't enforce unique constraints like real SQLite would
-        // This test documents the expected behavior with real database
-        // Real SQLite would throw DbUpdateException due to unique index
+        // Act & Assert
+        // In-memory DB doesn't enforce unique constraints like real SQLite would
+        // This test documents that behavior - duplicates are allowed in InMemory but would fail in SQLite
+        await context.SaveChangesAsync(); // This succeeds in InMemory
+        var count = await context.ExternalSystemMappings
+            .CountAsync(m => m.ExternalSystemName == "Wibbi" && m.ExternalId == "wibbi-123");
+        
+        // Document the difference: InMemory allows duplicates (count == 2)
+        // Real SQLite would throw DbUpdateException on the second SaveChangesAsync
+        Assert.Equal(2, count);
     }
 
     [Fact]

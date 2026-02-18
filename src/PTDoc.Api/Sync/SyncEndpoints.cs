@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using PTDoc.Application.Sync;
+using Microsoft.Extensions.Logging;
 
 namespace PTDoc.Api.Sync;
 
@@ -32,7 +33,8 @@ public static class SyncEndpoints
     }
 
     private static async Task<IResult> RunFullSync(
-        [FromServices] ISyncEngine syncEngine)
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
     {
         try
         {
@@ -61,15 +63,19 @@ public static class SyncEndpoints
         }
         catch (Exception ex)
         {
+            // Log error server-side (NO PHI in logs)
+            logger.LogError(ex, "Sync operation failed");
+            
             return Results.Problem(
-                detail: ex.Message,
+                detail: "An error occurred during synchronization. Please try again.",
                 statusCode: 500,
                 title: "Sync failed");
         }
     }
 
     private static async Task<IResult> PushChanges(
-        [FromServices] ISyncEngine syncEngine)
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
     {
         try
         {
@@ -87,8 +93,11 @@ public static class SyncEndpoints
         }
         catch (Exception ex)
         {
+            // Log error server-side (NO PHI in logs)
+            logger.LogError(ex, "Push operation failed");
+            
             return Results.Problem(
-                detail: ex.Message,
+                detail: "An error occurred while pushing changes. Please try again.",
                 statusCode: 500,
                 title: "Push failed");
         }
@@ -96,7 +105,8 @@ public static class SyncEndpoints
 
     private static async Task<IResult> PullChanges(
         [FromQuery] DateTime? sinceUtc,
-        [FromServices] ISyncEngine syncEngine)
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
     {
         try
         {
@@ -114,15 +124,19 @@ public static class SyncEndpoints
         }
         catch (Exception ex)
         {
+            // Log error server-side (NO PHI in logs)
+            logger.LogError(ex, "Pull operation failed");
+            
             return Results.Problem(
-                detail: ex.Message,
+                detail: "An error occurred while pulling changes. Please try again.",
                 statusCode: 500,
                 title: "Pull failed");
         }
     }
 
     private static async Task<IResult> GetSyncStatus(
-        [FromServices] ISyncEngine syncEngine)
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
     {
         try
         {
@@ -138,8 +152,11 @@ public static class SyncEndpoints
         }
         catch (Exception ex)
         {
+            // Log error server-side (NO PHI in logs)
+            logger.LogError(ex, "Failed to retrieve sync status");
+            
             return Results.Problem(
-                detail: ex.Message,
+                detail: "An error occurred while retrieving sync status. Please try again.",
                 statusCode: 500,
                 title: "Failed to get sync status");
         }
