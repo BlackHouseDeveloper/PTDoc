@@ -1,0 +1,59 @@
+.intake-header {
+    background: var(--secondary);
+    border-bottom: 1px solid var(--border);
+    padding: var(--spacing-4);
+}
+
+.intake-header__inner {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-3);
+}
+
+.intake-header__back {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-md);
+    color: var(--secondary-foreground);
+    display: inline-flex;
+    font-size: var(--text-lg);
+    justify-content: center;
+    min-height: var(--touch-target-mobile);
+    min-width: var(--touch-target-mobile);
+    padding: var(--spacing-2);
+}
+
+.intake-header__brand {
+    align-items: center;
+    background: var(--primary);
+    border-radius: var(--radius-sm);
+    color: var(--primary-foreground);
+    display: inline-flex;
+    font-size: var(--text-lg);
+    justify-content: center;
+    line-height: var(--line-height-tight);
+    min-height: var(--touch-target-mobile);
+    padding: var(--spacing-2) var(--spacing-4);
+}
+
+.intake-header__text {
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+.intake-header__text h1 {
+    color: var(--secondary-foreground);
+    font-size: var(--text-lg);
+    margin: 0;
+}
+
+.intake-header__text p {
+    color: color-mix(in srgb, var(--secondary-foreground) 70%, transparent);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+:global(.dark) .intake-header {
+    background: var(--secondary);
+}

@@ -1,0 +1,299 @@
+@page "/intake"
+@page "/intake/{PatientId:guid}"
+
+@using PTDoc.Application.Services
+@using PTDoc.UI.Components.Intake
+@using PTDoc.UI.Components.Intake.Models
+@using PTDoc.UI.Components.Intake.Steps
+
+@inject IIntakeService IntakeService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<PageTitle>Patient Intake - PTDocs +</PageTitle>
+
+<div class="intake-page" data-testid="intake-page">
+    <div class="intake-page__shell">
+        <IntakeHeader CurrentStep="@State.CurrentStep" OnBack="HandleBackAsync" />
+        <IntakeProgressBar CurrentStep="@State.CurrentStep" />
+
+        <main class="intake-page__content" aria-live="polite">
+            @if (_draftNotFound)
+            {
+                <section class="intake-page__not-found">
+                    <h2>Intake Draft Not Found</h2>
+                    <p>We could not locate an intake draft for this patient link.</p>
+                    <p>TODO: Add secure public token intake flow and recovery options.</p>
+                </section>
+            }
+            else
+            {
+                @switch (State.CurrentStep)
+                {
+                    case IntakeStep.Demographics:
+                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        break;
+                    case IntakeStep.PainAssessment:
+                        <PainAssessmentStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        break;
+                    case IntakeStep.PainDetails:
+                        <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
+                        break;
+                    case IntakeStep.Review:
+                        <ReviewStep State="@State" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" />
+                        break;
+                    default:
+                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        break;
+                }
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid? PatientId { get; set; }
+    [SupplyParameterFromQuery(Name = "mode")] public string? Mode { get; set; }
+
+    private IntakeWizardState State { get; set; } = new();
+    private Guid? _loadedPatientId;
+    private bool _draftNotFound;
+    private string? _validationMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+
+        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || !isAuthenticated;
+
+        if (PatientId.HasValue)
+        {
+            await LoadDraftAsync(PatientId.Value);
+            return;
+        }
+
+        if (_loadedPatientId.HasValue)
+        {
+            State = new IntakeWizardState
+            {
+                CurrentStep = IntakeStep.Demographics,
+                IsPatientMode = State.IsPatientMode
+            };
+
+            _loadedPatientId = null;
+            _draftNotFound = false;
+            _validationMessage = null;
+        }
+    }
+
+    private async Task LoadDraftAsync(Guid patientId)
+    {
+        if (_loadedPatientId == patientId)
+        {
+            return;
+        }
+
+        var draft = await IntakeService.GetDraftByPatientIdAsync(patientId);
+
+        if (draft is null)
+        {
+            State = new IntakeWizardState
+            {
+                PatientId = patientId,
+                IsPatientMode = State.IsPatientMode,
+                CurrentStep = IntakeStep.Demographics
+            };
+
+            _draftNotFound = true;
+            _loadedPatientId = patientId;
+            return;
+        }
+
+        State = FromDraft(draft);
+        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
+
+        _draftNotFound = false;
+        _loadedPatientId = patientId;
+        _validationMessage = null;
+    }
+
+    private async Task HandleDemographicsContinueAsync()
+    {
+        _validationMessage = null;
+
+        if (!State.IsDemographicsRequiredFieldsValid())
+        {
+            _validationMessage = "Please complete all required demographics fields before continuing.";
+            return;
+        }
+
+        State.CurrentStep = IntakeStep.PainAssessment;
+
+        if (!State.PatientId.HasValue)
+        {
+            var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
+            State.PatientId = patientId;
+            _loadedPatientId = patientId;
+
+            // TODO: Persist draft locally first (SQLite) and then sync via service.
+            await IntakeService.SaveDraftAsync(ToDraft(State));
+
+            NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
+            return;
+        }
+
+        // TODO: Persist draft locally first (SQLite) and then sync via service.
+        await IntakeService.SaveDraftAsync(ToDraft(State));
+    }
+
+    private async Task HandlePainAssessmentContinueAsync()
+    {
+        State.CurrentStep = IntakeStep.PainDetails;
+
+        // TODO: Persist draft locally first (SQLite) and then sync via service.
+        await SaveDraftIfPossibleAsync();
+    }
+
+    private async Task HandlePainDetailsContinueAsync()
+    {
+        State.CurrentStep = IntakeStep.Review;
+
+        // TODO: Persist draft locally first (SQLite) and then sync via service.
+        await SaveDraftIfPossibleAsync();
+    }
+
+    private Task HandleBackAsync()
+    {
+        _validationMessage = null;
+
+        if (State.CurrentStep > IntakeStep.Demographics)
+        {
+            State.CurrentStep = (IntakeStep)((int)State.CurrentStep - 1);
+        }
+
+        // TODO: Prevent browser back from leaving wizard in patient mode without confirmation.
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        _validationMessage = null;
+
+        if (!State.HipaaAcknowledged)
+        {
+            _validationMessage = "You must acknowledge the HIPAA Privacy Notice before submitting.";
+            return;
+        }
+
+        if (State.PatientId is null)
+        {
+            _validationMessage = "Please complete demographics first to create an intake draft.";
+            return;
+        }
+
+        State.IsSubmitting = true;
+
+        try
+        {
+            // TODO: Add full validation for all required fields before final submit.
+            await IntakeService.SubmitAsync(ToDraft(State));
+            State.IsDirty = false;
+
+            // TODO: lock intake after final submission and show confirmation screen.
+        }
+        finally
+        {
+            State.IsSubmitting = false;
+        }
+    }
+
+    private Task HandleStateChangedAsync()
+    {
+        State.IsDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveDraftIfPossibleAsync()
+    {
+        if (State.PatientId.HasValue)
+        {
+            await IntakeService.SaveDraftAsync(ToDraft(State));
+        }
+    }
+
+    private string GetModeQuery()
+    {
+        return State.IsPatientMode ? "?mode=patient" : string.Empty;
+    }
+
+    private static IntakeResponseDraft ToDraft(IntakeWizardState state)
+    {
+        return new IntakeResponseDraft
+        {
+            PatientId = state.PatientId,
+            CurrentStep = (int)state.CurrentStep,
+            HipaaAcknowledged = state.HipaaAcknowledged,
+            FullName = state.FullName,
+            DateOfBirth = state.DateOfBirth,
+            SexAtBirth = state.SexAtBirth,
+            EmailAddress = state.EmailAddress,
+            PhoneNumber = state.PhoneNumber,
+            AddressLine1 = state.AddressLine1,
+            AddressLine2 = state.AddressLine2,
+            City = state.City,
+            StateOrProvince = state.StateOrProvince,
+            PostalCode = state.PostalCode,
+            EmergencyContactName = state.EmergencyContactName,
+            EmergencyContactPhone = state.EmergencyContactPhone,
+            InsuranceCompanyName = state.InsuranceCompanyName,
+            MemberOrPolicyNumber = state.MemberOrPolicyNumber,
+            GroupNumber = state.GroupNumber,
+            PayerType = state.PayerType,
+            InsuranceCoverageType = state.InsuranceCoverageType,
+            HasCurrentMedications = state.HasCurrentMedications,
+            HasOtherMedicalConditions = state.HasOtherMedicalConditions,
+            UsesAssistiveDevices = state.UsesAssistiveDevices,
+            HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
+            MedicalHistoryNotes = state.MedicalHistoryNotes,
+            SelectedBodyRegion = state.SelectedBodyRegion,
+            PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static IntakeWizardState FromDraft(IntakeResponseDraft draft)
+    {
+        return new IntakeWizardState
+        {
+            PatientId = draft.PatientId,
+            CurrentStep = Enum.IsDefined(typeof(IntakeStep), draft.CurrentStep)
+                ? (IntakeStep)draft.CurrentStep
+                : IntakeStep.Demographics,
+            HipaaAcknowledged = draft.HipaaAcknowledged,
+            FullName = draft.FullName,
+            DateOfBirth = draft.DateOfBirth,
+            SexAtBirth = draft.SexAtBirth,
+            EmailAddress = draft.EmailAddress,
+            PhoneNumber = draft.PhoneNumber,
+            AddressLine1 = draft.AddressLine1,
+            AddressLine2 = draft.AddressLine2,
+            City = draft.City,
+            StateOrProvince = draft.StateOrProvince,
+            PostalCode = draft.PostalCode,
+            EmergencyContactName = draft.EmergencyContactName,
+            EmergencyContactPhone = draft.EmergencyContactPhone,
+            InsuranceCompanyName = draft.InsuranceCompanyName,
+            MemberOrPolicyNumber = draft.MemberOrPolicyNumber,
+            GroupNumber = draft.GroupNumber,
+            PayerType = draft.PayerType,
+            InsuranceCoverageType = draft.InsuranceCoverageType,
+            HasCurrentMedications = draft.HasCurrentMedications,
+            HasOtherMedicalConditions = draft.HasOtherMedicalConditions,
+            UsesAssistiveDevices = draft.UsesAssistiveDevices,
+            HasPreviousSurgeriesOrInjuries = draft.HasPreviousSurgeriesOrInjuries,
+            MedicalHistoryNotes = draft.MedicalHistoryNotes,
+            SelectedBodyRegion = draft.SelectedBodyRegion,
+            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+        };
+    }
+}

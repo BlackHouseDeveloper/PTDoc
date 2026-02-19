@@ -20,6 +20,7 @@ builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
+builder.Services.AddScoped<IIntakeService, MockIntakeService>();
 builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.Infrastructure.Services.MockDashboardService>();
 builder.Services.AddScoped<PTDoc.Application.Services.IRoleService, PTDoc.Infrastructure.Services.RoleService>();
 

@@ -32,6 +32,7 @@ public static class MauiProgram
 		builder.Services.AddScoped<IThemeService, MauiThemeService>();
 		builder.Services.AddScoped<ISyncService, SyncService>();
 		builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
+		builder.Services.AddScoped<IIntakeService, MockIntakeService>();
 		
 		// Register App as transient to inject services into constructor
 		builder.Services.AddTransient<App>();

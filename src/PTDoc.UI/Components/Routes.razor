@@ -1,17 +1,28 @@
 ﻿@namespace PTDoc.UI.Components
 @using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
+@using PTDoc.UI.Pages.Intake
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <Router AppAssembly="@typeof(Routes).Assembly">
     <Found Context="routeData">
-        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-            <Authorizing>
-                <p>Loading...</p>
-            </Authorizing>
-            <NotAuthorized>
-                <RedirectToLogin />
-            </NotAuthorized>
-        </AuthorizeRouteView>
+        @if (ShouldUseStandaloneIntakeLayout(routeData))
+        {
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+        }
+        else
+        {
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <Authorizing>
+                    <p>Loading...</p>
+                </Authorizing>
+                <NotAuthorized>
+                    <RedirectToLogin />
+                </NotAuthorized>
+            </AuthorizeRouteView>
+        }
     </Found>
 
     <NotFound>
@@ -20,3 +31,41 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private bool isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
+    {
+        var authState = await authStateTask;
+        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool ShouldUseStandaloneIntakeLayout(RouteData routeData)
+    {
+        if (routeData.PageType != typeof(IntakeWizardPage))
+        {
+            return false;
+        }
+
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = uri.Query;
+        var isPatientQueryMode = query.Contains("mode=patient", StringComparison.OrdinalIgnoreCase);
+
+        return isPatientQueryMode || !isAuthenticated;
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+}

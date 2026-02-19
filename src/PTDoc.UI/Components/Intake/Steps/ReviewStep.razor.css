@@ -1,0 +1,51 @@
+.intake-step-shell {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+}
+
+.intake-step-shell h2 {
+    color: var(--card-foreground);
+    font-size: var(--text-xl);
+    margin: 0;
+}
+
+.intake-step-shell p {
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
+.review-grid {
+    background: color-mix(in srgb, var(--muted) 75%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+}
+
+.review-grid div {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+}
+
+.intake-step-shell__warning {
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-3);
+}
+
+.intake-step-shell__todo {
+    background: color-mix(in srgb, var(--info) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 24%, transparent);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-3);
+}

@@ -1,0 +1,43 @@
+.intake-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+}
+
+.intake-card h2,
+.intake-card h3 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    margin: 0;
+}
+
+.intake-card h3 {
+    color: var(--muted-foreground);
+}
+
+.intake-card__form-grid {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.intake-card label {
+    color: var(--card-foreground);
+    display: grid;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    gap: var(--spacing-2);
+    margin: 0;
+}
+
+.intake-card__hint {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-normal);
+}
+
+.intake-card__divider {
+    border-top: 1px solid var(--border);
+}

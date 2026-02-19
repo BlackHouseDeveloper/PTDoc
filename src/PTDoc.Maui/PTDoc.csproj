@@ -74,4 +74,11 @@
           <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <Content Include="$(NuGetPackageRoot)questpdf/2024.12.3/LatoFont/**/*">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <PublishFolderType>Resource</PublishFolderType>
+        </Content>
+    </ItemGroup>
+
 </Project>

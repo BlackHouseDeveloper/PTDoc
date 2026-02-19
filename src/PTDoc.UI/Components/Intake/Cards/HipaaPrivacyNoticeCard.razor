@@ -1,0 +1,19 @@
+<section class="hipaa-card">
+    <h2>HIPAA Privacy Notice</h2>
+    <p>Your protected health information is secure and will only be used for treatment, payment, and healthcare operations as permitted by law.</p>
+
+    <label class="hipaa-card__checkbox">
+        <input type="checkbox" class="form-check-input" checked="@HipaaAcknowledged" @onchange="OnAcknowledgedChanged" data-testid="hipaa-ack-checkbox" />
+        <span>I acknowledge this HIPAA Privacy Notice.</span>
+    </label>
+</section>
+
+@code {
+    [Parameter] public bool HipaaAcknowledged { get; set; }
+    [Parameter] public EventCallback<bool> HipaaAcknowledgedChanged { get; set; }
+
+    private Task OnAcknowledgedChanged(ChangeEventArgs args)
+    {
+        return HipaaAcknowledgedChanged.InvokeAsync((bool)(args.Value ?? false));
+    }
+}

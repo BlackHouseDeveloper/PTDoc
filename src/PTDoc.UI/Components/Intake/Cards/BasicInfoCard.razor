@@ -1,0 +1,71 @@
+<section class="intake-card">
+    <h2>Basic Information</h2>
+
+    <div class="intake-card__form-grid">
+        <label>Full Name *
+            <input class="form-control" value="@FullName" @oninput="OnFullNameChanged" placeholder="First Last" />
+        </label>
+
+        <label>Date of Birth *
+            <input type="date" class="form-control" value="@DateOfBirthValue" @onchange="OnDateOfBirthChanged" />
+        </label>
+
+        <label>Email Address *
+            <input type="email" class="form-control" value="@EmailAddress" @oninput="OnEmailChanged" placeholder="your.email@example.com" />
+        </label>
+
+        <label>Phone Number *
+            <input type="tel" class="form-control" value="@PhoneNumber" @oninput="OnPhoneChanged" placeholder="(555) 123-4567" />
+            <span class="intake-card__hint">Format: (XXX) XXX-XXXX or XXX-XXX-XXXX</span>
+        </label>
+    </div>
+
+    <div class="intake-card__divider"></div>
+
+    <h3>Emergency Contact</h3>
+
+    <div class="intake-card__form-grid">
+        <label>Contact Name *
+            <input class="form-control" value="@EmergencyContactName" @oninput="OnEmergencyContactNameChanged" placeholder="Emergency contact name" />
+        </label>
+
+        <label>Contact Phone *
+            <input type="tel" class="form-control" value="@EmergencyContactPhone" @oninput="OnEmergencyContactPhoneChanged" placeholder="(555) 123-4567" />
+            <span class="intake-card__hint">Must be different from patient&apos;s phone number</span>
+        </label>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? FullName { get; set; }
+    [Parameter] public DateTime? DateOfBirth { get; set; }
+    [Parameter] public string? EmailAddress { get; set; }
+    [Parameter] public string? PhoneNumber { get; set; }
+    [Parameter] public string? EmergencyContactName { get; set; }
+    [Parameter] public string? EmergencyContactPhone { get; set; }
+
+    [Parameter] public EventCallback<string?> FullNameChanged { get; set; }
+    [Parameter] public EventCallback<DateTime?> DateOfBirthChanged { get; set; }
+    [Parameter] public EventCallback<string?> EmailAddressChanged { get; set; }
+    [Parameter] public EventCallback<string?> PhoneNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> EmergencyContactNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> EmergencyContactPhoneChanged { get; set; }
+
+    private string DateOfBirthValue => DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty;
+
+    private Task OnFullNameChanged(ChangeEventArgs args) => FullNameChanged.InvokeAsync(args.Value?.ToString());
+    private Task OnEmailChanged(ChangeEventArgs args) => EmailAddressChanged.InvokeAsync(args.Value?.ToString());
+    private Task OnPhoneChanged(ChangeEventArgs args) => PhoneNumberChanged.InvokeAsync(args.Value?.ToString());
+    private Task OnEmergencyContactNameChanged(ChangeEventArgs args) => EmergencyContactNameChanged.InvokeAsync(args.Value?.ToString());
+    private Task OnEmergencyContactPhoneChanged(ChangeEventArgs args) => EmergencyContactPhoneChanged.InvokeAsync(args.Value?.ToString());
+
+    private Task OnDateOfBirthChanged(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), out var parsed))
+        {
+            return DateOfBirthChanged.InvokeAsync(parsed);
+        }
+
+        return DateOfBirthChanged.InvokeAsync(null);
+    }
+}

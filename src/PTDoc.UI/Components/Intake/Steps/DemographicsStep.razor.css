@@ -1,0 +1,29 @@
+.demographics-step {
+    display: grid;
+    gap: var(--spacing-6);
+}
+
+.demographics-step__actions {
+    display: flex;
+    justify-content: center;
+}
+
+.demographics-step__actions .btn {
+    width: 100%;
+}
+
+.demographics-step__footer {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    margin: 0;
+    text-align: center;
+}
+
+.demographics-step__warning {
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-3);
+}
