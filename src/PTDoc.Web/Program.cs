@@ -1,4 +1,5 @@
 using PTDoc.Application.Auth;
+using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
@@ -24,7 +25,7 @@ builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, MockIntakeService>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.Infrastructure.Services.MockDashboardService>();
-builder.Services.AddScoped<PTDoc.Application.Services.IRoleService, PTDoc.Infrastructure.Services.RoleService>();
+builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient("ServerAPI", client =>

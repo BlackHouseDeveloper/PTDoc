@@ -3,22 +3,76 @@
  * Handles light/dark theme switching with localStorage persistence
  */
 window.ptdocTheme = {
+  _isInitialized: false,
+  _mediaQueryList: null,
+  _isDocumentEnhancedNavListenerAttached: false,
+  _isBlazorEnhancedNavListenerAttached: false,
+
+  /**
+   * Resolve persisted/system theme preference
+   * @returns {string} 'light' or 'dark'
+   */
+  resolvePreferredTheme: () => {
+    const savedTheme = localStorage.getItem('ptdoc-theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme;
+    }
+
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'dark' : 'light';
+  },
+
+  /**
+   * Re-apply the preferred theme to DOM (used after enhanced navigation)
+   */
+  applyPreferredTheme: () => {
+    const preferredTheme = ptdocTheme.resolvePreferredTheme();
+    ptdocTheme.setTheme(preferredTheme);
+  },
+
+  /**
+   * Attach listener for Blazor enhanced navigation to preserve theme class
+   */
+  registerEnhancedNavigationSync: () => {
+    if (!ptdocTheme._isDocumentEnhancedNavListenerAttached) {
+      document.addEventListener('enhancedload', ptdocTheme.applyPreferredTheme);
+      ptdocTheme._isDocumentEnhancedNavListenerAttached = true;
+    }
+
+    if (!ptdocTheme._isBlazorEnhancedNavListenerAttached && window.Blazor && typeof window.Blazor.addEventListener === 'function') {
+      window.Blazor.addEventListener('enhancedload', ptdocTheme.applyPreferredTheme);
+      ptdocTheme._isBlazorEnhancedNavListenerAttached = true;
+    }
+  },
+
   /**
    * Initialize theme on page load
    */
   init: () => {
-    const savedTheme = localStorage.getItem('ptdoc-theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-    
-    ptdocTheme.setTheme(initialTheme);
-    
+    ptdocTheme.applyPreferredTheme();
+
+    if (ptdocTheme._isInitialized) {
+      return;
+    }
+
+    ptdocTheme._isInitialized = true;
+
     // Listen for system theme changes
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    ptdocTheme._mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+    ptdocTheme._mediaQueryList.addEventListener('change', (e) => {
       if (!localStorage.getItem('ptdoc-theme')) {
         ptdocTheme.setTheme(e.matches ? 'dark' : 'light');
       }
     });
+
+    // Blazor enhanced navigation can replace DOM and drop runtime classes.
+    // Re-apply persisted theme whenever enhanced navigation completes.
+    ptdocTheme.registerEnhancedNavigationSync();
+
+    // If Blazor wasn't available yet, try to bind to its event API shortly after startup.
+    setTimeout(() => {
+      ptdocTheme.registerEnhancedNavigationSync();
+    }, 0);
   },
 
   /**

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Authorization;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
@@ -35,6 +36,7 @@ public static class MauiProgram
 		builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 		builder.Services.AddScoped<IIntakeService, MockIntakeService>();
 		builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
+		builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 		
 		// Register App as transient to inject services into constructor
 		builder.Services.AddTransient<App>();

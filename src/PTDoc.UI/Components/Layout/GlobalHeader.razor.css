@@ -22,7 +22,6 @@
     margin: 0 auto;
 }
 
-/* Menu Toggle Button */
 .menu-toggle {
     background: transparent;
     border: none;
@@ -76,7 +75,6 @@
     white-space: nowrap;
 }
 
-/* Sync Now Button */
 .sync-button {
     display: flex;
     align-items: center;
@@ -134,7 +132,6 @@
     line-height: 20px;
 }
 
-/* Online/Offline Status Badge */
 .status-badge {
     display: flex;
     align-items: center;
@@ -187,7 +184,6 @@
     color: #34d399;
 }
 
-/* Responsive adjustments */
 @media (max-width: 767px) {
     .global-header {
         padding: 0 var(--spacing-4);

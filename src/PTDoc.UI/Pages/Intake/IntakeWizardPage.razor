@@ -15,8 +15,9 @@
 <PageTitle>Patient Intake - PTDocs +</PageTitle>
 
 <div class="intake-page" data-testid="intake-page">
+    <GlobalPageHeader />
+
     <div class="intake-page__shell">
-        <IntakeHeader CurrentStep="@State.CurrentStep" OnBack="HandleBackAsync" />
         <PainProgressBar CurrentStep="@State.CurrentStep" />
 
         <main class="intake-page__content" aria-live="polite">

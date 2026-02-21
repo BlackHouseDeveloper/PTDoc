@@ -29,8 +29,8 @@ main {
 
 .content {
     padding: var(--spacing-6);
-    max-width: 1440px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
 }
 
 /* Mobile: sidebar slides in from left */
