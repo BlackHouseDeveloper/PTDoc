@@ -10,17 +10,17 @@ public interface IRulesEngine
     /// Validates Progress Note frequency requirements (≥10 visits OR ≥30 days).
     /// </summary>
     Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, CancellationToken ct = default);
-    
+
     /// <summary>
     /// Validates CPT unit count against 8-minute rule.
     /// </summary>
     Task<RuleResult> ValidateEightMinuteRuleAsync(int totalMinutes, List<CptCodeEntry> cptCodes, CancellationToken ct = default);
-    
+
     /// <summary>
     /// Validates that a note can be signed (not already signed, content is complete).
     /// </summary>
     Task<RuleResult> ValidateSignatureEligibilityAsync(Guid noteId, CancellationToken ct = default);
-    
+
     /// <summary>
     /// Validates that a note is immutable (signed notes cannot be edited).
     /// </summary>
@@ -38,7 +38,7 @@ public class RuleResult
     public string RuleVersion { get; set; } = "1.0";
     public string Message { get; set; } = string.Empty;
     public Dictionary<string, object> Data { get; set; } = new();
-    
+
     public static RuleResult Success(string ruleId, string message = "Rule passed")
     {
         return new RuleResult
@@ -49,7 +49,7 @@ public class RuleResult
             Message = message
         };
     }
-    
+
     public static RuleResult Warning(string ruleId, string message, Dictionary<string, object>? data = null)
     {
         return new RuleResult
@@ -61,7 +61,7 @@ public class RuleResult
             Data = data ?? new()
         };
     }
-    
+
     public static RuleResult Error(string ruleId, string message, Dictionary<string, object>? data = null)
     {
         return new RuleResult
@@ -73,7 +73,7 @@ public class RuleResult
             Data = data ?? new()
         };
     }
-    
+
     public static RuleResult HardStop(string ruleId, string message, Dictionary<string, object>? data = null)
     {
         return new RuleResult

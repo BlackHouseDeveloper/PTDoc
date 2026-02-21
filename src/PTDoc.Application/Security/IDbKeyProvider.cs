@@ -15,7 +15,7 @@ public interface IDbKeyProvider
     /// </summary>
     /// <returns>The encryption key as a string. Must be 32+ characters for SQLCipher.</returns>
     Task<string> GetKeyAsync();
-    
+
     /// <summary>
     /// Validates that the key provider is properly configured.
     /// Throws if secure storage is unavailable or key cannot be retrieved.

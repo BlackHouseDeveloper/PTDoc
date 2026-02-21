@@ -91,35 +91,30 @@
     private Task OnFullNameChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] FullName input: '{value}'");
         return FullNameChanged.InvokeAsync(value);
     }
 
     private Task OnEmailChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] Email input: '{value}'");
         return EmailAddressChanged.InvokeAsync(value);
     }
 
     private Task OnPhoneChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] Phone input: '{value}'");
         return PhoneNumberChanged.InvokeAsync(value);
     }
 
     private Task OnEmergencyContactNameChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] EmergencyContactName input: '{value}'");
         return EmergencyContactNameChanged.InvokeAsync(value);
     }
 
     private Task OnEmergencyContactPhoneChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] EmergencyContactPhone input: '{value}'");
         return EmergencyContactPhoneChanged.InvokeAsync(value);
     }
 
@@ -157,7 +152,6 @@
     private Task OnDateOfBirthChanged(ChangeEventArgs args)
     {
         var input = args.Value?.ToString();
-        Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth raw input: '{input}'");
 
         if (DateTime.TryParseExact(
                 input,
@@ -166,18 +160,15 @@
                 DateTimeStyles.None,
                 out var parsed))
         {
-            Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth parsed exact: '{parsed:O}'");
             return DateOfBirthChanged.InvokeAsync(parsed);
         }
 
         if (DateTime.TryParse(input, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed)
             || DateTime.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
         {
-            Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth parsed fallback: '{parsed:O}'");
             return DateOfBirthChanged.InvokeAsync(parsed);
         }
 
-        Console.WriteLine("[Intake][BasicInfoCard] DateOfBirth parse failed; passing null");
         return DateOfBirthChanged.InvokeAsync(null);
     }
 }

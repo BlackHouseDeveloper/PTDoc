@@ -5,6 +5,7 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<Routes> Logger
 
 <Router AppAssembly="@typeof(Routes).Assembly">
     <Found Context="routeData">
@@ -43,11 +44,23 @@
         isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
     }
 
-    private async void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
     {
-        var authState = await authStateTask;
-        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
-        await InvokeAsync(StateHasChanged);
+        _ = HandleAuthenticationStateChangedAsync(authStateTask);
+    }
+
+    private async Task HandleAuthenticationStateChangedAsync(Task<AuthenticationState> authStateTask)
+    {
+        try
+        {
+            var authState = await authStateTask;
+            isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Authentication state change handler failed.");
+        }
     }
 
     private bool ShouldUseStandaloneIntakeLayout(RouteData routeData)

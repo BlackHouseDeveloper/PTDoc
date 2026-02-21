@@ -48,17 +48,17 @@ public static class PdfEndpoints
                 NoteId = note.Id,
                 DateOfService = note.DateOfService,
                 ContentJson = note.ContentJson ?? "{}",
-                
+
                 // Patient information
                 PatientFirstName = note.Patient?.FirstName ?? string.Empty,
                 PatientLastName = note.Patient?.LastName ?? string.Empty,
                 PatientMedicalRecordNumber = note.Patient?.MedicalRecordNumber ?? string.Empty,
-                
+
                 // Signature information
                 SignatureHash = note.SignatureHash,
                 SignedUtc = note.SignedUtc,
                 SignedByUserId = note.SignedByUserId,
-                
+
                 // Export options
                 IncludeMedicareCompliance = true,
                 IncludeSignatureBlock = true

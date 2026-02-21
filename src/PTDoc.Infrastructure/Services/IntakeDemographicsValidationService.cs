@@ -17,17 +17,12 @@ public sealed partial class IntakeDemographicsValidationService : IIntakeDemogra
         string? emergencyContactName,
         string? emergencyContactPhone)
     {
-        Console.WriteLine("[Intake][ValidationService] Validate called");
-        Console.WriteLine($"[Intake][ValidationService] Raw => FullName='{fullName}', DOB='{dateOfBirth:O}', Email='{emailAddress}', Phone='{phoneNumber}', EmergencyName='{emergencyContactName}', EmergencyPhone='{emergencyContactPhone}'");
-
         var fieldErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         var normalizedFullName = fullName?.Trim();
         var normalizedEmailAddress = emailAddress?.Trim();
         var normalizedEmergencyContactName = emergencyContactName?.Trim();
         var normalizedPhoneDigits = ToPhoneDigits(phoneNumber);
         var normalizedEmergencyPhoneDigits = ToPhoneDigits(emergencyContactPhone);
-
-        Console.WriteLine($"[Intake][ValidationService] Normalized => FullName='{normalizedFullName}', Email='{normalizedEmailAddress}', PhoneDigits='{normalizedPhoneDigits}', EmergencyName='{normalizedEmergencyContactName}', EmergencyPhoneDigits='{normalizedEmergencyPhoneDigits}'");
 
         if (string.IsNullOrWhiteSpace(normalizedFullName))
         {
@@ -82,11 +77,8 @@ public sealed partial class IntakeDemographicsValidationService : IIntakeDemogra
 
         if (fieldErrors.Count == 0)
         {
-            Console.WriteLine("[Intake][ValidationService] Validation PASS");
             return new DemographicsValidationResult();
         }
-
-        Console.WriteLine($"[Intake][ValidationService] Validation FAIL => {string.Join(", ", fieldErrors.Select(pair => $"{pair.Key}:{pair.Value}"))}");
 
         return new DemographicsValidationResult
         {

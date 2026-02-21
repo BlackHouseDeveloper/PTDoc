@@ -7,26 +7,26 @@ namespace PTDoc.Core.Models;
 public class SyncQueueItem
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    
+
     // Entity reference
     public string EntityType { get; set; } = string.Empty; // "Patient", "Appointment", etc.
     public Guid EntityId { get; set; }
-    
+
     // Operation type
     public SyncOperation Operation { get; set; }
-    
+
     // Timing
     public DateTime EnqueuedAt { get; set; }
     public DateTime? LastAttemptAt { get; set; }
     public DateTime? CompletedAt { get; set; }
-    
+
     // Retry logic
     public int RetryCount { get; set; }
     public int MaxRetries { get; set; } = 3;
-    
+
     // Error tracking
     public string? ErrorMessage { get; set; }
-    
+
     // Status
     public SyncQueueStatus Status { get; set; }
 }

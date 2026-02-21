@@ -11,13 +11,13 @@ public interface ISignatureService
     /// Makes the note immutable.
     /// </summary>
     Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default);
-    
+
     /// <summary>
     /// Creates an addendum to a signed note.
     /// Preserves original signature integrity.
     /// </summary>
     Task<AddendumResult> CreateAddendumAsync(Guid noteId, string addendumContent, Guid userId, CancellationToken ct = default);
-    
+
     /// <summary>
     /// Verifies a note's signature hash matches its current content.
     /// </summary>

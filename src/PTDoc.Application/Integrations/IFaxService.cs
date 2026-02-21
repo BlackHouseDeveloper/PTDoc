@@ -10,7 +10,7 @@ public interface IFaxService
     /// Send a fax to a recipient.
     /// </summary>
     Task<FaxResult> SendFaxAsync(FaxRequest request, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Get fax transmission status.
     /// </summary>
@@ -26,27 +26,27 @@ public class FaxRequest
     /// Recipient fax number (format: +1-555-555-5555).
     /// </summary>
     public string RecipientNumber { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Recipient name for cover page.
     /// </summary>
     public string? RecipientName { get; set; }
-    
+
     /// <summary>
     /// PDF document content to fax.
     /// </summary>
     public byte[] PdfContent { get; set; } = Array.Empty<byte>();
-    
+
     /// <summary>
     /// Internal patient ID for mapping and audit trail.
     /// </summary>
     public Guid PatientId { get; set; }
-    
+
     /// <summary>
     /// Document type (e.g., "Progress Note", "Plan of Care").
     /// </summary>
     public string DocumentType { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Cover page message.
     /// </summary>
