@@ -10,17 +10,17 @@ public interface ISyncTrackedEntity
     /// Unique identifier for the entity
     /// </summary>
     Guid Id { get; set; }
-    
+
     /// <summary>
     /// UTC timestamp of the last modification to this entity
     /// </summary>
     DateTime LastModifiedUtc { get; set; }
-    
+
     /// <summary>
     /// User ID of the person who last modified this entity
     /// </summary>
     Guid ModifiedByUserId { get; set; }
-    
+
     /// <summary>
     /// Current synchronization state of the entity
     /// </summary>

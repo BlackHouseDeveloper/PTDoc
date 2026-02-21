@@ -17,7 +17,7 @@ public interface ITelemetrySink
     /// <param name="correlationId">Correlation ID for request tracking</param>
     /// <param name="metadata">Event metadata - MUST NOT contain PHI</param>
     Task LogEventAsync(string eventName, string correlationId, Dictionary<string, object> metadata);
-    
+
     /// <summary>
     /// Logs a metric value.
     /// </summary>
@@ -25,7 +25,7 @@ public interface ITelemetrySink
     /// <param name="value">Metric value</param>
     /// <param name="metadata">Additional metadata - MUST NOT contain PHI</param>
     Task LogMetricAsync(string metricName, double value, Dictionary<string, object>? metadata = null);
-    
+
     /// <summary>
     /// Logs an exception with context (NO PHI in exception message or metadata).
     /// </summary>

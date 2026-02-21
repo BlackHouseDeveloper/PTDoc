@@ -17,9 +17,9 @@ public interface IAuthService
     /// <param name="userAgent">Client user agent for audit</param>
     /// <returns>Session token if successful, null if authentication failed</returns>
     Task<AuthResult?> AuthenticateAsync(
-        string username, 
-        string pin, 
-        string? ipAddress = null, 
+        string username,
+        string pin,
+        string? ipAddress = null,
         string? userAgent = null,
         CancellationToken cancellationToken = default);
 
@@ -28,21 +28,21 @@ public interface IAuthService
     /// Returns null if session is invalid or expired.
     /// </summary>
     Task<SessionInfo?> ValidateSessionAsync(
-        string token, 
+        string token,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Logs out a user by revoking their session.
     /// </summary>
     Task LogoutAsync(
-        string token, 
+        string token,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the current user information from a valid session token.
     /// </summary>
     Task<UserInfo?> GetCurrentUserAsync(
-        string token, 
+        string token,
         CancellationToken cancellationToken = default);
 
     /// <summary>

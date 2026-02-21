@@ -96,22 +96,22 @@ public enum ConflictResolution
     /// Local version kept (server version rejected)
     /// </summary>
     LocalWins,
-    
+
     /// <summary>
     /// Server version kept (local version rejected)
     /// </summary>
     ServerWins,
-    
+
     /// <summary>
     /// Both versions archived, manual resolution required
     /// </summary>
     ManualRequired,
-    
+
     /// <summary>
     /// Update rejected due to immutability (signed note)
     /// </summary>
     RejectedImmutable,
-    
+
     /// <summary>
     /// Update rejected due to lock (intake form)
     /// </summary>
