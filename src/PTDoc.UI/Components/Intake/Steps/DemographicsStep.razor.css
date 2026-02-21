@@ -20,10 +20,10 @@
 }
 
 .demographics-step__warning {
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    background: color-mix(in srgb, var(--destructive) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
     border-radius: var(--radius-md);
-    color: var(--foreground);
+    color: var(--destructive);
     font-size: var(--text-sm);
     padding: var(--spacing-3);
 }

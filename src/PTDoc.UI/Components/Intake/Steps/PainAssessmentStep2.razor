@@ -1,0 +1,84 @@
+@using PTDoc.Core.Models
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="pain-assessment-step2" data-testid="pain-assessment-step2">
+    <PainDescriptionCard />
+
+    <BodyViewToggle Value="@_view" ValueChanged="OnBodyViewChangedAsync" OnResetRequested="ResetSelectionAsync" />
+
+    <BodySvgSelector View="@_view" SelectedRegions="@_selectedRegions" SelectedRegionsChanged="OnSelectedRegionsChangedAsync" />
+
+    <IntakeFooterActions
+        ShowBack="true"
+        PrimaryText="@ContinueText"
+        PrimaryDisabled="@(!CanContinue)"
+        PrimaryTestId="continue-button"
+        OnBack="OnBack"
+        OnPrimary="OnContinue" />
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private BodyView _view = BodyView.Front;
+    private HashSet<BodyRegion> _selectedRegions = new();
+
+    private bool CanContinue => _selectedRegions.Count > 0;
+
+    private string ContinueText => CanContinue
+        ? "Continue to Pain Details"
+        : "Select at least one area to continue";
+
+    protected override void OnParametersSet()
+    {
+        if (State.SelectedBodyRegions.Count > 0)
+        {
+            _selectedRegions = State.SelectedBodyRegions.ToHashSet();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(State.SelectedBodyRegion))
+        {
+            return;
+        }
+
+        var parsedRegions = State.SelectedBodyRegion
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => Enum.TryParse<BodyRegion>(value, out var parsed) ? parsed : (BodyRegion?)null)
+            .Where(region => region.HasValue)
+            .Select(region => region!.Value)
+            .ToHashSet();
+
+        if (parsedRegions.Count > 0)
+        {
+            _selectedRegions = parsedRegions;
+        }
+    }
+
+    private Task OnBodyViewChangedAsync(BodyView view)
+    {
+        _view = view;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSelectedRegionsChangedAsync(HashSet<BodyRegion> selectedRegions)
+    {
+        _selectedRegions = selectedRegions;
+        State.SelectedBodyRegions = selectedRegions.ToHashSet();
+        State.SelectedBodyRegion = selectedRegions.Count > 0 ? selectedRegions.First().ToString() : null;
+        State.IsDirty = true;
+
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
+
+    private Task ResetSelectionAsync()
+    {
+        return OnSelectedRegionsChangedAsync(new HashSet<BodyRegion>());
+    }
+}

@@ -1,0 +1,56 @@
+.body-svg-selector {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+}
+
+.body-svg-selector__canvas {
+    display: flex;
+    justify-content: center;
+}
+
+.body-svg-selector__svg {
+    height: auto;
+    max-width: calc(var(--spacing-16) * 5);
+    width: 100%;
+}
+
+.body-svg-selector__region {
+    cursor: pointer;
+    fill: color-mix(in srgb, var(--foreground) 12%, transparent);
+    stroke: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 0.8;
+    transition: fill var(--transition-fast), stroke var(--transition-fast), stroke-width var(--transition-fast);
+}
+
+.body-svg-selector__region:hover {
+    fill: color-mix(in srgb, var(--tertiary) 80%, transparent);
+    stroke: color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+
+.body-svg-selector__region.is-selected {
+    fill: color-mix(in srgb, var(--primary) 38%, transparent);
+    stroke: var(--primary);
+    stroke-width: 1.3;
+}
+
+.body-svg-selector__region:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.body-svg-selector__viewing {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+    text-align: center;
+}
+
+.body-svg-selector__viewing span {
+    color: var(--primary);
+}

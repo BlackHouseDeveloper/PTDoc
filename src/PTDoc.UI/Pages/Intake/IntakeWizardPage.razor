@@ -1,5 +1,6 @@
 @page "/intake"
 @page "/intake/{PatientId:guid}"
+@rendermode InteractiveServer
 
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.Intake
@@ -7,6 +8,7 @@
 @using PTDoc.UI.Components.Intake.Steps
 
 @inject IIntakeService IntakeService
+@inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
@@ -15,7 +17,7 @@
 <div class="intake-page" data-testid="intake-page">
     <div class="intake-page__shell">
         <IntakeHeader CurrentStep="@State.CurrentStep" OnBack="HandleBackAsync" />
-        <IntakeProgressBar CurrentStep="@State.CurrentStep" />
+        <PainProgressBar CurrentStep="@State.CurrentStep" />
 
         <main class="intake-page__content" aria-live="polite">
             @if (_draftNotFound)
@@ -31,10 +33,10 @@
                 @switch (State.CurrentStep)
                 {
                     case IntakeStep.Demographics:
-                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                         break;
                     case IntakeStep.PainAssessment:
-                        <PainAssessmentStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                         break;
                     case IntakeStep.PainDetails:
                         <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
@@ -43,7 +45,7 @@
                         <ReviewStep State="@State" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" />
                         break;
                     default:
-                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                         break;
                 }
             }
@@ -59,6 +61,7 @@
     private Guid? _loadedPatientId;
     private bool _draftNotFound;
     private string? _validationMessage;
+    private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -84,6 +87,7 @@
             _loadedPatientId = null;
             _draftNotFound = false;
             _validationMessage = null;
+            _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         }
     }
 
@@ -116,15 +120,26 @@
         _draftNotFound = false;
         _loadedPatientId = patientId;
         _validationMessage = null;
+        _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     private async Task HandleDemographicsContinueAsync()
     {
         _validationMessage = null;
+        _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        if (!State.IsDemographicsRequiredFieldsValid())
+        var validationResult = DemographicsValidationService.Validate(
+            State.FullName,
+            State.DateOfBirth,
+            State.EmailAddress,
+            State.PhoneNumber,
+            State.EmergencyContactName,
+            State.EmergencyContactPhone);
+
+        if (!validationResult.IsValid)
         {
-            _validationMessage = "Please complete all required demographics fields before continuing.";
+            _demographicsValidationErrors = validationResult.FieldErrors;
+            _validationMessage = validationResult.SummaryMessage;
             return;
         }
 
@@ -256,7 +271,7 @@
             UsesAssistiveDevices = state.UsesAssistiveDevices,
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
-            SelectedBodyRegion = state.SelectedBodyRegion,
+            SelectedBodyRegion = SerializeSelectedRegions(state),
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
         };
     }
@@ -293,7 +308,38 @@
             HasPreviousSurgeriesOrInjuries = draft.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = draft.MedicalHistoryNotes,
             SelectedBodyRegion = draft.SelectedBodyRegion,
+            SelectedBodyRegions = DeserializeSelectedRegions(draft.SelectedBodyRegion),
             PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
         };
+    }
+
+    private static string? SerializeSelectedRegions(IntakeWizardState state)
+    {
+        if (state.SelectedBodyRegions.Count > 0)
+        {
+            return string.Join('|', state.SelectedBodyRegions.Select(region => region.ToString()));
+        }
+
+        return state.SelectedBodyRegion;
+    }
+
+    private static HashSet<PTDoc.Core.Models.BodyRegion> DeserializeSelectedRegions(string? serialized)
+    {
+        var result = new HashSet<PTDoc.Core.Models.BodyRegion>();
+
+        if (string.IsNullOrWhiteSpace(serialized))
+        {
+            return result;
+        }
+
+        foreach (var value in serialized.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (Enum.TryParse<PTDoc.Core.Models.BodyRegion>(value, out var parsed))
+            {
+                result.Add(parsed);
+            }
+        }
+
+        return result;
     }
 }

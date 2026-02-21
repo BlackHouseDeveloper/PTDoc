@@ -7,6 +7,7 @@
         DateOfBirth="@State.DateOfBirth"
         EmailAddress="@State.EmailAddress"
         PhoneNumber="@State.PhoneNumber"
+        ValidationErrors="@ValidationErrors"
         EmergencyContactName="@State.EmergencyContactName"
         EmergencyContactPhone="@State.EmergencyContactPhone"
         FullNameChanged="OnFullNameChanged"
@@ -46,7 +47,7 @@
 
     @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
-        <div class="demographics-step__warning" role="status">@ValidationMessage</div>
+        <div class="demographics-step__warning" role="alert" aria-live="assertive">@ValidationMessage</div>
     }
 
     <div class="demographics-step__actions">
@@ -59,6 +60,7 @@
 @code {
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public string? ValidationMessage { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
     [Parameter] public EventCallback OnStateChanged { get; set; }
 
@@ -73,12 +75,41 @@
         }
     }
 
-    private Task OnFullNameChanged(string? value) => UpdateStateAsync(() => State.FullName = value);
-    private Task OnDateOfBirthChanged(DateTime? value) => UpdateStateAsync(() => State.DateOfBirth = value);
-    private Task OnEmailAddressChanged(string? value) => UpdateStateAsync(() => State.EmailAddress = value);
-    private Task OnPhoneNumberChanged(string? value) => UpdateStateAsync(() => State.PhoneNumber = value);
-    private Task OnEmergencyContactNameChanged(string? value) => UpdateStateAsync(() => State.EmergencyContactName = value);
-    private Task OnEmergencyContactPhoneChanged(string? value) => UpdateStateAsync(() => State.EmergencyContactPhone = value);
+    private Task OnFullNameChanged(string? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept FullName: '{value}'");
+        return UpdateStateAsync(() => State.FullName = value);
+    }
+
+    private Task OnDateOfBirthChanged(DateTime? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept DateOfBirth: '{value:O}'");
+        return UpdateStateAsync(() => State.DateOfBirth = value);
+    }
+
+    private Task OnEmailAddressChanged(string? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept EmailAddress: '{value}'");
+        return UpdateStateAsync(() => State.EmailAddress = value);
+    }
+
+    private Task OnPhoneNumberChanged(string? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept PhoneNumber: '{value}'");
+        return UpdateStateAsync(() => State.PhoneNumber = value);
+    }
+
+    private Task OnEmergencyContactNameChanged(string? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept EmergencyContactName: '{value}'");
+        return UpdateStateAsync(() => State.EmergencyContactName = value);
+    }
+
+    private Task OnEmergencyContactPhoneChanged(string? value)
+    {
+        Console.WriteLine($"[Intake][DemographicsStep] Accept EmergencyContactPhone: '{value}'");
+        return UpdateStateAsync(() => State.EmergencyContactPhone = value);
+    }
 
     private Task OnInsuranceCompanyNameChanged(string? value) => UpdateStateAsync(() => State.InsuranceCompanyName = value);
     private Task OnMemberOrPolicyNumberChanged(string? value) => UpdateStateAsync(() => State.MemberOrPolicyNumber = value);

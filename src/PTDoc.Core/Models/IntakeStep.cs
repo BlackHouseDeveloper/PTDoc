@@ -1,4 +1,4 @@
-namespace PTDoc.UI.Components.Intake.Models;
+namespace PTDoc.Core.Models;
 
 public enum IntakeStep
 {

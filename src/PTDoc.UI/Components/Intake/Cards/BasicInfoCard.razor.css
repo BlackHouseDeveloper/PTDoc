@@ -38,6 +38,10 @@
     font-weight: var(--font-weight-normal);
 }
 
+.intake-card__validation {
+    margin-top: calc(var(--spacing-2) * -1);
+}
+
 .intake-card__divider {
     border-top: 1px solid var(--border);
 }

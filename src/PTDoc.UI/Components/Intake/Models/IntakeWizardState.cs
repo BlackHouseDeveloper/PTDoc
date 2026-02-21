@@ -1,5 +1,7 @@
 namespace PTDoc.UI.Components.Intake.Models;
 
+using PTDoc.Core.Models;
+
 public sealed class IntakeWizardState
 {
     public Guid? PatientId { get; set; }
@@ -35,15 +37,7 @@ public sealed class IntakeWizardState
     public string? MedicalHistoryNotes { get; set; }
 
     public string? SelectedBodyRegion { get; set; }
+    public HashSet<BodyRegion> SelectedBodyRegions { get; set; } = new();
     public Dictionary<string, object> PainDetailDrafts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsDemographicsRequiredFieldsValid()
-    {
-        return !string.IsNullOrWhiteSpace(FullName)
-            && DateOfBirth.HasValue
-            && !string.IsNullOrWhiteSpace(EmailAddress)
-            && !string.IsNullOrWhiteSpace(PhoneNumber)
-            && !string.IsNullOrWhiteSpace(EmergencyContactName)
-            && !string.IsNullOrWhiteSpace(EmergencyContactPhone);
-    }
 }

@@ -1,23 +1,41 @@
+@using System.Globalization
+
 <section class="intake-card">
     <h2>Basic Information</h2>
 
     <div class="intake-card__form-grid">
-        <label>Full Name *
-            <input class="form-control" value="@FullName" @oninput="OnFullNameChanged" placeholder="First Last" />
+        <label for="intake-full-name">Full Name *
+            <input id="intake-full-name" class="@GetInputCss(FullNameField)" value="@FullName" @oninput="OnFullNameChanged" placeholder="First Last" aria-invalid="@HasError(FullNameField)" aria-describedby="@GetDescribedBy(FullNameField)" />
         </label>
+        @if (HasError(FullNameField))
+        {
+            <span id="intake-full-name-error" class="intake-card__validation validation-message">@GetError(FullNameField)</span>
+        }
 
-        <label>Date of Birth *
-            <input type="date" class="form-control" value="@DateOfBirthValue" @onchange="OnDateOfBirthChanged" />
+        <label for="intake-date-of-birth">Date of Birth *
+            <input id="intake-date-of-birth" type="date" class="@GetInputCss(DateOfBirthField)" value="@DateOfBirthValue" @oninput="OnDateOfBirthChanged" @onchange="OnDateOfBirthChanged" aria-invalid="@HasError(DateOfBirthField)" aria-describedby="@GetDescribedBy(DateOfBirthField)" />
         </label>
+        @if (HasError(DateOfBirthField))
+        {
+            <span id="intake-date-of-birth-error" class="intake-card__validation validation-message">@GetError(DateOfBirthField)</span>
+        }
 
-        <label>Email Address *
-            <input type="email" class="form-control" value="@EmailAddress" @oninput="OnEmailChanged" placeholder="your.email@example.com" />
+        <label for="intake-email-address">Email Address *
+            <input id="intake-email-address" type="email" class="@GetInputCss(EmailAddressField)" value="@EmailAddress" @oninput="OnEmailChanged" placeholder="your.email@example.com" aria-invalid="@HasError(EmailAddressField)" aria-describedby="@GetDescribedBy(EmailAddressField)" />
         </label>
+        @if (HasError(EmailAddressField))
+        {
+            <span id="intake-email-address-error" class="intake-card__validation validation-message">@GetError(EmailAddressField)</span>
+        }
 
-        <label>Phone Number *
-            <input type="tel" class="form-control" value="@PhoneNumber" @oninput="OnPhoneChanged" placeholder="(555) 123-4567" />
-            <span class="intake-card__hint">Format: (XXX) XXX-XXXX or XXX-XXX-XXXX</span>
+        <label for="intake-phone-number">Phone Number *
+            <input id="intake-phone-number" type="tel" class="@GetInputCss(PhoneNumberField)" value="@PhoneNumber" @oninput="OnPhoneChanged" placeholder="(555) 123-4567" aria-invalid="@HasError(PhoneNumberField)" aria-describedby="@GetDescribedBy(PhoneNumberField, "intake-phone-number-hint")" />
+            <span id="intake-phone-number-hint" class="intake-card__hint">Format: (XXX) XXX-XXXX or XXX-XXX-XXXX</span>
         </label>
+        @if (HasError(PhoneNumberField))
+        {
+            <span id="intake-phone-number-error" class="intake-card__validation validation-message">@GetError(PhoneNumberField)</span>
+        }
     </div>
 
     <div class="intake-card__divider"></div>
@@ -25,22 +43,39 @@
     <h3>Emergency Contact</h3>
 
     <div class="intake-card__form-grid">
-        <label>Contact Name *
-            <input class="form-control" value="@EmergencyContactName" @oninput="OnEmergencyContactNameChanged" placeholder="Emergency contact name" />
+        <label for="intake-emergency-contact-name">Contact Name
+            <input id="intake-emergency-contact-name" class="@GetInputCss(EmergencyContactNameField)" value="@EmergencyContactName" @oninput="OnEmergencyContactNameChanged" placeholder="Emergency contact name" aria-invalid="@HasError(EmergencyContactNameField)" aria-describedby="@GetDescribedBy(EmergencyContactNameField)" />
         </label>
+        @if (HasError(EmergencyContactNameField))
+        {
+            <span id="intake-emergency-contact-name-error" class="intake-card__validation validation-message">@GetError(EmergencyContactNameField)</span>
+        }
 
-        <label>Contact Phone *
-            <input type="tel" class="form-control" value="@EmergencyContactPhone" @oninput="OnEmergencyContactPhoneChanged" placeholder="(555) 123-4567" />
-            <span class="intake-card__hint">Must be different from patient&apos;s phone number</span>
+        <label for="intake-emergency-contact-phone">Contact Phone
+            <input id="intake-emergency-contact-phone" type="tel" class="@GetInputCss(EmergencyContactPhoneField)" value="@EmergencyContactPhone" @oninput="OnEmergencyContactPhoneChanged" placeholder="(555) 123-4567" aria-invalid="@HasError(EmergencyContactPhoneField)" aria-describedby="@GetDescribedBy(EmergencyContactPhoneField, "intake-emergency-contact-phone-hint")" />
+            <span id="intake-emergency-contact-phone-hint" class="intake-card__hint">Must be different from patient&apos;s phone number</span>
         </label>
+        @if (HasError(EmergencyContactPhoneField))
+        {
+            <span id="intake-emergency-contact-phone-error" class="intake-card__validation validation-message">@GetError(EmergencyContactPhoneField)</span>
+        }
     </div>
 </section>
 
 @code {
+    private static readonly IReadOnlyDictionary<string, string> EmptyErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+    private const string FullNameField = "FullName";
+    private const string DateOfBirthField = "DateOfBirth";
+    private const string EmailAddressField = "EmailAddress";
+    private const string PhoneNumberField = "PhoneNumber";
+    private const string EmergencyContactNameField = "EmergencyContactName";
+    private const string EmergencyContactPhoneField = "EmergencyContactPhone";
+
     [Parameter] public string? FullName { get; set; }
     [Parameter] public DateTime? DateOfBirth { get; set; }
     [Parameter] public string? EmailAddress { get; set; }
     [Parameter] public string? PhoneNumber { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }
     [Parameter] public string? EmergencyContactName { get; set; }
     [Parameter] public string? EmergencyContactPhone { get; set; }
 
@@ -53,19 +88,96 @@
 
     private string DateOfBirthValue => DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty;
 
-    private Task OnFullNameChanged(ChangeEventArgs args) => FullNameChanged.InvokeAsync(args.Value?.ToString());
-    private Task OnEmailChanged(ChangeEventArgs args) => EmailAddressChanged.InvokeAsync(args.Value?.ToString());
-    private Task OnPhoneChanged(ChangeEventArgs args) => PhoneNumberChanged.InvokeAsync(args.Value?.ToString());
-    private Task OnEmergencyContactNameChanged(ChangeEventArgs args) => EmergencyContactNameChanged.InvokeAsync(args.Value?.ToString());
-    private Task OnEmergencyContactPhoneChanged(ChangeEventArgs args) => EmergencyContactPhoneChanged.InvokeAsync(args.Value?.ToString());
+    private Task OnFullNameChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] FullName input: '{value}'");
+        return FullNameChanged.InvokeAsync(value);
+    }
+
+    private Task OnEmailChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] Email input: '{value}'");
+        return EmailAddressChanged.InvokeAsync(value);
+    }
+
+    private Task OnPhoneChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] Phone input: '{value}'");
+        return PhoneNumberChanged.InvokeAsync(value);
+    }
+
+    private Task OnEmergencyContactNameChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] EmergencyContactName input: '{value}'");
+        return EmergencyContactNameChanged.InvokeAsync(value);
+    }
+
+    private Task OnEmergencyContactPhoneChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] EmergencyContactPhone input: '{value}'");
+        return EmergencyContactPhoneChanged.InvokeAsync(value);
+    }
+
+    private string? GetError(string fieldName)
+    {
+        var errors = ValidationErrors ?? EmptyErrors;
+        return errors.TryGetValue(fieldName, out var message) ? message : null;
+    }
+
+    private bool HasError(string fieldName) => !string.IsNullOrWhiteSpace(GetError(fieldName));
+
+    private string GetInputCss(string fieldName) => HasError(fieldName) ? "form-control invalid" : "form-control";
+
+    private string? GetDescribedBy(string fieldName, string? hintId = null)
+    {
+        var errorId = fieldName switch
+        {
+            FullNameField => "intake-full-name-error",
+            DateOfBirthField => "intake-date-of-birth-error",
+            EmailAddressField => "intake-email-address-error",
+            PhoneNumberField => "intake-phone-number-error",
+            EmergencyContactNameField => "intake-emergency-contact-name-error",
+            EmergencyContactPhoneField => "intake-emergency-contact-phone-error",
+            _ => null
+        };
+
+        if (!HasError(fieldName))
+        {
+            return hintId;
+        }
+
+        return string.IsNullOrWhiteSpace(hintId) ? errorId : $"{hintId} {errorId}";
+    }
 
     private Task OnDateOfBirthChanged(ChangeEventArgs args)
     {
-        if (DateTime.TryParse(args.Value?.ToString(), out var parsed))
+        var input = args.Value?.ToString();
+        Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth raw input: '{input}'");
+
+        if (DateTime.TryParseExact(
+                input,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
         {
+            Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth parsed exact: '{parsed:O}'");
             return DateOfBirthChanged.InvokeAsync(parsed);
         }
 
+        if (DateTime.TryParse(input, CultureInfo.CurrentCulture, DateTimeStyles.None, out parsed)
+            || DateTime.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
+        {
+            Console.WriteLine($"[Intake][BasicInfoCard] DateOfBirth parsed fallback: '{parsed:O}'");
+            return DateOfBirthChanged.InvokeAsync(parsed);
+        }
+
+        Console.WriteLine("[Intake][BasicInfoCard] DateOfBirth parse failed; passing null");
         return DateOfBirthChanged.InvokeAsync(null);
     }
 }
