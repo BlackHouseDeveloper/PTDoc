@@ -1,6 +1,6 @@
-namespace PTDoc.UI.Components.Intake.Models;
-
 using PTDoc.Core.Models;
+
+namespace PTDoc.UI.Components.Intake.Models;
 
 public sealed class IntakeWizardState
 {

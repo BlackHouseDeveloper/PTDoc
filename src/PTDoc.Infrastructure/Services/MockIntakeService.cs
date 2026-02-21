@@ -6,11 +6,11 @@ namespace PTDoc.Infrastructure.Services;
 
 public sealed class MockIntakeService : IIntakeService
 {
-    private static readonly ConcurrentDictionary<Guid, IntakeResponseDraft> Drafts = new();
+    private readonly ConcurrentDictionary<Guid, IntakeResponseDraft> _drafts = new();
 
     public Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
-        Drafts.TryGetValue(patientId, out var draft);
+        _drafts.TryGetValue(patientId, out var draft);
         return Task.FromResult(draft is null ? null : Clone(draft));
     }
 
@@ -19,7 +19,7 @@ public sealed class MockIntakeService : IIntakeService
         var patientId = state.PatientId ?? Guid.NewGuid();
         var draft = Clone(state);
         draft.PatientId = patientId;
-        Drafts[patientId] = draft;
+        _drafts[patientId] = draft;
         return Task.FromResult(patientId);
     }
 
@@ -30,7 +30,7 @@ public sealed class MockIntakeService : IIntakeService
             return Task.CompletedTask;
         }
 
-        Drafts[state.PatientId.Value] = Clone(state);
+        _drafts[state.PatientId.Value] = Clone(state);
         return Task.CompletedTask;
     }
 
@@ -43,7 +43,7 @@ public sealed class MockIntakeService : IIntakeService
 
         var draft = Clone(state);
         draft.IsSubmitted = true;
-        Drafts[state.PatientId.Value] = draft;
+        _drafts[state.PatientId.Value] = draft;
 
         return Task.CompletedTask;
     }

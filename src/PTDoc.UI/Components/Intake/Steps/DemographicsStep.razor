@@ -77,37 +77,31 @@
 
     private Task OnFullNameChanged(string? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept FullName: '{value}'");
         return UpdateStateAsync(() => State.FullName = value);
     }
 
     private Task OnDateOfBirthChanged(DateTime? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept DateOfBirth: '{value:O}'");
         return UpdateStateAsync(() => State.DateOfBirth = value);
     }
 
     private Task OnEmailAddressChanged(string? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept EmailAddress: '{value}'");
         return UpdateStateAsync(() => State.EmailAddress = value);
     }
 
     private Task OnPhoneNumberChanged(string? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept PhoneNumber: '{value}'");
         return UpdateStateAsync(() => State.PhoneNumber = value);
     }
 
     private Task OnEmergencyContactNameChanged(string? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept EmergencyContactName: '{value}'");
         return UpdateStateAsync(() => State.EmergencyContactName = value);
     }
 
     private Task OnEmergencyContactPhoneChanged(string? value)
     {
-        Console.WriteLine($"[Intake][DemographicsStep] Accept EmergencyContactPhone: '{value}'");
         return UpdateStateAsync(() => State.EmergencyContactPhone = value);
     }
 
