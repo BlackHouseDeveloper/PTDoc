@@ -89,6 +89,18 @@ jobs:
       with:
         xcode-version: '16.2'
 
+    - name: Initialize Xcode and install iOS Simulator Runtime
+      run: |
+        DEVELOPER_DIR="$(xcode-select -p)"
+        sudo xcode-select -s "$DEVELOPER_DIR"
+        SIMRUNTIME_PATH="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 18.2.simruntime"
+        if [ -d "$SIMRUNTIME_PATH" ]; then
+          sudo xcrun simctl runtime add "$SIMRUNTIME_PATH" || echo "Runtime already registered"
+        else
+          echo "Bundled simruntime not found at expected path; skipping add"
+        fi
+        xcrun simctl list runtimes
+
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
