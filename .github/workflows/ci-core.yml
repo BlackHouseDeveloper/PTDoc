@@ -91,8 +91,7 @@ jobs:
 
     - name: Initialize Xcode and install iOS 18 Simulator Runtime
       run: |
-        # Initialize Xcode toolchain
-        sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+        # Initialize Xcode toolchain (setup-xcode already set DEVELOPER_DIR; runFirstLaunch ensures toolchain init)
         xcodebuild -runFirstLaunch 2>&1 || true
 
         # actool requires an iOS 18 simulator runtime matching the Xcode 16.2 SDK.
@@ -105,8 +104,9 @@ jobs:
           echo "iOS 18 runtime not found — installing iOS 18.2 for Xcode 16.2 SDK compatibility..."
           if ! xcrun simctl runtime install "iOS 18.2" 2>&1; then
             echo "::warning::iOS 18.2 runtime install failed; trying iOS 18..."
-            xcrun simctl runtime install "iOS 18" 2>&1 || \
+            if ! xcrun simctl runtime install "iOS 18" 2>&1; then
               echo "::warning::iOS 18 runtime install also failed. actool may fail in the build step."
+            fi
           fi
         else
           echo "iOS 18 runtime already available."
