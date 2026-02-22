@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PTDoc.Api/appsettings.Development.json** - Added Database.Encryption config section
 - **DI Registration** - Replaced MockPdfRenderer with QuestPdfRenderer
 
+### Fixed
+
+- **iOS CI Build** - Switched MAUI iOS CI target from `iossimulator-arm64` to `ios-arm64` to resolve `actool` simulator runtime errors on `macos-15` + Xcode 16.2 runners.
+
 ### Security
 
 - **Fail-closed encryption** - Invalid/missing keys throw at startup (no silent failures)

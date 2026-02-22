@@ -100,5 +100,5 @@ jobs:
     - name: Restore MAUI project
       run: dotnet restore src/PTDoc.Maui/PTDoc.csproj
 
-    - name: Build MAUI iOS simulator
-      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:EnableCodeSigning=false
+    - name: Build MAUI iOS (device, no signing)
+      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=ios-arm64 -p:EnableCodeSigning=false -p:CodesignKey= -p:CodesignProvision= -p:BuildIpa=false
