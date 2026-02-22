@@ -97,7 +97,8 @@ jobs:
         if [ -d "$SIMRUNTIME_PATH" ]; then
           sudo xcrun simctl runtime add "$SIMRUNTIME_PATH" || echo "Runtime already registered"
         else
-          echo "Bundled simruntime not found at expected path; skipping add"
+          echo "Error: Bundled iOS Simulator runtime expected for Xcode 16.2 but not found at: $SIMRUNTIME_PATH"
+          exit 1
         fi
         xcrun simctl list runtimes
 
