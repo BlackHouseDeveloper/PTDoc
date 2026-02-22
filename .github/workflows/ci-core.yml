@@ -94,8 +94,13 @@ jobs:
         DEVELOPER_DIR="$(xcode-select -p)"
         sudo xcode-select -s "$DEVELOPER_DIR"
         SIMRUNTIME_PATH="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 18.2.simruntime"
+        SIMRUNTIME_IDENTIFIER="com.apple.CoreSimulator.SimRuntime.iOS-18-2"
         if [ -d "$SIMRUNTIME_PATH" ]; then
-          sudo xcrun simctl runtime add "$SIMRUNTIME_PATH" || echo "Runtime already registered"
+          if xcrun simctl list runtimes | grep -q "$SIMRUNTIME_IDENTIFIER"; then
+            echo "Simulator runtime '$SIMRUNTIME_IDENTIFIER' is already registered; skipping add"
+          else
+            sudo xcrun simctl runtime add "$SIMRUNTIME_PATH"
+          fi
         else
           echo "Error: Bundled iOS Simulator runtime expected for Xcode 16.2 but not found at: $SIMRUNTIME_PATH"
           exit 1
