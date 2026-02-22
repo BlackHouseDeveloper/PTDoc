@@ -87,20 +87,26 @@ jobs:
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '8.0.417'
 
     - name: Install MAUI workloads
       run: |
         set -e
         # Update workload manifests first (with retry)
+        update_succeeded=false
         for attempt in {1..3}; do
           if dotnet workload update --skip-sign-check; then
             echo "✅ Workload manifests updated"
+            update_succeeded=true
             break
           fi
           echo "⚠️ Update attempt $attempt failed"
           if [ $attempt -lt 3 ]; then sleep 10; fi
         done
+        if [ "$update_succeeded" != "true" ]; then
+          echo "❌ Failed to update workload manifests after 3 attempts"
+          exit 1
+        fi
         # Install the full MAUI workload (installs latest compatible iOS SDK workload)
         if dotnet workload install maui --skip-sign-check; then
           echo "✅ MAUI workloads installed"
