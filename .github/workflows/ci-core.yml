@@ -1,10 +1,9 @@
 name: "Core CI"
 
 on:
-  push:
-    branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
-    branches: [ "main", "develop", "phase8-continue" ]
+    types: [opened, synchronize, reopened, closed]
+    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -12,7 +11,8 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build & Test (Core Projects)
+    name: Build & Test (Linux Core)
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +22,7 @@ jobs:
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '8.0.417'
 
     - name: Restore dependencies
       run: |
@@ -74,3 +74,26 @@ jobs:
         dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
         dotnet format src/PTDoc.Api/PTDoc.Api.csproj --verify-no-changes --verbosity diagnostic
         dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+
+  maui-ios-validation:
+    name: Build MAUI iOS (macOS)
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Restore MAUI workloads
+      run: dotnet workload restore src/PTDoc.Maui/PTDoc.csproj
+
+    - name: Restore MAUI project
+      run: dotnet restore src/PTDoc.Maui/PTDoc.csproj
+
+    - name: Build MAUI iOS simulator
+      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:EnableCodeSigning=false
