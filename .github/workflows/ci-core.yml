@@ -120,6 +120,8 @@ jobs:
             else
               echo "::error::No iOS 18 simulator runtime found in Xcode bundle. Build will likely fail."
               find "$(dirname "$DEVELOPER_DIR")" -name "*.simruntime" -maxdepth 8 2>/dev/null | head -10 || true
+              # Fail fast if we cannot locate or register an iOS 18 simulator runtime
+              exit 1
             fi
           fi
         else
