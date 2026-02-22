@@ -89,6 +89,32 @@ jobs:
       with:
         xcode-version: '16.2'
 
+    - name: Initialize Xcode and install iOS 18 Simulator Runtime
+      run: |
+        # Initialize Xcode toolchain
+        sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+        xcodebuild -runFirstLaunch 2>&1 || true
+
+        # actool requires an iOS 18 simulator runtime matching the Xcode 16.2 SDK.
+        # macOS-15 GitHub Actions runners do not pre-install iOS 18 simulator runtimes;
+        # all pre-installed runtimes are iOS 16.x/17.x (from older Xcode installs).
+        echo "Runtimes before install:"
+        xcrun simctl list runtimes
+
+        if ! xcrun simctl list runtimes | grep -q "iOS 18"; then
+          echo "iOS 18 runtime not found — installing iOS 18.2 for Xcode 16.2 SDK compatibility..."
+          if ! xcrun simctl runtime install "iOS 18.2" 2>&1; then
+            echo "::warning::iOS 18.2 runtime install failed; trying iOS 18..."
+            xcrun simctl runtime install "iOS 18" 2>&1 || \
+              echo "::warning::iOS 18 runtime install also failed. actool may fail in the build step."
+          fi
+        else
+          echo "iOS 18 runtime already available."
+        fi
+
+        echo "Runtimes after install:"
+        xcrun simctl list runtimes
+
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
