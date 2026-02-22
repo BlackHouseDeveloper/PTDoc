@@ -57,20 +57,27 @@ public sealed class MockIntakeInviteService : IIntakeInviteService
     /// <inheritdoc />
     public Task<IntakeAccessSession?> VerifyOtpAsync(string challengeId, string otpCode, CancellationToken cancellationToken = default)
     {
-        if (!_pendingChallenges.TryRemove(challengeId, out var challenge))
+        // Check whether the challenge exists without removing it, to allow retries.
+        if (!_pendingChallenges.TryGetValue(challengeId, out var challenge))
         {
             return Task.FromResult<IntakeAccessSession?>(null);
         }
 
+        // If the challenge has expired, remove it and fail.
         if (challenge.Expires < DateTimeOffset.UtcNow)
         {
+            _pendingChallenges.TryRemove(challengeId, out _);
             return Task.FromResult<IntakeAccessSession?>(null);
         }
 
+        // Wrong code — leave the challenge in place so the user can retry.
         if (!string.Equals(otpCode, DevOtpCode, StringComparison.Ordinal))
         {
             return Task.FromResult<IntakeAccessSession?>(null);
         }
+
+        // OTP is correct; consume the challenge to prevent reuse.
+        _pendingChallenges.TryRemove(challengeId, out _);
 
         var session = new IntakeAccessSession(
             SessionId: Guid.NewGuid().ToString("N"),

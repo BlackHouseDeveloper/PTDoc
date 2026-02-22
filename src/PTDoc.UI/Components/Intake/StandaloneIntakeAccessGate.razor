@@ -58,7 +58,7 @@
             <div class="intake-gate__card">
                 <h1 id="intake-gate-heading" class="intake-gate__title">Enter Your Code</h1>
                 <p class="intake-gate__description">
-                    We sent a 6-digit code to <strong>@_contact</strong>.
+                        We sent a 6-digit code to <strong>@MaskContact(_contact)</strong>.
                     It expires in 10 minutes.
                 </p>
 
@@ -90,7 +90,7 @@
         break;
 
     case GateState.SessionExpired:
-        <div class="intake-gate intake-gate--expired" role="alertdialog" aria-labelledby="intake-gate-expired-heading" aria-modal="true">
+        <div class="intake-gate intake-gate--expired" role="alert" aria-labelledby="intake-gate-expired-heading">
             <div class="intake-gate__card">
                 <h1 id="intake-gate-expired-heading" class="intake-gate__title">Session Expired</h1>
                 <p class="intake-gate__description">
@@ -257,5 +257,25 @@
     {
         _state = GateState.SessionExpired;
         InvokeAsync(StateHasChanged);
+    }
+
+    private static string MaskContact(string contact)
+    {
+        if (string.IsNullOrEmpty(contact))
+        {
+            return string.Empty;
+        }
+
+        var atIndex = contact.IndexOf('@', StringComparison.Ordinal);
+        if (atIndex >= 0)
+        {
+            // Email: show ***@domain
+            return $"***@{contact[(atIndex + 1)..]}";
+        }
+
+        // Phone/other: show last 4 digits preceded by ***-***-
+        return contact.Length <= 4
+            ? $"***{contact}"
+            : $"***-***-{contact[^4..]}";
     }
 }

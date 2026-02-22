@@ -7,23 +7,15 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IIntakeInviteService IntakeInviteService
 @inject ILogger<Routes> Logger
 
 <Router AppAssembly="@typeof(Routes).Assembly">
     <Found Context="routeData">
         @if (ShouldUseStandaloneIntakeLayout(routeData))
         {
-            @if (_standaloneAccessGranted)
-            {
+            <StandaloneIntakeAccessGate @ref="_intakeAccessGate" InviteToken="@_inviteToken" OnAccessGranted="HandleIntakeAccessGrantedAsync">
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
-            }
-            else
-            {
-                <LayoutView Layout="@typeof(StandaloneIntakeLayout)">
-                    <StandaloneIntakeAccessGate InviteToken="@_inviteToken" OnAccessGranted="HandleIntakeAccessGrantedAsync" />
-                </LayoutView>
-            }
+            </StandaloneIntakeAccessGate>
         }
         else
         {
@@ -40,16 +32,16 @@
 
     <NotFound>
         <LayoutView Layout="@typeof(MainLayout)">
-            <p>Sorry, there’s nothing at this address.</p>
+            <p>Sorry, there's nothing at this address.</p>
         </LayoutView>
     </NotFound>
 </Router>
 
 @code {
     private bool isAuthenticated;
-    private bool _standaloneAccessGranted;
     private string? _inviteToken;
     private IntakeAccessSession? _intakeSession;
+    private StandaloneIntakeAccessGate? _intakeAccessGate;
 
     protected override async Task OnInitializedAsync()
     {
@@ -83,8 +75,7 @@
     private Task HandleIntakeAccessGrantedAsync(IntakeAccessSession session)
     {
         _intakeSession = session;
-        _standaloneAccessGranted = true;
-        return InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
     }
 
     private bool ShouldUseStandaloneIntakeLayout(RouteData routeData)
