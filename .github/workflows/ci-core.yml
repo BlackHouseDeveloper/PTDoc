@@ -1,10 +1,9 @@
 name: "Core CI"
 
 on:
-  push:
-    branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
-    branches: [ "main", "develop", "phase8-continue" ]
+    types: [opened, synchronize, reopened, closed]
+    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -12,7 +11,8 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build & Test (Core Projects)
+    name: Build & Test (Linux Core)
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +22,7 @@ jobs:
     - name: Setup .NET 8 SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '8.0.417'
 
     - name: Restore dependencies
       run: |
@@ -74,3 +74,67 @@ jobs:
         dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
         dotnet format src/PTDoc.Api/PTDoc.Api.csproj --verify-no-changes --verbosity diagnostic
         dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+
+  maui-ios-validation:
+    name: Build MAUI iOS (macOS)
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Install MAUI workloads
+      run: |
+        set -e
+        # Update workload manifests first (with retry)
+        update_succeeded=false
+        for attempt in {1..3}; do
+          if dotnet workload update --skip-sign-check; then
+            echo "✅ Workload manifests updated"
+            update_succeeded=true
+            break
+          fi
+          echo "⚠️ Update attempt $attempt failed"
+          if [ $attempt -lt 3 ]; then sleep 10; fi
+        done
+        if [ "$update_succeeded" != "true" ]; then
+          echo "❌ Failed to update workload manifests after 3 attempts"
+          exit 1
+        fi
+        # Install the full MAUI workload (installs latest compatible iOS SDK workload)
+        if dotnet workload install maui --skip-sign-check; then
+          echo "✅ MAUI workloads installed"
+        else
+          echo "⚠️ MAUI meta-workload failed, installing platform workloads individually..."
+          workload_failed=false
+          ios_failed=false
+          for wl in android ios maccatalyst; do
+            if ! dotnet workload install $wl --skip-sign-check; then
+              echo "⚠️ Failed to install $wl workload"
+              workload_failed=true
+              if [ "$wl" = "ios" ]; then
+                ios_failed=true
+              fi
+            fi
+          done
+          if [ "$ios_failed" = true ]; then
+            echo "❌ Required 'ios' workload failed to install. Failing the build."
+            exit 1
+          fi
+          if [ "$workload_failed" = true ]; then
+            echo "⚠️ One or more optional MAUI workloads failed to install."
+          fi
+        fi
+        dotnet workload list
+
+    - name: Restore MAUI project
+      run: dotnet restore src/PTDoc.Maui/PTDoc.csproj
+
+    - name: Build MAUI iOS (simulator, no signing)
+      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:EnableCodeSigning=false -p:CodesignKey= -p:CodesignProvision= -p:BuildIpa=false

@@ -16,6 +16,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
+    <ProjectReference Include="..\PTDoc.Core\PTDoc.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot/images/molemapper.ptdoc.clinical.front.svg" LogicalName="PTDoc.UI.Assets.molemapper.ptdoc.clinical.front.svg" />
+    <EmbeddedResource Include="wwwroot/images/molemapper.ptdoc.clinical.back.svg" LogicalName="PTDoc.UI.Assets.molemapper.ptdoc.clinical.back.svg" />
   </ItemGroup>
 
 

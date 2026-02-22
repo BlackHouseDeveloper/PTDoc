@@ -10,12 +10,12 @@ public interface IPaymentService
     /// Process a payment using tokenized payment data (e.g., Authorize.Net Accept.js).
     /// </summary>
     Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Refund a previously processed payment.
     /// </summary>
     Task<PaymentResult> RefundPaymentAsync(string transactionId, decimal amount, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Get payment transaction details.
     /// </summary>
@@ -33,27 +33,27 @@ public class PaymentRequest
     /// Contains encrypted payment information.
     /// </summary>
     public string OpaqueDataToken { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Data descriptor from tokenization service.
     /// </summary>
     public string OpaqueDataDescriptor { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Amount to charge (in dollars).
     /// </summary>
     public decimal Amount { get; set; }
-    
+
     /// <summary>
     /// Internal patient ID for mapping and audit trail.
     /// </summary>
     public Guid PatientId { get; set; }
-    
+
     /// <summary>
     /// Optional description for the transaction.
     /// </summary>
     public string? Description { get; set; }
-    
+
     /// <summary>
     /// Invoice or reference number.
     /// </summary>

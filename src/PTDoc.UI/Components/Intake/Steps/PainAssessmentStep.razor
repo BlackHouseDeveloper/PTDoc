@@ -1,0 +1,44 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="intake-step-shell" data-testid="pain-assessment-step">
+    <h2>Pain Assessment</h2>
+    <p>Initial pain screening and intensity capture will be implemented in a follow-up pass.</p>
+
+    <label>Body Region
+        <select class="form-select" value="@State.SelectedBodyRegion" @onchange="OnBodyRegionChanged" data-testid="body-region-selector">
+            <option value="">Select a body region</option>
+            <option>Knee</option>
+            <option>Shoulder</option>
+            <option>Lower Back</option>
+            <option>Neck</option>
+            <option>Hip</option>
+        </select>
+    </label>
+
+    <p class="intake-step-shell__todo">TODO: Implement pain scales, frequency, duration, and aggravating/relieving factor inputs.</p>
+
+    <IntakeFooterActions
+        ShowBack="true"
+        PrimaryText="Continue to Pain Details"
+        PrimaryTestId="continue-button"
+        OnBack="OnBack"
+        OnPrimary="OnContinue" />
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private async Task OnBodyRegionChanged(ChangeEventArgs args)
+    {
+        State.SelectedBodyRegion = args.Value?.ToString();
+        State.IsDirty = true;
+
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
+}

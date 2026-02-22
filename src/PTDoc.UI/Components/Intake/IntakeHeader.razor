@@ -1,0 +1,26 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<header class="intake-header" data-testid="intake-header">
+    <div class="intake-header__inner">
+        <button type="button" class="intake-header__back" @onclick="OnBackClicked" data-testid="back-button" aria-label="Go back">
+            ←
+        </button>
+
+        <div class="intake-header__brand">PTDoc</div>
+
+        <div class="intake-header__text">
+            <h1>Patient Intake</h1>
+            <p>Step @((int)CurrentStep + 1) of 4</p>
+        </div>
+    </div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public IntakeStep CurrentStep { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private Task OnBackClicked()
+    {
+        return OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
+    }
+}

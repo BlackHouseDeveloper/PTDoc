@@ -1,16 +1,10 @@
 @page "/patient/{id}"
 @attribute [Authorize]
-@inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
 <PageTitle>Patient Profile - PTDoc</PageTitle>
 
 <div class="patient-profile-page">
-    <PatientProfileHeader 
-        Patient="@patient" 
-        OnBack="@HandleBack" 
-    />
-
     <div class="patient-profile-page-body">
         <div class="patient-profile-page-container">
             <PatientDemographicsCardEditable Patient="@patient" />
@@ -60,14 +54,8 @@
         };
     }
 
-    private void HandleBack()
-    {
-        NavigationManager.NavigateTo("/patients");
-    }
-
     private void HandleStartNote()
     {
-        // TODO: Navigate to note creation page for this patient
-        Console.WriteLine($"Starting new note for patient {Id}");
+        _ = Id;
     }
 }

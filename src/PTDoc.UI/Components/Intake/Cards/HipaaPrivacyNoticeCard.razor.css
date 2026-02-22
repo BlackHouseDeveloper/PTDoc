@@ -1,0 +1,28 @@
+.hipaa-card {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+}
+
+.hipaa-card h2 {
+    color: var(--info);
+    font-size: var(--text-base);
+    margin: 0;
+}
+
+.hipaa-card p {
+    color: var(--info);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+.hipaa-card__checkbox {
+    align-items: center;
+    color: var(--foreground);
+    display: inline-flex;
+    gap: var(--spacing-2);
+    margin: 0;
+}

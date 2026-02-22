@@ -11,23 +11,7 @@
 <PageTitle>Dashboard - PTDoc</PageTitle>
 
 <div class="dashboard-container">
-    <header class="dashboard-header">
-        <div class="dashboard-header-content">
-            <div class="dashboard-header-text">
-                <h1>Dashboard</h1>
-                <p class="dashboard-welcome">Welcome back, Dr. Sarah Johnson • Today is @DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
-            </div>
-            <div class="dashboard-header-actions">
-                <button type="button" class="notification-btn" aria-label="Notifications" title="View notifications">
-                    <svg class="notification-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M12 5.33333C12 4.27247 11.5786 3.25505 10.8284 2.50491C10.0783 1.75476 9.06087 1.33333 8 1.33333C6.93913 1.33333 5.92172 1.75476 5.17157 2.50491C4.42143 3.25505 4 4.27247 4 5.33333C4 10 2 11.3333 2 11.3333H14C14 11.3333 12 10 12 5.33333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M9.15334 14C9.03614 14.2021 8.86791 14.3698 8.6655 14.4864C8.46309 14.603 8.23344 14.6643 8 14.6643C7.76656 14.6643 7.53691 14.603 7.3345 14.4864C7.13209 14.3698 6.96386 14.2021 6.84666 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span class="notification-badge" aria-label="1 unread notification"></span>
-                </button>
-            </div>
-        </div>
-    </header>
+    <GlobalPageHeader />
 
     <!-- Quick Action Buttons -->
     <div class="quick-actions-section">
@@ -101,14 +85,6 @@
 @code {
     private DashboardData? _dashboardData;
     
-    private bool _isLoadingMetrics = true;
-    private bool _isLoadingActivities = true;
-    private bool _isLoadingNotifications = true;
-    private bool _isLoadingNotes = true;
-    private bool _isLoadingPOCs = true;
-    
-    private bool _activitiesError = false;
-    
     private bool isAddPatientModalOpen = false;
     private bool isSendIntakeModalOpen = false;
     private System.Timers.Timer? _autoRefreshTimer;
@@ -131,40 +107,24 @@
 
     private async Task LoadDashboardData()
     {
-        _isLoadingMetrics = true;
-        _isLoadingActivities = true;
-        _isLoadingNotifications = true;
-        _isLoadingNotes = true;
-        _isLoadingPOCs = true;
-        
         StateHasChanged();
         
         try
         {
             _dashboardData = await DashboardService.GetDashboardDataAsync();
-            
-            _activitiesError = false;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading dashboard data: {ex.Message}");
-            _activitiesError = true;
         }
         finally
         {
-            _isLoadingMetrics = false;
-            _isLoadingActivities = false;
-            _isLoadingNotifications = false;
-            _isLoadingNotes = false;
-            _isLoadingPOCs = false;
             StateHasChanged();
         }
     }
 
     private async Task LoadRecentActivities()
     {
-        _isLoadingActivities = true;
-        _activitiesError = false;
         StateHasChanged();
         
         try
@@ -178,11 +138,9 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading activities: {ex.Message}");
-            _activitiesError = true;
         }
         finally
         {
-            _isLoadingActivities = false;
             StateHasChanged();
         }
     }

@@ -10,17 +10,17 @@ public class Addendum : ISyncTrackedEntity
     public DateTime LastModifiedUtc { get; set; }
     public Guid ModifiedByUserId { get; set; }
     public SyncState SyncState { get; set; }
-    
+
     // Association
     public Guid ClinicalNoteId { get; set; }
-    
+
     // Content
     public string Content { get; set; } = string.Empty;
-    
+
     // Addendum metadata
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public Guid CreatedByUserId { get; set; }
-    
+
     // Navigation
     public ClinicalNote? ClinicalNote { get; set; }
 }

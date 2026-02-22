@@ -25,7 +25,7 @@
         <ApplicationTitle>PTDoc</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.ptdoc</ApplicationId>
+        <ApplicationId>com.blackhousedevelopers.ptdocsplus</ApplicationId>
 
         <!-- Versions -->
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
@@ -73,5 +73,14 @@
           <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
           <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     </ItemGroup>
+
+    <Target Name="NormalizeQuestPdfLatoPublishMetadata" BeforeTargets="_ComputePublishLocation">
+        <ItemGroup>
+            <ResolvedFileToPublish Update="$(NuGetPackageRoot)questpdf/*/LatoFont/*">
+                <PublishFolderType>Resource</PublishFolderType>
+            </ResolvedFileToPublish>
+        </ItemGroup>
+    </Target>
+
 
 </Project>

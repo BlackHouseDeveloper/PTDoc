@@ -1,0 +1,4 @@
+.pain-assessment-step2 {
+    display: grid;
+    gap: var(--spacing-6);
+}

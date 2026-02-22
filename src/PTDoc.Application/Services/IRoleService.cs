@@ -11,7 +11,7 @@ public interface IRoleService
     /// Check if user has a specific role
     /// </summary>
     bool HasRole(UserInfo user, string role);
-    
+
     /// <summary>
     /// Get dashboard layout configuration for user's role
     /// </summary>

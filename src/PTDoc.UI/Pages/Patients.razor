@@ -6,19 +6,7 @@
 <PageTitle>Patients - PTDoc</PageTitle>
 
 <div class="patients-page">
-    <PatientPageHeader 
-        Title="Patients" 
-        Subtitle="@GetSubtitle()"
-        ShowBackButton="false">
-        <Actions>
-            <button type="button" class="patients-add-button" @onclick="OpenAddPatientModal" aria-label="Add new patient">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8 3.33333V12.6667M3.33333 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>Add Patient</span>
-            </button>
-        </Actions>
-    </PatientPageHeader>
+    <GlobalPageHeader OnPrimaryAction="OpenAddPatientModal" />
 
     <div class="patients-page-body">
         <div class="patients-page-search">
@@ -62,7 +50,6 @@
     {
         // TODO: Replace with actual service call to fetch patients
         LoadSampleData();
-        Console.WriteLine($"Patients page initialized with {patients.Count} patients");
     }
 
     private void LoadSampleData()
@@ -126,17 +113,10 @@
         };
     }
 
-    private string GetSubtitle()
-    {
-        var count = patients.Count;
-        return count == 1 ? "1 total patient" : $"{count} total patients";
-    }
-
     private IReadOnlyList<PatientListItemVm> GetFilteredPatients()
     {
         if (string.IsNullOrWhiteSpace(searchQuery))
         {
-            Console.WriteLine($"GetFilteredPatients: returning all {patients.Count} patients");
             return patients;
         }
 
@@ -146,7 +126,6 @@
             p.DisplayName.ToLowerInvariant().Contains(query) ||
             (p.DateOfBirth?.ToLowerInvariant().Contains(query) ?? false)
         ).ToList();
-        Console.WriteLine($"GetFilteredPatients: filtered to {filtered.Count} patients");
         return filtered;
     }
 
@@ -157,9 +136,7 @@
 
     private void HandleAddPatient(AddPatientModal.PatientFormData formData)
     {
-        // TODO: Integrate with patient service to add new patient
-        Console.WriteLine($"Adding patient: {formData.FirstName} {formData.LastName}");
-        // Modal will close automatically after OnSubmit
+        _ = formData;
     }
 
     private void HandlePatientClick(PatientListItemVm patient)

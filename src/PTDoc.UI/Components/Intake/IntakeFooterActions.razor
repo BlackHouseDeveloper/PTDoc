@@ -1,0 +1,22 @@
+<div class="intake-footer-actions">
+    @if (ShowBack)
+    {
+        <button type="button" class="btn btn-link" @onclick="OnBackClicked" disabled="@BackDisabled" data-testid="back-button">Back</button>
+    }
+
+    <button type="button" class="btn btn-primary" @onclick="OnPrimaryClicked" disabled="@PrimaryDisabled" data-testid="@PrimaryTestId">@PrimaryText</button>
+</div>
+
+@code {
+    [Parameter] public bool ShowBack { get; set; }
+    [Parameter] public bool BackDisabled { get; set; }
+    [Parameter] public bool PrimaryDisabled { get; set; }
+    [Parameter] public string PrimaryText { get; set; } = "Continue";
+    [Parameter] public string PrimaryTestId { get; set; } = "continue-button";
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnPrimary { get; set; }
+
+    private Task OnBackClicked() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
+
+    private Task OnPrimaryClicked() => OnPrimary.HasDelegate ? OnPrimary.InvokeAsync() : Task.CompletedTask;
+}

@@ -1,0 +1,11 @@
+.intake-footer-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--spacing-4);
+    justify-content: space-between;
+    width: 100%;
+}
+
+.intake-footer-actions .btn-primary {
+    min-width: calc(var(--spacing-16) * 2);
+}
