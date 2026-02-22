@@ -89,30 +89,44 @@ jobs:
       with:
         xcode-version: '16.2'
 
-    - name: Initialize Xcode and install iOS 18 Simulator Runtime
+    - name: Initialize Xcode and install iOS Simulator Runtime
       run: |
-        # Initialize Xcode toolchain (setup-xcode already set DEVELOPER_DIR; runFirstLaunch ensures toolchain init)
+        # Initialize Xcode toolchain
         xcodebuild -runFirstLaunch 2>&1 || true
 
-        # actool requires an iOS 18 simulator runtime matching the Xcode 16.2 SDK.
-        # macOS-15 GitHub Actions runners do not pre-install iOS 18 simulator runtimes;
-        # all pre-installed runtimes are iOS 16.x/17.x (from older Xcode installs).
-        echo "Runtimes before install:"
+        # Derive DEVELOPER_DIR dynamically so this step works if Xcode path changes
+        DEVELOPER_DIR=$(xcode-select -p)
+        echo "DEVELOPER_DIR: $DEVELOPER_DIR"
+
+        echo "=== Runtimes before registration ==="
         xcrun simctl list runtimes
 
         if ! xcrun simctl list runtimes | grep -q "iOS 18"; then
-          echo "iOS 18 runtime not found — installing iOS 18.2 for Xcode 16.2 SDK compatibility..."
-          if ! xcrun simctl runtime install "iOS 18.2" 2>&1; then
-            echo "::warning::iOS 18.2 runtime install failed; trying iOS 18..."
-            if ! xcrun simctl runtime install "iOS 18" 2>&1; then
-              echo "::warning::iOS 18 runtime install also failed. actool may fail in the build step."
+          echo "iOS 18 runtime not found — registering bundled Xcode 16.2 runtime..."
+
+          # Xcode 16.x bundles the iOS simulator runtime inside its SDK directory.
+          # Using `xcrun simctl runtime add` registers it instantly without any CDN download.
+          BUNDLED_RUNTIME="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 18.2.simruntime"
+
+          if [ -d "$BUNDLED_RUNTIME" ]; then
+            echo "Found bundled runtime: $BUNDLED_RUNTIME"
+            xcrun simctl runtime add "$BUNDLED_RUNTIME"
+          else
+            echo "Bundled runtime not at expected path — searching Xcode app bundle..."
+            FOUND=$(find "$(dirname "$DEVELOPER_DIR")" -name "iOS*.simruntime" -maxdepth 8 2>/dev/null | grep -i "iOS 18" | head -1 || true)
+            if [ -n "$FOUND" ]; then
+              echo "Found runtime at: $FOUND"
+              xcrun simctl runtime add "$FOUND"
+            else
+              echo "::error::No iOS 18 simulator runtime found in Xcode bundle. Build will likely fail."
+              find "$(dirname "$DEVELOPER_DIR")" -name "*.simruntime" -maxdepth 8 2>/dev/null | head -10 || true
             fi
           fi
         else
           echo "iOS 18 runtime already available."
         fi
 
-        echo "Runtimes after install:"
+        echo "=== Runtimes after registration ==="
         xcrun simctl list runtimes
 
     - name: Setup .NET 8 SDK
