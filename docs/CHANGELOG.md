@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   6. Platform validation (CI-automatable)
 
 ### Changed
+- **PR #18**: UI implementation patient intake by @BlackHouseDeveloper
 
 - **PTDoc.Infrastructure.csproj** - Added SQLCipher and QuestPDF packages
 - **PTDoc.Api/Program.cs** - Updated DbContext configuration with encryption toggle logic
