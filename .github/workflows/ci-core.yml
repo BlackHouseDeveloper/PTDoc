@@ -89,7 +89,7 @@ jobs:
       with:
         xcode-version: '16.2'
 
-    - name: Initialize Xcode and install iOS Simulator Runtime
+    - name: Initialize Xcode and register bundled iOS 18.2 simulator runtime
       run: |
         DEVELOPER_DIR="$(xcode-select -p)"
         sudo xcode-select -s "$DEVELOPER_DIR"
