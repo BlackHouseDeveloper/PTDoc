@@ -1,17 +1,29 @@
-﻿@namespace PTDoc.UI.Components
+@namespace PTDoc.UI.Components
+@using PTDoc.Application.Intake
+@using PTDoc.UI.Components.Intake
 @using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
 @using PTDoc.UI.Pages.Intake
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IIntakeInviteService IntakeInviteService
 @inject ILogger<Routes> Logger
 
 <Router AppAssembly="@typeof(Routes).Assembly">
     <Found Context="routeData">
         @if (ShouldUseStandaloneIntakeLayout(routeData))
         {
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+            @if (_standaloneAccessGranted)
+            {
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+            }
+            else
+            {
+                <LayoutView Layout="@typeof(StandaloneIntakeLayout)">
+                    <StandaloneIntakeAccessGate InviteToken="@_inviteToken" OnAccessGranted="HandleIntakeAccessGrantedAsync" />
+                </LayoutView>
+            }
         }
         else
         {
@@ -35,6 +47,9 @@
 
 @code {
     private bool isAuthenticated;
+    private bool _standaloneAccessGranted;
+    private string? _inviteToken;
+    private IntakeAccessSession? _intakeSession;
 
     protected override async Task OnInitializedAsync()
     {
@@ -42,6 +57,8 @@
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+
+        _inviteToken = GetInviteTokenFromUri();
     }
 
     private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
@@ -63,6 +80,13 @@
         }
     }
 
+    private Task HandleIntakeAccessGrantedAsync(IntakeAccessSession session)
+    {
+        _intakeSession = session;
+        _standaloneAccessGranted = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
     private bool ShouldUseStandaloneIntakeLayout(RouteData routeData)
     {
         if (routeData.PageType != typeof(IntakeWizardPage))
@@ -75,6 +99,34 @@
         var isPatientQueryMode = query.Contains("mode=patient", StringComparison.OrdinalIgnoreCase);
 
         return isPatientQueryMode || !isAuthenticated;
+    }
+
+    private string? GetInviteTokenFromUri()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = uri.Query;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            return null;
+        }
+
+        foreach (var segment in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eqIndex = segment.IndexOf('=', StringComparison.Ordinal);
+            if (eqIndex < 0)
+            {
+                continue;
+            }
+
+            var key = Uri.UnescapeDataString(segment[..eqIndex]);
+            if (string.Equals(key, "invite", StringComparison.OrdinalIgnoreCase))
+            {
+                return Uri.UnescapeDataString(segment[(eqIndex + 1)..]);
+            }
+        }
+
+        return null;
     }
 
     public void Dispose()
