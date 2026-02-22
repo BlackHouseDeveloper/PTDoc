@@ -89,22 +89,30 @@ jobs:
       with:
         xcode-version: '16.2'
 
-    - name: Initialize Xcode and register bundled iOS 18.2 simulator runtime
+    - name: Initialize Xcode and install iOS 18 Simulator Runtime
       run: |
-        DEVELOPER_DIR="$(xcode-select -p)"
-        sudo xcode-select -s "$DEVELOPER_DIR"
-        SIMRUNTIME_PATH="$DEVELOPER_DIR/Platforms/iPhoneSimulator.platform/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 18.2.simruntime"
-        SIMRUNTIME_IDENTIFIER="com.apple.CoreSimulator.SimRuntime.iOS-18-2"
-        if [ -d "$SIMRUNTIME_PATH" ]; then
-          if xcrun simctl list runtimes | grep -q "$SIMRUNTIME_IDENTIFIER"; then
-            echo "Simulator runtime '$SIMRUNTIME_IDENTIFIER' is already registered; skipping add"
-          else
-            sudo xcrun simctl runtime add "$SIMRUNTIME_PATH"
+        # Initialize Xcode toolchain (setup-xcode already set DEVELOPER_DIR; runFirstLaunch ensures toolchain init)
+        xcodebuild -runFirstLaunch 2>&1 || true
+
+        # actool requires an iOS 18 simulator runtime matching the Xcode 16.2 SDK.
+        # macOS-15 GitHub Actions runners do not pre-install iOS 18 simulator runtimes;
+        # all pre-installed runtimes are iOS 16.x/17.x (from older Xcode installs).
+        echo "Runtimes before install:"
+        xcrun simctl list runtimes
+
+        if ! xcrun simctl list runtimes | grep -q "iOS 18"; then
+          echo "iOS 18 runtime not found — installing iOS 18.2 for Xcode 16.2 SDK compatibility..."
+          if ! xcrun simctl runtime install "iOS 18.2" 2>&1; then
+            echo "::warning::iOS 18.2 runtime install failed; trying iOS 18..."
+            if ! xcrun simctl runtime install "iOS 18" 2>&1; then
+              echo "::warning::iOS 18 runtime install also failed. actool may fail in the build step."
+            fi
           fi
         else
-          echo "Error: Bundled iOS Simulator runtime expected for Xcode 16.2 but not found at: $SIMRUNTIME_PATH"
-          exit 1
+          echo "iOS 18 runtime already available."
         fi
+
+        echo "Runtimes after install:"
         xcrun simctl list runtimes
 
     - name: Setup .NET 8 SDK
