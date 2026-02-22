@@ -3,9 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Authorization;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Services;
 using PTDoc.Maui.Auth;
 using PTDoc.Maui.Services;
 
@@ -35,6 +37,8 @@ public static class MauiProgram
 		builder.Services.AddScoped<ISyncService, SyncService>();
 		builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 		builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+		builder.Services.AddScoped<IIntakeInviteService, MockIntakeInviteService>();
+		builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 		builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 		builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 		

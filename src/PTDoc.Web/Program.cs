@@ -1,8 +1,10 @@
 using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 using PTDoc.Web.Services;
 
@@ -23,7 +25,42 @@ builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
+
+builder.Services.Configure<IntakeInviteOptions>(
+    builder.Configuration.GetSection(IntakeInviteOptions.SectionName));
+
+if (builder.Environment.IsDevelopment())
+{
+    // Development: accept any invite token and use fixed OTP "123456" for easy local testing.
+    builder.Services.AddScoped<IIntakeInviteService, MockIntakeInviteService>();
+}
+else
+{
+    // Production / Staging: validate signed JWT invite tokens and use cryptographically random OTPs.
+    var intakeInviteConfig = builder.Configuration
+        .GetSection(IntakeInviteOptions.SectionName)
+        .Get<IntakeInviteOptions>();
+
+    if (intakeInviteConfig is null || string.IsNullOrWhiteSpace(intakeInviteConfig.SigningKey) ||
+        intakeInviteConfig.SigningKey.StartsWith("REPLACE_", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "IntakeInvite:SigningKey has not been configured. " +
+            "Set a cryptographically secure random key before deploying. " +
+            "Generate one using: openssl rand -base64 32");
+    }
+
+    if (intakeInviteConfig.SigningKey.Length < 32)
+    {
+        throw new InvalidOperationException(
+            $"IntakeInvite:SigningKey must be at least 32 characters. " +
+            $"Current length: {intakeInviteConfig.SigningKey.Length}");
+    }
+
+    builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
+}
 builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.Infrastructure.Services.MockDashboardService>();
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
