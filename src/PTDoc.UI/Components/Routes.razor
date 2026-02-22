@@ -1,4 +1,5 @@
 ﻿@namespace PTDoc.UI.Components
+@using PTDoc.UI.Components.Intake
 @using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
 @using PTDoc.UI.Pages.Intake
@@ -11,7 +12,9 @@
     <Found Context="routeData">
         @if (ShouldUseStandaloneIntakeLayout(routeData))
         {
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+            <StandaloneIntakeAccessGate>
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+            </StandaloneIntakeAccessGate>
         }
         else
         {

@@ -1,0 +1,178 @@
+.intake-access-gate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background-color: var(--muted);
+    padding: var(--spacing-4);
+}
+
+.intake-access-gate__card {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: var(--spacing-8);
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.intake-access-gate__title {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    margin: 0;
+}
+
+.intake-access-gate__subtitle {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    margin: 0;
+    line-height: var(--line-height-relaxed);
+}
+
+.intake-access-gate__loading {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    text-align: center;
+    margin: 0;
+}
+
+.intake-access-gate__error {
+    font-size: var(--text-sm);
+    color: var(--destructive);
+    background-color: rgba(var(--destructive-rgb), 0.08);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-3) var(--spacing-4);
+    margin: 0;
+}
+
+.intake-access-gate__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.intake-access-gate__label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--foreground);
+}
+
+.intake-access-gate__input {
+    height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--input-background);
+    color: var(--foreground);
+    font-size: var(--text-base);
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color var(--transition-fast);
+}
+
+.intake-access-gate__input:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+}
+
+.intake-access-gate__input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.intake-access-gate__input--otp {
+    font-size: var(--text-xl);
+    letter-spacing: 0.25em;
+    text-align: center;
+}
+
+.intake-access-gate__channel-row {
+    display: flex;
+    gap: var(--spacing-6);
+}
+
+.intake-access-gate__channel-option {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    cursor: pointer;
+}
+
+.intake-access-gate__channel-option input[type="radio"] {
+    accent-color: var(--primary);
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+.intake-access-gate__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-6);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    border: none;
+    transition: opacity var(--transition-fast), background-color var(--transition-fast);
+}
+
+.intake-access-gate__btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.intake-access-gate__btn--primary {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    width: 100%;
+}
+
+.intake-access-gate__btn--primary:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.intake-access-gate__btn--link {
+    background-color: transparent;
+    color: var(--primary);
+    text-decoration: underline;
+    width: 100%;
+}
+
+.intake-access-gate__btn--link:hover:not(:disabled) {
+    opacity: 0.8;
+}
+
+/* Session Expired modal overlay */
+.intake-access-gate__modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-elevated);
+    padding: var(--spacing-4);
+}
+
+.intake-access-gate__modal {
+    background-color: var(--card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: var(--spacing-8);
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
