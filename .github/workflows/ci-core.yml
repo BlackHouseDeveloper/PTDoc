@@ -106,11 +106,24 @@ jobs:
           echo "✅ MAUI workloads installed"
         else
           echo "⚠️ MAUI meta-workload failed, installing platform workloads individually..."
+          workload_failed=false
+          ios_failed=false
           for wl in android ios maccatalyst; do
             if ! dotnet workload install $wl --skip-sign-check; then
               echo "⚠️ Failed to install $wl workload"
+              workload_failed=true
+              if [ "$wl" = "ios" ]; then
+                ios_failed=true
+              fi
             fi
           done
+          if [ "$ios_failed" = true ]; then
+            echo "❌ Required 'ios' workload failed to install. Failing the build."
+            exit 1
+          fi
+          if [ "$workload_failed" = true ]; then
+            echo "⚠️ One or more optional MAUI workloads failed to install."
+          fi
         fi
         dotnet workload list
 
