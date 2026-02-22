@@ -1,0 +1,4 @@
+.standalone-intake-layout {
+    background: var(--background);
+    min-height: 100vh;
+}

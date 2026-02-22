@@ -235,7 +235,7 @@ public class AuthService : IAuthService
         }
     }
 
-    private async Task LogLoginAttemptAsync(
+    private Task LogLoginAttemptAsync(
         string username,
         Guid? userId,
         bool success,
@@ -260,6 +260,7 @@ public class AuthService : IAuthService
         _context.LoginAttempts.Add(attempt);
 
         // Note: SaveChanges will be called by the caller
+        return Task.CompletedTask;
     }
 
     private static string GenerateSecureToken()

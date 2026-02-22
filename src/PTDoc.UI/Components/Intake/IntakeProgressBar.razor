@@ -1,0 +1,42 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<div class="intake-progress" data-testid="intake-progress">
+    <div class="intake-progress__labels">
+        @for (var index = 0; index < Steps.Length; index++)
+        {
+            var step = Steps[index];
+            var isActive = step == CurrentStep;
+            var isComplete = (int)step < (int)CurrentStep;
+            <span class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)">@Labels[index]</span>
+        }
+    </div>
+    <div class="intake-progress__track" aria-hidden="true">
+        <div class="intake-progress__fill" style="@GetProgressStyle()"></div>
+    </div>
+</div>
+
+@code {
+    private static readonly IntakeStep[] Steps =
+    {
+        IntakeStep.Demographics,
+        IntakeStep.PainAssessment,
+        IntakeStep.PainDetails,
+        IntakeStep.Review
+    };
+
+    private static readonly string[] Labels =
+    {
+        "Demographics",
+        "Pain Assessment",
+        "Pain Details",
+        "Review"
+    };
+
+    [Parameter, EditorRequired] public IntakeStep CurrentStep { get; set; }
+
+    private string GetProgressStyle()
+    {
+        var progress = ((int)CurrentStep + 1) / 4.0 * 100.0;
+        return $"width: {progress.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)}%;";
+    }
+}

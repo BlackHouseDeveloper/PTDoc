@@ -1,0 +1,57 @@
+.pain-progress {
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    gap: var(--spacing-2);
+    padding: var(--spacing-4);
+}
+
+.pain-progress__labels {
+    display: grid;
+    gap: var(--spacing-2);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pain-progress__labels span {
+    color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+    text-align: center;
+}
+
+.pain-progress__labels span.is-active {
+    color: var(--primary);
+}
+
+.pain-progress__labels span.is-complete {
+    color: var(--foreground);
+}
+
+.pain-progress__track {
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    border-radius: calc(var(--touch-target-mobile) / 2);
+    height: var(--spacing-2);
+    overflow: hidden;
+}
+
+.pain-progress__fill {
+    background: var(--primary);
+    height: 100%;
+    transition: width var(--transition-normal);
+}
+
+.pain-progress__fill--1 {
+    width: 25%;
+}
+
+.pain-progress__fill--2 {
+    width: 50%;
+}
+
+.pain-progress__fill--3 {
+    width: 75%;
+}
+
+.pain-progress__fill--4 {
+    width: 100%;
+}

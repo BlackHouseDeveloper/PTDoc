@@ -97,6 +97,9 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+  opacity: 0.8;
+  filter: none;
+  transition: opacity var(--transition-fast), filter var(--transition-fast);
 }
 
 /* Navigation text */
@@ -117,6 +120,11 @@
   color: var(--secondary-foreground);
   font-weight: var(--font-weight-semibold);
   box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1), 0px 1px 2px 0px rgba(0, 0, 0, 0.1);
+}
+
+.ptdoc-nav-item.active .ptdoc-nav-icon {
+  opacity: 1;
+  filter: brightness(0) invert(1);
 }
 
 /* Active indicator (vertical bar on right side) */

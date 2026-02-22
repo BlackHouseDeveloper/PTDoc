@@ -1,0 +1,56 @@
+<section class="intake-card">
+    <h2>Insurance &amp; Payer Information</h2>
+    <p class="intake-card__subtext">Please provide your insurance information (optional):</p>
+
+    <div class="intake-card__form-grid">
+        <label>Insurance Company Name
+            <input class="form-control" value="@InsuranceCompanyName" @oninput="(args) => InsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="e.g., Blue Cross Blue Shield" />
+        </label>
+
+        <label>Member ID / Policy Number
+            <input class="form-control" value="@MemberOrPolicyNumber" @oninput="(args) => MemberOrPolicyNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Your insurance member ID" />
+        </label>
+
+        <label>Group Number
+            <input class="form-control" value="@GroupNumber" @oninput="(args) => GroupNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Group number (if applicable)" />
+        </label>
+
+        <label>Payer Type
+            <select class="form-select" value="@PayerType" @onchange="(args) => PayerTypeChanged.InvokeAsync(args.Value?.ToString())">
+                <option value="">Select payer type</option>
+                <option>Commercial</option>
+                <option>Medicare</option>
+                <option>Medicaid</option>
+                <option>Workers&apos; Compensation</option>
+                <option>Self Pay</option>
+            </select>
+        </label>
+
+        <label>Insurance Coverage Type
+            <select class="form-select" value="@InsuranceCoverageType" @onchange="(args) => InsuranceCoverageTypeChanged.InvokeAsync(args.Value?.ToString())">
+                <option value="">Select coverage type</option>
+                <option>Primary</option>
+                <option>Secondary</option>
+                <option>Tertiary</option>
+            </select>
+        </label>
+    </div>
+
+    <div class="intake-card__tip">
+        <p><strong>Tip:</strong> Having your insurance information ready helps us verify your coverage and expedite your treatment.</p>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? InsuranceCompanyName { get; set; }
+    [Parameter] public string? MemberOrPolicyNumber { get; set; }
+    [Parameter] public string? GroupNumber { get; set; }
+    [Parameter] public string? PayerType { get; set; }
+    [Parameter] public string? InsuranceCoverageType { get; set; }
+
+    [Parameter] public EventCallback<string?> InsuranceCompanyNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> MemberOrPolicyNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> GroupNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> PayerTypeChanged { get; set; }
+    [Parameter] public EventCallback<string?> InsuranceCoverageTypeChanged { get; set; }
+}

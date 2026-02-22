@@ -65,7 +65,7 @@ public static class SyncEndpoints
         {
             // Log error server-side (NO PHI in logs)
             logger.LogError(ex, "Sync operation failed");
-            
+
             return Results.Problem(
                 detail: "An error occurred during synchronization. Please try again.",
                 statusCode: 500,
@@ -95,7 +95,7 @@ public static class SyncEndpoints
         {
             // Log error server-side (NO PHI in logs)
             logger.LogError(ex, "Push operation failed");
-            
+
             return Results.Problem(
                 detail: "An error occurred while pushing changes. Please try again.",
                 statusCode: 500,
@@ -126,7 +126,7 @@ public static class SyncEndpoints
         {
             // Log error server-side (NO PHI in logs)
             logger.LogError(ex, "Pull operation failed");
-            
+
             return Results.Problem(
                 detail: "An error occurred while pulling changes. Please try again.",
                 statusCode: 500,
@@ -154,7 +154,7 @@ public static class SyncEndpoints
         {
             // Log error server-side (NO PHI in logs)
             logger.LogError(ex, "Failed to retrieve sync status");
-            
+
             return Results.Problem(
                 detail: "An error occurred while retrieving sync status. Please try again.",
                 statusCode: 500,

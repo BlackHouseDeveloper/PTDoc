@@ -210,7 +210,7 @@ public class QuestPdfRenderer : IPdfRenderer
                     .FontSize(9)
                     .SemiBold();
             });
-            
+
             column.Item().PaddingTop(10).AlignCenter().Text(text =>
             {
                 text.DefaultTextStyle(TextStyle.Default.FontSize(9).FontColor(Colors.Grey.Darken1));

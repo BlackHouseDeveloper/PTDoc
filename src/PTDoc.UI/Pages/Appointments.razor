@@ -5,10 +5,8 @@
 <PageTitle>Appointments - PTDoc</PageTitle>
 
 <div class="appointments-page">
-    <AppointmentsPageHeader Title="Appointments" 
-                           Subtitle="Daily schedule management" 
-                           OnNewAppointment="HandleNewAppointment" />
-    
+    <GlobalPageHeader OnPrimaryAction="HandleNewAppointment" />
+
     <div class="appointments-content">
         <AppointmentsLeftColumn SelectedView="@selectedView"
                                OnViewChanged="HandleViewChanged"
@@ -44,6 +42,8 @@
     private AppointmentsFilter currentFilter = new();
     private bool isNewAppointmentModalOpen = false;
 
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
     private void HandleViewChanged(AppointmentsView view)
     {
         selectedView = view;
@@ -77,17 +77,7 @@
 
     private async Task HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
     {
-        // TODO: Implement actual appointment creation via API
-        Console.WriteLine($"Creating appointment for patient {formData.PatientId}");
-        Console.WriteLine($"Type: {formData.AppointmentType}, Date: {formData.AppointmentDate:yyyy-MM-dd}, Time: {formData.AppointmentTime}");
-        Console.WriteLine($"Duration: {formData.DurationMinutes} minutes, Clinician: {formData.ClinicianId}");
-        
-        // In a real app, you would call a service here:
-        // await AppointmentService.CreateAppointmentAsync(formData);
-        
-        // Show success notification (to be implemented)
-        // TODO: Add toast notification or success message
-        
+        _ = formData;
         await Task.CompletedTask;
     }
 

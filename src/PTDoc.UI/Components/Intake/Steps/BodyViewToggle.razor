@@ -1,0 +1,87 @@
+@using Microsoft.AspNetCore.Components.Web
+@using PTDoc.Core.Models
+
+<section class="body-view-toggle" data-testid="body-view-toggle">
+    <div class="body-view-toggle__tabs" role="tablist" aria-label="Body view selection">
+        <button
+            type="button"
+            role="tab"
+            aria-selected="@(Value == BodyView.Front)"
+            class="@GetTabClass(BodyView.Front)"
+            @onclick="() => SetViewAsync(BodyView.Front)"
+            @onkeydown="HandleTabKeyDownAsync">
+            Front View
+        </button>
+
+        <span class="body-view-toggle__indicator" aria-hidden="true">
+            <span class="@GetIndicatorDotClass()"></span>
+        </span>
+
+        <button
+            type="button"
+            role="tab"
+            aria-selected="@(Value == BodyView.Back)"
+            class="@GetTabClass(BodyView.Back)"
+            @onclick="() => SetViewAsync(BodyView.Back)"
+            @onkeydown="HandleTabKeyDownAsync">
+            Back View
+        </button>
+
+        <button
+            type="button"
+            class="body-view-toggle__reset"
+            @onclick="ResetSelectionAsync"
+            aria-label="Clear selected body regions"
+            title="Clear selected body regions">
+            ↻
+        </button>
+    </div>
+</section>
+
+@code {
+    [Parameter] public BodyView Value { get; set; } = BodyView.Front;
+    [Parameter] public EventCallback<BodyView> ValueChanged { get; set; }
+    [Parameter] public EventCallback OnResetRequested { get; set; }
+
+    private async Task HandleTabKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key is "ArrowLeft")
+        {
+            await SetViewAsync(BodyView.Front);
+            return;
+        }
+
+        if (args.Key is "ArrowRight")
+        {
+            await SetViewAsync(BodyView.Back);
+            return;
+        }
+
+        if (args.Key is "Enter" or " ")
+        {
+            await SetViewAsync(Value == BodyView.Front ? BodyView.Back : BodyView.Front);
+        }
+    }
+
+    private Task SetViewAsync(BodyView view)
+    {
+        return ValueChanged.HasDelegate ? ValueChanged.InvokeAsync(view) : Task.CompletedTask;
+    }
+
+    private Task ResetSelectionAsync()
+    {
+        return OnResetRequested.HasDelegate ? OnResetRequested.InvokeAsync() : Task.CompletedTask;
+    }
+
+    private string GetTabClass(BodyView view)
+    {
+        return view == Value ? "body-view-toggle__tab is-active" : "body-view-toggle__tab";
+    }
+
+    private string GetIndicatorDotClass()
+    {
+        return Value == BodyView.Front
+            ? "body-view-toggle__indicator-dot is-front"
+            : "body-view-toggle__indicator-dot is-back";
+    }
+}

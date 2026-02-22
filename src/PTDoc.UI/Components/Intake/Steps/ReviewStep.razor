@@ -1,0 +1,42 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="intake-step-shell" data-testid="review-step">
+    <h2>Review</h2>
+    <p>Confirm your details before submitting this intake.</p>
+
+    <div class="review-grid">
+        <div><strong>Full Name:</strong> @Display(State.FullName)</div>
+        <div><strong>Date of Birth:</strong> @(State.DateOfBirth?.ToString("d") ?? "Not provided")</div>
+        <div><strong>Email:</strong> @Display(State.EmailAddress)</div>
+        <div><strong>Phone:</strong> @Display(State.PhoneNumber)</div>
+        <div><strong>Emergency Contact:</strong> @Display(State.EmergencyContactName)</div>
+        <div><strong>Insurance:</strong> @Display(State.InsuranceCompanyName)</div>
+        <div><strong>Body Region:</strong> @Display(State.SelectedBodyRegion)</div>
+    </div>
+
+    @if (!State.HipaaAcknowledged)
+    {
+        <div class="intake-step-shell__warning">HIPAA acknowledgment is required before final submit.</div>
+    }
+
+    <p class="intake-step-shell__todo">TODO: Validate all required fields and add final submission lock behavior.</p>
+
+    <IntakeFooterActions
+        ShowBack="true"
+        PrimaryText="Submit Intake"
+        PrimaryTestId="submit-button"
+        PrimaryDisabled="@(!State.HipaaAcknowledged || State.IsSubmitting)"
+        OnBack="OnBack"
+        OnPrimary="OnSubmit" />
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+
+    private static string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Not provided" : value;
+    }
+}

@@ -1,0 +1,37 @@
+.intake-step-shell {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+}
+
+.intake-step-shell h2 {
+    color: var(--card-foreground);
+    font-size: var(--text-xl);
+    margin: 0;
+}
+
+.intake-step-shell p {
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
+.intake-step-shell label {
+    color: var(--card-foreground);
+    display: grid;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    gap: var(--spacing-2);
+    margin: 0;
+}
+
+.intake-step-shell__todo {
+    background: color-mix(in srgb, var(--info) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 24%, transparent);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-3);
+}

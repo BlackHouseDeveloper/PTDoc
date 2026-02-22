@@ -1,0 +1,122 @@
+@using PTDoc.UI.Components.Intake.Cards
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="demographics-step" data-testid="demographics-step">
+    <BasicInfoCard
+        FullName="@State.FullName"
+        DateOfBirth="@State.DateOfBirth"
+        EmailAddress="@State.EmailAddress"
+        PhoneNumber="@State.PhoneNumber"
+        ValidationErrors="@ValidationErrors"
+        EmergencyContactName="@State.EmergencyContactName"
+        EmergencyContactPhone="@State.EmergencyContactPhone"
+        FullNameChanged="OnFullNameChanged"
+        DateOfBirthChanged="OnDateOfBirthChanged"
+        EmailAddressChanged="OnEmailAddressChanged"
+        PhoneNumberChanged="OnPhoneNumberChanged"
+        EmergencyContactNameChanged="OnEmergencyContactNameChanged"
+        EmergencyContactPhoneChanged="OnEmergencyContactPhoneChanged" />
+
+    <InsurancePayerCard
+        InsuranceCompanyName="@State.InsuranceCompanyName"
+        MemberOrPolicyNumber="@State.MemberOrPolicyNumber"
+        GroupNumber="@State.GroupNumber"
+        PayerType="@State.PayerType"
+        InsuranceCoverageType="@State.InsuranceCoverageType"
+        InsuranceCompanyNameChanged="OnInsuranceCompanyNameChanged"
+        MemberOrPolicyNumberChanged="OnMemberOrPolicyNumberChanged"
+        GroupNumberChanged="OnGroupNumberChanged"
+        PayerTypeChanged="OnPayerTypeChanged"
+        InsuranceCoverageTypeChanged="OnInsuranceCoverageTypeChanged" />
+
+    <MedicalHistoryCard
+        HasCurrentMedications="@State.HasCurrentMedications"
+        HasOtherMedicalConditions="@State.HasOtherMedicalConditions"
+        UsesAssistiveDevices="@State.UsesAssistiveDevices"
+        HasPreviousSurgeriesOrInjuries="@State.HasPreviousSurgeriesOrInjuries"
+        MedicalHistoryNotes="@State.MedicalHistoryNotes"
+        HasCurrentMedicationsChanged="OnHasCurrentMedicationsChanged"
+        HasOtherMedicalConditionsChanged="OnHasOtherMedicalConditionsChanged"
+        UsesAssistiveDevicesChanged="OnUsesAssistiveDevicesChanged"
+        HasPreviousSurgeriesOrInjuriesChanged="OnHasPreviousSurgeriesOrInjuriesChanged"
+        MedicalHistoryNotesChanged="OnMedicalHistoryNotesChanged" />
+
+    <HipaaPrivacyNoticeCard
+        HipaaAcknowledged="@State.HipaaAcknowledged"
+        HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged" />
+
+    @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+    {
+        <div class="demographics-step__warning" role="alert" aria-live="assertive">@ValidationMessage</div>
+    }
+
+    <div class="demographics-step__actions">
+        <button type="button" class="btn btn-primary" @onclick="OnContinueClicked" data-testid="continue-button">Continue to Pain Assessment</button>
+    </div>
+
+    <p class="demographics-step__footer">Step 1 of 4 • 25% Complete</p>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public string? ValidationMessage { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private async Task UpdateStateAsync(Action update)
+    {
+        update();
+        State.IsDirty = true;
+
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
+
+    private Task OnFullNameChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.FullName = value);
+    }
+
+    private Task OnDateOfBirthChanged(DateTime? value)
+    {
+        return UpdateStateAsync(() => State.DateOfBirth = value);
+    }
+
+    private Task OnEmailAddressChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.EmailAddress = value);
+    }
+
+    private Task OnPhoneNumberChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.PhoneNumber = value);
+    }
+
+    private Task OnEmergencyContactNameChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.EmergencyContactName = value);
+    }
+
+    private Task OnEmergencyContactPhoneChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.EmergencyContactPhone = value);
+    }
+
+    private Task OnInsuranceCompanyNameChanged(string? value) => UpdateStateAsync(() => State.InsuranceCompanyName = value);
+    private Task OnMemberOrPolicyNumberChanged(string? value) => UpdateStateAsync(() => State.MemberOrPolicyNumber = value);
+    private Task OnGroupNumberChanged(string? value) => UpdateStateAsync(() => State.GroupNumber = value);
+    private Task OnPayerTypeChanged(string? value) => UpdateStateAsync(() => State.PayerType = value);
+    private Task OnInsuranceCoverageTypeChanged(string? value) => UpdateStateAsync(() => State.InsuranceCoverageType = value);
+
+    private Task OnHasCurrentMedicationsChanged(bool value) => UpdateStateAsync(() => State.HasCurrentMedications = value);
+    private Task OnHasOtherMedicalConditionsChanged(bool value) => UpdateStateAsync(() => State.HasOtherMedicalConditions = value);
+    private Task OnUsesAssistiveDevicesChanged(bool value) => UpdateStateAsync(() => State.UsesAssistiveDevices = value);
+    private Task OnHasPreviousSurgeriesOrInjuriesChanged(bool value) => UpdateStateAsync(() => State.HasPreviousSurgeriesOrInjuries = value);
+    private Task OnMedicalHistoryNotesChanged(string? value) => UpdateStateAsync(() => State.MedicalHistoryNotes = value);
+    private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() => State.HipaaAcknowledged = value);
+
+    private Task OnContinueClicked() => OnContinue.HasDelegate ? OnContinue.InvokeAsync() : Task.CompletedTask;
+}

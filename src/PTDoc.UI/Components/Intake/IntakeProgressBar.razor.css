@@ -1,0 +1,52 @@
+.intake-progress {
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    gap: var(--spacing-2);
+    padding: var(--spacing-4);
+}
+
+.intake-progress__labels {
+    display: grid;
+    gap: var(--spacing-2);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.intake-progress__labels span {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    text-align: center;
+}
+
+.intake-progress__labels span.is-active {
+    color: var(--secondary);
+}
+
+.intake-progress__labels span.is-complete {
+    color: var(--foreground);
+}
+
+.intake-progress__track {
+    background: color-mix(in srgb, var(--secondary) 20%, transparent);
+    border-radius: var(--radius-lg);
+    height: var(--spacing-2);
+    overflow: hidden;
+}
+
+.intake-progress__fill {
+    background: var(--secondary);
+    height: 100%;
+    transition: width var(--transition-normal);
+}
+
+:global(.dark) .intake-progress__labels span.is-active {
+    color: var(--secondary-foreground);
+}
+
+:global(.dark) .intake-progress__track {
+    background: color-mix(in srgb, var(--secondary-foreground) 20%, transparent);
+}
+
+:global(.dark) .intake-progress__fill {
+    background: var(--secondary-foreground);
+}

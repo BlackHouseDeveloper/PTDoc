@@ -1,0 +1,24 @@
+.pain-description-card {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-6);
+}
+
+.pain-description-card h2 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    margin: 0;
+}
+
+.pain-description-card p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+    margin: 0;
+    max-width: calc(var(--spacing-16) * 5);
+}

@@ -1,0 +1,25 @@
+@using PTDoc.Application.Configurations.Header
+@inherits GlobalPageHeaderBase
+
+<header class="global-page-header">
+    <div class="global-page-header-container">
+        <div class="global-page-header-title-group">
+            <h1 class="global-page-header-title">@EffectiveConfiguration.Title</h1>
+            @if (!string.IsNullOrWhiteSpace(EffectiveConfiguration.Subtitle))
+            {
+                <p class="global-page-header-subtitle">@EffectiveConfiguration.Subtitle</p>
+            }
+        </div>
+
+        @if (EffectiveConfiguration.ShowPrimaryAction && !string.IsNullOrWhiteSpace(EffectiveConfiguration.PrimaryActionText))
+        {
+            <button type="button" class="global-page-header-primary-action" @onclick="HandlePrimaryActionAsync">
+                <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>@EffectiveConfiguration.PrimaryActionText</span>
+            </button>
+        }
+    </div>
+</header>

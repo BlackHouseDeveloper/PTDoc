@@ -13,7 +13,7 @@ html {
     font-size: var(--font-size);
     font-family: var(--font-family-base);
 }
-
+ 
 body {
     margin: 0;
     min-height: 100vh;
@@ -110,10 +110,6 @@ label {
     font-weight: var(--font-weight-normal);
     line-height: var(--line-height-normal);
     margin: 0 0 var(--spacing-3);
-}
-
-.content {
-    padding-top: 1.1rem;
 }
 
 h1:focus {
@@ -325,14 +321,15 @@ h1:focus {
     position: relative;
 }
 
-/* Theme toggle on auth pages - keep icon at Primary color in both themes */
-.auth-shell .theme-toggle.login-theme-toggle .theme-icon {
+/* Login page theme toggle: keep icon color scoped to this control */
+.auth-shell .theme-toggle.login-theme-toggle,
+.auth-shell .theme-toggle.login-theme-toggle.btn,
+.auth-shell .theme-toggle.login-theme-toggle.btn-primary {
     color: var(--primary);
 }
 
-/* Keep Primary color in both light and dark themes for Login page */
-.dark .auth-shell .theme-toggle.login-theme-toggle .theme-icon {
-    color: var(--primary);
+.auth-shell .theme-toggle.login-theme-toggle .theme-icon {
+    color: inherit;
 }
 
 .auth-brand {
@@ -543,17 +540,22 @@ h1:focus {
     width: 16px;
     height: 16px;
     display: block;
-    color: var(--foreground);
+    background-color: currentColor;
+    color: inherit;
     transition: var(--transition-normal);
 }
 
 /* Light mode - show sun icon */
 .theme-toggle .theme-icon-light {
     display: block;
+    -webkit-mask: url('/_content/PTDoc.UI/images/DarkThemeIcon.svg') center / contain no-repeat;
+    mask: url('/_content/PTDoc.UI/images/DarkThemeIcon.svg') center / contain no-repeat;
 }
 
 .theme-toggle .theme-icon-dark {
     display: none;
+    -webkit-mask: url('/_content/PTDoc.UI/images/LightThemeIcon.svg') center / contain no-repeat;
+    mask: url('/_content/PTDoc.UI/images/LightThemeIcon.svg') center / contain no-repeat;
 }
 
 /* Dark mode - show moon icon */

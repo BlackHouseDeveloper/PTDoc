@@ -174,6 +174,14 @@ fi
 
 log_step "5" "8" "Building Solution (Release)"
 
+if dotnet restore "$SLN_FILE" -p:Configuration=Release >> "$LOG_FILE" 2>&1; then
+  log_success "Release restore completed successfully"
+else
+  log_error "Release restore failed"
+  log_error "Check log file: $LOG_FILE"
+  exit 1
+fi
+
 BUILD_CMD=(dotnet build "$SLN_FILE" --no-restore --configuration Release)
 if [ "${#BUILD_FLAGS[@]}" -gt 0 ]; then
   BUILD_CMD+=("${BUILD_FLAGS[@]}")

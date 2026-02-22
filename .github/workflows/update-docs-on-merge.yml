@@ -2,7 +2,7 @@ name: "Update Documentation on Merge"
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
 
@@ -11,10 +11,23 @@ permissions:
   pull-requests: read
 
 jobs:
+  preview-documentation-update:
+    name: Preview Documentation Update (Pre-merge)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Preview update scope
+        run: |
+          echo "Pre-merge documentation preview for PR #${{ github.event.pull_request.number }}"
+          echo "Title: ${{ github.event.pull_request.title }}"
+          echo "Author: @${{ github.event.pull_request.user.login }}"
+          echo "This run does not modify files."
+
   update-documentation:
     name: Update CHANGELOG and Documentation
     # Only run if PR was actually merged (not just closed)
-    if: github.event.pull_request.merged == true
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:

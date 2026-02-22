@@ -1,0 +1,31 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="intake-step-shell" data-testid="pain-details-step">
+    <h2>Pain Details</h2>
+    <p>Body-region specific pain details will be added in a follow-up pass.</p>
+
+    @if (!string.IsNullOrWhiteSpace(State.SelectedBodyRegion))
+    {
+        <div class="intake-step-shell__panel">
+            <h3>@State.SelectedBodyRegion Pain Details (TODO)</h3>
+            <p>TODO: Replace placeholder with structured pain map fields for the selected body region.</p>
+        </div>
+    }
+    else
+    {
+        <div class="intake-step-shell__helper">Select a body region in Pain Assessment to populate this panel.</div>
+    }
+
+    <IntakeFooterActions
+        ShowBack="true"
+        PrimaryText="Continue to Review"
+        PrimaryTestId="continue-button"
+        OnBack="OnBack"
+        OnPrimary="OnContinue" />
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+}

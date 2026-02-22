@@ -1,0 +1,381 @@
+@namespace PTDoc.UI.Components.Intake
+@using PTDoc.Application.Intake
+@using PTDoc.UI.Services
+@implements IDisposable
+
+@inject IIntakeInviteService InviteService
+@inject IIntakeSessionStore SessionStore
+@inject NavigationManager NavigationManager
+@inject ILogger<StandaloneIntakeAccessGate> Logger
+
+@switch (_gateState)
+{
+    case GateState.Checking:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__card">
+                <p class="intake-access-gate__loading">Verifying access&hellip;</p>
+            </div>
+        </div>
+        break;
+
+    case GateState.Authorized:
+        @ChildContent
+        break;
+
+    case GateState.RequestContact:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__card">
+                <h1 class="intake-access-gate__title">Verify Your Identity</h1>
+                <p class="intake-access-gate__subtitle">
+                    Enter your phone number or email address to receive a one-time access code.
+                </p>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <p class="intake-access-gate__error" role="alert">@_errorMessage</p>
+                }
+
+                <div class="intake-access-gate__field">
+                    <label for="intake-contact-input" class="intake-access-gate__label">Phone or Email</label>
+                    <input id="intake-contact-input"
+                           type="text"
+                           class="intake-access-gate__input"
+                           placeholder="e.g. 555-555-5555 or name@example.com"
+                           @bind="_contact"
+                           @bind:event="oninput"
+                           disabled="@_isBusy"
+                           autocomplete="off" />
+                </div>
+
+                <div class="intake-access-gate__channel-row">
+                    <label class="intake-access-gate__channel-option">
+                        <input type="radio"
+                               name="otp-channel"
+                               checked="@(_otpChannel == OtpChannel.Sms)"
+                               @onchange="@(() => _otpChannel = OtpChannel.Sms)"
+                               disabled="@_isBusy" />
+                        Text Message
+                    </label>
+                    <label class="intake-access-gate__channel-option">
+                        <input type="radio"
+                               name="otp-channel"
+                               checked="@(_otpChannel == OtpChannel.Email)"
+                               @onchange="@(() => _otpChannel = OtpChannel.Email)"
+                               disabled="@_isBusy" />
+                        Email
+                    </label>
+                </div>
+
+                <button class="intake-access-gate__btn intake-access-gate__btn--primary"
+                        @onclick="RequestOtpAsync"
+                        disabled="@(_isBusy || string.IsNullOrWhiteSpace(_contact))">
+                    @if (_isBusy)
+                    {
+                        <span>Sending&hellip;</span>
+                    }
+                    else
+                    {
+                        <span>Send Code</span>
+                    }
+                </button>
+            </div>
+        </div>
+        break;
+
+    case GateState.EnterOtp:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__card">
+                <h1 class="intake-access-gate__title">Enter Your Code</h1>
+                <p class="intake-access-gate__subtitle">
+                    A one-time code was sent to <strong>@_contact</strong>.
+                </p>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <p class="intake-access-gate__error" role="alert">@_errorMessage</p>
+                }
+
+                <div class="intake-access-gate__field">
+                    <label for="intake-otp-input" class="intake-access-gate__label">Access Code</label>
+                    <input id="intake-otp-input"
+                           type="text"
+                           inputmode="numeric"
+                           autocomplete="one-time-code"
+                           class="intake-access-gate__input intake-access-gate__input--otp"
+                           placeholder="123456"
+                           maxlength="6"
+                           @bind="_otpCode"
+                           @bind:event="oninput"
+                           disabled="@_isBusy" />
+                </div>
+
+                <button class="intake-access-gate__btn intake-access-gate__btn--primary"
+                        @onclick="VerifyOtpAsync"
+                        disabled="@(_isBusy || string.IsNullOrWhiteSpace(_otpCode))">
+                    @if (_isBusy)
+                    {
+                        <span>Verifying&hellip;</span>
+                    }
+                    else
+                    {
+                        <span>Verify Code</span>
+                    }
+                </button>
+
+                <button class="intake-access-gate__btn intake-access-gate__btn--link"
+                        @onclick="@(() => { _errorMessage = null; _gateState = GateState.RequestContact; })"
+                        disabled="@_isBusy">
+                    Use a different contact
+                </button>
+            </div>
+        </div>
+        break;
+
+    case GateState.SessionExpired:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__modal-overlay" role="dialog" aria-modal="true" aria-labelledby="session-expired-title">
+                <div class="intake-access-gate__modal">
+                    <h2 id="session-expired-title" class="intake-access-gate__title">Session Expired</h2>
+                    <p class="intake-access-gate__subtitle">
+                        Your intake session has expired for security. Please verify your identity to continue.
+                    </p>
+                    <button class="intake-access-gate__btn intake-access-gate__btn--primary"
+                            @onclick="StartVerification">
+                        Verify Again
+                    </button>
+                </div>
+            </div>
+        </div>
+        break;
+}
+
+@code {
+    private enum GateState { Checking, Authorized, RequestContact, EnterOtp, SessionExpired }
+
+    private static readonly TimeSpan FallbackTokenLifetime = TimeSpan.FromHours(2);
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private GateState _gateState = GateState.Checking;
+    private string _contact = string.Empty;
+    private OtpChannel _otpChannel = OtpChannel.Sms;
+    private string _otpCode = string.Empty;
+    private string? _errorMessage;
+    private bool _isBusy;
+    private System.Threading.Timer? _expiryTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAccessAsync();
+    }
+
+    private async Task CheckAccessAsync()
+    {
+        _gateState = GateState.Checking;
+
+        try
+        {
+            // 1. Check for an existing valid session token.
+            var session = await SessionStore.GetAsync();
+            if (session is not null)
+            {
+                if (session.ExpiresAt > DateTimeOffset.UtcNow)
+                {
+                    var isValid = await InviteService.ValidateAccessTokenAsync(session.Token);
+                    if (isValid)
+                    {
+                        ScheduleExpiryCheck(session.ExpiresAt);
+                        _gateState = GateState.Authorized;
+                        return;
+                    }
+                }
+
+                // Session token expired or invalid — clear it and prompt re-verification.
+                await SessionStore.ClearAsync();
+                _gateState = GateState.SessionExpired;
+                return;
+            }
+
+            // 2. Check for a signed invite token in the URL query string.
+            var inviteToken = GetQueryParam(NavigationManager.Uri, "invite");
+            if (!string.IsNullOrEmpty(inviteToken))
+            {
+                var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
+                if (result.IsValid && result.AccessToken is not null)
+                {
+                    var token = new IntakeSessionToken(
+                        result.AccessToken,
+                        result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
+
+                    await SessionStore.SaveAsync(token);
+                    ScheduleExpiryCheck(token.ExpiresAt);
+                    _gateState = GateState.Authorized;
+                    return;
+                }
+            }
+
+            // 3. No valid token found — prompt identity verification.
+            _gateState = GateState.RequestContact;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Intake access gate check failed.");
+            _gateState = GateState.RequestContact;
+        }
+    }
+
+    private async Task RequestOtpAsync()
+    {
+        _errorMessage = null;
+        _isBusy = true;
+
+        try
+        {
+            var sent = await InviteService.SendOtpAsync(_contact, _otpChannel);
+            if (sent)
+            {
+                _otpCode = string.Empty;
+                _gateState = GateState.EnterOtp;
+            }
+            else
+            {
+                _errorMessage = "Unable to send the code. Please check your contact information and try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send OTP for intake access.");
+            _errorMessage = "An error occurred. Please try again.";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task VerifyOtpAsync()
+    {
+        _errorMessage = null;
+        _isBusy = true;
+
+        try
+        {
+            var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_contact, _otpCode);
+            if (result.IsValid && result.AccessToken is not null)
+            {
+                var token = new IntakeSessionToken(
+                    result.AccessToken,
+                    result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
+
+                await SessionStore.SaveAsync(token);
+                ScheduleExpiryCheck(token.ExpiresAt);
+                _gateState = GateState.Authorized;
+            }
+            else
+            {
+                _errorMessage = result.Error ?? "Verification failed. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "OTP verification failed for intake access.");
+            _errorMessage = "An error occurred during verification. Please try again.";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void StartVerification()
+    {
+        _errorMessage = null;
+        _otpCode = string.Empty;
+        _gateState = GateState.RequestContact;
+    }
+
+    private void ScheduleExpiryCheck(DateTimeOffset expiresAt)
+    {
+        _expiryTimer?.Dispose();
+
+        var delay = expiresAt - DateTimeOffset.UtcNow;
+        if (delay <= TimeSpan.Zero)
+        {
+            OnTokenExpiredCallback(null);
+            return;
+        }
+
+        _expiryTimer = new System.Threading.Timer(
+            OnTokenExpiredCallback,
+            null,
+            delay,
+            System.Threading.Timeout.InfiniteTimeSpan);
+    }
+
+    private void OnTokenExpiredCallback(object? _)
+    {
+        _ = HandleTokenExpiredAsync().ContinueWith(
+            t => Logger.LogError(t.Exception, "Unhandled exception in token expiry handler."),
+            System.Threading.CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+    }
+
+    private async Task HandleTokenExpiredAsync()
+    {
+        try
+        {
+            await SessionStore.ClearAsync();
+            await InvokeAsync(() =>
+            {
+                _gateState = GateState.SessionExpired;
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Token expiry UI update failed.");
+        }
+    }
+
+    private static string? GetQueryParam(string uri, string key)
+    {
+        string query;
+
+        try
+        {
+            query = new Uri(uri).Query;
+        }
+        catch (UriFormatException)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(query))
+        {
+            return null;
+        }
+
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0)
+            {
+                continue;
+            }
+
+            var k = Uri.UnescapeDataString(part[..eq]);
+            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return Uri.UnescapeDataString(part[(eq + 1)..]);
+            }
+        }
+
+        return null;
+    }
+
+    public void Dispose()
+    {
+        _expiryTimer?.Dispose();
+    }
+}

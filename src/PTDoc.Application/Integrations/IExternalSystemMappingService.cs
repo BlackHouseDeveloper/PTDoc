@@ -15,7 +15,7 @@ public interface IExternalSystemMappingService
         string externalSystemName,
         string externalId,
         CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Get existing mapping by external system and ID.
     /// </summary>
@@ -23,7 +23,7 @@ public interface IExternalSystemMappingService
         string externalSystemName,
         string externalId,
         CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Get all mappings for a patient.
     /// </summary>

@@ -11,13 +11,13 @@ public interface ISignedEntity
     /// Null if not signed. Once set, the entity becomes immutable.
     /// </summary>
     string? SignatureHash { get; set; }
-    
+
     /// <summary>
     /// UTC timestamp when the entity was signed.
     /// Null if not signed.
     /// </summary>
     DateTime? SignedUtc { get; set; }
-    
+
     /// <summary>
     /// User ID of the person who signed this entity.
     /// Null if not signed.

@@ -67,11 +67,11 @@ public class SyncConflictResolutionTests
 
         Assert.Single(queueItems); // Should only have one item
         Assert.Equal(SyncOperation.Update, queueItems[0].Operation); // Operation updated
-        
+
         // Timestamp should be updated (or at least not before the original)
-        Assert.True(queueItems[0].EnqueuedAt >= firstEnqueuedAt, 
+        Assert.True(queueItems[0].EnqueuedAt >= firstEnqueuedAt,
             "EnqueuedAt should be updated when re-enqueueing");
-        
+
         // Verify operation was actually updated
         Assert.NotEqual(firstOperation, queueItems[0].Operation);
     }

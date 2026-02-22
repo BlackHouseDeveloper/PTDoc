@@ -1,0 +1,84 @@
+.body-view-toggle {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-4) var(--spacing-5);
+}
+
+.body-view-toggle__tabs {
+    align-items: center;
+    display: grid;
+    gap: var(--spacing-3);
+    grid-template-columns: 1fr auto 1fr auto;
+}
+
+.body-view-toggle__tab {
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: var(--text-base);
+    min-height: var(--touch-target-mobile);
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+.body-view-toggle__tab:hover {
+    background: color-mix(in srgb, var(--tertiary) 75%, transparent);
+}
+
+.body-view-toggle__tab.is-active {
+    color: var(--primary);
+}
+
+.body-view-toggle__tab:focus-visible,
+.body-view-toggle__reset:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.body-view-toggle__indicator {
+    align-items: center;
+    background: var(--switch-background);
+    border-radius: calc(var(--touch-target-mobile) / 2);
+    display: inline-flex;
+    height: var(--touch-target-mobile);
+    justify-content: flex-start;
+    padding: var(--spacing-1);
+    width: var(--touch-target-mobile);
+}
+
+.body-view-toggle__indicator-dot {
+    background: var(--card);
+    border-radius: 999rem;
+    display: block;
+    height: var(--spacing-4);
+    transition: transform var(--transition-normal);
+    width: var(--spacing-4);
+}
+
+.body-view-toggle__indicator-dot.is-front {
+    transform: translateX(0);
+}
+
+.body-view-toggle__indicator-dot.is-back {
+    transform: translateX(var(--spacing-2));
+}
+
+.body-view-toggle__reset {
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--text-lg);
+    height: var(--touch-target-mobile);
+    justify-content: center;
+    width: var(--touch-target-mobile);
+}
+
+.body-view-toggle__reset:hover {
+    background: color-mix(in srgb, var(--tertiary) 75%, transparent);
+}

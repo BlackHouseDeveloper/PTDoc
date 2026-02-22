@@ -8,6 +8,12 @@
 3. **Use existing patterns** - prefer reusing over inventing new approaches
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
+6. **File placement first** - always consult `architect.md` for file placement; if unavailable, use `docs/ARCHITECTURE.md`
+
+**Build/Test Execution Policy (Session Preference):**
+- Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
+- Ask the user to run builds/tests and provide output.
+- Use provided build/test output to drive fixes and iteration.
 
 **Reference Docs Only When Relevant**
 - Do NOT open/cite every doc for every task
@@ -179,7 +185,7 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 - Reusable components → `PTDoc.UI/Components/`
 - Platform-specific → `PTDoc.Web/` or `PTDoc.Maui/`
 - DTOs → `PTDoc.Application/DTOs/`
-- Domain entities → `PTDoc.Core/Models/`
+- Domain entities/models/enums/value objects → `PTDoc.Core/Models/`
 - Services interfaces → `PTDoc.Application/Services/`
 - Services implementations → `PTDoc.Infrastructure/Services/`
 

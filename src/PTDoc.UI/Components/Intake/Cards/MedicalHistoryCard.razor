@@ -1,0 +1,44 @@
+<section class="intake-card">
+    <h2>Medical History</h2>
+    <p class="intake-card__subtext">Please select all that apply to your current medical situation:</p>
+
+    <div class="intake-card__checks">
+        <label>
+            <input type="checkbox" class="form-check-input" checked="@HasCurrentMedications" @onchange="(args) => HasCurrentMedicationsChanged.InvokeAsync((bool)(args.Value ?? false))" />
+            <span>Current Medications</span>
+        </label>
+
+        <label>
+            <input type="checkbox" class="form-check-input" checked="@HasOtherMedicalConditions" @onchange="(args) => HasOtherMedicalConditionsChanged.InvokeAsync((bool)(args.Value ?? false))" />
+            <span>Other Medical Conditions</span>
+        </label>
+
+        <label>
+            <input type="checkbox" class="form-check-input" checked="@UsesAssistiveDevices" @onchange="(args) => UsesAssistiveDevicesChanged.InvokeAsync((bool)(args.Value ?? false))" />
+            <span>Assistive Devices</span>
+        </label>
+
+        <label>
+            <input type="checkbox" class="form-check-input" checked="@HasPreviousSurgeriesOrInjuries" @onchange="(args) => HasPreviousSurgeriesOrInjuriesChanged.InvokeAsync((bool)(args.Value ?? false))" />
+            <span>Previous Surgeries or Injuries</span>
+        </label>
+    </div>
+
+    <label class="intake-card__notes">Notes (optional)
+        <textarea class="form-control" value="@MedicalHistoryNotes" @oninput="(args) => MedicalHistoryNotesChanged.InvokeAsync(args.Value?.ToString())"></textarea>
+    </label>
+</section>
+
+@code {
+    [Parameter] public bool HasCurrentMedications { get; set; }
+    [Parameter] public bool HasOtherMedicalConditions { get; set; }
+    [Parameter] public bool UsesAssistiveDevices { get; set; }
+    [Parameter] public bool HasPreviousSurgeriesOrInjuries { get; set; }
+    [Parameter] public string? MedicalHistoryNotes { get; set; }
+
+    [Parameter] public EventCallback<bool> HasCurrentMedicationsChanged { get; set; }
+    [Parameter] public EventCallback<bool> HasOtherMedicalConditionsChanged { get; set; }
+    [Parameter] public EventCallback<bool> UsesAssistiveDevicesChanged { get; set; }
+    [Parameter] public EventCallback<bool> HasPreviousSurgeriesOrInjuriesChanged { get; set; }
+    [Parameter] public EventCallback<string?> MedicalHistoryNotesChanged { get; set; }
+}

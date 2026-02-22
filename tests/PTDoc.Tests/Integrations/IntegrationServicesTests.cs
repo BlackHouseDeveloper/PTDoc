@@ -112,7 +112,7 @@ public class IntegrationServicesTests
         await context.SaveChangesAsync(); // This succeeds in InMemory
         var count = await context.ExternalSystemMappings
             .CountAsync(m => m.ExternalSystemName == "Wibbi" && m.ExternalId == "wibbi-123");
-        
+
         // Document the difference: InMemory allows duplicates (count == 2)
         // Real SQLite would throw DbUpdateException on the second SaveChangesAsync
         Assert.Equal(2, count);

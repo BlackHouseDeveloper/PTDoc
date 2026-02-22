@@ -1,0 +1,47 @@
+@using PTDoc.UI.Components.Intake.Models
+
+<div class="pain-progress" data-testid="pain-progress">
+    <div class="pain-progress__labels">
+        @for (var index = 0; index < _steps.Length; index++)
+        {
+            var step = _steps[index];
+            var isActive = step == CurrentStep;
+            var isComplete = (int)step < (int)CurrentStep;
+            <span class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)">@_labels[index]</span>
+        }
+    </div>
+    <div class="pain-progress__track" aria-hidden="true">
+        <div class="@GetFillClass()"></div>
+    </div>
+</div>
+
+@code {
+    private readonly IntakeStep[] _steps =
+    {
+        IntakeStep.Demographics,
+        IntakeStep.PainAssessment,
+        IntakeStep.PainDetails,
+        IntakeStep.Review
+    };
+
+    private readonly string[] _labels =
+    {
+        "Demographics",
+        "Pain Assessment",
+        "Pain Details",
+        "Review"
+    };
+
+    [Parameter, EditorRequired] public IntakeStep CurrentStep { get; set; }
+
+    private string GetFillClass()
+    {
+        return CurrentStep switch
+        {
+            IntakeStep.Demographics => "pain-progress__fill pain-progress__fill--1",
+            IntakeStep.PainAssessment => "pain-progress__fill pain-progress__fill--2",
+            IntakeStep.PainDetails => "pain-progress__fill pain-progress__fill--3",
+            _ => "pain-progress__fill pain-progress__fill--4"
+        };
+    }
+}

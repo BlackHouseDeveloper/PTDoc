@@ -124,7 +124,7 @@ public class SyncEngine : ISyncEngine
         };
     }
 
-    public async Task<PullResult> PullAsync(DateTime? sinceUtc = null, CancellationToken cancellationToken = default)
+    public Task<PullResult> PullAsync(DateTime? sinceUtc = null, CancellationToken cancellationToken = default)
     {
         var conflicts = new List<SyncConflict>();
         var errors = new List<string>();
@@ -137,7 +137,7 @@ public class SyncEngine : ISyncEngine
 
         // TODO: Implement actual server pull logic when server endpoints are available
 
-        return new PullResult
+        return Task.FromResult(new PullResult
         {
             TotalPulled = 0,
             AppliedCount = appliedCount,
@@ -145,7 +145,7 @@ public class SyncEngine : ISyncEngine
             ConflictCount = conflicts.Count,
             Conflicts = conflicts,
             Errors = errors
-        };
+        });
     }
 
     public async Task EnqueueAsync(string entityType, Guid entityId, SyncOperation operation, CancellationToken cancellationToken = default)

@@ -1,0 +1,104 @@
+@using Microsoft.AspNetCore.Components.Web
+@using PTDoc.Core.Models
+@using System.Globalization
+
+<section class="body-svg-selector" data-testid="body-svg-selector">
+    <div class="body-svg-selector__canvas">
+        <svg viewBox="0 0 748.79999 711.59998" class="body-svg-selector__svg" xmlns="http://www.w3.org/2000/svg" aria-label="Body pain region selector">
+            @foreach (var region in RegionsForView)
+            {
+                if (RegionPaths.TryGetValue(region, out var pathData))
+                {
+                    var isSelected = _selectedRegions.Contains(region);
+                    <path
+                        d="@pathData"
+                        id="@BodyRegionMap.SvgRegionIds[region]"
+                        class="@(isSelected ? "body-svg-selector__region is-selected" : "body-svg-selector__region")"
+                        role="button"
+                        tabindex="0"
+                        aria-label="@GetAriaLabel(region)"
+                        aria-pressed="@isSelected"
+                        @onclick="() => ToggleRegionAsync(region)"
+                        @onkeydown="@(args => HandleRegionKeyDownAsync(region, args))" />
+                }
+            }
+        </svg>
+    </div>
+    <p class="body-svg-selector__viewing">Viewing: <span>@View</span></p>
+</section>
+
+@code {
+    [Parameter] public BodyView View { get; set; } = BodyView.Front;
+    [Parameter] public IReadOnlyCollection<BodyRegion> SelectedRegions { get; set; } = Array.Empty<BodyRegion>();
+    [Parameter] public EventCallback<HashSet<BodyRegion>> SelectedRegionsChanged { get; set; }
+
+    private HashSet<BodyRegion> _selectedRegions = new();
+
+    private IReadOnlyDictionary<BodyRegion, string> RegionPaths => BodySvgPathProvider.GetPathsForView(View);
+
+    private IReadOnlyCollection<BodyRegion> RegionsForView =>
+        View == BodyView.Front ? BodyRegionMap.FrontRegions.ToArray() : BodyRegionMap.BackRegions.ToArray();
+
+    protected override void OnParametersSet()
+    {
+        _selectedRegions = SelectedRegions.ToHashSet();
+    }
+
+    private async Task ToggleRegionAsync(BodyRegion region)
+    {
+        var updated = _selectedRegions.ToHashSet();
+
+        if (!updated.Add(region))
+        {
+            updated.Remove(region);
+        }
+
+        _selectedRegions = updated;
+
+        if (SelectedRegionsChanged.HasDelegate)
+        {
+            await SelectedRegionsChanged.InvokeAsync(updated);
+        }
+    }
+
+    private Task HandleRegionKeyDownAsync(BodyRegion region, KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            return ToggleRegionAsync(region);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private string GetAriaLabel(BodyRegion region)
+    {
+        if (!BodyRegionMap.SvgRegionIds.TryGetValue(region, out var idValue))
+        {
+            return region.ToString();
+        }
+
+        var parts = idValue.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return region.ToString();
+        }
+
+        var side = parts[^1].Equals("front", StringComparison.OrdinalIgnoreCase) ? "Front" : "Back";
+        var content = parts.Take(parts.Length - 1).ToList();
+
+        var lateral = content.FirstOrDefault(part => part is "left" or "right");
+        content.Remove("left");
+        content.Remove("right");
+
+        var titleContent = string.Join(' ', content.Select(part => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(part)));
+
+        if (!string.IsNullOrWhiteSpace(lateral))
+        {
+            var lateralTitle = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(lateral);
+            return $"{lateralTitle} {titleContent} – {side}";
+        }
+
+        return $"{titleContent} – {side}";
+    }
+}
