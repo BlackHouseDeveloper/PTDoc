@@ -1,9 +1,2 @@
-namespace PTDoc.Application.Services;
-
-/// <summary>Provides secure client-side storage for the short-lived intake session access token.</summary>
-public interface IIntakeSessionStore
-{
-    Task<IntakeSessionToken?> GetAsync(CancellationToken cancellationToken = default);
-    Task SaveAsync(IntakeSessionToken token, CancellationToken cancellationToken = default);
-    Task ClearAsync(CancellationToken cancellationToken = default);
-}
+// Moved to PTDoc.Application.Intake — see src/PTDoc.Application/Intake/IIntakeSessionStore.cs
+// IntakeSessionToken moved to PTDoc.UI.Services — see src/PTDoc.UI/Services/IntakeSessionToken.cs

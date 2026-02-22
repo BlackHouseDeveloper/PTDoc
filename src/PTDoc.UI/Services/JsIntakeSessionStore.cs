@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.JSInterop;
-using PTDoc.Application.Services;
 
 namespace PTDoc.UI.Services;
 

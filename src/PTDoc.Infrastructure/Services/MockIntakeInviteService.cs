@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using PTDoc.Application.Services;
+using PTDoc.Application.Intake;
 
 namespace PTDoc.Infrastructure.Services;
 
