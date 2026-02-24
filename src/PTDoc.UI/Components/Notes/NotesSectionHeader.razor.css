@@ -1,0 +1,23 @@
+.notes-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    width: 100%;
+}
+
+.notes-section-header-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 24px;
+    color: var(--foreground);
+}
+
+.notes-section-header-meta {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: 20px;
+    color: var(--muted-foreground);
+}

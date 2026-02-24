@@ -1,14 +1,25 @@
 @using PTDoc.Application.Configurations.Header
 @inherits GlobalPageHeaderBase
 
-<header class="global-page-header">
+<header class="global-page-header" data-testid="@EffectiveTestId">
     <div class="global-page-header-container">
-        <div class="global-page-header-title-group">
-            <h1 class="global-page-header-title">@EffectiveConfiguration.Title</h1>
-            @if (!string.IsNullOrWhiteSpace(EffectiveConfiguration.Subtitle))
+        <div class="global-page-header-leading-group">
+            @if (EffectiveShowBackButton)
             {
-                <p class="global-page-header-subtitle">@EffectiveConfiguration.Subtitle</p>
+                <button type="button" class="global-page-header-back-button" @onclick="HandleBackNavigationAsync" aria-label="@EffectiveBackButtonAriaLabel">
+                    <svg class="global-page-header-back-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
             }
+
+            <div class="global-page-header-title-group">
+                <h1 class="global-page-header-title">@EffectiveConfiguration.Title</h1>
+                @if (!string.IsNullOrWhiteSpace(EffectiveConfiguration.Subtitle))
+                {
+                    <p class="global-page-header-subtitle">@EffectiveConfiguration.Subtitle</p>
+                }
+            </div>
         </div>
 
         @if (EffectiveConfiguration.ShowPrimaryAction && !string.IsNullOrWhiteSpace(EffectiveConfiguration.PrimaryActionText))

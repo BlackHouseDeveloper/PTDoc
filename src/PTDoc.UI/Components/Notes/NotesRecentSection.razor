@@ -1,0 +1,36 @@
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="notes-recent-section">
+    <NotesSectionHeader Title="Recent Notes" MetaText="@($"{Items.Count} notes")" />
+
+    @if (Items.Count == 0)
+    {
+        <div class="notes-recent-empty">
+            <p class="notes-recent-empty-title">No notes found</p>
+            <p class="notes-recent-empty-subtitle">Try adjusting your search or filters.</p>
+        </div>
+    }
+    else
+    {
+        <div class="notes-recent-list">
+            @foreach (var item in Items)
+            {
+                <NoteCard
+                    Note="item"
+                    OnOpen="OnOpen"
+                    OnView="OnView"
+                    OnEdit="OnEdit"
+                    OnDownloadPdf="OnDownloadPdf"
+                />
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<NoteListItemVm> Items { get; set; } = Array.Empty<NoteListItemVm>();
+    [Parameter] public EventCallback<NoteListItemVm> OnOpen { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnEdit { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnDownloadPdf { get; set; }
+}

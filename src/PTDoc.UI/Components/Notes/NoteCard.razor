@@ -1,0 +1,144 @@
+@using PTDoc.UI.Components.Notes.Models
+
+<article class="note-card"
+         data-testid="@($"note-card-{Note.Id}")"
+         role="button"
+         tabindex="0"
+         aria-label="Open @Note.NoteType for @Note.PatientName"
+         @onclick="HandleOpen"
+         @onkeydown="HandleKeyDown">
+    <div class="note-card-header">
+        <div class="note-card-patient-row">
+            <svg class="note-card-patient-icon @GetPatientIconClass()" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M8 13.3333C10.9455 13.3333 13.3333 10.9455 13.3333 8C13.3333 5.05448 10.9455 2.66666 8 2.66666C5.05448 2.66666 2.66666 5.05448 2.66666 8C2.66666 10.9455 5.05448 13.3333 8 13.3333Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M8 10.6667C9.47276 10.6667 10.6667 9.47276 10.6667 8C10.6667 6.52724 9.47276 5.33333 8 5.33333C6.52724 5.33333 5.33333 6.52724 5.33333 8C5.33333 9.47276 6.52724 10.6667 8 10.6667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="note-card-patient-content">
+                <p class="note-card-patient-name">@Note.PatientName</p>
+                <p class="note-card-patient-id">ID: @Note.PatientId</p>
+            </div>
+        </div>
+
+        <StatusBadge Text="@GetDisplayStatus()" Variant="@GetStatusVariant()" />
+    </div>
+
+    <div class="note-card-body">
+        <p class="note-card-note-type">@Note.NoteType</p>
+        <p class="note-card-summary">@Note.Summary</p>
+
+        @if (Note.CptCodes.Count > 0)
+        {
+            <div class="note-card-cpt-row">
+                <p class="note-card-cpt-label">CPT:</p>
+                <div class="note-card-cpt-list">
+                    @foreach (var cptCode in Note.CptCodes)
+                    {
+                        <span class="note-card-cpt-chip">@cptCode</span>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="note-card-meta-row">
+            <div class="note-card-date-row">
+                <svg class="note-card-date-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M9.99984 2H1.99984C1.44755 2 0.99984 2.44772 0.99984 3V10C0.99984 10.5523 1.44755 11 1.99984 11H9.99984C10.5521 11 10.9998 10.5523 10.9998 10V3C10.9998 2.44772 10.5521 2 9.99984 2Z" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M8.5 1V3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M3.5 1V3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M1 5.5H11" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <p class="note-card-date">@Note.CreatedDate.ToString("MMM d, yyyy")</p>
+            </div>
+            <p class="note-card-author">by @Note.CreatedBy</p>
+        </div>
+    </div>
+
+    <div class="note-card-divider"></div>
+
+    <div class="note-card-actions" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+        <button type="button" class="note-card-action-button" @onclick="() => OnView.InvokeAsync(Note)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M1.33333 8C1.33333 8 3.33333 3.33333 8 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8 12.6667C3.33333 12.6667 1.33333 8 1.33333 8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M8 9.75C8.9665 9.75 9.75 8.9665 9.75 8C9.75 7.0335 8.9665 6.25 8 6.25C7.0335 6.25 6.25 7.0335 6.25 8C6.25 8.9665 7.0335 9.75 8 9.75Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>View</span>
+        </button>
+
+        <button type="button" class="note-card-action-button" @onclick="() => OnEdit.InvokeAsync(Note)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M7.33333 2H2.66667C2.31305 2 1.97391 2.14048 1.72386 2.39052C1.47381 2.64057 1.33333 2.97971 1.33333 3.33333V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31305 14.6667 2.66667 14.6667H12.6667C13.0203 14.6667 13.3594 14.5262 13.6095 14.2761C13.8595 14.0261 14 13.687 14 13.3333V8.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M13 1.66667C13.2652 1.40146 13.6249 1.25244 14 1.25244C14.3751 1.25244 14.7348 1.40146 15 1.66667C15.2652 1.93189 15.4142 2.29152 15.4142 2.66667C15.4142 3.04181 15.2652 3.40146 15 3.66667L8 10.6667L5.33333 11.3333L6 8.66667L13 1.66667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Edit</span>
+        </button>
+
+        <button type="button" class="note-card-action-button" @onclick="() => OnDownloadPdf.InvokeAsync(Note)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M14 10V12.6667C14 13.0203 13.8595 13.3594 13.6095 13.6095C13.3594 13.8595 13.0203 14 12.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V10" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M4.66667 6.66667L8 10L11.3333 6.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M8 10V2" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>PDF</span>
+        </button>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public NoteListItemVm Note { get; set; } = null!;
+    [Parameter] public EventCallback<NoteListItemVm> OnOpen { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnEdit { get; set; }
+    [Parameter] public EventCallback<NoteListItemVm> OnDownloadPdf { get; set; }
+
+    private Task HandleOpen()
+    {
+        return OnOpen.InvokeAsync(Note);
+    }
+
+    private Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            return HandleOpen();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private BadgeVariant GetStatusVariant()
+    {
+        if (Note.NeedsAttention)
+        {
+            return BadgeVariant.Destructive;
+        }
+
+        return Note.Status switch
+        {
+            "Draft" => BadgeVariant.Warning,
+            "In Review" => BadgeVariant.Info,
+            "Submitted" => BadgeVariant.Success,
+            _ => BadgeVariant.Default
+        };
+    }
+
+    private string GetDisplayStatus()
+    {
+        return Note.NeedsAttention ? "Needs Attention" : Note.Status;
+    }
+
+    private string GetPatientIconClass()
+    {
+        if (Note.NeedsAttention)
+        {
+            return "note-card-patient-icon-destructive";
+        }
+
+        return Note.Status switch
+        {
+            "Draft" => "note-card-patient-icon-warning",
+            "In Review" => "note-card-patient-icon-info",
+            "Submitted" => "note-card-patient-icon-success",
+            _ => "note-card-patient-icon-default"
+        };
+    }
+}

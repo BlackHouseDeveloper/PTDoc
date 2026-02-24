@@ -1,0 +1,112 @@
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="notes-filter" data-testid="notes-filter">
+    <div class="notes-filter-search-row">
+        <svg class="notes-filter-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <input
+            type="text"
+            class="notes-filter-search-input"
+            placeholder="Search notes, patients, or content..."
+            value="@State.SearchQuery"
+            @oninput="HandleSearchInput"
+            aria-label="Search notes"
+        />
+    </div>
+
+    <div class="notes-filter-fields">
+        <div class="notes-filter-label-row">
+            <svg class="notes-filter-label-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M2 3.33331H14L9.33333 8.66665V12.6666L6.66667 11.3333V8.66665L2 3.33331Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <p class="notes-filter-label-text">Filters</p>
+        </div>
+
+        <div class="notes-filter-grid">
+            <div class="notes-filter-field">
+                <label class="notes-filter-field-label" for="notes-filter-note-type">Note Type</label>
+                <select id="notes-filter-note-type" class="notes-filter-select" value="@State.NoteType" @onchange="HandleNoteTypeChange">
+                    <option value="all">All Types</option>
+                    @foreach (var noteType in NoteTypes)
+                    {
+                        <option value="@noteType">@noteType</option>
+                    }
+                </select>
+            </div>
+
+            <div class="notes-filter-field">
+                <label class="notes-filter-field-label" for="notes-filter-status">Status</label>
+                <select id="notes-filter-status" class="notes-filter-select" value="@State.Status" @onchange="HandleStatusChange">
+                    <option value="all">All Status</option>
+                    @foreach (var status in Statuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </div>
+
+            <div class="notes-filter-field">
+                <label class="notes-filter-field-label" for="notes-filter-patient">Patient</label>
+                <select id="notes-filter-patient" class="notes-filter-select" value="@State.Patient" @onchange="HandlePatientChange">
+                    <option value="all">All Patients</option>
+                    @foreach (var patient in Patients)
+                    {
+                        <option value="@patient">@patient</option>
+                    }
+                </select>
+            </div>
+
+            <div class="notes-filter-field">
+                <label class="notes-filter-field-label" for="notes-filter-date-range">Date Range</label>
+                <select id="notes-filter-date-range" class="notes-filter-select" value="@State.DateRange" @onchange="HandleDateRangeChange">
+                    <option value="all">All Dates</option>
+                    <option value="today">Today</option>
+                    <option value="week">Past Week</option>
+                    <option value="month">Past Month</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public NotesFilterState State { get; set; } = new();
+    [Parameter] public IReadOnlyList<string> NoteTypes { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyList<string> Patients { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyList<string> Statuses { get; set; } = Array.Empty<string>();
+    [Parameter, EditorRequired] public EventCallback<NotesFilterState> OnStateChanged { get; set; }
+
+    private Task HandleSearchInput(ChangeEventArgs e)
+    {
+        return UpdateState(state => state.SearchQuery = e.Value?.ToString() ?? string.Empty);
+    }
+
+    private Task HandleNoteTypeChange(ChangeEventArgs e)
+    {
+        return UpdateState(state => state.NoteType = e.Value?.ToString() ?? "all");
+    }
+
+    private Task HandleStatusChange(ChangeEventArgs e)
+    {
+        return UpdateState(state => state.Status = e.Value?.ToString() ?? "all");
+    }
+
+    private Task HandlePatientChange(ChangeEventArgs e)
+    {
+        return UpdateState(state => state.Patient = e.Value?.ToString() ?? "all");
+    }
+
+    private Task HandleDateRangeChange(ChangeEventArgs e)
+    {
+        return UpdateState(state => state.DateRange = e.Value?.ToString() ?? "all");
+    }
+
+    private Task UpdateState(Action<NotesFilterState> update)
+    {
+        var next = State.Clone();
+        update(next);
+        return OnStateChanged.InvokeAsync(next);
+    }
+}

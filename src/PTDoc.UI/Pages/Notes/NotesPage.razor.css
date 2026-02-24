@@ -1,0 +1,25 @@
+.notes-page {
+    min-height: 100vh;
+    background: linear-gradient(to bottom right, var(--background), var(--muted));
+}
+
+.notes-page-content-shell {
+    width: 100%;
+    background: var(--background);
+}
+
+.notes-page-content {
+    width: min(1320px, 100%);
+    margin: 0 auto;
+    padding: var(--spacing-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+}
+
+@media (max-width: 767px) {
+    .notes-page-content {
+        padding: var(--spacing-4);
+        gap: var(--spacing-4);
+    }
+}

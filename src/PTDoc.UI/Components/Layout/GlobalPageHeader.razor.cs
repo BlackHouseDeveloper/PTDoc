@@ -10,19 +10,46 @@ public class GlobalPageHeaderBase : ComponentBase
 
     [Parameter] public HeaderConfiguration? Configuration { get; set; }
     [Parameter] public EventCallback OnPrimaryAction { get; set; }
+    [Parameter] public bool ShowBackButton { get; set; }
+    [Parameter] public string? BackRoute { get; set; }
+    [Parameter] public string BackButtonAriaLabel { get; set; } = "Go back";
+    [Parameter] public string? TestId { get; set; }
 
     protected HeaderConfiguration EffectiveConfiguration { get; private set; } = new();
+    protected bool EffectiveShowBackButton { get; private set; }
+    protected string? EffectiveBackRoute { get; private set; }
+    protected string EffectiveBackButtonAriaLabel { get; private set; } = "Go back";
+    protected string? EffectiveTestId { get; private set; }
 
     protected override void OnParametersSet()
     {
         if (Configuration is not null)
         {
             EffectiveConfiguration = Configuration;
+        }
+        else
+        {
+            var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+            EffectiveConfiguration = HeaderConfigurationService.GetConfiguration(currentUri.PathAndQuery);
+        }
+
+        EffectiveShowBackButton = ShowBackButton;
+        EffectiveBackRoute = BackRoute;
+        EffectiveBackButtonAriaLabel = BackButtonAriaLabel;
+        EffectiveTestId = TestId;
+
+        if (Configuration is not null)
+        {
             return;
         }
 
-        var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        EffectiveConfiguration = HeaderConfigurationService.GetConfiguration(currentUri.PathAndQuery);
+        if (string.Equals(EffectiveConfiguration.Route, "/notes", StringComparison.OrdinalIgnoreCase))
+        {
+            EffectiveShowBackButton = true;
+            EffectiveBackRoute ??= "/";
+            EffectiveBackButtonAriaLabel = "Back to dashboard";
+            EffectiveTestId ??= "notes-header";
+        }
     }
 
     protected Task HandlePrimaryActionAsync()
@@ -43,6 +70,16 @@ public class GlobalPageHeaderBase : ComponentBase
             var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
             var basePath = currentUri.GetLeftPart(UriPartial.Path);
             NavigationManager.NavigateTo($"{basePath}?action={Uri.EscapeDataString(EffectiveConfiguration.PrimaryActionEventId)}");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    protected Task HandleBackNavigationAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(EffectiveBackRoute))
+        {
+            NavigationManager.NavigateTo(EffectiveBackRoute);
         }
 
         return Task.CompletedTask;

@@ -1,0 +1,12 @@
+<div class="notes-section-header" data-testid="notes-section-header">
+    <h2 class="notes-section-header-title">@Title</h2>
+    @if (!string.IsNullOrWhiteSpace(MetaText))
+    {
+        <p class="notes-section-header-meta">@MetaText</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? MetaText { get; set; }
+}
