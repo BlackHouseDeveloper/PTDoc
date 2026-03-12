@@ -133,6 +133,8 @@ if [ "${PTDOC_SERIAL_BUILD:-0}" = "1" ]; then
   log_warn "Serial build enabled (PTDOC_SERIAL_BUILD=1)"
 fi
 
+EXIT_CODE=0
+
 # ---- Clean Build Artifacts ------------------------------------------------
 
 log_step "2" "8" "Cleaning Build Artifacts"
@@ -199,20 +201,43 @@ fi
 
 log_step "6" "8" "Running Tests"
 
-# Find test projects
-TEST_PROJECTS=$(find "$ROOT_DIR/src" -name "*.Tests.csproj" 2>/dev/null || true)
+# Find test projects in both src/ and tests/
+TEST_PROJECT_ARRAY=()
+while IFS= read -r test_project; do
+  TEST_PROJECT_ARRAY+=("$test_project")
+done < <(find "$ROOT_DIR/tests" "$ROOT_DIR/src" -type f -name "*.Tests.csproj" 2>/dev/null | sort)
 
-if [ -n "$TEST_PROJECTS" ]; then
-  log "Found test project(s)"
+if [ "${#TEST_PROJECT_ARRAY[@]}" -gt 0 ]; then
+  log "Found ${#TEST_PROJECT_ARRAY[@]} test project(s)"
+  for test_project in "${TEST_PROJECT_ARRAY[@]}"; do
+    echo "  • $test_project" | tee -a "$LOG_FILE"
+  done
+
   if dotnet test "$SLN_FILE" --no-build --configuration Debug >> "$LOG_FILE" 2>&1; then
-    log_success "All tests passed"
+    log_success "All tests passed (solution run)"
   else
-    log_error "Some tests failed"
-    log_error "Check log file: $LOG_FILE"
-    exit 1
+    log_warn "Solution test run failed; retrying discovered test projects directly"
+    TEST_FAILURE=0
+    for test_project in "${TEST_PROJECT_ARRAY[@]}"; do
+      if dotnet test "$test_project" --no-build --configuration Debug >> "$LOG_FILE" 2>&1; then
+        log_success "Passed: $(basename "$test_project")"
+      else
+        log_error "Failed: $(basename "$test_project")"
+        TEST_FAILURE=1
+      fi
+    done
+
+    if [ "$TEST_FAILURE" -eq 0 ]; then
+      log_success "All discovered test projects passed"
+    else
+      log_error "One or more test projects failed"
+      log_error "Check log file: $LOG_FILE"
+      EXIT_CODE=1
+    fi
   fi
 else
-  log_warn "No test projects found"
+  log_error "No test projects found under src/ or tests/"
+  EXIT_CODE=1
 fi
 
 # ---- Validate Project References ------------------------------------------
@@ -222,11 +247,17 @@ log_step "7" "8" "Validating Clean Architecture"
 log "Checking dependency rules..."
 
 # Core should have no project references
-CORE_REFS=$(dotnet list "$ROOT_DIR/src/PTDoc.Core/PTDoc.Core.csproj" reference 2>/dev/null | grep -c "csproj" || echo "0")
-if [ "$CORE_REFS" -eq 0 ]; then
+CORE_PROJECT_FILE="$ROOT_DIR/src/PTDoc.Core/PTDoc.Core.csproj"
+CORE_PROJECT_REFS_COUNT=$(grep -E '^[[:space:]]*<ProjectReference Include="[^"]+"' "$CORE_PROJECT_FILE" 2>/dev/null | wc -l | tr -d '[:space:]')
+
+if [ "$CORE_PROJECT_REFS_COUNT" -eq 0 ]; then
   log_success "Core: No dependencies (correct)"
 else
-  log_error "Core: Has $CORE_REFS dependencies (should be 0)"
+  log_error "Core: Has $CORE_PROJECT_REFS_COUNT project reference(s) (should be 0)"
+  grep -E '^[[:space:]]*<ProjectReference Include="[^"]+"' "$CORE_PROJECT_FILE" 2>/dev/null | while IFS= read -r core_ref; do
+    echo "  • $core_ref" | tee -a "$LOG_FILE"
+  done
+  EXIT_CODE=1
 fi
 
 # Application should only reference Core
@@ -244,7 +275,11 @@ fi
 log_step "8" "8" "Build Summary"
 
 echo "" | tee -a "$LOG_FILE"
-echo "${GREEN}${BOLD}✓ Build completed successfully!${RESET}" | tee -a "$LOG_FILE"
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "${GREEN}${BOLD}✓ Build completed successfully!${RESET}" | tee -a "$LOG_FILE"
+else
+  echo "${RED}${BOLD}✗ Build completed with validation failures${RESET}" | tee -a "$LOG_FILE"
+fi
 echo "" | tee -a "$LOG_FILE"
 echo "${BOLD}Summary:${RESET}" | tee -a "$LOG_FILE"
 echo "  • Platform: $OS_TYPE" | tee -a "$LOG_FILE"
@@ -264,3 +299,5 @@ echo "  1. Run API: ${CYAN}dotnet run --project src/PTDoc.Api${RESET}"
 echo "  2. Run Web: ${CYAN}dotnet run --project src/PTDoc.Web${RESET}"
 echo "  3. Run Tests: ${CYAN}dotnet test${RESET}"
 echo ""
+
+exit "$EXIT_CODE"

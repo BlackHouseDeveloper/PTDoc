@@ -19,6 +19,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             {
                 Route = "/",
                 Title = "Dashboard",
+                Subtitle = "Overview of your activities",
                 ShowSyncControls = false,
                 ShowStatusBadge = false
             },
@@ -76,6 +77,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             {
                 Route = "/progress-tracking",
                 Title = "Progress Tracking",
+                Subtitle = "Track patient progress and outcomes",
                 ShowSyncControls = false,
                 ShowStatusBadge = false
             },
@@ -83,6 +85,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             {
                 Route = "/export-center",
                 Title = "Export Center",
+                Subtitle = "Export patient data and reports",
                 ShowSyncControls = false,
                 ShowStatusBadge = false
             },
@@ -97,6 +100,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             {
                 Route = "/settings",
                 Title = "Settings",
+                Subtitle = "Configure application settings and preferences",
                 ShowSyncControls = false,
                 ShowStatusBadge = false
             }
@@ -108,6 +112,12 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
 
         if (RouteConfigurations.TryGetValue(normalizedRoute, out var directConfig))
         {
+            if (normalizedRoute.Equals("/intake", StringComparison.OrdinalIgnoreCase)
+                && TryGetIntakeStepSubtitle(route, out var intakeSubtitle))
+            {
+                return directConfig with { Subtitle = intakeSubtitle };
+            }
+
             return directConfig;
         }
 
@@ -120,6 +130,11 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
         if (normalizedRoute.StartsWith("/intake/", StringComparison.OrdinalIgnoreCase)
             && RouteConfigurations.TryGetValue("/intake/{patientId}", out var intakeConfig))
         {
+            if (TryGetIntakeStepSubtitle(route, out var intakeSubtitle))
+            {
+                return intakeConfig with { Subtitle = intakeSubtitle };
+            }
+
             return intakeConfig;
         }
 
@@ -146,5 +161,81 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
         }
 
         return withLeadingSlash;
+    }
+
+    private static bool TryGetIntakeStepSubtitle(string route, out string subtitle)
+    {
+        subtitle = string.Empty;
+
+        var queryStartIndex = route.IndexOf('?');
+        if (queryStartIndex < 0 || queryStartIndex >= route.Length - 1)
+        {
+            return false;
+        }
+
+        var query = route[(queryStartIndex + 1)..];
+        var queryParts = query.Split('&', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var part in queryParts)
+        {
+            var keyValuePair = part.Split('=', 2);
+            if (keyValuePair.Length != 2)
+            {
+                continue;
+            }
+
+            if (!keyValuePair[0].Equals("step", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var stepValue = Uri.UnescapeDataString(keyValuePair[1]);
+            if (TryMapIntakeStepToSubtitle(stepValue, out subtitle))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool TryMapIntakeStepToSubtitle(string stepValue, out string subtitle)
+    {
+        subtitle = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(stepValue))
+        {
+            return false;
+        }
+
+        if (int.TryParse(stepValue, out var numericStep))
+        {
+            return numericStep switch
+            {
+                0 => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
+                1 => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
+                2 => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
+                3 => SetSubtitle("Step 4 of 4: Review", out subtitle),
+                4 => SetSubtitle("Step 4 of 4: Review", out subtitle),
+                _ => false
+            };
+        }
+
+        return stepValue.Trim() switch
+        {
+            "Demographics" => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
+            "PainAssessment" => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
+            "PainDetails" => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
+            "Review" => SetSubtitle("Step 4 of 4: Review", out subtitle),
+            _ => false
+        };
+    }
+
+    private static bool SetSubtitle(string value, out string subtitle)
+    {
+        subtitle = value;
+        return true;
     }
 }
