@@ -1,0 +1,71 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+<div class="progress-trends-panel">
+    <section class="progress-trend-card" aria-label="Outcome trend chart">
+        <header class="progress-trend-header">
+            <h3>Outcome Trend</h3>
+            <span class="progress-trend-chip">LEFS</span>
+        </header>
+
+        <div class="progress-line-chart" role="img" aria-label="Outcome score trend over time">
+            <div class="progress-line-grid" aria-hidden="true"></div>
+            <div class="progress-line-points" aria-hidden="true">
+                @foreach (var point in OutcomeTrend)
+                {
+                    <div class="progress-line-point" style="bottom:@GetBottomOffset(point.Value)%">
+                        <span class="progress-line-dot"></span>
+                        <span class="progress-line-value">@point.Value</span>
+                    </div>
+                }
+            </div>
+            <div class="progress-line-labels" aria-hidden="true">
+                @foreach (var point in OutcomeTrend)
+                {
+                    <span>@point.Label</span>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="progress-trend-card" aria-label="Goals achieved by provider">
+        <header class="progress-trend-header">
+            <h3>Goals Achieved by Provider</h3>
+        </header>
+
+        <ul class="progress-provider-bars">
+            @foreach (var provider in ProviderProgress)
+            {
+                <li>
+                    <div class="progress-provider-meta">
+                        <span class="progress-provider-name">@provider.ProviderName</span>
+                        <span class="progress-provider-values">@provider.Achieved achieved / @provider.InProgress in progress</span>
+                    </div>
+                    <div class="progress-provider-track" aria-hidden="true">
+                        <span class="progress-provider-achieved" style="width:@GetPercentage(provider.Achieved, provider.Achieved + provider.InProgress)%"></span>
+                    </div>
+                </li>
+            }
+        </ul>
+    </section>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ProgressTrendPointVm> OutcomeTrend { get; set; } = Array.Empty<ProgressTrendPointVm>();
+    [Parameter] public IReadOnlyList<ProviderGoalProgressVm> ProviderProgress { get; set; } = Array.Empty<ProviderGoalProgressVm>();
+
+    private static double GetBottomOffset(int value)
+    {
+        var normalized = Math.Clamp(value, 0, 100);
+        return normalized;
+    }
+
+    private static double GetPercentage(int part, int total)
+    {
+        if (total <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Round((double)part / total * 100, 2);
+    }
+}

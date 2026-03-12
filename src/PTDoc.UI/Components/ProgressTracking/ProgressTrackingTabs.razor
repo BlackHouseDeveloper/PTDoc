@@ -1,0 +1,65 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="progress-tab-list" role="tablist" aria-label="Progress views">
+    @foreach (var tab in Tabs)
+    {
+        <button type="button"
+                id="@GetTabId(tab)"
+                role="tab"
+                class="@(ActiveTab == tab ? "is-active" : string.Empty)"
+                aria-selected="@(ActiveTab == tab)"
+                aria-controls="@GetPanelId(tab)"
+                @onclick="() => SetActiveTab(tab)"
+                @onkeydown="(args) => HandleTabKeyDown(args, tab)">
+            @tab
+        </button>
+    }
+</div>
+
+@code {
+    private static readonly ProgressTrackingTab[] Tabs =
+    {
+        ProgressTrackingTab.Overview,
+        ProgressTrackingTab.Patients,
+        ProgressTrackingTab.Goals,
+        ProgressTrackingTab.Trends
+    };
+
+    [Parameter] public ProgressTrackingTab ActiveTab { get; set; } = ProgressTrackingTab.Overview;
+    [Parameter] public EventCallback<ProgressTrackingTab> ActiveTabChanged { get; set; }
+    [Parameter] public string PanelIdPrefix { get; set; } = "progress-tracking-panel";
+
+    private Task SetActiveTab(ProgressTrackingTab tab)
+    {
+        return ActiveTabChanged.InvokeAsync(tab);
+    }
+
+    private Task HandleTabKeyDown(KeyboardEventArgs args, ProgressTrackingTab currentTab)
+    {
+        var index = Array.IndexOf(Tabs, currentTab);
+        if (index < 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return args.Key switch
+        {
+            "ArrowRight" => SetActiveTab(Tabs[(index + 1) % Tabs.Length]),
+            "ArrowLeft" => SetActiveTab(Tabs[(index - 1 + Tabs.Length) % Tabs.Length]),
+            "Home" => SetActiveTab(Tabs[0]),
+            "End" => SetActiveTab(Tabs[^1]),
+            _ => Task.CompletedTask
+        };
+    }
+
+    private string GetTabId(ProgressTrackingTab tab)
+    {
+        return $"{PanelIdPrefix}-tab-{tab.ToString().ToLowerInvariant()}";
+    }
+
+    private string GetPanelId(ProgressTrackingTab tab)
+    {
+        return $"{PanelIdPrefix}-{tab.ToString().ToLowerInvariant()}";
+    }
+}

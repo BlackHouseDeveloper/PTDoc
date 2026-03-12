@@ -1,0 +1,27 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+<div class="progress-patients-panel">
+    @if (Items.Count == 0)
+    {
+        <p>No patients match the current filters.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var patient in Items)
+            {
+                <li>
+                    <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(patient.Id)">
+                        <span>@patient.DisplayName</span>
+                        <StatusBadge Text="@patient.StatusLabel" Variant="@patient.StatusVariant" />
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ProgressTrackingPatientVm> Items { get; set; } = Array.Empty<ProgressTrackingPatientVm>();
+    [Parameter] public EventCallback<string> OnSelectPatient { get; set; }
+}

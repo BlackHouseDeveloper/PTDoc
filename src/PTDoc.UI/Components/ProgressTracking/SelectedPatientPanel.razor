@@ -1,0 +1,28 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+@if (SelectedPatient is null)
+{
+    <section class="progress-selected-patient-empty">
+        <h3>Select a Patient</h3>
+        <p>Click on a patient from the list or an alert to view detailed progress, goals, and outcome trends.</p>
+    </section>
+}
+else
+{
+    <section class="progress-selected-patient">
+        <div class="progress-selected-header">
+            <h3>@SelectedPatient.DisplayName</h3>
+            <button type="button" aria-label="Clear selected patient" @onclick="OnClearSelection">
+                Close
+            </button>
+        </div>
+        <p>@SelectedPatient.Condition</p>
+        <p>@SelectedPatient.Provider</p>
+        <p>Last assessment: @SelectedPatient.LastAssessment</p>
+    </section>
+}
+
+@code {
+    [Parameter] public ProgressTrackingPatientVm? SelectedPatient { get; set; }
+    [Parameter] public EventCallback OnClearSelection { get; set; }
+}
