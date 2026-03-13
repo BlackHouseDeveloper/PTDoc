@@ -3,6 +3,9 @@ name: "Database Provider CI"
 # Sprint C: CI provider parity and migration validation.
 # Tests SQLite, SQL Server, and PostgreSQL schema creation and basic persistence
 # so that migration drift or provider-incompatibility cannot enter the repository.
+#
+# Sprint F: Added db-migration-validate job that verifies no pending migrations exist
+# and runs [Category=Observability] tests for migration-state health checks.
 
 on:
   pull_request:
@@ -194,3 +197,71 @@ jobs:
         path: '**/db-postgres-results.trx'
         reporter: dotnet-trx
         fail-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # Sprint F: Migration validation – verifies no model changes lack a migration
+  # and runs observability/migration-state tests ([Category=Observability]).
+  # ---------------------------------------------------------------------------
+  db-migration-validate:
+    name: "DB ▸ Migration Validation (Sprint F)"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Infrastructure.Migrations.Sqlite/PTDoc.Infrastructure.Migrations.Sqlite.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Infrastructure.Migrations.Sqlite/PTDoc.Infrastructure.Migrations.Sqlite.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run observability & migration-state tests
+      env:
+        DB_PROVIDER: sqlite
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=Observability" \
+          --verbosity normal \
+          --logger "trx;LogFileName=db-migration-validate-results.trx"
+
+    - name: Publish migration validation test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "DB Test Results – Migration Validation"
+        path: '**/db-migration-validate-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Restore local .NET tools (pinned dotnet-ef)
+      run: dotnet tool restore
+
+    - name: Validate no pending model changes (SQLite)
+      env:
+        EF_PROVIDER: sqlite
+        Jwt__SigningKey: ci-sprint-f-ephemeral-key-migration-check-placeholder
+      run: |
+        # Verify that every model change has a corresponding migration.
+        # Exit code 0 = no pending changes; non-zero = model drift detected.
+        dotnet tool run dotnet-ef migrations has-pending-model-changes \
+          -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+          -s src/PTDoc.Api \
+          --no-build \
+          --configuration Release

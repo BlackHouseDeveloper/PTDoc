@@ -622,6 +622,73 @@ Developer Machine
 - **Android:** Google Play Store (requires Google Play Console)
 - **macOS:** Direct distribution or Mac App Store
 
+## Observability & Health Monitoring (Sprint F)
+
+### Health Endpoints
+
+The API exposes two standard health check endpoints for deployment platforms and
+load balancers. Both endpoints are publicly accessible (no authentication required)
+and never return sensitive configuration data.
+
+| Endpoint | Purpose | HTTP Status |
+|----------|---------|-------------|
+| `GET /health/live` | Liveness — confirms the process is running | 200 OK |
+| `GET /health/ready` | Readiness — confirms DB connectivity + migration state | 200 / 503 |
+
+**Readiness response format (JSON):**
+```json
+{
+  "status": "Healthy",
+  "checks": [
+    { "name": "database",   "status": "Healthy", "description": "Database is reachable.", "durationMs": 12.3 },
+    { "name": "migrations", "status": "Healthy", "description": "All migrations are applied.", "durationMs": 4.1 }
+  ]
+}
+```
+
+When `status` is `"Unhealthy"`, the response uses HTTP 503. `"Degraded"` (pending
+migrations) returns 200 so the service continues to receive traffic while an
+operator investigates.
+
+### Diagnostics Endpoint
+
+`GET /diagnostics/db` — requires authentication (Bearer token). Returns:
+
+| Field | Description |
+|-------|-------------|
+| `provider` | Active database provider (`Sqlite`, `SqlServer`, or `Postgres`) |
+| `connectivity` | `"Connected"` or `"Unreachable"` |
+| `migrationStatus` | `"Current"` or `"PendingMigrations"` |
+| `appliedMigrationCount` | Number of migrations applied to the database |
+| `pendingMigrationCount` | Number of migrations not yet applied |
+| `pendingMigrations` | Names of pending migrations (empty list when current) |
+
+> **Security:** Connection strings and encryption keys are never included in
+> diagnostics responses. The endpoint always requires a valid JWT Bearer token.
+
+### Migration State Logging
+
+At startup the API logs:
+
+- Selected database provider (`Information` level).
+- Whether auto-migrate is enabled (`Information` level).
+- Names of pending migrations before applying them (`Information` level).
+- Successful migration application (`Information` level).
+
+If the `MigrationStateHealthCheck` detects drift at runtime, it logs a `Warning`
+with the list of pending migration names.
+
+### Migration Safety
+
+See [EF_MIGRATIONS.md](EF_MIGRATIONS.md) for deployment migration commands.
+
+The CI `db-migration-validate` job (Sprint F) validates:
+
+1. **No pending model changes** — `dotnet ef migrations has-pending-model-changes`
+   exits non-zero if the EF model has diverged from the last snapshot.
+2. **Migration state tests** — `[Category=Observability]` tests verify that
+   `GetPendingMigrationsAsync()` returns an empty list after `MigrateAsync()`.
+
 ## Related Documentation
 
 - [BUILD.md](BUILD.md) - Build instructions

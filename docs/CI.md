@@ -35,8 +35,10 @@ Runs on every pull request against `main`. Validates:
 - `dotnet format` style checks
 - MAUI iOS simulator build on macOS
 
-### `ci-db.yml` – Database Provider CI (Sprint C)
+### `ci-db.yml` – Database Provider CI (Sprint C) + Migration Validation (Sprint F)
 Runs on every pull request against `main`. Validates database schema and persistence across all supported providers using a **provider matrix**. See [Database Provider Testing](#database-provider-testing) below.
+
+The workflow also includes the `db-migration-validate` job (Sprint F) that verifies no model changes lack a migration and runs `[Category=Observability]` tests. See [Migration Validation (Sprint F)](#migration-validation-sprint-f) below.
 
 ### `codeql.yml` – Security Scanning
 Static analysis via GitHub CodeQL on every pull request.
@@ -160,6 +162,40 @@ Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_ci;Username=
 dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=DatabaseProvider" \
   --verbosity normal
+```
+
+---
+
+## Migration Validation (Sprint F)
+
+**Sprint F** introduced the `db-migration-validate` job in `ci-db.yml` to detect
+migration drift and validate the operational health-check contracts.
+
+### What the Job Does
+
+| Step | Description |
+|------|-------------|
+| `[Category=Observability]` tests | Assert that `GetPendingMigrationsAsync()` returns empty after `MigrateAsync()`, that applied count equals assembly count, and that `CanConnectAsync()` returns true. |
+| `dotnet ef migrations has-pending-model-changes` | Exits non-zero if the EF Core model snapshot diverges from the current domain model. Prevents unmigrated changes from merging. |
+
+### When It Fails
+
+The job blocks merging when:
+- Any `[Category=Observability]` test fails (migration state or connectivity assertion).
+- `has-pending-model-changes` exits non-zero (model change without a migration).
+
+### Running Locally
+
+```bash
+# Run observability tests (SQLite – no setup required)
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=Observability" \
+  --verbosity normal
+
+# Check for pending model changes
+EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api
 ```
 
 ---
