@@ -54,14 +54,19 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     {
         if (entity.LocalId == 0)
         {
-            // Insert
-            entity.LastModifiedUtc = DateTime.UtcNow;
+            // Insert: stamp the creation timestamp only if the caller has not already set one
+            // (e.g., when seeding server-sourced data we preserve the server timestamp).
+            if (entity.LastModifiedUtc == default)
+            {
+                entity.LastModifiedUtc = DateTime.UtcNow;
+            }
+
             _context.Set<TEntity>().Add(entity);
         }
         else
         {
-            // Update
-            entity.LastModifiedUtc = DateTime.UtcNow;
+            // Update: preserve the caller-supplied LastModifiedUtc so that server-sourced
+            // timestamps (used for last-write-wins conflict resolution) are not lost.
             _context.Set<TEntity>().Update(entity);
         }
 

@@ -53,23 +53,74 @@ public class LocalRepositoryTests
         // Arrange
         using var context = CreateInMemoryContext();
         var repo = new LocalRepository<LocalPatientSummary>(context);
+        var insertTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var patient = new LocalPatientSummary
         {
             FirstName = "Original",
             LastName = "Name",
             SyncState = SyncState.Pending,
-            LastModifiedUtc = DateTime.UtcNow
+            LastModifiedUtc = insertTime
         };
         await repo.UpsertAsync(patient);
 
-        // Act
+        // Act — caller supplies an explicit server timestamp on update
+        var serverTimestamp = new DateTime(2024, 6, 15, 12, 0, 0, DateTimeKind.Utc);
         patient.FirstName = "Updated";
+        patient.LastModifiedUtc = serverTimestamp;
         await repo.UpsertAsync(patient);
 
         // Assert
         Assert.Equal(1, await context.PatientSummaries.CountAsync());
         var saved = await context.PatientSummaries.FirstAsync();
         Assert.Equal("Updated", saved.FirstName);
+        // Caller-supplied timestamp must be preserved (not overwritten by the repo)
+        Assert.Equal(serverTimestamp, saved.LastModifiedUtc);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_UsesDefaultTimestamp_WhenInsertingWithDefaultLastModified()
+    {
+        // Arrange
+        using var context = CreateInMemoryContext();
+        var repo = new LocalRepository<LocalPatientSummary>(context);
+        var before = DateTime.UtcNow;
+
+        // Act — insert with default (zero) LastModifiedUtc; repo should stamp it
+        var patient = new LocalPatientSummary
+        {
+            FirstName = "New",
+            LastName = "Record",
+            SyncState = SyncState.Pending
+            // LastModifiedUtc intentionally left as default(DateTime)
+        };
+        await repo.UpsertAsync(patient);
+
+        // Assert — timestamp should have been set by the repository
+        var saved = await context.PatientSummaries.FirstAsync();
+        Assert.True(saved.LastModifiedUtc >= before, "Repo should stamp LastModifiedUtc on insert when it is default");
+    }
+
+    [Fact]
+    public async Task UpsertAsync_PreservesCallerTimestamp_WhenInsertingWithExplicitTimestamp()
+    {
+        // Arrange
+        using var context = CreateInMemoryContext();
+        var repo = new LocalRepository<LocalPatientSummary>(context);
+        var serverTime = new DateTime(2023, 3, 10, 8, 30, 0, DateTimeKind.Utc);
+
+        // Act — insert with an explicit server-sourced timestamp (e.g., during initial cache fill)
+        var patient = new LocalPatientSummary
+        {
+            FirstName = "Server",
+            LastName = "Sourced",
+            SyncState = SyncState.Synced,
+            LastModifiedUtc = serverTime
+        };
+        await repo.UpsertAsync(patient);
+
+        // Assert — caller-supplied timestamp is preserved
+        var saved = await context.PatientSummaries.FirstAsync();
+        Assert.Equal(serverTime, saved.LastModifiedUtc);
     }
 
     // ---------------------------------------------------------------

@@ -60,11 +60,16 @@ If SecureStorage is unavailable (rare, typically on device with no hardware key 
 
 #### SQLCipher Initialisation
 
+The `SqliteConnection` is registered as a **Singleton** (it holds the SQLCipher auth state). `LocalDbContext` is registered as **Scoped** so each DI scope (UI component, background task) gets its own EF Core context instance. EF Core does not dispose connections it does not own, so the shared Singleton connection remains open across all context lifetimes.
+
 ```csharp
 // MauiProgram.cs — local DB registration
-builder.Services.AddDbContext<LocalDbContext>((sp, options) =>
+
+// 1. Singleton SqliteConnection — opens the file and authenticates with PRAGMA key once.
+builder.Services.AddSingleton<SqliteConnection>(sp =>
 {
-    var key = sp.GetRequiredService<IDbKeyProvider>().GetKeyAsync().GetAwaiter().GetResult();
+    var key = Task.Run(() => sp.GetRequiredService<IDbKeyProvider>().GetKeyAsync())
+                  .GetAwaiter().GetResult();
     var dbPath = Path.Combine(FileSystem.AppDataDirectory, "ptdoc_local.db");
 
     var connection = new SqliteConnection($"Data Source={dbPath}");
@@ -75,9 +80,17 @@ builder.Services.AddDbContext<LocalDbContext>((sp, options) =>
     cmd.Parameters.AddWithValue("$key", key);
     cmd.ExecuteNonQuery();
 
-    options.UseSqlite(connection);
-}, ServiceLifetime.Singleton);
+    return connection;
+});
+
+// 2. Scoped LocalDbContext — each scope shares the authenticated connection.
+builder.Services.AddDbContext<LocalDbContext>((sp, options) =>
+{
+    options.UseSqlite(sp.GetRequiredService<SqliteConnection>());
+}, ServiceLifetime.Scoped);
 ```
+
+The `Task.Run()` wrapper avoids a `SynchronizationContext` deadlock: `SecureStorage.GetAsync` marshals back to the MAUI platform dispatcher, which can deadlock when awaited synchronously on the main thread. `Task.Run()` schedules the work on a thread-pool thread with no captured dispatcher context.
 
 The `PRAGMA key` command must be executed on the connection **before** any EF Core queries run; this is why the connection is opened and authenticated manually before being passed to EF Core.
 
@@ -180,11 +193,18 @@ PTDoc.Maui/
 | Service | Implementation | Lifetime |
 |---------|---------------|---------|
 | `IDbKeyProvider` | `SecureStorageDbKeyProvider` | Singleton |
-| `LocalDbContext` | EF Core + SQLCipher | Singleton |
+| `SqliteConnection` | Platform-authenticated SQLCipher connection | Singleton |
+| `LocalDbContext` | EF Core + SQLCipher (uses shared connection) | Scoped |
 | `ILocalRepository<T>` | `LocalRepository<T>` | Scoped |
 | `ILocalDbInitializer` | `LocalDbInitializer` | Singleton |
 
-`LocalDbContext` is registered as a **Singleton** because the underlying `SqliteConnection` must remain open to preserve the SQLCipher authentication state. A new EF Core context instance disposed would close the connection and lose the encryption context.
+The `SqliteConnection` is a **Singleton** because it holds the SQLCipher authentication state (`PRAGMA key`). Closing and reopening it would require re-authenticating with the encryption key.
+
+`LocalDbContext` is **Scoped** — each DI scope (UI component, background task) gets its own EF Core context instance, which is thread-safe. All instances share the Singleton connection; EF Core does not dispose connections it does not own, so the connection remains open and authenticated across context lifetimes.
+
+### Startup Initialisation Order
+
+`App.LocalDbInitTask` is a public `Task` field set on construction. Components that require local data access before the first render should `await App.LocalDbInitTask` to ensure the schema has been created before issuing their first query.
 
 ---
 

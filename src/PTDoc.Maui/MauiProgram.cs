@@ -52,10 +52,19 @@ public static class MauiProgram
 		// Local encrypted SQLite database (Sprint D)
 		// IDbKeyProvider uses platform SecureStorage (iOS Keychain / Android Keystore)
 		// to generate and retrieve the per-device SQLCipher encryption key.
+		//
+		// The SqliteConnection is registered as a Singleton because:
+		//   • It holds the SQLCipher authentication state (PRAGMA key).
+		//   • Closing and reopening it would require re-authenticating.
+		//
+		// LocalDbContext is registered as Scoped so each DI scope (UI component,
+		// background task) gets its own EF Core context instance.  EF Core does not
+		// dispose connections it does not own, so the shared Singleton connection
+		// remains open across all context lifetimes.
 		// ----------------------------------------------------------------
 		builder.Services.AddSingleton<IDbKeyProvider, SecureStorageDbKeyProvider>();
 
-		builder.Services.AddDbContext<LocalDbContext>((sp, options) =>
+		builder.Services.AddSingleton<SqliteConnection>(sp =>
 		{
 			var keyProvider = sp.GetRequiredService<IDbKeyProvider>();
 			// Use Task.Run to avoid a SynchronizationContext deadlock when the DI factory
@@ -80,8 +89,16 @@ public static class MauiProgram
 				command.ExecuteNonQuery();
 			}
 
+			return connection;
+		});
+
+		// LocalDbContext is Scoped — each scope gets its own context instance (thread-safe).
+		// All instances share the Singleton SqliteConnection, which keeps SQLCipher auth alive.
+		builder.Services.AddDbContext<LocalDbContext>((sp, options) =>
+		{
+			var connection = sp.GetRequiredService<SqliteConnection>();
 			options.UseSqlite(connection);
-		}, ServiceLifetime.Singleton);
+		}, ServiceLifetime.Scoped);
 
 		// Generic local repository for all ILocalEntity types
 		builder.Services.AddScoped(typeof(ILocalRepository<>), typeof(LocalRepository<>));
