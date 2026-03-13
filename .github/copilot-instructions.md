@@ -8,7 +8,7 @@
 3. **Use existing patterns** - prefer reusing over inventing new approaches
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
-6. **File placement first** - always consult `architect.md` for file placement; if unavailable, use `docs/ARCHITECTURE.md`
+6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
@@ -19,6 +19,31 @@
 - Do NOT open/cite every doc for every task
 - Consult docs only when they directly affect your current work
 - Trust your knowledge of .NET/Blazor for standard patterns
+
+**Documentation Authority Hierarchy (Highest → Lowest)**
+1. **Primary architecture & system design**
+  - [PTDocs+ Branch-Specific Database Blueprint and Phased Plan for UI Completion](../docs/PTDocs+%20Branch-Specific%20Database%20Blueprint%20and%20Phased%20Plan%20for%20UI-Completiondeep-research-report.md)
+  - [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+  - [docs/SYNC_ENGINE.md](../docs/SYNC_ENGINE.md)
+2. **Repository workflow & guardrails**
+  - This file ([.github/copilot-instructions.md](copilot-instructions.md))
+  - [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)
+  - [docs/CI.md](../docs/CI.md)
+3. **Implementation-specific guidance**
+  - [README.md](../README.md)
+  - [docs/SECURITY.md](../docs/SECURITY.md)
+  - [docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)
+  - [docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)
+  - [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)
+  - [docs/BUILD.md](../docs/BUILD.md)
+4. **Supporting UI & reference docs**
+  - [docs/context/ptdoc-figma-make-prototype-v5-context.md](../docs/context/ptdoc-figma-make-prototype-v5-context.md)
+  - [docs/Blazor-Context.md](../docs/Blazor-Context.md)
+  - [docs/style-system.md](../docs/style-system.md)
+  - [docs/ACCESSIBILITY_USAGE.md](../docs/ACCESSIBILITY_USAGE.md)
+  - [docs/design-system/THEME_VISUAL_GUIDE.md](../docs/design-system/THEME_VISUAL_GUIDE.md)
+5. **General framework knowledge**
+  - Use external framework guidance only when repository documentation does not define the behavior.
 
 ---
 
@@ -51,9 +76,13 @@
   - **Skip when:** Logic changes, not touching CSS
 
 ### Database Operations
-- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, database setup
-  - **Use when:** Schema changes, adding migrations, database errors
+- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, multi-provider workflow (Sprint B)
+  - **Use when:** Schema changes, adding migrations, switching database provider, configuring `Database:Provider`, database errors
   - **Skip when:** UI work, no data model changes
+  - **Multi-provider:** Migrations are split into `PTDoc.Infrastructure.Migrations.{Sqlite|SqlServer|Postgres}` assemblies
+  - **Provider config:** Set `Database:Provider` to `Sqlite` (default), `SqlServer`, or `Postgres`
+
+### Database Operations
 
 ### Platform Differences
 - **[docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)** - Web vs MAUI differences
@@ -69,6 +98,22 @@
 - **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows
   - **Use when:** Running tests, using helper scripts, debugging setup
   - **Skip when:** Implementation work
+
+### Security Policy
+- **[docs/SECURITY.md](../docs/SECURITY.md)** - Auth design, secrets management, HIPAA security controls
+  - **Use when:** Implementing auth, handling secrets/keys, session policy, security-sensitive changes
+  - **Skip when:** UI-only work with no auth or config changes
+
+### CI/CD Pipeline
+- **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy
+  - **Use when:** Modifying workflows, understanding CI behavior, adding CI secrets, branching/deployment
+  - **Skip when:** Local-only development with no CI impact
+
+### Backend Sprint Plans (authoritative for backend assumptions)
+- **PTDocs+ Branch-Specific Database Blueprint and Phased Plan** - Sprint definitions, acceptance criteria, architectural decisions for phased backend work
+  - **Use when:** Making ANY backend assumption about config, secrets, database, auth design, or phased sprint scope. Consult BEFORE making assumptions — especially for Sprint A (secrets/config), Sprint B+ (provider switching, migrations), or any config/startup behavior.
+  - **Skip when:** Pure UI component work with zero backend or config impact
+  - **Location:** Referenced in PR descriptions and issue context for active sprints
 
 ---
 
@@ -143,6 +188,20 @@ PTDoc.UI           → Shared Blazor components
 
 **Path Resolution:** `PFP_DB_PATH` env → `appsettings` → fallback `PTDoc.db`
 
+**Provider Selection (CI / design-time):**
+- `EF_PROVIDER=sqlite` (default) – SQLite / SQLCipher
+- `EF_PROVIDER=sqlserver` + `Database__ConnectionString=...` – SQL Server
+- `EF_PROVIDER=postgres` + `Database__ConnectionString=...` – PostgreSQL
+- See `docs/EF_MIGRATIONS.md` for multi-provider migration commands
+
+### CI Database Provider Validation (Sprint C)
+
+- `[Category=DatabaseProvider]` integration tests run in CI for all three providers
+- SQLite tests use `MigrateAsync()` to validate the full migration history
+- SQL Server and PostgreSQL tests use `EnsureCreated()` to validate schema compatibility
+- Tests skip automatically when `Database__ConnectionString` is not set (local dev)
+- Provider jobs are in `.github/workflows/ci-db.yml`; see `docs/CI.md` for details
+
 ### Healthcare & Accessibility
 
 - **HIPAA**: Maintain audit trails for patient data
@@ -158,10 +217,12 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Implementing UI from Figma (need design specs)
 - [ ] Component not rendering (lifecycle/parameter issues)
 - [ ] Database schema changes (migrations needed)
+- [ ] Switching database provider (`Database:Provider` config)
+- [ ] Adding migrations for a new provider (Sqlite/SqlServer/Postgres)
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
-- [ ] Adding MAUI offline features or local cache entities (consult `MOBILE_ARCHITECTURE.md`)
+- [ ] Making any backend assumption about config, secrets, startup validation, or sprint scope (consult Sprint Blueprint + docs/SECURITY.md + docs/CI.md)
 
 **Don't consult docs for:**
 - Standard .NET/C# patterns you already know
@@ -178,6 +239,9 @@ PTDoc.UI           → Shared Blazor components
 PTDoc.Core/        → Domain entities (zero deps)
 PTDoc.Application/ → Interfaces, DTOs (depends on Core)
 PTDoc.Infrastructure/ → EF Core, services (implements Application)
+PTDoc.Infrastructure.Migrations.Sqlite/    → SQLite migrations assembly (Sprint B)
+PTDoc.Infrastructure.Migrations.SqlServer/ → SQL Server migrations assembly (Sprint B)
+PTDoc.Infrastructure.Migrations.Postgres/  → PostgreSQL migrations assembly (Sprint B)
 PTDoc.Api/         → REST API, JWT auth
 PTDoc.Web/         → Blazor WebAssembly web app
 PTDoc.Maui/        → .NET MAUI Blazor app (mobile/desktop)
@@ -194,9 +258,9 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 - Domain entities/models/enums/value objects → `PTDoc.Core/Models/`
 - Services interfaces → `PTDoc.Application/Services/`
 - Services implementations → `PTDoc.Infrastructure/Services/`
-- **MAUI local cache entities + interfaces** → `PTDoc.Application/LocalData/`
-- **MAUI local DB context + repository implementations** → `PTDoc.Infrastructure/LocalData/`
-- **MAUI platform-specific providers (key store, etc.)** → `PTDoc.Maui/Security/`
+- EF Core migrations (SQLite) → `PTDoc.Infrastructure.Migrations.Sqlite/Migrations/`
+- EF Core migrations (SQL Server) → `PTDoc.Infrastructure.Migrations.SqlServer/Migrations/`
+- EF Core migrations (Postgres) → `PTDoc.Infrastructure.Migrations.Postgres/Migrations/`
 
 ---
 
@@ -215,6 +279,10 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 ## Quick Commands
 
 ```bash
+# First-time dev secrets setup (REQUIRED after cloning)
+./setup-dev-secrets.sh          # macOS/Linux: generate & store JWT + IntakeInvite keys
+.\setup-dev-secrets.ps1         # Windows PowerShell equivalent
+
 # Setup & Build
 ./PTDoc-Foundry.sh              # Environment setup
 ./cleanbuild-ptdoc.sh           # Clean build
@@ -225,9 +293,18 @@ dotnet build PTDoc.sln          # Build all
 dotnet run --project src/PTDoc.Api --urls http://localhost:5170   # API
 dotnet run --project src/PTDoc.Web                                # Web
 
-# Database
-./PTDoc-Foundry.sh --create-migration --seed   # Setup DB
-EF_PROVIDER=sqlite dotnet ef migrations add MigrationName --project src/PTDoc.Infrastructure --startup-project src/PTDoc.Api
+# Database (multi-provider - Sprint B)
+./PTDoc-Foundry.sh --create-migration --seed   # Setup SQLite DB (default)
+
+# Add migration - specify provider-specific migrations project
+EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api --context ApplicationDbContext
+
+# Apply migration
+EF_PROVIDER=sqlite dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api
 
 # Test
 dotnet test                     # All tests
@@ -236,7 +313,7 @@ dotnet test --filter "Category=Unit"   # Unit tests only
 
 ---
 
-**Last Updated:** February 2026  
+**Last Updated:** March 2026 (Sprint B: multi-provider migrations)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required
 

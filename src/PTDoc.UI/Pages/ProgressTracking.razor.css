@@ -1,0 +1,540 @@
+.progress-tracking-page {
+    min-height: 100vh;
+    background: linear-gradient(to bottom right, var(--background), var(--muted));
+}
+
+.progress-tracking-content {
+    width: min(1320px, 100%);
+    margin: 0 auto;
+    padding: var(--spacing-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+}
+
+.progress-loading {
+    min-height: 320px;
+    display: flex;
+    align-items: stretch;
+}
+
+.progress-loading-skeleton {
+    width: 100%;
+    min-height: 320px;
+}
+
+.progress-top {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+::deep .progress-filter-card {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+::deep .progress-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+::deep .progress-filter-field label {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-filter-field select {
+    height: var(--touch-target-mobile);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    padding: 0 var(--spacing-3);
+}
+
+::deep .progress-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .progress-metric-card {
+    min-height: 120px;
+}
+
+::deep .progress-clinical-intelligence {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+}
+
+::deep .progress-clinical-intelligence h2 {
+    margin: 0 0 var(--spacing-3);
+    font-size: var(--text-base);
+    color: var(--foreground);
+}
+
+::deep .progress-clinical-intelligence ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-clinical-intelligence button {
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    padding: var(--spacing-3);
+    color: var(--foreground);
+}
+
+::deep .progress-alert-meta {
+    display: block;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    margin-top: var(--spacing-1);
+}
+
+.progress-main {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
+    gap: var(--spacing-6);
+}
+
+.progress-left,
+.progress-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+::deep .progress-tab-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-2);
+    background: var(--muted);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-2);
+}
+
+::deep .progress-tab-list button {
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--muted-foreground);
+    min-height: var(--touch-target-mobile);
+}
+
+::deep .progress-tab-list button.is-active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.progress-tab-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+}
+
+::deep .progress-tab-panel h3,
+::deep .progress-selected-patient h3,
+::deep .progress-selected-patient-empty h3,
+::deep .progress-quick-links h3 {
+    margin: 0 0 var(--spacing-2);
+    font-size: var(--text-base);
+}
+
+::deep .progress-tab-panel p,
+::deep .progress-tab-panel li,
+::deep .progress-selected-patient p,
+::deep .progress-selected-patient-empty p,
+::deep .progress-compliance-note p {
+    color: var(--muted-foreground);
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+::deep .progress-patients-panel ul,
+::deep .progress-goals-panel ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-patients-panel button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    padding: var(--spacing-3);
+}
+
+::deep .progress-selected-patient,
+::deep .progress-selected-patient-empty,
+::deep .progress-quick-links,
+::deep .progress-compliance-note {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+}
+
+::deep .progress-selected-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-selected-header button {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    min-height: var(--touch-target-mobile);
+    padding: 0 var(--spacing-3);
+}
+
+::deep .progress-quick-links {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-quick-links button {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    min-height: var(--touch-target-mobile);
+    text-align: left;
+    padding: 0 var(--spacing-3);
+}
+
+::deep .progress-filter-field select:focus-visible,
+::deep .progress-tab-list button:focus-visible,
+::deep .progress-clinical-intelligence button:focus-visible,
+::deep .progress-patients-panel button:focus-visible,
+::deep .progress-selected-header button:focus-visible,
+::deep .progress-quick-links button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+@media (max-width: 1199px) {
+    .progress-main {
+        grid-template-columns: 1fr;
+    }
+
+    ::deep .progress-filter-card {
+        grid-template-columns: 1fr;
+    }
+
+    ::deep .progress-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767px) {
+    .progress-tracking-content {
+        padding: var(--spacing-4);
+        gap: var(--spacing-4);
+    }
+
+    ::deep .progress-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    ::deep .progress-tab-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+::deep .progress-metric-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-metric-label {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-metric-value {
+    margin: 0;
+    font-size: var(--text-3xl);
+    color: var(--foreground);
+    line-height: var(--line-height-tight);
+}
+
+::deep .progress-metric-subtitle {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-metric-foot {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-metric-badge {
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    padding: var(--spacing-1) var(--spacing-2);
+}
+
+::deep .progress-metric-badge-default {
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-metric-badge-success {
+    background: color-mix(in srgb, var(--success) 18%, transparent);
+    color: var(--success);
+}
+
+::deep .progress-metric-badge-info {
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+    color: var(--info);
+}
+
+::deep .progress-metric-badge-warning {
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
+    color: var(--warning);
+}
+
+::deep .progress-metric-trend {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-alert-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    padding: var(--spacing-3);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+::deep .progress-alert-message {
+    margin: 0;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+}
+
+::deep .progress-alert-card button {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    min-height: var(--touch-target-mobile);
+    padding: 0 var(--spacing-3);
+    width: auto;
+}
+
+::deep .progress-alert-warning {
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+}
+
+::deep .progress-alert-success {
+    border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+}
+
+::deep .progress-alert-info {
+    border-color: color-mix(in srgb, var(--info) 35%, var(--border));
+}
+
+.progress-action-status {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+}
+
+::deep .progress-trends-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .progress-trend-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+::deep .progress-trend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-trend-header h3 {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--foreground);
+}
+
+::deep .progress-trend-chip {
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: var(--primary);
+    font-size: var(--text-xs);
+}
+
+::deep .progress-line-chart {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    padding: var(--spacing-3);
+    height: 240px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-line-grid {
+    position: absolute;
+    inset: var(--spacing-3);
+    background-image: linear-gradient(to top, color-mix(in srgb, var(--border) 80%, transparent) 1px, transparent 1px);
+    background-size: 100% 20%;
+}
+
+::deep .progress-line-points {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 100%;
+    align-items: end;
+}
+
+::deep .progress-line-point {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+::deep .progress-line-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--card);
+}
+
+::deep .progress-line-value {
+    position: absolute;
+    bottom: calc(100% + var(--spacing-1));
+    color: var(--foreground);
+    font-size: var(--text-xs);
+}
+
+::deep .progress-line-labels {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    text-align: center;
+}
+
+::deep .progress-provider-bars {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+::deep .progress-provider-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--spacing-2);
+}
+
+::deep .progress-provider-name {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+}
+
+::deep .progress-provider-values {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .progress-provider-track {
+    margin-top: var(--spacing-1);
+    height: 10px;
+    border-radius: 999px;
+    background: var(--muted);
+    overflow: hidden;
+}
+
+::deep .progress-provider-achieved {
+    display: block;
+    height: 100%;
+    background: linear-gradient(to right, var(--primary), color-mix(in srgb, var(--success) 70%, var(--primary)));
+}
+
+@media (max-width: 1199px) {
+    ::deep .progress-trends-panel {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 767px) {
+    ::deep .progress-alert-card {
+        flex-direction: column;
+    }
+
+    ::deep .progress-provider-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

@@ -1219,17 +1219,18 @@ Response (201 Created):
 
 ### Database Migrations
 
-**Create Migration:**
+**Create Migration (SQLite):**
 ```bash
 EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
-  -p src/PTDoc.Infrastructure \
-  -s src/PTDoc.Api
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api \
+  --context ApplicationDbContext
 ```
 
-**Apply Migrations:**
+**Apply Migrations (SQLite):**
 ```bash
 EF_PROVIDER=sqlite dotnet ef database update \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 ```
 

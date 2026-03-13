@@ -12,11 +12,11 @@
             @onclick="ToggleMenu">
             @if (IsMenuOpen)
             {
-                <img src="_content/PTDoc.UI/images/chevron-left.svg" alt="" class="menu-icon" />
+                <span class="menu-icon menu-icon-close" aria-hidden="true"></span>
             }
             else
             {
-                <img src="_content/PTDoc.UI/images/hamburger-menu.svg" alt="" class="menu-icon" />
+                <span class="menu-icon menu-icon-open" aria-hidden="true"></span>
             }
         </button>
 
@@ -35,7 +35,7 @@
                 aria-busy="@IsSyncing.ToString().ToLower()"
                 aria-disabled="@((!IsOnline).ToString().ToLower())"
                 @onclick="HandleSyncNow">
-                <img src="_content/PTDoc.UI/images/sync-icon.svg" alt="" class="sync-icon @(IsSyncing ? "syncing" : "")" />
+                <span class="sync-icon @(IsSyncing ? "syncing" : "")" aria-hidden="true"></span>
                 <span class="sync-button-text">@(IsSyncing ? "Syncing..." : "Sync Now")</span>
             </button>
 
@@ -43,14 +43,7 @@
             <div class="status-badge @(IsOnline ? "online" : "offline")" 
                  role="status" 
                  aria-live="polite">
-                @if (IsDarkMode)
-                {
-                    <img src="_content/PTDoc.UI/images/online-icon-dark.svg" alt="" class="status-icon" />
-                }
-                else
-                {
-                    <img src="_content/PTDoc.UI/images/online-icon-light.svg" alt="" class="status-icon" />
-                }
+                <span class="status-icon" aria-hidden="true"></span>
                 <span class="status-text">@(IsOnline ? "Online" : "Offline")</span>
             </div>
         </div>

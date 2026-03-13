@@ -33,7 +33,7 @@ public class EncryptionIntegrationTests : IDisposable
 
         // Act: Apply migrations
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection)
+            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         using var context = new ApplicationDbContext(options);
@@ -64,7 +64,7 @@ public class EncryptionIntegrationTests : IDisposable
 
         // Act: Apply migrations without PRAGMA key
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection)
+            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         using var context = new ApplicationDbContext(options);
@@ -102,7 +102,7 @@ public class EncryptionIntegrationTests : IDisposable
         }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection)
+            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         using var context = new ApplicationDbContext(options);

@@ -193,9 +193,10 @@ dotnet test
 
 # Run with detailed output
 dotnet test --verbosity detailed
-
-# Note: Test projects to be added in future development phases
 ```
+
+`cleanbuild-ptdoc.sh` discovers test projects in both `src/` and `tests/` (matching `*.Tests.csproj`) and runs tests as part of the clean build flow.
+If no test projects are discovered, clean build fails.
 
 ### Test Coverage
 
