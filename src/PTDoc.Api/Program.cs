@@ -1,11 +1,16 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
 using PTDoc.Api.AI;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
+using PTDoc.Api.Diagnostics;
+using PTDoc.Api.Health;
 using PTDoc.Api.Identity;
 using PTDoc.Api.Integrations;
 using PTDoc.Api.Pdf;
@@ -204,6 +209,11 @@ else
     });
 }
 
+// Register database health checks (Sprint F – Observability)
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready", "db"])
+    .AddCheck<MigrationStateHealthCheck>("migrations", tags: ["ready", "migrations"]);
+
 // Validate JWT configuration on startup
 var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
 if (jwtConfig != null)
@@ -261,11 +271,20 @@ builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 
 var app = builder.Build();
 
+// Sprint F: Log selected database provider at startup for operational visibility
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+startupLogger.LogInformation("Database provider selected: {DbProvider}", dbProvider);
+
 // Auto-migrate: defaults to true in Development, false in Production.
 // Override with Database:AutoMigrate = true/false in configuration or environment variables.
 // Production deployments should run migrations explicitly via the CLI (see docs/EF_MIGRATIONS.md).
 var autoMigrate = builder.Configuration.GetValue<bool?>("Database:AutoMigrate")
     ?? app.Environment.IsDevelopment();
+
+startupLogger.LogInformation(
+    "Database auto-migrate: {AutoMigrate} (environment: {Environment})",
+    autoMigrate,
+    app.Environment.EnvironmentName);
 
 if (autoMigrate)
 {
@@ -273,8 +292,27 @@ if (autoMigrate)
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
+    // Log pending migrations before applying
+    var pending = (await context.Database.GetPendingMigrationsAsync()).ToList();
+    if (pending.Count > 0)
+    {
+        logger.LogInformation(
+            "Applying {PendingCount} pending migration(s): {Migrations}",
+            pending.Count,
+            string.Join(", ", pending));
+    }
+    else
+    {
+        logger.LogInformation("No pending migrations — database schema is current.");
+    }
+
     // Apply any pending migrations
     await context.Database.MigrateAsync();
+
+    if (pending.Count > 0)
+    {
+        logger.LogInformation("Database migrations applied successfully.");
+    }
 
     // Seed test data in development only
     if (app.Environment.IsDevelopment())
@@ -286,6 +324,41 @@ if (autoMigrate)
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health check endpoints (Sprint F – unauthenticated, standard deployment probe pattern)
+// /health/live  – liveness: confirms the process is running
+// /health/ready – readiness: confirms database connectivity and migration state
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false // No checks — liveness only confirms the process is alive
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = JsonSerializer.Serialize(new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                durationMs = e.Value.Duration.TotalMilliseconds
+            })
+        });
+        await context.Response.WriteAsync(result);
+    },
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Degraded] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    }
+});
+
 // Register all API endpoints
 app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
 app.MapPinAuthEndpoints(); // New PIN-based auth
@@ -295,5 +368,6 @@ app.MapNoteEndpoints(); // Note signature and addendum
 app.MapAiEndpoints(); // AI generation endpoints
 app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
+app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 
 app.Run();

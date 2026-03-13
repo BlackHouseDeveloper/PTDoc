@@ -814,6 +814,109 @@ For common issues, see:
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Detailed troubleshooting guide
 - [BUILD.md](BUILD.md) - Build-specific issues
 
+## Operational Diagnostics & Observability (Sprint F)
+
+### Health Endpoints
+
+The API exposes standard health check endpoints. Use them to verify database
+connectivity and migration state after deployment:
+
+```bash
+# Liveness check (HTTP 200 when process is running)
+curl http://localhost:5170/health/live
+
+# Readiness check (JSON, HTTP 503 when database is unreachable)
+curl http://localhost:5170/health/ready
+```
+
+**Readiness JSON response:**
+```json
+{
+  "status": "Healthy",
+  "checks": [
+    { "name": "database",   "status": "Healthy", "description": "Database is reachable.", "durationMs": 8.2 },
+    { "name": "migrations", "status": "Healthy", "description": "All migrations are applied.", "durationMs": 3.1 }
+  ]
+}
+```
+
+| `status` | Meaning |
+|----------|---------|
+| `Healthy` | Database connected and all migrations applied |
+| `Degraded` | Connected but pending migrations exist — investigate |
+| `Unhealthy` | Database unreachable — HTTP 503 returned |
+
+### Database Diagnostics Endpoint
+
+Authenticated users can retrieve detailed database state:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db
+```
+
+**Response:**
+```json
+{
+  "provider": "Sqlite",
+  "connectivity": "Connected",
+  "migrationStatus": "Current",
+  "appliedMigrationCount": 2,
+  "pendingMigrationCount": 0,
+  "pendingMigrations": []
+}
+```
+
+> **Security:** Connection strings and encryption keys are never exposed in this response.
+
+### Detecting Migration Drift
+
+If the readiness check or diagnostics shows `"migrationStatus": "PendingMigrations"`:
+
+1. **Review pending migrations:**
+   ```bash
+   EF_PROVIDER=sqlite dotnet ef migrations list \
+     -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+     -s src/PTDoc.Api
+   ```
+
+2. **Apply missing migrations (development):**
+   ```bash
+   EF_PROVIDER=sqlite dotnet ef database update \
+     -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+     -s src/PTDoc.Api
+   ```
+
+3. **Production — run via CLI (AutoMigrate is false by default):**
+   ```bash
+   # Set appropriate env vars, then:
+   dotnet ef database update \
+     -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+     -s src/PTDoc.Api
+   ```
+
+4. **Check for unmigrated model changes:**
+   ```bash
+   EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes \
+     -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+     -s src/PTDoc.Api
+   ```
+   Non-zero exit code means the EF Core model diverged from the last migration
+   snapshot. Create a new migration to capture the change.
+
+### Startup Logging
+
+At startup the API logs the following at `Information` level (visible in
+`Development`; may require adjusting log levels in production):
+
+- `Database provider selected: Sqlite` (or `SqlServer` / `Postgres`)
+- `Database auto-migrate: True (environment: Development)`
+- `Applying 1 pending migration(s): 20260217034617_InitialCreate`
+- `Database migrations applied successfully.`
+- `No pending migrations — database schema is current.`
+
+Set `Logging:LogLevel:Default` to `Information` or lower to see these messages
+in production logs.
+
 ## Additional Resources
 
 - [README.md](../README.md) - Getting started guide

@@ -114,9 +114,25 @@
   - **Skip when:** UI-only work with no auth or config changes
 
 ### CI/CD Pipeline
-- **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy
+- **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy, migration validation (Sprint F)
   - **Use when:** Modifying workflows, understanding CI behavior, adding CI secrets, branching/deployment
   - **Skip when:** Local-only development with no CI impact
+
+### Observability & Operational Diagnostics (Sprint F)
+- **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** — *Observability & Health Monitoring* section
+  - **Use when:** Adding health checks, implementing diagnostics endpoints, reviewing `/health/live` or `/health/ready` endpoint contracts
+  - **Skip when:** UI-only work, no database or operational monitoring changes
+  - **Key facts:**
+    - `GET /health/live` — liveness, unauthenticated, no database checks
+    - `GET /health/ready` — readiness, checks `DatabaseHealthCheck` + `MigrationStateHealthCheck`, returns JSON
+    - `GET /diagnostics/db` — requires Bearer token, returns provider/migration/connectivity state (no secrets)
+- **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** — *Operational Diagnostics & Observability* section
+  - **Use when:** Diagnosing migration drift, interpreting health check responses, troubleshooting startup logs
+  - **Key commands:**
+    - `curl http://localhost:5170/health/ready` — check readiness
+    - `dotnet ef migrations has-pending-model-changes` — detect model drift
+- **[docs/CI.md](../docs/CI.md)** — *Migration Validation (Sprint F)* section
+  - **Use when:** Understanding what the `db-migration-validate` CI job validates or reproducing it locally
 
 ### Backend Sprint Plans (authoritative for backend assumptions)
 - **PTDocs+ Branch-Specific Database Blueprint and Phased Plan** - Sprint definitions, acceptance criteria, architectural decisions for phased backend work
@@ -217,6 +233,15 @@ PTDoc.UI           → Shared Blazor components
 - Tests skip automatically when `Database__ConnectionString` is not set (local dev)
 - Provider jobs are in `.github/workflows/ci-db.yml`; see `docs/CI.md` for details
 
+### Observability & Migration Safety (Sprint F)
+
+- `[Category=Observability]` integration tests run in CI via `db-migration-validate` job
+- Tests assert: no pending migrations after `MigrateAsync()`, applied count equals assembly count, `CanConnectAsync()` returns true
+- CI also runs `dotnet ef migrations has-pending-model-changes` — exits non-zero on model drift
+- Health endpoints: `GET /health/live` (liveness), `GET /health/ready` (JSON readiness with DB + migration checks)
+- Diagnostics endpoint: `GET /diagnostics/db` (requires Bearer token; returns provider, migration status, connectivity — no secrets)
+- See `docs/ARCHITECTURE.md` — *Observability & Health Monitoring* and `docs/CI.md` — *Migration Validation (Sprint F)*
+
 ### Healthcare & Accessibility
 
 - **HIPAA**: Maintain audit trails for patient data
@@ -236,6 +261,8 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Adding migrations for a new provider (Sqlite/SqlServer/Postgres)
 - [ ] Configuring production database environment variables (`Database__Provider`, `ConnectionStrings__PTDocsServer`, `Database__AutoMigrate`)
 - [ ] Running production deployment migrations (consult `docs/EF_MIGRATIONS.md` — *Production Deployment* section)
+- [ ] Adding or modifying health checks, diagnostics endpoints, or observability logic (consult `docs/ARCHITECTURE.md` — *Observability* section)
+- [ ] Interpreting `GET /health/ready` responses or migration drift in production (consult `docs/DEVELOPMENT.md` — *Operational Diagnostics* section)
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
@@ -338,7 +365,7 @@ dotnet test --filter "Category=Unit"   # Unit tests only
 
 ---
 
-**Last Updated:** March 2026 (Sprint E: production database deployment infrastructure)  
+**Last Updated:** March 2026 (Sprint F: observability, migration safety, and operational guardrails)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required
 
