@@ -6,9 +6,18 @@ PTDoc uses Entity Framework Core migrations for database schema management. The 
 
 ## Provider Configuration
 
-- EF tooling should use a relational provider at design time
-- In-Memory provider is not supported for migrations
-- Use `EF_PROVIDER=sqlite` to ensure SQLite provider is selected
+PTDoc supports three database providers, selected via the `EF_PROVIDER` environment variable:
+
+| `EF_PROVIDER` value | Provider | Use case |
+|---|---|---|
+| `sqlite` (default) | SQLite / SQLCipher | Local development, MAUI offline |
+| `sqlserver` | Microsoft SQL Server | Cloud / production (future) |
+| `postgres` | PostgreSQL via Npgsql | Cloud alternative (future) |
+
+- EF tooling requires a relational provider at design time — In-Memory is not supported for migrations.
+- The `DesignTimeDbContextFactory` in `PTDoc.Infrastructure` reads `EF_PROVIDER` automatically when running EF CLI commands.
+- SQLite is the current production-ready provider with full migration history.
+- SQL Server and PostgreSQL are validated for schema compatibility via CI (Sprint C).
 
 ## Common Commands
 
@@ -20,12 +29,34 @@ EF_PROVIDER=sqlite dotnet ef dbcontext info \
   -s ./src/PTDoc.Api
 ```
 
-### Create New Migration
+### Create New Migration (SQLite – default)
 
 ```bash
 EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure \
   -s ./src/PTDoc.Api
+```
+
+### Create New Migration (SQL Server)
+
+```bash
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True" \
+  dotnet ef migrations add MigrationName \
+  -p ./src/PTDoc.Infrastructure \
+  -s ./src/PTDoc.Api \
+  --output-dir Data/Migrations/SqlServer
+```
+
+### Create New Migration (PostgreSQL)
+
+```bash
+EF_PROVIDER=postgres \
+  Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=postgres" \
+  dotnet ef migrations add MigrationName \
+  -p ./src/PTDoc.Infrastructure \
+  -s ./src/PTDoc.Api \
+  --output-dir Data/Migrations/Postgres
 ```
 
 ### Apply Migrations
@@ -55,9 +86,11 @@ EF_PROVIDER=sqlite dotnet ef migrations script \
 
 ## Project Structure
 
-- **PTDoc.Infrastructure** - Contains `ApplicationDbContext` and migrations
+- **PTDoc.Infrastructure** - Contains `ApplicationDbContext`, `DesignTimeDbContextFactory`, and migrations
 - **PTDoc.Api** - Startup project for EF CLI tools
-- **Migrations folder** - `src/PTDoc.Infrastructure/Data/Migrations/`
+- **SQLite migrations** - `src/PTDoc.Infrastructure/Data/Migrations/` (production-ready)
+- **SQL Server migrations** - `src/PTDoc.Infrastructure/Data/Migrations/SqlServer/` (future)
+- **PostgreSQL migrations** - `src/PTDoc.Infrastructure/Data/Migrations/Postgres/` (future)
 
 ## Web Runtime Considerations
 

@@ -50,10 +50,15 @@
   - **Use when:** Styling components, adding colors/spacing, theme support
   - **Skip when:** Logic changes, not touching CSS
 
-### Database Operations
-- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, database setup
-  - **Use when:** Schema changes, adding migrations, database errors
+### CI & Database Provider Validation
+- **[docs/CI.md](../docs/CI.md)** - CI workflows, database provider test matrix, container services
+  - **Use when:** Modifying CI workflows, adding database provider tests, debugging CI failures, reproducing database tests locally
+  - **Skip when:** UI work, non-CI changes
+- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, multi-provider setup, database setup
+  - **Use when:** Schema changes, adding migrations, adding provider support, database errors
   - **Skip when:** UI work, no data model changes
+
+### Database Operations
 
 ### Platform Differences
 - **[docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)** - Web vs MAUI differences
@@ -138,6 +143,20 @@ PTDoc.UI           → Shared Blazor components
 
 **Path Resolution:** `PFP_DB_PATH` env → `appsettings` → fallback `PTDoc.db`
 
+**Provider Selection (CI / design-time):**
+- `EF_PROVIDER=sqlite` (default) – SQLite / SQLCipher
+- `EF_PROVIDER=sqlserver` + `Database__ConnectionString=...` – SQL Server
+- `EF_PROVIDER=postgres` + `Database__ConnectionString=...` – PostgreSQL
+- See `docs/EF_MIGRATIONS.md` for multi-provider migration commands
+
+### CI Database Provider Validation (Sprint C)
+
+- `[Category=DatabaseProvider]` integration tests run in CI for all three providers
+- SQLite tests use `MigrateAsync()` to validate the full migration history
+- SQL Server and PostgreSQL tests use `EnsureCreated()` to validate schema compatibility
+- Tests skip automatically when `Database__ConnectionString` is not set (local dev)
+- Provider jobs are in `.github/workflows/ci-db.yml`; see `docs/CI.md` for details
+
 ### Healthcare & Accessibility
 
 - **HIPAA**: Maintain audit trails for patient data
@@ -153,6 +172,8 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Implementing UI from Figma (need design specs)
 - [ ] Component not rendering (lifecycle/parameter issues)
 - [ ] Database schema changes (migrations needed)
+- [ ] Adding or changing database provider support (see `docs/EF_MIGRATIONS.md`)
+- [ ] Modifying or debugging CI workflows (see `docs/CI.md`)
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
