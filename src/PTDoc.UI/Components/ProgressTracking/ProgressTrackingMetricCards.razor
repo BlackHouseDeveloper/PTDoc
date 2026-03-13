@@ -1,0 +1,29 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+<div class="progress-metrics" aria-label="Filter-driven progress metrics">
+    @foreach (var metric in Items)
+    {
+        <article class="progress-metric-card progress-metric-card-@metric.BadgeVariant">
+            <p class="progress-metric-label">@metric.Label</p>
+            <p class="progress-metric-value">@metric.Value</p>
+            @if (!string.IsNullOrWhiteSpace(metric.Subtitle))
+            {
+                <p class="progress-metric-subtitle">@metric.Subtitle</p>
+            }
+            <div class="progress-metric-foot">
+                @if (!string.IsNullOrWhiteSpace(metric.BadgeText))
+                {
+                    <span class="progress-metric-badge progress-metric-badge-@metric.BadgeVariant">@metric.BadgeText</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(metric.TrendText))
+                {
+                    <span class="progress-metric-trend">@metric.TrendText</span>
+                }
+            </div>
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ProgressTrackingMetricVm> Items { get; set; } = Array.Empty<ProgressTrackingMetricVm>();
+}

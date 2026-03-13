@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PTDoc.AI", "src\PTDoc.AI\PT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PTDoc.Integrations", "src\PTDoc.Integrations\PTDoc.Integrations.csproj", "{D1DC2F76-3F5F-4DAF-A181-5C8726B7874E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PTDoc.Tests", "tests\PTDoc.Tests\PTDoc.Tests.csproj", "{7D5B8A93-4A48-4A58-9D8E-1E0B47B4F3A2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -48,6 +50,10 @@ Global
 		{D1DC2F76-3F5F-4DAF-A181-5C8726B7874E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D1DC2F76-3F5F-4DAF-A181-5C8726B7874E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D1DC2F76-3F5F-4DAF-A181-5C8726B7874E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D5B8A93-4A48-4A58-9D8E-1E0B47B4F3A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D5B8A93-4A48-4A58-9D8E-1E0B47B4F3A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D5B8A93-4A48-4A58-9D8E-1E0B47B4F3A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D5B8A93-4A48-4A58-9D8E-1E0B47B4F3A2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

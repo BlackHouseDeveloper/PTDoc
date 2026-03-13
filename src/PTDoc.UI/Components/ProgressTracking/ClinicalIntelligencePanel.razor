@@ -1,0 +1,26 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+<section class="progress-clinical-intelligence" aria-label="Clinical intelligence alerts">
+    <h2>Clinical Intelligence</h2>
+    <ul>
+        @foreach (var alert in Alerts)
+        {
+            <li>
+                <article class="progress-alert-card progress-alert-@alert.Severity">
+                    <div>
+                        <p class="progress-alert-message">@alert.Message</p>
+                        <p class="progress-alert-meta">@alert.Meta</p>
+                    </div>
+                    <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(alert.PatientId)">
+                        @alert.ActionLabel
+                    </button>
+                </article>
+            </li>
+        }
+    </ul>
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<ClinicalAlertVm> Alerts { get; set; } = Array.Empty<ClinicalAlertVm>();
+    [Parameter] public EventCallback<string> OnSelectPatient { get; set; }
+}
