@@ -140,6 +140,58 @@ EF_PROVIDER=sqlite dotnet ef database update PreviousMigrationName \
   -s src/PTDoc.Api
 ```
 
+## Production Deployment
+
+### Required Environment Variables
+
+Set the following environment variables before starting the API in production:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ASPNETCORE_ENVIRONMENT` | Yes | Set to `Production` |
+| `Database__Provider` | Yes | `SqlServer` or `Postgres` |
+| `ConnectionStrings__PTDocsServer` | Yes (non-SQLite) | Full database connection string |
+| `Jwt__SigningKey` | Yes | ≥ 32-character secret key |
+
+> **Security:** Inject secrets via environment variables, container secrets, or a
+> secrets manager. Never commit connection strings or signing keys to the repository.
+
+### Migration Safety
+
+Automatic migrations are **disabled** in production by default. Apply migrations
+explicitly during your deployment pipeline:
+
+```bash
+# SQL Server
+Database__Provider=SqlServer \
+  Database__ConnectionString="Server=prod-db;Database=PTDoc;Integrated Security=True;" \
+  dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+  -s src/PTDoc.Api
+
+# PostgreSQL
+Database__Provider=Postgres \
+  Database__ConnectionString="Host=prod-db;Port=5432;Database=ptdoc;Username=ptdoc;Password=..." \
+  dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.Postgres \
+  -s src/PTDoc.Api
+```
+
+See `docs/EF_MIGRATIONS.md` for full production deployment commands including
+idempotent SQL script generation and rollback instructions.
+
+### Enabling Auto-Migrate (Optional)
+
+For managed container deployments that guarantee single-instance startup you can
+re-enable automatic migration:
+
+```bash
+Database__AutoMigrate=true
+```
+
+See `docs/ARCHITECTURE.md` — *Production Database Configuration* for details on
+provider selection and migration safety.
+
 ## Project Structure & Architecture
 
 ### Clean Architecture Layers

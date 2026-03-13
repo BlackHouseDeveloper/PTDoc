@@ -449,6 +449,47 @@ PTDoc.UI/
 - Attribute-based access control (ABAC) for clinical roles
 - Minimum necessary access principle
 
+## Production Database Configuration
+
+### Provider Selection
+
+The API selects the database provider at startup via the `Database:Provider`
+configuration key (or its environment variable equivalent `Database__Provider`):
+
+| Value | Provider | Use Case |
+|-------|----------|----------|
+| `Sqlite` | SQLite | Local development (default) |
+| `SqlServer` | Microsoft SQL Server | Production / staging |
+| `Postgres` | PostgreSQL | Production / staging |
+
+For non-SQLite providers, also supply `ConnectionStrings:PTDocsServer`
+(`ConnectionStrings__PTDocsServer` as an environment variable).
+
+### Migration Safety
+
+The `Database:AutoMigrate` setting controls whether EF Core migrations run
+automatically at startup:
+
+| Environment | Default | Recommended |
+|-------------|---------|-------------|
+| `Development` | `true` (auto-migrate) | Default is fine |
+| `Production` | `false` (no auto-migrate) | Run migrations via CLI |
+
+Override the default by setting `Database:AutoMigrate` (`Database__AutoMigrate`
+as an env var) to `true` or `false` explicitly.
+
+### Required Environment Variables for Production
+
+```bash
+ASPNETCORE_ENVIRONMENT=Production
+Database__Provider=SqlServer           # or Postgres
+ConnectionStrings__PTDocsServer=...    # full connection string (from secrets manager)
+Jwt__SigningKey=...                     # ≥ 32-char secret (from secrets manager)
+```
+
+> **Security:** Never commit production connection strings or signing keys.
+> See `docs/SECURITY.md` and `docs/EF_MIGRATIONS.md` for deployment guidance.
+
 ## Technology Stack
 
 ### Backend

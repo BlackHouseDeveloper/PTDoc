@@ -76,11 +76,22 @@
   - **Skip when:** Logic changes, not touching CSS
 
 ### Database Operations
-- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, multi-provider workflow (Sprint B)
-  - **Use when:** Schema changes, adding migrations, switching database provider, configuring `Database:Provider`, database errors
+- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, multi-provider workflow (Sprint B), production deployment commands (Sprint E)
+  - **Use when:** Schema changes, adding migrations, switching database provider, configuring `Database:Provider`, database errors, **production deployments**
   - **Skip when:** UI work, no data model changes
   - **Multi-provider:** Migrations are split into `PTDoc.Infrastructure.Migrations.{Sqlite|SqlServer|Postgres}` assemblies
   - **Provider config:** Set `Database:Provider` to `Sqlite` (default), `SqlServer`, or `Postgres`
+  - **Production deployment:** See *Production Deployment* section in `docs/EF_MIGRATIONS.md` for environment variables and CLI migration commands
+
+### Production Database Deployment (Sprint E)
+- **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** — *Production Database Configuration* section
+  - **Use when:** Configuring `Database:AutoMigrate`, choosing a production provider, understanding migration safety defaults
+  - **Key facts:**
+    - `Database:AutoMigrate` defaults to `true` in Development, `false` in Production
+    - Override via env var `Database__AutoMigrate=true/false`
+    - Production providers (SqlServer/Postgres) require `ConnectionStrings__PTDocsServer`
+- **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** — *Production Deployment* section
+  - **Use when:** Setting up production environment variables, running deployment migrations, troubleshooting startup failures
 
 ### Database Operations
 
@@ -194,6 +205,12 @@ PTDoc.UI           → Shared Blazor components
 - `EF_PROVIDER=postgres` + `Database__ConnectionString=...` – PostgreSQL
 - See `docs/EF_MIGRATIONS.md` for multi-provider migration commands
 
+**Production Runtime (Sprint E):**
+- `Database__Provider=SqlServer` or `Postgres`
+- `ConnectionStrings__PTDocsServer=...` – full production connection string (injected via secrets)
+- `Database__AutoMigrate=false` (default in production) – run migrations via CLI
+- See `docs/EF_MIGRATIONS.md` — *Production Deployment* and `docs/ARCHITECTURE.md` — *Production Database Configuration*
+
 ### CI Database Provider Validation (Sprint C)
 
 - `[Category=DatabaseProvider]` integration tests run in CI for all three providers
@@ -219,6 +236,8 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Database schema changes (migrations needed)
 - [ ] Switching database provider (`Database:Provider` config)
 - [ ] Adding migrations for a new provider (Sqlite/SqlServer/Postgres)
+- [ ] Configuring production database environment variables (`Database__Provider`, `ConnectionStrings__PTDocsServer`, `Database__AutoMigrate`)
+- [ ] Running production deployment migrations (consult `docs/EF_MIGRATIONS.md` — *Production Deployment* section)
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
@@ -293,7 +312,7 @@ dotnet build PTDoc.sln          # Build all
 dotnet run --project src/PTDoc.Api --urls http://localhost:5170   # API
 dotnet run --project src/PTDoc.Web                                # Web
 
-# Database (multi-provider - Sprint B)
+# Database (multi-provider - Sprint B; production deployment - Sprint E)
 ./PTDoc-Foundry.sh --create-migration --seed   # Setup SQLite DB (default)
 
 # Add migration - specify provider-specific migrations project
@@ -301,10 +320,18 @@ EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
   -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api --context ApplicationDbContext
 
-# Apply migration
+# Apply migration (dev - SQLite)
 EF_PROVIDER=sqlite dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
+
+# Apply migration (production - SQL Server)
+# Database__Provider=SqlServer Database__ConnectionString="..." \
+#   dotnet ef database update -p src/PTDoc.Infrastructure.Migrations.SqlServer -s src/PTDoc.Api
+
+# Apply migration (production - PostgreSQL)
+# Database__Provider=Postgres Database__ConnectionString="..." \
+#   dotnet ef database update -p src/PTDoc.Infrastructure.Migrations.Postgres -s src/PTDoc.Api
 
 # Test
 dotnet test                     # All tests
@@ -313,7 +340,7 @@ dotnet test --filter "Category=Unit"   # Unit tests only
 
 ---
 
-**Last Updated:** March 2026 (Sprint B: multi-provider migrations)  
+**Last Updated:** March 2026 (Sprint E: production database deployment infrastructure)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required
 

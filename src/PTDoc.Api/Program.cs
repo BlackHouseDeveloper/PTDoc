@@ -261,8 +261,13 @@ builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 
 var app = builder.Build();
 
-// Seed database in development
-if (app.Environment.IsDevelopment())
+// Auto-migrate: defaults to true in Development, false in Production.
+// Override with Database:AutoMigrate = true/false in configuration or environment variables.
+// Production deployments should run migrations explicitly via the CLI (see docs/EF_MIGRATIONS.md).
+var autoMigrate = builder.Configuration.GetValue<bool?>("Database:AutoMigrate")
+    ?? app.Environment.IsDevelopment();
+
+if (autoMigrate)
 {
     using var scope = app.Services.CreateScope();
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -271,8 +276,11 @@ if (app.Environment.IsDevelopment())
     // Apply any pending migrations
     await context.Database.MigrateAsync();
 
-    // Seed test data
-    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
+    // Seed test data in development only
+    if (app.Environment.IsDevelopment())
+    {
+        await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
+    }
 }
 
 app.UseAuthentication();
