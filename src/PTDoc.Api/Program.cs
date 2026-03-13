@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Observability;
@@ -260,6 +262,40 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+
+        // Sprint G: Audit bearer token validation failures without logging raw token values.
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = async context =>
+            {
+                // Only audit when a Bearer token was actually presented.
+                // Requests without an Authorization header are not auditable auth failures
+                // and would cause unnecessary log volume / DoS risk if audited.
+                var authHeader = context.HttpContext.Request.Headers.Authorization.ToString();
+                if (string.IsNullOrEmpty(authHeader) ||
+                    !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                try
+                {
+                    var auditService = context.HttpContext.RequestServices
+                        .GetRequiredService<IAuditService>();
+
+                    var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
+                    var reason = context.Exception?.GetType().Name ?? "Unknown";
+
+                    await auditService.LogAuthEventAsync(
+                        PTDoc.Application.Compliance.AuditEvent.TokenValidationFailed(ipAddress, reason),
+                        context.HttpContext.RequestAborted);
+                }
+                catch
+                {
+                    // Audit failures must never break authentication — swallow silently.
+                }
+            }
+        };
     });
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -270,6 +306,49 @@ builder.Services.AddSingleton<JwtTokenIssuer>();
 builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
 
 var app = builder.Build();
+
+// Sprint G: Safe exception handling — never expose stack traces or internal details to clients.
+// Returns a generic JSON error response for all unhandled exceptions.
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        // The exception handler pipeline resets the response (including clearing headers).
+        // Re-apply security headers here so error responses are also hardened.
+        SecurityHeadersMiddleware.ApplyHeaders(context.Response);
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+
+        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+        if (exceptionFeature != null)
+        {
+            // Log the exception internally (structured, no PHI)
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+
+            // Sanitize user-controlled request data to prevent log forging
+            var sanitizedMethod = context.Request.Method.Replace("\r", string.Empty).Replace("\n", string.Empty);
+            var sanitizedPath = context.Request.Path.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
+            logger.LogError(
+                exceptionFeature.Error,
+                "Unhandled exception on {Method} {Path}",
+                sanitizedMethod,
+                sanitizedPath);
+        }
+
+        // Return a safe generic response — never expose internal details
+        var result = JsonSerializer.Serialize(new
+        {
+            error = "An unexpected error occurred. Please try again later.",
+            correlationId = context.TraceIdentifier
+        });
+        await context.Response.WriteAsync(result);
+    });
+});
+
+// Sprint G: Apply security headers to all API responses.
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // Sprint F: Log selected database provider at startup for operational visibility
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();

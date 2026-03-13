@@ -25,6 +25,12 @@ public interface IAuditService
     /// Logs an addendum creation event.
     /// </summary>
     Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs an authentication event (login success/failure, logout, token validation failure).
+    /// CRITICAL: Must NOT include PIN, raw tokens, or PHI in metadata.
+    /// </summary>
+    Task LogAuthEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -100,6 +106,86 @@ public class AuditEvent
             {
                 ["NoteId"] = noteId,
                 ["AddendumId"] = addendumId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event for a successful login.
+    /// NO PIN, password, or PHI in metadata.
+    /// </summary>
+    public static AuditEvent LoginSuccess(Guid userId, string? ipAddress)
+    {
+        return new AuditEvent
+        {
+            EventType = "LoginSuccess",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["IpAddress"] = ipAddress ?? "unknown",
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event for a failed login attempt.
+    /// NO PIN, password, or PHI in metadata.
+    /// </summary>
+    public static AuditEvent LoginFailed(string? ipAddress, string reason)
+    {
+        return new AuditEvent
+        {
+            EventType = "LoginFailed",
+            Severity = "Warning",
+            Success = false,
+            ErrorMessage = reason,
+            Metadata = new Dictionary<string, object>
+            {
+                ["IpAddress"] = ipAddress ?? "unknown",
+                ["Reason"] = reason,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event for a logout action.
+    /// </summary>
+    public static AuditEvent Logout(Guid userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "Logout",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event for a bearer token validation failure.
+    /// NO raw token value in metadata.
+    /// </summary>
+    public static AuditEvent TokenValidationFailed(string? ipAddress, string reason)
+    {
+        return new AuditEvent
+        {
+            EventType = "TokenValidationFailed",
+            Severity = "Warning",
+            Success = false,
+            ErrorMessage = reason,
+            Metadata = new Dictionary<string, object>
+            {
+                ["IpAddress"] = ipAddress ?? "unknown",
+                ["Reason"] = reason,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };
