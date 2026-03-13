@@ -19,17 +19,26 @@ public static class SyncEndpoints
         syncGroup.MapPost("/run", RunFullSync)
             .WithName("RunFullSync");
 
-        // POST /api/v1/sync/push - Push local changes
+        // POST /api/v1/sync/push - Push local changes (server-side queue processing)
         syncGroup.MapPost("/push", PushChanges)
             .WithName("PushChanges");
 
-        // GET /api/v1/sync/pull - Pull server changes
+        // GET /api/v1/sync/pull - Pull server changes (server-side queue processing)
         syncGroup.MapGet("/pull", PullChanges)
             .WithName("PullChanges");
 
         // GET /api/v1/sync/status - Get queue status
         syncGroup.MapGet("/status", GetSyncStatus)
             .WithName("GetSyncStatus");
+
+        // ── MAUI client sync endpoints ────────────────────────────────────────────
+        // POST /api/v1/sync/client/push - Receive entity changes from a MAUI client
+        syncGroup.MapPost("/client/push", ReceiveClientPush)
+            .WithName("ReceiveClientPush");
+
+        // GET /api/v1/sync/client/pull - Return entity delta to a MAUI client
+        syncGroup.MapGet("/client/pull", ServeClientPull)
+            .WithName("ServeClientPull");
     }
 
     private static async Task<IResult> RunFullSync(
@@ -159,6 +168,77 @@ public static class SyncEndpoints
                 detail: "An error occurred while retrieving sync status. Please try again.",
                 statusCode: 500,
                 title: "Failed to get sync status");
+        }
+    }
+
+    private static async Task<IResult> ReceiveClientPush(
+        [FromBody] ClientSyncPushRequest request,
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
+    {
+        try
+        {
+            // Validate that all pushed entity types are from the known allowlist
+            if (request.Items is { Count: > 0 })
+            {
+                var unknown = request.Items
+                    .Select(i => i.EntityType)
+                    .Where(t => !_knownEntityTypes.Contains(t ?? string.Empty))
+                    .Distinct()
+                    .ToArray();
+
+                if (unknown.Length > 0)
+                {
+                    return Results.BadRequest(new { error = $"Unknown entity type(s): {string.Join(", ", unknown)}" });
+                }
+            }
+
+            var result = await syncEngine.ReceiveClientPushAsync(request);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Client push failed");
+            return Results.Problem(
+                detail: "An error occurred while receiving client changes. Please try again.",
+                statusCode: 500,
+                title: "Client push failed");
+        }
+    }
+
+    private static readonly HashSet<string> _knownEntityTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "Patient", "Appointment" };
+
+    private static async Task<IResult> ServeClientPull(
+        [FromQuery] DateTime? sinceUtc,
+        [FromQuery] string? entityTypes,
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
+    {
+        try
+        {
+            var types = entityTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            // Reject requests that include unknown entity types to avoid silent data leakage
+            if (types is { Length: > 0 })
+            {
+                var unknown = types.Where(t => !_knownEntityTypes.Contains(t)).ToArray();
+                if (unknown.Length > 0)
+                {
+                    return Results.BadRequest(new { error = $"Unknown entity type(s): {string.Join(", ", unknown)}" });
+                }
+            }
+
+            var result = await syncEngine.GetClientDeltaAsync(sinceUtc, types);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Client pull failed");
+            return Results.Problem(
+                detail: "An error occurred while serving client pull. Please try again.",
+                statusCode: 500,
+                title: "Client pull failed");
         }
     }
 }

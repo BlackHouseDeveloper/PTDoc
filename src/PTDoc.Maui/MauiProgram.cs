@@ -105,7 +105,7 @@ public static class MauiProgram
 
 		// Initializer — called at startup to ensure the schema exists
 		builder.Services.AddSingleton<ILocalDbInitializer, LocalDbInitializer>();
-		
+
 		// Register App as transient to inject services into constructor
 		builder.Services.AddTransient<App>();
 
@@ -123,6 +123,18 @@ public static class MauiProgram
 		});
 
 		builder.Services.AddHttpClient("ApiClient", client =>
+		{
+			client.BaseAddress = new Uri(apiBaseUrl);
+		})
+		.AddHttpMessageHandler<AuthenticatedHttpMessageHandler>();
+
+		// ----------------------------------------------------------------
+		// Sprint H — Offline Sync Orchestrator
+		// LocalSyncOrchestrator uses a typed HttpClient so that it
+		// automatically carries the authenticated session token (via
+		// AuthenticatedHttpMessageHandler) and the correct API base URL.
+		// ----------------------------------------------------------------
+		builder.Services.AddHttpClient<ILocalSyncOrchestrator, LocalSyncOrchestrator>(client =>
 		{
 			client.BaseAddress = new Uri(apiBaseUrl);
 		})
