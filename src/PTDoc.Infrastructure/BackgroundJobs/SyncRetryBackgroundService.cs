@@ -43,7 +43,6 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
             try
             {
                 await ExecuteJobAsync(stoppingToken);
-                await Task.Delay(_options.Interval, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -54,6 +53,16 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
             {
                 // Log and continue — a single cycle failure must not kill the service
                 _logger.LogError(ex, "SyncRetryBackgroundService encountered an unhandled error during execution");
+            }
+
+            try
+            {
+                // Delay always runs so an execution failure never causes a tight retry loop
+                await Task.Delay(_options.Interval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
 

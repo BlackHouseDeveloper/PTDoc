@@ -40,7 +40,6 @@ public sealed class SessionCleanupBackgroundService : BackgroundService, IBackgr
             try
             {
                 await ExecuteJobAsync(stoppingToken);
-                await Task.Delay(_options.Interval, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -51,6 +50,16 @@ public sealed class SessionCleanupBackgroundService : BackgroundService, IBackgr
             {
                 // Log and continue — a single cycle failure must not kill the service
                 _logger.LogError(ex, "SessionCleanupBackgroundService encountered an unhandled error during execution");
+            }
+
+            try
+            {
+                // Delay always runs so an execution failure never causes a tight retry loop
+                await Task.Delay(_options.Interval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
 
