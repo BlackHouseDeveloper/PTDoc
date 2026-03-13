@@ -304,11 +304,16 @@ app.UseExceptionHandler(errorApp =>
         {
             // Log the exception internally (structured, no PHI)
             var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+
+            // Sanitize user-controlled request data to prevent log forging
+            var sanitizedMethod = context.Request.Method.Replace("\r", string.Empty).Replace("\n", string.Empty);
+            var sanitizedPath = context.Request.Path.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
             logger.LogError(
                 exceptionFeature.Error,
                 "Unhandled exception on {Method} {Path}",
-                context.Request.Method,
-                context.Request.Path);
+                sanitizedMethod,
+                sanitizedPath);
         }
 
         // Return a safe generic response — never expose internal details
