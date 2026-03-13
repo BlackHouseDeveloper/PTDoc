@@ -48,15 +48,19 @@ else
     {
         throw new InvalidOperationException(
             "IntakeInvite:SigningKey has not been configured. " +
-            "Set a cryptographically secure random key before deploying. " +
-            "Generate one using: openssl rand -base64 32");
+            "Run the bootstrap script to generate and store a secure key:\n" +
+            "  macOS/Linux: ./setup-dev-secrets.sh\n" +
+            "  Windows:     .\\setup-dev-secrets.ps1\n" +
+            "Or manually: dotnet user-secrets set \"IntakeInvite:SigningKey\" \"$(openssl rand -base64 32)\" " +
+            "--project src/PTDoc.Web/PTDoc.Web.csproj");
     }
 
     if (intakeInviteConfig.SigningKey.Length < 32)
     {
         throw new InvalidOperationException(
             $"IntakeInvite:SigningKey must be at least 32 characters. " +
-            $"Current length: {intakeInviteConfig.SigningKey.Length}");
+            $"Current length: {intakeInviteConfig.SigningKey.Length}. " +
+            "Run ./setup-dev-secrets.sh (macOS/Linux) or .\\setup-dev-secrets.ps1 (Windows) to generate a valid key.");
     }
 
     builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();

@@ -41,7 +41,30 @@ git clone https://github.com/BlackHouseDeveloper/PTDoc.git
 cd PTDoc
 ```
 
-### 2. Initial Setup and Database Configuration
+### 2. Set Up Development Secrets (Required)
+
+PTDoc uses `dotnet user-secrets` to manage signing keys. No real secrets are committed to the repository.
+Run the bootstrap script once after cloning:
+
+```bash
+# macOS / Linux
+./setup-dev-secrets.sh
+
+# Windows (PowerShell)
+.\setup-dev-secrets.ps1
+```
+
+This generates cryptographically strong JWT and IntakeInvite signing keys and stores them securely in your OS user profile. The app will fail fast with clear instructions if this step is skipped.
+
+> **Note:** If you skip this step, starting the API will show:
+> ```
+> JWT signing key has not been configured.
+> Run the bootstrap script to generate and store a secure key:
+>   macOS/Linux: ./setup-dev-secrets.sh
+>   Windows:     .\setup-dev-secrets.ps1
+> ```
+
+### 3. Initial Setup and Database Configuration
 PTDoc includes a setup script PTDoc-Foundry.sh to scaffold the solution and prepare the local database:
 To ensure the project is fully set up (restore NuGet packages, ensure correct .NET 8 targets, etc.), you can run the setup script:
 bash
