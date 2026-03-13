@@ -312,7 +312,102 @@ Authorization: Bearer YOUR_SESSION_TOKEN
 
 Invalid or expired tokens return `401 Unauthorized`.
 
-## Future Enhancements
+## MAUI Client Sync (Sprint H)
+
+Sprint H adds `ILocalSyncOrchestrator` — the MAUI-side counterpart to `ISyncEngine`.
+It is responsible for bidirectional sync between the device's encrypted `LocalDbContext`
+and the server API.
+
+### Architecture (MAUI ↔ Server)
+
+```
+┌──────────────────────────────────┐           ┌────────────────────────────────────┐
+│  MAUI Device (LocalDbContext)    │           │  Server (ApplicationDbContext)     │
+│                                  │           │                                    │
+│  LocalPatientSummary (Pending)   │──push──►  │  POST /api/v1/sync/client/push    │
+│  LocalAppointmentSummary(Pending)│           │  → records receipt in SyncQueue    │
+│                                  │           │                                    │
+│  LocalSyncMetadata (watermarks)  │◄─pull──   │  GET  /api/v1/sync/client/pull    │
+│                                  │           │  → returns Patient/Appointment     │
+│                                  │           │    delta since watermark           │
+└──────────────────────────────────┘           └────────────────────────────────────┘
+```
+
+### MAUI Sync Cycle
+
+1. **Push** (`ILocalSyncOrchestrator.PushPendingAsync`)
+   - Queries all `LocalPatientSummary` and `LocalAppointmentSummary` with `SyncState.Pending`
+   - Serializes them and POSTs to `POST /api/v1/sync/client/push`
+   - Server responds with per-item `"Accepted"`, `"Conflict"`, or `"Error"`
+   - `Accepted` → entity set to `SyncState.Synced`, `LastSyncedUtc` updated
+   - `Conflict` → entity set to `SyncState.Conflict` for manual review
+   - `Error` / network failure → entity **remains `SyncState.Pending`** for retry
+
+2. **Pull** (`ILocalSyncOrchestrator.PullChangesAsync`)
+   - Reads `LocalSyncMetadata.LastPulledAt` per entity type
+   - Calls `GET /api/v1/sync/client/pull?sinceUtc=...&entityTypes=Patient,Appointment`
+   - For each returned item:
+     - **New record**: inserted with `SyncState.Synced`
+     - **Existing Synced**: updated in place
+     - **Existing Pending with server version same or older**: marked `SyncState.Conflict` — **local data is never silently overwritten**
+   - Updates `LocalSyncMetadata.LastPulledAt` watermarks
+
+3. **Full sync** (`ILocalSyncOrchestrator.SyncAsync`): push then pull in one call
+
+### MAUI Conflict Handling
+
+| Local state | Server version | Action |
+|-------------|---------------|--------|
+| `Synced`    | newer         | Apply server version locally |
+| `Synced`    | older         | Apply server version (server is source of truth) |
+| `Pending`   | newer         | Mark `Conflict` — local write preserved, sync deferred |
+| `Pending`   | same timestamp| Mark `Conflict` — local write preserved, sync deferred |
+
+### New API Endpoints (Sprint H)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/sync/client/push` | Receive entity changes from MAUI client |
+| `GET`  | `/api/v1/sync/client/pull` | Return entity delta to MAUI client |
+
+**Push request / response** (`ClientSyncPushRequest` / `ClientSyncPushResponse`):
+```json
+// Request
+{ "items": [{ "entityType": "Patient", "serverId": "...", "localId": 1,
+              "operation": "Update", "dataJson": "{...}", "lastModifiedUtc": "..." }] }
+
+// Response
+{ "acceptedCount": 1, "conflictCount": 0, "errorCount": 0,
+  "items": [{ "localId": 1, "serverId": "...", "status": "Accepted", "serverModifiedUtc": "..." }] }
+```
+
+**Pull response** (`ClientSyncPullResponse`):
+```json
+{ "syncedAt": "2026-03-13T21:00:00Z",
+  "items": [{ "entityType": "Patient", "serverId": "...", "operation": "Upsert",
+               "dataJson": "{...}", "lastModifiedUtc": "..." }] }
+```
+
+### DI Registration (MAUI)
+
+```csharp
+// In MauiProgram.cs
+builder.Services.AddHttpClient<ILocalSyncOrchestrator, LocalSyncOrchestrator>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+})
+.AddHttpMessageHandler<AuthenticatedHttpMessageHandler>(); // carries JWT token
+```
+
+### Retry Safety
+
+- Failed push items **remain `SyncState.Pending`** — they will be retried on the next sync cycle.
+- Pull watermarks are only advanced after a successful server response.
+- Conflict-marked entities require explicit resolution (future conflict-resolution UI).
+
+---
+
+
 
 ### Phase 4+ Features
 
@@ -332,6 +427,6 @@ Invalid or expired tokens return `401 Unauthorized`.
 
 ---
 
-**Last Updated**: February 2026  
-**Version**: Phase 3 Complete  
+**Last Updated**: March 2026 (Sprint H: MAUI client sync engine, push/pull protocol)  
+**Version**: Sprint H Complete  
 **Status**: Production-ready foundation

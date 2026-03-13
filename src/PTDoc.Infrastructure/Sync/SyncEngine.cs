@@ -291,6 +291,207 @@ public class SyncEngine : ISyncEngine
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ClientSyncPushResponse> ReceiveClientPushAsync(
+        ClientSyncPushRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<ClientSyncPushItemResult>();
+        int acceptedCount = 0, conflictCount = 0, errorCount = 0;
+
+        foreach (var item in request.Items)
+        {
+            try
+            {
+                // Resolve the server ID: new records arrive with Guid.Empty
+                var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+
+                // Check for conflict: does a more-recent server version already exist?
+                var existing = await FindExistingEntityLastModifiedAsync(item.EntityType, serverId, cancellationToken);
+                if (existing.HasValue && existing.Value > item.LastModifiedUtc)
+                {
+                    _logger.LogWarning(
+                        "Client push conflict: server version is newer for {EntityType}:{ServerId}",
+                        item.EntityType, serverId);
+
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = "Server version is newer",
+                        ServerModifiedUtc = existing.Value
+                    });
+                    continue;
+                }
+
+                // Record receipt in the server queue so the change can be audited and
+                // later applied by downstream processing (Sprint I+).
+                // Sprint H intent: the server acknowledges receipt and stores a completed
+                // SyncQueueItem for audit purposes. Full entity persistence (upsert into
+                // the Patients / Appointments tables) is deferred to Sprint I+ to keep
+                // this sprint focused on the sync protocol and MAUI orchestration layer.
+                var queueItem = new SyncQueueItem
+                {
+                    EntityType = item.EntityType,
+                    EntityId = serverId,
+                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
+                    EnqueuedAt = DateTime.UtcNow,
+                    Status = SyncQueueStatus.Completed,
+                    CompletedAt = DateTime.UtcNow
+                };
+                _context.SyncQueueItems.Add(queueItem);
+
+                acceptedCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    LocalId = item.LocalId,
+                    ServerId = serverId,
+                    Status = "Accepted",
+                    ServerModifiedUtc = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
+                    item.EntityType, item.ServerId);
+                errorCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    LocalId = item.LocalId,
+                    ServerId = item.ServerId,
+                    Status = "Error",
+                    Error = "Server error processing item"
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return new ClientSyncPushResponse
+        {
+            AcceptedCount = acceptedCount,
+            ConflictCount = conflictCount,
+            ErrorCount = errorCount,
+            Items = results
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ClientSyncPullResponse> GetClientDeltaAsync(
+        DateTime? sinceUtc,
+        string[]? entityTypes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSince = sinceUtc ?? DateTime.MinValue;
+        var effectiveTypes = entityTypes is { Length: > 0 }
+            ? entityTypes
+            : new[] { "Patient", "Appointment" };
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = false
+        };
+
+        var items = new List<ClientSyncPullItem>();
+
+        if (effectiveTypes.Contains("Patient", StringComparer.OrdinalIgnoreCase))
+        {
+            var patients = await _context.Patients
+                .AsNoTracking()
+                .Where(p => p.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in patients)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Patient",
+                    ServerId = p.Id,
+                    Operation = p.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        p.Id,
+                        p.FirstName,
+                        p.LastName,
+                        p.DateOfBirth,
+                        p.Email,
+                        p.Phone,
+                        p.MedicalRecordNumber,
+                        p.IsArchived,
+                        p.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = p.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("Appointment", StringComparer.OrdinalIgnoreCase))
+        {
+            var appointments = await _context.Appointments
+                .AsNoTracking()
+                .Where(a => a.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in appointments)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Appointment",
+                    ServerId = a.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id,
+                        a.PatientId,
+                        a.StartTimeUtc,
+                        a.EndTimeUtc,
+                        a.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = a.LastModifiedUtc
+                });
+            }
+        }
+
+        _logger.LogInformation(
+            "Client pull returning {Count} item(s) since {SinceUtc}",
+            items.Count, effectiveSince);
+
+        return new ClientSyncPullResponse
+        {
+            Items = items,
+            SyncedAt = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
+    /// or <c>null</c> if the record does not exist on the server.
+    /// </summary>
+    private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
+        string entityType,
+        Guid serverId,
+        CancellationToken cancellationToken)
+    {
+        return entityType switch
+        {
+            "Patient" => (await _context.Patients.AsNoTracking()
+                .Where(p => p.Id == serverId)
+                .Select(p => (DateTime?)p.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken)),
+
+            "Appointment" => (await _context.Appointments.AsNoTracking()
+                .Where(a => a.Id == serverId)
+                .Select(a => (DateTime?)a.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken)),
+
+            _ => null
+        };
+    }
+
     /// <summary>
     /// Archive a conflicting version for later review.
     /// </summary>

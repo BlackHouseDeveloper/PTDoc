@@ -36,6 +36,19 @@ public interface ISyncEngine
     /// Get the current sync queue status.
     /// </summary>
     Task<SyncQueueSummary> GetQueueStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Receive entity changes pushed from a MAUI client.
+    /// Validates, records receipt, and returns per-item acceptance status.
+    /// Conflict detection is performed against the server's current entity state.
+    /// </summary>
+    Task<ClientSyncPushResponse> ReceiveClientPushAsync(ClientSyncPushRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Return entity changes that occurred on the server since <paramref name="sinceUtc"/>.
+    /// Optionally filtered to <paramref name="entityTypes"/> (e.g. "Patient", "Appointment").
+    /// </summary>
+    Task<ClientSyncPullResponse> GetClientDeltaAsync(DateTime? sinceUtc, string[]? entityTypes = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
