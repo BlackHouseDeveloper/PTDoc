@@ -72,12 +72,13 @@ public class DatabaseProviderMigrationTests : IDisposable
     // SQL Server – guarded by environment variable
     // -------------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     [Trait("Category", "DatabaseProvider")]
     public async Task SqlServer_Schema_Creates_And_Persists_Data()
     {
-        if (!TryGetProviderConnectionString("sqlserver", out var connectionString))
-            return;
+        Skip.If(
+            !TryGetProviderConnectionString("sqlserver", out var connectionString),
+            "SQL Server provider not configured — set DB_PROVIDER=sqlserver and Database__ConnectionString.");
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
@@ -104,12 +105,13 @@ public class DatabaseProviderMigrationTests : IDisposable
     // PostgreSQL – guarded by environment variable
     // -------------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     [Trait("Category", "DatabaseProvider")]
     public async Task PostgreSQL_Schema_Creates_And_Persists_Data()
     {
-        if (!TryGetProviderConnectionString("postgres", out var connectionString))
-            return;
+        Skip.If(
+            !TryGetProviderConnectionString("postgres", out var connectionString),
+            "PostgreSQL provider not configured — set DB_PROVIDER=postgres and Database__ConnectionString.");
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(connectionString)
@@ -137,8 +139,9 @@ public class DatabaseProviderMigrationTests : IDisposable
 
     /// <summary>
     /// Returns true (and the connection string) when the current environment is
-    /// configured for the requested provider. Returns false to skip the test
-    /// silently when the provider container is not available (e.g. local dev).
+    /// configured for the requested provider. Returns false when the provider
+    /// container is not available (e.g. local dev), which causes the caller to
+    /// record the test as <em>skipped</em> via <see cref="Skip.If"/>.
     /// </summary>
     private static bool TryGetProviderConnectionString(string expectedProvider, out string connectionString)
     {
