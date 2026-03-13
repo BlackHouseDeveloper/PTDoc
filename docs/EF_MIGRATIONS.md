@@ -57,7 +57,7 @@ EF_PROVIDER=sqlite dotnet ef dbcontext info \
   -s ./src/PTDoc.Api
 ```
 
-### Create New Migration
+### Create New Migration (SQLite – default)
 
 #### SQLite
 
@@ -84,6 +84,28 @@ dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure.Migrations.Postgres \
   -s ./src/PTDoc.Api \
   --context ApplicationDbContext
+```
+
+### Create New Migration (SQL Server)
+
+```bash
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True" \
+  dotnet ef migrations add MigrationName \
+  -p ./src/PTDoc.Infrastructure \
+  -s ./src/PTDoc.Api \
+  --output-dir Data/Migrations/SqlServer
+```
+
+### Create New Migration (PostgreSQL)
+
+```bash
+EF_PROVIDER=postgres \
+  Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=postgres" \
+  dotnet ef migrations add MigrationName \
+  -p ./src/PTDoc.Infrastructure \
+  -s ./src/PTDoc.Api \
+  --output-dir Data/Migrations/Postgres
 ```
 
 ### Apply Migrations

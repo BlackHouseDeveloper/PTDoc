@@ -82,6 +82,8 @@
   - **Multi-provider:** Migrations are split into `PTDoc.Infrastructure.Migrations.{Sqlite|SqlServer|Postgres}` assemblies
   - **Provider config:** Set `Database:Provider` to `Sqlite` (default), `SqlServer`, or `Postgres`
 
+### Database Operations
+
 ### Platform Differences
 - **[docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)** - Web vs MAUI differences
   - **Use when:** Platform-specific behavior (auth, storage, API URLs)
@@ -180,6 +182,20 @@ PTDoc.UI           → Shared Blazor components
 ```
 
 **Path Resolution:** `PFP_DB_PATH` env → `appsettings` → fallback `PTDoc.db`
+
+**Provider Selection (CI / design-time):**
+- `EF_PROVIDER=sqlite` (default) – SQLite / SQLCipher
+- `EF_PROVIDER=sqlserver` + `Database__ConnectionString=...` – SQL Server
+- `EF_PROVIDER=postgres` + `Database__ConnectionString=...` – PostgreSQL
+- See `docs/EF_MIGRATIONS.md` for multi-provider migration commands
+
+### CI Database Provider Validation (Sprint C)
+
+- `[Category=DatabaseProvider]` integration tests run in CI for all three providers
+- SQLite tests use `MigrateAsync()` to validate the full migration history
+- SQL Server and PostgreSQL tests use `EnsureCreated()` to validate schema compatibility
+- Tests skip automatically when `Database__ConnectionString` is not set (local dev)
+- Provider jobs are in `.github/workflows/ci-db.yml`; see `docs/CI.md` for details
 
 ### Healthcare & Accessibility
 

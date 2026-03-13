@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines continuous integration and deployment standards for PTDoc. While full CI/CD automation is not yet implemented, these guidelines establish patterns for future GitHub Actions workflows and development practices.
+This document outlines continuous integration and deployment standards for PTDoc. The active CI pipelines enforce build quality, test coverage, and database provider compatibility on every pull request.
 
 ## CI/CD Principles
 
@@ -25,6 +25,144 @@ This document outlines continuous integration and deployment standards for PTDoc
                          ▼               ▼               ▼
                    [Validation]    [Quality Gates]  [Approval]
 ```
+
+## Active CI Workflows
+
+### `ci-core.yml` – Core Build & Test
+Runs on every pull request against `main`. Validates:
+- Build of all core projects (Core, Application, Infrastructure, AI, Integrations, API)
+- All unit and integration tests in `tests/PTDoc.Tests/`
+- `dotnet format` style checks
+- MAUI iOS simulator build on macOS
+
+### `ci-db.yml` – Database Provider CI (Sprint C)
+Runs on every pull request against `main`. Validates database schema and persistence across all supported providers using a **provider matrix**. See [Database Provider Testing](#database-provider-testing) below.
+
+### `codeql.yml` – Security Scanning
+Static analysis via GitHub CodeQL on every pull request.
+
+---
+
+## Database Provider Testing
+
+**Sprint C** introduced a dedicated database provider CI workflow (`.github/workflows/ci-db.yml`) that runs the `[Category=DatabaseProvider]` integration tests against three database engines.
+
+### Provider Matrix
+
+| Job | Provider | Container Service | Tests |
+|---|---|---|---|
+| `db-sqlite` | SQLite (in-memory) | None | `MigrateAsync()` + persistence |
+| `db-sqlserver` | Microsoft SQL Server 2022 | `mcr.microsoft.com/mssql/server:2022-latest` | `EnsureCreated()` + persistence |
+| `db-postgres` | PostgreSQL 16 | `postgres:16-alpine` | `EnsureCreated()` + persistence |
+
+### What Is Validated
+
+For each provider, the tests assert that:
+
+1. **Schema creation** – All entity tables (`Patients`, `Users`, `ClinicalNotes`, etc.) can be created.
+2. **Migration application** – SQLite uses `MigrateAsync()` to apply all existing EF migrations. SQL Server and PostgreSQL use `EnsureCreated()` (provider-specific migrations are planned for a future sprint).
+3. **Data persistence** – A `Patient` entity can be inserted and retrieved from the database.
+4. **Schema completeness** – Every `DbSet<T>` in `ApplicationDbContext` is queryable without error.
+
+### CI Failure Conditions
+
+CI fails (and the PR is blocked) if:
+
+- Any migration cannot be applied.
+- `EnsureCreated()` fails for SQL Server or PostgreSQL (indicates a model incompatibility).
+- Persistence operations fail (insert/retrieve round-trip).
+- Provider-specific SQL syntax errors surface.
+
+### Container Services Configuration
+
+**SQL Server 2022:**
+```yaml
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    env:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "CI_Strong!Passw0rd"
+      MSSQL_PID: "Developer"
+    ports:
+      - 1433:1433
+```
+
+**PostgreSQL 16:**
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    env:
+      POSTGRES_USER: ptdoc_ci
+      POSTGRES_PASSWORD: ci_postgres_pass
+      POSTGRES_DB: ptdoc_ci
+    ports:
+      - 5432:5432
+```
+
+### Environment Variables for Provider Selection
+
+The integration tests read:
+
+| Variable | Purpose |
+|---|---|
+| `DB_PROVIDER` | Selects provider: `sqlite`, `sqlserver`, `postgres` |
+| `Database__ConnectionString` | Connection string for SQL Server or PostgreSQL |
+
+When `DB_PROVIDER` is not set (local dev), all SQL Server and PostgreSQL tests skip automatically.
+
+### How to Reproduce CI Database Tests Locally
+
+**SQLite (no setup required):**
+```bash
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=DatabaseProvider" \
+  --verbosity normal
+```
+
+**SQL Server (requires Docker):**
+```bash
+# Start SQL Server
+docker run -d --name sqlserver-ci \
+  -e ACCEPT_EULA=Y \
+  -e MSSQL_SA_PASSWORD='CI_Strong!Passw0rd' \
+  -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest
+
+# Create database
+docker exec sqlserver-ci \
+  /opt/mssql-tools18/bin/sqlcmd \
+  -S localhost -U sa -P 'CI_Strong!Passw0rd' -C \
+  -Q "CREATE DATABASE PTDoc_CI;"
+
+# Run tests
+DB_PROVIDER=sqlserver \
+Database__ConnectionString="Server=localhost,1433;Database=PTDoc_CI;User Id=sa;Password=CI_Strong!Passw0rd;TrustServerCertificate=True" \
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=DatabaseProvider" \
+  --verbosity normal
+```
+
+**PostgreSQL (requires Docker):**
+```bash
+# Start PostgreSQL
+docker run -d --name postgres-ci \
+  -e POSTGRES_USER=ptdoc_ci \
+  -e POSTGRES_PASSWORD=ci_postgres_pass \
+  -e POSTGRES_DB=ptdoc_ci \
+  -p 5432:5432 \
+  postgres:16-alpine
+
+# Run tests
+DB_PROVIDER=postgres \
+Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_ci;Username=ptdoc_ci;Password=ci_postgres_pass" \
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=DatabaseProvider" \
+  --verbosity normal
+```
+
+---
 
 ## Build Standards
 

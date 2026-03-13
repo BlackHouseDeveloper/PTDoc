@@ -1,0 +1,196 @@
+name: "Database Provider CI"
+
+# Sprint C: CI provider parity and migration validation.
+# Tests SQLite, SQL Server, and PostgreSQL schema creation and basic persistence
+# so that migration drift or provider-incompatibility cannot enter the repository.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # SQLite – no container required, always runs
+  # ---------------------------------------------------------------------------
+  db-sqlite:
+    name: "DB ▸ SQLite"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run SQLite migration & persistence tests
+      env:
+        DB_PROVIDER: sqlite
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=DatabaseProvider" \
+          --verbosity normal \
+          --logger "trx;LogFileName=db-sqlite-results.trx"
+
+    - name: Publish SQLite test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "DB Test Results – SQLite"
+        path: '**/db-sqlite-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # SQL Server – uses a SQL Server container service
+  # ---------------------------------------------------------------------------
+  db-sqlserver:
+    name: "DB ▸ SQL Server"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "CI_Strong!Passw0rd"
+          MSSQL_PID: "Developer"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'CI_Strong!Passw0rd' -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Create PTDoc CI database
+      run: |
+        docker exec ${{ job.services.sqlserver.id }} \
+          /opt/mssql-tools18/bin/sqlcmd \
+          -S localhost -U sa -P 'CI_Strong!Passw0rd' -C \
+          -Q "IF DB_ID('PTDoc_CI') IS NULL CREATE DATABASE PTDoc_CI;"
+
+    - name: Run SQL Server schema & persistence tests
+      env:
+        DB_PROVIDER: sqlserver
+        Database__ConnectionString: "Server=localhost,1433;Database=PTDoc_CI;User Id=sa;Password=CI_Strong!Passw0rd;TrustServerCertificate=True"
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=DatabaseProvider" \
+          --verbosity normal \
+          --logger "trx;LogFileName=db-sqlserver-results.trx"
+
+    - name: Publish SQL Server test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "DB Test Results – SQL Server"
+        path: '**/db-sqlserver-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL – uses a PostgreSQL container service
+  # ---------------------------------------------------------------------------
+  db-postgres:
+    name: "DB ▸ PostgreSQL"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ptdoc_ci
+          POSTGRES_PASSWORD: ci_postgres_pass
+          POSTGRES_DB: ptdoc_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ptdoc_ci -d ptdoc_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run PostgreSQL schema & persistence tests
+      env:
+        DB_PROVIDER: postgres
+        Database__ConnectionString: "Host=localhost;Port=5432;Database=ptdoc_ci;Username=ptdoc_ci;Password=ci_postgres_pass"
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=DatabaseProvider" \
+          --verbosity normal \
+          --logger "trx;LogFileName=db-postgres-results.trx"
+
+    - name: Publish PostgreSQL test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "DB Test Results – PostgreSQL"
+        path: '**/db-postgres-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
