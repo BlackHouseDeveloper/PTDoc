@@ -103,23 +103,26 @@ dotnet test --filter Category=Integration
 # Using helper script (recommended)
 ./PTDoc-Foundry.sh --create-migration
 
-# Manual EF Core command
+# Manual EF Core command (SQLite - default)
 EF_PROVIDER=sqlite dotnet ef migrations add AddPatientNotes \
-  -p src/PTDoc.Infrastructure \
-  -s src/PTDoc.Api
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api \
+  --context ApplicationDbContext
 ```
+
+See `docs/EF_MIGRATIONS.md` for SQL Server and Postgres migration commands.
 
 #### Applying Migrations
 
 ```bash
-# Apply all pending migrations
+# Apply all pending migrations (SQLite)
 EF_PROVIDER=sqlite dotnet ef database update \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 
 # Apply to specific migration
 EF_PROVIDER=sqlite dotnet ef database update AddPatientNotes \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 ```
 
@@ -128,12 +131,12 @@ EF_PROVIDER=sqlite dotnet ef database update AddPatientNotes \
 ```bash
 # Remove last migration (if not applied)
 EF_PROVIDER=sqlite dotnet ef migrations remove \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 
 # Revert database to previous migration
 EF_PROVIDER=sqlite dotnet ef database update PreviousMigrationName \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 ```
 

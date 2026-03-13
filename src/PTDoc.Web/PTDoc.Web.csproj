@@ -17,6 +17,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>ptdoc-web-1a2b3c4d-5e6f-7890-bcde-f01234567890</UserSecretsId>
   </PropertyGroup>
 
 </Project>

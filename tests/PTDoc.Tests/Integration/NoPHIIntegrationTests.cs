@@ -28,7 +28,7 @@ public class NoPHIIntegrationTests : IAsyncDisposable
         _connection.Open();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection)
+            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         _context = new ApplicationDbContext(options);
