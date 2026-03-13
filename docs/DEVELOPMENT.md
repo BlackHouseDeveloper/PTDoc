@@ -159,23 +159,27 @@ Set the following environment variables before starting the API in production:
 ### Migration Safety
 
 Automatic migrations are **disabled** in production by default. Apply migrations
-explicitly during your deployment pipeline:
+explicitly during your deployment pipeline using the EF Core CLI (which reads
+`EF_PROVIDER` and `Database__ConnectionString`):
 
 ```bash
 # SQL Server
-Database__Provider=SqlServer \
+EF_PROVIDER=sqlserver \
   Database__ConnectionString="Server=prod-db;Database=PTDoc;Integrated Security=True;" \
   dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.SqlServer \
   -s src/PTDoc.Api
 
 # PostgreSQL
-Database__Provider=Postgres \
+EF_PROVIDER=postgres \
   Database__ConnectionString="Host=prod-db;Port=5432;Database=ptdoc;Username=ptdoc;Password=..." \
   dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.Postgres \
   -s src/PTDoc.Api
 ```
+
+> **Note:** `Database__ConnectionString` is the design-time variable for `dotnet ef` CLI.
+> The runtime API uses `ConnectionStrings__PTDocsServer` (see Required Environment Variables above).
 
 See `docs/EF_MIGRATIONS.md` for full production deployment commands including
 idempotent SQL script generation and rollback instructions.

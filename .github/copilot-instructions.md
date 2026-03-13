@@ -93,8 +93,6 @@
 - **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** — *Production Deployment* section
   - **Use when:** Setting up production environment variables, running deployment migrations, troubleshooting startup failures
 
-### Database Operations
-
 ### Platform Differences
 - **[docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)** - Web vs MAUI differences
   - **Use when:** Platform-specific behavior (auth, storage, API URLs)
@@ -325,12 +323,12 @@ EF_PROVIDER=sqlite dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 
-# Apply migration (production - SQL Server)
-# Database__Provider=SqlServer Database__ConnectionString="..." \
+# Apply migration (production - SQL Server; uses DesignTimeDbContextFactory)
+# EF_PROVIDER=sqlserver Database__ConnectionString="..." \
 #   dotnet ef database update -p src/PTDoc.Infrastructure.Migrations.SqlServer -s src/PTDoc.Api
 
-# Apply migration (production - PostgreSQL)
-# Database__Provider=Postgres Database__ConnectionString="..." \
+# Apply migration (production - PostgreSQL; uses DesignTimeDbContextFactory)
+# EF_PROVIDER=postgres Database__ConnectionString="..." \
 #   dotnet ef database update -p src/PTDoc.Infrastructure.Migrations.Postgres -s src/PTDoc.Api
 
 # Test

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Xunit;
 
@@ -163,7 +164,7 @@ public class ProductionConfigurationTests
         const string expected = "Server=prod-db;Database=PTDoc;User=sa;Password=secret";
 
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
+            .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 // Simulate what the environment variable loader produces after __ → : mapping
                 ["ConnectionStrings:PTDocsServer"] = expected
@@ -230,8 +231,7 @@ public class ProductionConfigurationTests
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static IConfiguration BuildConfig(
-        System.Collections.Generic.Dictionary<string, string?> values)
+    private static IConfiguration BuildConfig(Dictionary<string, string?> values)
     {
         return new ConfigurationBuilder()
             .AddInMemoryCollection(values)

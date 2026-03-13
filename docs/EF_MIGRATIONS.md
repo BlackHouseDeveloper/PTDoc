@@ -183,14 +183,26 @@ Migrations are **not applied automatically in production** by default
 `Development`).  Apply them explicitly during your deployment process using the
 EF Core CLI commands below.
 
-### Required Environment Variables
+### Environment Variables — Runtime API
+
+These variables are read by the API at startup:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
 | `ASPNETCORE_ENVIRONMENT` | Set to `Production` for production deployments | `Production` |
 | `Database__Provider` | Database provider (`SqlServer` or `Postgres`) | `SqlServer` |
-| `ConnectionStrings__PTDocsServer` | Full connection string | `Server=db;Database=PTDoc;...` |
+| `ConnectionStrings__PTDocsServer` | Full runtime connection string | `Server=db;Database=PTDoc;...` |
 | `Jwt__SigningKey` | JWT signing secret (≥ 32 chars) | *(from secrets manager)* |
+| `Database__AutoMigrate` | Override auto-migrate behavior (optional) | `false` |
+
+### Environment Variables — EF Core CLI (`dotnet ef`)
+
+The `DesignTimeDbContextFactory` reads these variables when you run `dotnet ef` commands:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `EF_PROVIDER` | Provider for `dotnet ef` tools | `sqlserver` or `postgres` |
+| `Database__ConnectionString` | Connection string for EF CLI only | `Server=db;Database=PTDoc;...` |
 
 > **Security:** Never commit connection strings or signing keys to the repository.
 > Inject them via environment variables, container secrets, or a secrets manager
@@ -199,7 +211,7 @@ EF Core CLI commands below.
 ### Applying Migrations — SQL Server
 
 ```bash
-Database__Provider=SqlServer \
+EF_PROVIDER=sqlserver \
   Database__ConnectionString="Server=prod-db;Database=PTDoc;Integrated Security=True;" \
   dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.SqlServer \
@@ -209,7 +221,7 @@ Database__Provider=SqlServer \
 ### Applying Migrations — PostgreSQL
 
 ```bash
-Database__Provider=Postgres \
+EF_PROVIDER=postgres \
   Database__ConnectionString="Host=prod-db;Port=5432;Database=ptdoc;Username=ptdoc;Password=..." \
   dotnet ef database update \
   -p src/PTDoc.Infrastructure.Migrations.Postgres \
@@ -266,7 +278,7 @@ Database__AutoMigrate=true
 
 ```bash
 # Revert to a specific migration (SQL Server example)
-Database__Provider=SqlServer \
+EF_PROVIDER=sqlserver \
   Database__ConnectionString="..." \
   dotnet ef database update PreviousMigrationName \
   -p src/PTDoc.Infrastructure.Migrations.SqlServer \
