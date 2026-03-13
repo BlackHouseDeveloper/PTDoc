@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Api.Diagnostics;
@@ -43,26 +42,44 @@ public static class DiagnosticsEndpoints
 
             List<string> pending;
             List<string> applied;
+            string migrationStatus;
             try
             {
                 pending = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
                 applied = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToList();
+                migrationStatus = pending.Count == 0 ? "Current" : "PendingMigrations";
             }
             catch
             {
                 pending = [];
                 applied = [];
+                migrationStatus = "Unknown";
             }
 
-            return Results.Ok(new
-            {
-                provider,
-                connectivity = canConnect ? "Connected" : "Unreachable",
-                migrationStatus = pending.Count == 0 ? "Current" : "PendingMigrations",
-                appliedMigrationCount = applied.Count,
-                pendingMigrationCount = pending.Count,
-                pendingMigrations = pending
-            });
+            // Return 503 when connectivity is lost or migration state cannot be determined
+            var ok = canConnect && migrationStatus != "Unknown";
+
+            return ok
+                ? Results.Ok(new
+                {
+                    provider,
+                    connectivity = canConnect ? "Connected" : "Unreachable",
+                    migrationStatus,
+                    appliedMigrationCount = applied.Count,
+                    pendingMigrationCount = pending.Count,
+                    pendingMigrations = pending
+                })
+                : Results.Json(
+                    new
+                    {
+                        provider,
+                        connectivity = canConnect ? "Connected" : "Unreachable",
+                        migrationStatus,
+                        appliedMigrationCount = applied.Count,
+                        pendingMigrationCount = pending.Count,
+                        pendingMigrations = pending
+                    },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
         })
         .WithName("GetDatabaseDiagnostics");
     }

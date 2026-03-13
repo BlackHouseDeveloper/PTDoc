@@ -250,8 +250,8 @@ jobs:
         reporter: dotnet-trx
         fail-on-error: true
 
-    - name: Install EF Core CLI tools
-      run: dotnet tool install --global dotnet-ef --version 8.0.1
+    - name: Restore local .NET tools (pinned dotnet-ef)
+      run: dotnet tool restore
 
     - name: Validate no pending model changes (SQLite)
       env:
@@ -260,7 +260,7 @@ jobs:
       run: |
         # Verify that every model change has a corresponding migration.
         # Exit code 0 = no pending changes; non-zero = model drift detected.
-        dotnet ef migrations has-pending-model-changes \
+        dotnet tool run dotnet-ef migrations has-pending-model-changes \
           -p src/PTDoc.Infrastructure.Migrations.Sqlite \
           -s src/PTDoc.Api \
           --no-build \

@@ -57,7 +57,7 @@ public sealed class MigrationStateHealthCheck : IHealthCheck
                 string.Join(", ", pending));
 
             return HealthCheckResult.Degraded(
-                $"{pending.Count} pending migration(s): {string.Join(", ", pending)}");
+                $"{pending.Count} pending migration(s). See logs or /diagnostics/db for details.");
         }
         catch (Exception ex)
         {
