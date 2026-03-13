@@ -8,7 +8,7 @@
 3. **Use existing patterns** - prefer reusing over inventing new approaches
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
-6. **File placement first** - always consult `architect.md` for file placement; if unavailable, use `docs/ARCHITECTURE.md`
+6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
@@ -19,6 +19,31 @@
 - Do NOT open/cite every doc for every task
 - Consult docs only when they directly affect your current work
 - Trust your knowledge of .NET/Blazor for standard patterns
+
+**Documentation Authority Hierarchy (Highest → Lowest)**
+1. **Primary architecture & system design**
+  - [PTDocs+ Branch-Specific Database Blueprint and Phased Plan for UI Completion](../docs/PTDocs+%20Branch-Specific%20Database%20Blueprint%20and%20Phased%20Plan%20for%20UI-Completiondeep-research-report.md)
+  - [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+  - [docs/SYNC_ENGINE.md](../docs/SYNC_ENGINE.md)
+2. **Repository workflow & guardrails**
+  - This file ([.github/copilot-instructions.md](copilot-instructions.md))
+  - [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)
+  - [docs/CI.md](../docs/CI.md)
+3. **Implementation-specific guidance**
+  - [README.md](../README.md)
+  - [docs/SECURITY.md](../docs/SECURITY.md)
+  - [docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)
+  - [docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)
+  - [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)
+  - [docs/BUILD.md](../docs/BUILD.md)
+4. **Supporting UI & reference docs**
+  - [docs/context/ptdoc-figma-make-prototype-v5-context.md](../docs/context/ptdoc-figma-make-prototype-v5-context.md)
+  - [docs/Blazor-Context.md](../docs/Blazor-Context.md)
+  - [docs/style-system.md](../docs/style-system.md)
+  - [docs/ACCESSIBILITY_USAGE.md](../docs/ACCESSIBILITY_USAGE.md)
+  - [docs/design-system/THEME_VISUAL_GUIDE.md](../docs/design-system/THEME_VISUAL_GUIDE.md)
+5. **General framework knowledge**
+  - Use external framework guidance only when repository documentation does not define the behavior.
 
 ---
 
@@ -66,6 +91,22 @@
 - **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows
   - **Use when:** Running tests, using helper scripts, debugging setup
   - **Skip when:** Implementation work
+
+### Security Policy
+- **[docs/SECURITY.md](../docs/SECURITY.md)** - Auth design, secrets management, HIPAA security controls
+  - **Use when:** Implementing auth, handling secrets/keys, session policy, security-sensitive changes
+  - **Skip when:** UI-only work with no auth or config changes
+
+### CI/CD Pipeline
+- **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy
+  - **Use when:** Modifying workflows, understanding CI behavior, adding CI secrets, branching/deployment
+  - **Skip when:** Local-only development with no CI impact
+
+### Backend Sprint Plans (authoritative for backend assumptions)
+- **PTDocs+ Branch-Specific Database Blueprint and Phased Plan** - Sprint definitions, acceptance criteria, architectural decisions for phased backend work
+  - **Use when:** Making ANY backend assumption about config, secrets, database, auth design, or phased sprint scope. Consult BEFORE making assumptions — especially for Sprint A (secrets/config), Sprint B+ (provider switching, migrations), or any config/startup behavior.
+  - **Skip when:** Pure UI component work with zero backend or config impact
+  - **Location:** Referenced in PR descriptions and issue context for active sprints
 
 ---
 
@@ -160,6 +201,7 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
+- [ ] Making any backend assumption about config, secrets, startup validation, or sprint scope (consult Sprint Blueprint + docs/SECURITY.md + docs/CI.md)
 
 **Don't consult docs for:**
 - Standard .NET/C# patterns you already know
@@ -216,6 +258,10 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 ## Quick Commands
 
 ```bash
+# First-time dev secrets setup (REQUIRED after cloning)
+./setup-dev-secrets.sh          # macOS/Linux: generate & store JWT + IntakeInvite keys
+.\setup-dev-secrets.ps1         # Windows PowerShell equivalent
+
 # Setup & Build
 ./PTDoc-Foundry.sh              # Environment setup
 ./cleanbuild-ptdoc.sh           # Clean build

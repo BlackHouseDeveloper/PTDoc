@@ -24,6 +24,11 @@ jobs:
       with:
         dotnet-version: '8.0.417'
 
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
     - name: Restore dependencies
       run: |
         dotnet restore src/PTDoc.Core/PTDoc.Core.csproj

@@ -1,0 +1,19 @@
+<div class="progress-goals-panel">
+    @if (Goals.Count == 0)
+    {
+        <p>No goals are available for the current filters.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var goal in Goals)
+            {
+                <li>@goal</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Goals { get; set; } = Array.Empty<string>();
+}

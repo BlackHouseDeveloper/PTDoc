@@ -1,0 +1,59 @@
+@using PTDoc.UI.Components.ProgressTracking.Models
+
+<section class="progress-filter-card" aria-label="Progress tracking filters">
+    <div class="progress-filter-field">
+        <label for="progress-date-range">Date Range</label>
+        <select id="progress-date-range" value="@State.DateRange" @onchange="HandleDateRangeChanged">
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+            <option value="90days">Last 90 Days</option>
+        </select>
+    </div>
+
+    <div class="progress-filter-field">
+        <label for="progress-program-status">Program Status</label>
+        <select id="progress-program-status" value="@State.ProgramStatus" @onchange="HandleProgramStatusChanged">
+            <option value="all">All Patients</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="discharged">Discharged</option>
+        </select>
+    </div>
+
+    <div class="progress-filter-field">
+        <label for="progress-treatment-phase">Treatment Phase</label>
+        <select id="progress-treatment-phase" value="@State.TreatmentPhase" @onchange="HandleTreatmentPhaseChanged">
+            <option value="all">All Phases</option>
+            <option value="evaluation">Evaluation</option>
+            <option value="rehab">Rehab</option>
+            <option value="discharge">Discharge</option>
+        </select>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ProgressTrackingFilterState State { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<ProgressTrackingFilterState> OnStateChanged { get; set; }
+
+    private Task HandleDateRangeChanged(ChangeEventArgs args)
+    {
+        return UpdateState(next => next.DateRange = args.Value?.ToString() ?? "30days");
+    }
+
+    private Task HandleProgramStatusChanged(ChangeEventArgs args)
+    {
+        return UpdateState(next => next.ProgramStatus = args.Value?.ToString() ?? "all");
+    }
+
+    private Task HandleTreatmentPhaseChanged(ChangeEventArgs args)
+    {
+        return UpdateState(next => next.TreatmentPhase = args.Value?.ToString() ?? "all");
+    }
+
+    private Task UpdateState(Action<ProgressTrackingFilterState> update)
+    {
+        var next = State.Clone();
+        update(next);
+        return OnStateChanged.InvokeAsync(next);
+    }
+}

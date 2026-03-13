@@ -214,17 +214,22 @@ if (jwtConfig != null)
         "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET"
     };
 
-    if (placeholderKeys.Contains(jwtConfig.SigningKey))
+    if (string.IsNullOrWhiteSpace(jwtConfig.SigningKey) || placeholderKeys.Contains(jwtConfig.SigningKey))
     {
         throw new InvalidOperationException(
-            "JWT signing key has not been configured. The placeholder value must be replaced with a " +
-            "cryptographically secure random key. Generate one using: openssl rand -base64 64");
+            "JWT signing key has not been configured. " +
+            "Run the bootstrap script to generate and store a secure key:\n" +
+            "  macOS/Linux: ./setup-dev-secrets.sh\n" +
+            "  Windows:     .\\setup-dev-secrets.ps1\n" +
+            "Or manually run: dotnet user-secrets set \"Jwt:SigningKey\" <key> " +
+            "--project src/PTDoc.Api/PTDoc.Api.csproj");
     }
 
     if (jwtConfig.SigningKey.Length < 32)
     {
         throw new InvalidOperationException(
-            $"JWT signing key must be at least 32 characters. Current length: {jwtConfig.SigningKey.Length}");
+            $"JWT signing key must be at least 32 characters. Current length: {jwtConfig.SigningKey.Length}. " +
+            "Run ./setup-dev-secrets.sh (macOS/Linux) or .\\setup-dev-secrets.ps1 (Windows) to generate a valid key.");
     }
 }
 

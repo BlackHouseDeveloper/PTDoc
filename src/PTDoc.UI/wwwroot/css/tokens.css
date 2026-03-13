@@ -14,6 +14,7 @@
   --primary-rgb: 22, 163, 74;
   --secondary: #1a2b50;
   --secondary-foreground: #ffffff;
+  --secondary-foreground-rgb: 255, 255, 255;
   --tertiary: #f9fafb;
   --tertiary-foreground: #000000;
   --muted: #f9fafb;
@@ -24,6 +25,7 @@
   --destructive-foreground: #ffffff;
   --destructive-rgb: 217, 48, 37;
   --success: #34a853;
+  --success-rgb: 52, 168, 83;
   --success-foreground: #ffffff;
   --warning: #f9ab00;
   --warning-foreground: #000000;
@@ -183,6 +185,7 @@
   --primary-rgb: 34, 197, 94;
   --secondary: #000000;
   --secondary-foreground: #ffffff;
+  --secondary-foreground-rgb: 255, 255, 255;
   --tertiary: #ece6f0;
   --tertiary-foreground: #000000;
   --muted: #3a3a3a;
@@ -193,6 +196,7 @@
   --destructive-foreground: #ffffff;
   --destructive-rgb: 239, 68, 68;
   --success: #34d399;
+  --success-rgb: 52, 211, 153;
   --success-foreground: #000000;
   --warning: #fbbf24;
   --warning-foreground: #000000;

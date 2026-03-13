@@ -39,7 +39,7 @@ options.Cookie.MaxAge = TimeSpan.FromHours(8);
 - **Cleanup**: Expired tokens automatically cleared on startup
 
 #### Configuration Location
-`src/PTDoc.Api/Auth/JwtOptions.cs` and `appsettings.json`
+`src/PTDoc.Api/Auth/JwtOptions.cs` — signing key supplied via user-secrets (dev) or env var (production), never committed to `appsettings.json`.
 
 ```json
 {
@@ -50,7 +50,71 @@ options.Cookie.MaxAge = TimeSpan.FromHours(8);
 }
 ```
 
-## HIPAA Compliance Considerations
+## Secrets Management
+
+### Overview
+No signing keys, API keys, or credentials are ever committed to tracked configuration files.
+All secrets are injected at runtime via:
+- **Development**: `dotnet user-secrets` (stored in OS user profile, never in the repo)
+- **CI**: Ephemeral secrets generated at workflow runtime (see `.github/workflows/`)
+- **Production**: Environment variables or a secrets manager (e.g., Azure Key Vault)
+
+### First-time local setup (required after cloning)
+
+Run the bootstrap script to generate and store dev secrets:
+
+```bash
+# macOS / Linux
+./setup-dev-secrets.sh
+
+# Windows (PowerShell)
+.\setup-dev-secrets.ps1
+```
+
+This generates cryptographically strong keys and stores them using `dotnet user-secrets`.
+Secrets are **never printed** and are stored in your OS user profile:
+- macOS/Linux: `~/.microsoft/usersecrets/`
+- Windows: `%APPDATA%\Microsoft\UserSecrets\`
+
+### Secrets required for local development
+
+| Project | Config key | User-secrets project |
+|---------|-----------|---------------------|
+| PTDoc.Api | `Jwt:SigningKey` | `src/PTDoc.Api/PTDoc.Api.csproj` |
+| PTDoc.Web | `IntakeInvite:SigningKey` | `src/PTDoc.Web/PTDoc.Web.csproj` |
+
+### Manual secret setup (if not using the bootstrap script)
+
+```bash
+# Generate and set JWT signing key
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 64)" \
+  --project src/PTDoc.Api/PTDoc.Api.csproj
+
+# Generate and set IntakeInvite signing key
+dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
+  --project src/PTDoc.Web/PTDoc.Web.csproj
+```
+
+### Fail-fast startup validation
+Both PTDoc.Api and PTDoc.Web perform startup validation:
+- Missing keys → clear error with setup instructions
+- Placeholder values (e.g., `REPLACE_WITH_A_MIN_32_CHAR_SECRET`) → same error
+- Keys shorter than 32 characters → length error
+
+### Production secrets
+In production, supply secrets via environment variables using ASP.NET Core's `__` separator convention:
+```
+Jwt__SigningKey=<value>
+IntakeInvite__SigningKey=<value>
+```
+Or configure a secrets manager (Azure Key Vault, AWS Secrets Manager) and wire it into the configuration pipeline.
+
+### CI secrets
+CI workflows generate ephemeral signing keys at runtime using `openssl rand`. No committed secrets are needed for CI to pass.
+
+---
+
+
 
 ### Automatic Session Termination
 - Web sessions automatically terminate after 15 minutes of inactivity
