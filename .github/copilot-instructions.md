@@ -90,6 +90,22 @@
   - **Use when:** Running tests, using helper scripts, debugging setup
   - **Skip when:** Implementation work
 
+### Security Policy
+- **[docs/SECURITY.md](../docs/SECURITY.md)** - Auth design, secrets management, HIPAA security controls
+  - **Use when:** Implementing auth, handling secrets/keys, session policy, security-sensitive changes
+  - **Skip when:** UI-only work with no auth or config changes
+
+### CI/CD Pipeline
+- **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy
+  - **Use when:** Modifying workflows, understanding CI behavior, adding CI secrets, branching/deployment
+  - **Skip when:** Local-only development with no CI impact
+
+### Backend Sprint Plans (authoritative for backend assumptions)
+- **PTDocs+ Branch-Specific Database Blueprint and Phased Plan** - Sprint definitions, acceptance criteria, architectural decisions for phased backend work
+  - **Use when:** Making ANY backend assumption about config, secrets, database, auth design, or phased sprint scope. Consult BEFORE making assumptions — especially for Sprint A (secrets/config), Sprint B+ (provider switching, migrations), or any config/startup behavior.
+  - **Skip when:** Pure UI component work with zero backend or config impact
+  - **Location:** Referenced in PR descriptions and issue context for active sprints
+
 ---
 
 ## Quick Reference - Critical Rules Only
@@ -181,6 +197,7 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
+- [ ] Making any backend assumption about config, secrets, startup validation, or sprint scope (consult Sprint Blueprint + docs/SECURITY.md + docs/CI.md)
 
 **Don't consult docs for:**
 - Standard .NET/C# patterns you already know
@@ -231,6 +248,10 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 ## Quick Commands
 
 ```bash
+# First-time dev secrets setup (REQUIRED after cloning)
+./setup-dev-secrets.sh          # macOS/Linux: generate & store JWT + IntakeInvite keys
+.\setup-dev-secrets.ps1         # Windows PowerShell equivalent
+
 # Setup & Build
 ./PTDoc-Foundry.sh              # Environment setup
 ./cleanbuild-ptdoc.sh           # Clean build

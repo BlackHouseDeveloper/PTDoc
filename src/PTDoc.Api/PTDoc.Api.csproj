@@ -20,6 +20,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>ptdoc-api-0a1b2c3d-4e5f-6789-abcd-ef0123456789</UserSecretsId>
   </PropertyGroup>
 
 </Project>

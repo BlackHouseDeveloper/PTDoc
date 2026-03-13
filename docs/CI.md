@@ -348,29 +348,41 @@ EF_PROVIDER=sqlite dotnet ef database update PreviousMigrationName \
 
 ### Development Secrets
 
-**Storage:** Local `appsettings.Development.json` (not committed)
+**Storage:** `dotnet user-secrets` — stored in your OS user profile, **never** in tracked config files.
 
-**Example:**
-```json
-{
-  "Jwt": {
-    "SigningKey": "<generated-key-here>"
-  },
-  "ConnectionStrings": {
-    "DefaultConnection": "Data Source=dev.PTDoc.db"
-  }
-}
+`appsettings.Development.json` contains placeholder values only. The app performs fail-fast startup validation and will refuse to start if placeholder or missing keys are detected.
+
+**Setup (one command after cloning):**
+```bash
+# macOS / Linux
+./setup-dev-secrets.sh
+
+# Windows (PowerShell)
+.\setup-dev-secrets.ps1
 ```
 
-**Generation:**
+**Manual setup:**
 ```bash
-# Generate JWT signing key
-openssl rand -base64 64
+# Generate and store JWT signing key for PTDoc.Api
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 64)" \
+  --project src/PTDoc.Api/PTDoc.Api.csproj
+
+# Generate and store IntakeInvite signing key for PTDoc.Web
+dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
+  --project src/PTDoc.Web/PTDoc.Web.csproj
+```
+
+### CI Secrets
+
+CI workflows generate ephemeral signing keys at runtime using `openssl rand -base64`. No committed secrets are required. The generated values are set as `GITHUB_ENV` environment variables using ASP.NET Core's `__` separator convention:
+```
+Jwt__SigningKey=<runtime-generated>
+IntakeInvite__SigningKey=<runtime-generated>
 ```
 
 ### Production Secrets
 
-**Storage (Future):**
+**Storage (intended):**
 - Azure Key Vault
 - AWS Secrets Manager
 - HashiCorp Vault
@@ -379,6 +391,12 @@ openssl rand -base64 64
 - Managed identities (no credentials in code)
 - Principle of least privilege
 - Audit all access
+
+**Injection:** Set the following environment variables at runtime:
+```
+Jwt__SigningKey=<value>
+IntakeInvite__SigningKey=<value>
+```
 
 ## Monitoring & Observability
 
