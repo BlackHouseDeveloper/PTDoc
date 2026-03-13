@@ -60,6 +60,11 @@
   - **Use when:** Platform-specific behavior (auth, storage, API URLs)
   - **Skip when:** Shared component logic
 
+### MAUI Offline Persistence & Local Database
+- **[docs/MOBILE_ARCHITECTURE.md](../docs/MOBILE_ARCHITECTURE.md)** - MAUI encrypted local SQLite, offline-first persistence
+  - **Use when:** Adding local cache entities, implementing offline data access, debugging SQLCipher init, extending sync scaffolding, reviewing encryption key lifecycle
+  - **Skip when:** Web-only changes, server-side API work, no MAUI-specific behavior
+
 ### Development Workflows
 - **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows
   - **Use when:** Running tests, using helper scripts, debugging setup
@@ -156,6 +161,7 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
+- [ ] Adding MAUI offline features or local cache entities (consult `MOBILE_ARCHITECTURE.md`)
 
 **Don't consult docs for:**
 - Standard .NET/C# patterns you already know
@@ -188,6 +194,9 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 - Domain entities/models/enums/value objects → `PTDoc.Core/Models/`
 - Services interfaces → `PTDoc.Application/Services/`
 - Services implementations → `PTDoc.Infrastructure/Services/`
+- **MAUI local cache entities + interfaces** → `PTDoc.Application/LocalData/`
+- **MAUI local DB context + repository implementations** → `PTDoc.Infrastructure/LocalData/`
+- **MAUI platform-specific providers (key store, etc.)** → `PTDoc.Maui/Security/`
 
 ---
 

@@ -2,19 +2,36 @@
 
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
+using PTDoc.Application.LocalData;
 
 public partial class App : Microsoft.Maui.Controls.Application
 {
-	public App(ITokenStore tokenStore, ILogger<App> logger)
+	public App(ITokenStore tokenStore, ILocalDbInitializer localDbInitializer, ILogger<App> logger)
 	{
 		InitializeComponent();
 
 		MainPage = new MainPage();
-		
+
+		// Initialise local encrypted SQLite database before any data access
+		InitializeLocalDatabaseAsync(localDbInitializer, logger);
+
 		// Enterprise security: Validate token on app startup
 		ValidateTokenOnStartup(tokenStore, logger);
 	}
 	
+	private async void InitializeLocalDatabaseAsync(ILocalDbInitializer localDbInitializer, ILogger<App> logger)
+	{
+		try
+		{
+			await localDbInitializer.InitializeAsync();
+		}
+		catch (Exception ex)
+		{
+			// Log but do not crash — offline features will be unavailable
+			logger.LogError(ex, "Failed to initialise local database; offline features may be unavailable");
+		}
+	}
+
 	private async void ValidateTokenOnStartup(ITokenStore tokenStore, ILogger<App> logger)
 	{
 		try
