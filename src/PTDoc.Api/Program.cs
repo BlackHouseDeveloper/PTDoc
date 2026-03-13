@@ -157,7 +157,7 @@ if (jwtConfig != null)
             "Run the bootstrap script to generate and store a secure key:\n" +
             "  macOS/Linux: ./setup-dev-secrets.sh\n" +
             "  Windows:     .\\setup-dev-secrets.ps1\n" +
-            "Or manually: dotnet user-secrets set \"Jwt:SigningKey\" \"$(openssl rand -base64 64)\" " +
+            "Or manually run: dotnet user-secrets set \"Jwt:SigningKey\" <key> " +
             "--project src/PTDoc.Api/PTDoc.Api.csproj");
     }
 

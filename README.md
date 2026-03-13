@@ -41,7 +41,7 @@ git clone https://github.com/BlackHouseDeveloper/PTDoc.git
 cd PTDoc
 ```
 
-### 2. Set Up Development Secrets (Required)
+### 2. Set Up Development Secrets (Required for API)
 
 PTDoc uses `dotnet user-secrets` to manage signing keys. No real secrets are committed to the repository.
 Run the bootstrap script once after cloning:
@@ -54,9 +54,12 @@ Run the bootstrap script once after cloning:
 .\setup-dev-secrets.ps1
 ```
 
-This generates cryptographically strong JWT and IntakeInvite signing keys and stores them securely in your OS user profile. The app will fail fast with clear instructions if this step is skipped.
+This generates cryptographically strong JWT and IntakeInvite signing keys and stores them securely in your OS user profile.
 
-> **Note:** If you skip this step, starting the API will show:
+- **PTDoc.Api** requires `Jwt:SigningKey` at startup in **all** environments — the API will fail fast if this is missing or a placeholder.
+- **PTDoc.Web** requires `IntakeInvite:SigningKey` only in **non-Development** environments (in Development, the mock invite service is used and the key is not checked).
+
+> **Note:** If you skip this step and start the API, you will see:
 > ```
 > JWT signing key has not been configured.
 > Run the bootstrap script to generate and store a secure key:

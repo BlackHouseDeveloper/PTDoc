@@ -51,7 +51,7 @@ else
             "Run the bootstrap script to generate and store a secure key:\n" +
             "  macOS/Linux: ./setup-dev-secrets.sh\n" +
             "  Windows:     .\\setup-dev-secrets.ps1\n" +
-            "Or manually: dotnet user-secrets set \"IntakeInvite:SigningKey\" \"$(openssl rand -base64 32)\" " +
+            "Or manually run: dotnet user-secrets set \"IntakeInvite:SigningKey\" <key> " +
             "--project src/PTDoc.Web/PTDoc.Web.csproj");
     }
 

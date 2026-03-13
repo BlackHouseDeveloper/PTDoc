@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Xunit;
 
@@ -9,8 +10,15 @@ namespace PTDoc.Tests.Security;
 /// Sprint A: Tests validating that placeholder/missing signing keys are detected,
 /// environment variable overrides work, and CI/runtime paths don't depend on committed secrets.
 /// </summary>
+/// <remarks>
+/// Environment variable mutations are serialized within this collection to avoid flaky tests
+/// caused by concurrent env var writes in xUnit's parallel test runner.
+/// </remarks>
+[Collection("EnvironmentVariables")]
 public class ConfigurationValidationTests
 {
+    // ── Constants that mirror startup validation logic in Program.cs ──────
+
     // These must match the placeholder values checked in src/PTDoc.Api/Program.cs
     private static readonly string[] JwtPlaceholderKeys =
     [
@@ -20,62 +28,91 @@ public class ConfigurationValidationTests
 
     // Must match the REPLACE_ prefix check in src/PTDoc.Web/Program.cs
     private const string IntakeInvitePlaceholderPrefix = "REPLACE_";
+    private const int MinKeyLength = 32;
 
-    // ── JWT placeholder detection ──────────────────────────────────────────
+    // ── Startup validation logic (mirrors Program.cs checks) ─────────────
+
+    /// <summary>
+    /// Returns an error reason string if the JWT key is invalid, or null if it passes.
+    /// Mirrors the validation logic in src/PTDoc.Api/Program.cs.
+    /// </summary>
+    private static string? ValidateJwtKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return "Key is null or empty";
+        if (JwtPlaceholderKeys.Contains(key)) return $"Key is a placeholder: '{key}'";
+        if (key.Length < MinKeyLength) return $"Key is too short: {key.Length} < {MinKeyLength}";
+        return null; // valid
+    }
+
+    /// <summary>
+    /// Returns an error reason string if the IntakeInvite key is invalid, or null if it passes.
+    /// Mirrors the validation logic in src/PTDoc.Web/Program.cs (non-Development path).
+    /// </summary>
+    private static string? ValidateIntakeInviteKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return "Key is null or empty";
+        if (key.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal)) return $"Key starts with placeholder prefix '{IntakeInvitePlaceholderPrefix}'";
+        if (key.Length < MinKeyLength) return $"Key is too short: {key.Length} < {MinKeyLength}";
+        return null; // valid
+    }
+
+    // ── JWT startup validation tests ──────────────────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void JwtKey_NullOrEmpty_FailsValidation(string? key)
+    {
+        Assert.NotNull(ValidateJwtKey(key));
+    }
 
     [Theory]
     [InlineData("REPLACE_WITH_A_MIN_32_CHAR_SECRET")]
     [InlineData("DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET")]
-    public void JwtKey_PlaceholderValues_AreDetectedByStartupValidation(string placeholderKey)
+    public void JwtKey_PlaceholderValues_FailValidation(string placeholderKey)
     {
-        Assert.Contains(placeholderKey, JwtPlaceholderKeys);
-    }
-
-    [Fact]
-    public void JwtKey_NullOrEmpty_FailsValidation()
-    {
-        Assert.True(string.IsNullOrWhiteSpace(null));
-        Assert.True(string.IsNullOrWhiteSpace(""));
-        Assert.True(string.IsNullOrWhiteSpace("   "));
+        Assert.NotNull(ValidateJwtKey(placeholderKey));
     }
 
     [Fact]
     public void JwtKey_ShortKey_FailsLengthValidation()
     {
-        var shortKey = "too_short";
-        Assert.True(shortKey.Length < 32, "Key shorter than 32 chars must fail length validation");
+        Assert.NotNull(ValidateJwtKey("too_short"));
     }
 
     [Fact]
     public void JwtKey_ValidKey_PassesValidation()
     {
-        // Use a runtime-generated key to ensure this test value is never mistaken for a real secret
+        // Use a runtime-generated key to ensure this value is never mistaken for a real secret
         var validKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64));
-        Assert.True(validKey.Length >= 32);
-        Assert.DoesNotContain(validKey, JwtPlaceholderKeys);
-        Assert.False(string.IsNullOrWhiteSpace(validKey));
+        Assert.Null(ValidateJwtKey(validKey));
     }
 
-    // ── IntakeInvite placeholder detection ────────────────────────────────
+    // ── IntakeInvite startup validation tests ─────────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void IntakeInviteKey_NullOrEmpty_FailsValidation(string? key)
+    {
+        Assert.NotNull(ValidateIntakeInviteKey(key));
+    }
 
     [Theory]
     [InlineData("REPLACE_WITH_A_SECURE_32_CHAR_KEY_FOR_INTAKE_INVITE_TOKENS")]
     [InlineData("REPLACE_WITH_SECURE_KEY")]
-    public void IntakeInviteKey_WithReplacePrefix_IsDetectedByStartupValidation(string placeholderKey)
+    public void IntakeInviteKey_PlaceholderValues_FailValidation(string placeholderKey)
     {
-        Assert.True(
-            placeholderKey.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal),
-            $"Placeholder '{placeholderKey}' must start with '{IntakeInvitePlaceholderPrefix}'");
+        Assert.NotNull(ValidateIntakeInviteKey(placeholderKey));
     }
 
     [Fact]
     public void IntakeInviteKey_ValidKey_PassesValidation()
     {
-        // Use a runtime-generated key to ensure this test value is never mistaken for a real secret
+        // Use a runtime-generated key to ensure this value is never mistaken for a real secret
         var validKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-        Assert.False(validKey.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal));
-        Assert.True(validKey.Length >= 32);
-        Assert.False(string.IsNullOrWhiteSpace(validKey));
+        Assert.Null(ValidateIntakeInviteKey(validKey));
     }
 
     // ── Environment variable override (ASP.NET Core config pipeline) ──────
@@ -83,8 +120,8 @@ public class ConfigurationValidationTests
     [Fact]
     public void JwtKey_EnvironmentVariable_OverridesAppsettingsValue()
     {
-        // Arrange: set env var using ASP.NET Core's __ separator convention
-        var testKey = new string('x', 64); // 64-char valid key
+        var previous = Environment.GetEnvironmentVariable("Jwt__SigningKey");
+        var testKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64));
         Environment.SetEnvironmentVariable("Jwt__SigningKey", testKey);
 
         try
@@ -94,20 +131,21 @@ public class ConfigurationValidationTests
                 .AddEnvironmentVariables()
                 .Build();
 
-            // Assert: env var takes precedence
+            // Assert: env var takes precedence and key is valid
             Assert.Equal(testKey, config["Jwt:SigningKey"]);
+            Assert.Null(ValidateJwtKey(config["Jwt:SigningKey"]));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("Jwt__SigningKey", null);
+            Environment.SetEnvironmentVariable("Jwt__SigningKey", previous);
         }
     }
 
     [Fact]
     public void IntakeInviteKey_EnvironmentVariable_OverridesAppsettingsValue()
     {
-        // Arrange
-        var testKey = new string('y', 48);
+        var previous = Environment.GetEnvironmentVariable("IntakeInvite__SigningKey");
+        var testKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
         Environment.SetEnvironmentVariable("IntakeInvite__SigningKey", testKey);
 
         try
@@ -117,28 +155,41 @@ public class ConfigurationValidationTests
                 .Build();
 
             Assert.Equal(testKey, config["IntakeInvite:SigningKey"]);
+            Assert.Null(ValidateIntakeInviteKey(config["IntakeInvite:SigningKey"]));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("IntakeInvite__SigningKey", null);
+            Environment.SetEnvironmentVariable("IntakeInvite__SigningKey", previous);
         }
     }
 
     // ── Appsettings files contain placeholders, not real secrets ──────────
 
-    [Theory]
-    [InlineData("../../../../src/PTDoc.Api/appsettings.json", "Jwt:SigningKey")]
-    [InlineData("../../../../src/PTDoc.Api/appsettings.Development.json", "Jwt:SigningKey")]
-    public void ApiAppsettings_JwtSigningKey_MustBeAPlaceholder(string relativePath, string configKey)
+    /// <summary>
+    /// Walks up from AppContext.BaseDirectory to the directory containing PTDoc.sln,
+    /// so the assertions always execute in both local and CI checkout environments.
+    /// </summary>
+    private static string FindRepoRoot()
     {
-        var fullPath = Path.GetFullPath(
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath));
-
-        if (!File.Exists(fullPath))
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
         {
-            // Skip if the file is not accessible from the test runner (e.g., publish scenarios)
-            return;
+            if (File.Exists(Path.Combine(dir.FullName, "PTDoc.sln")))
+                return dir.FullName;
+            dir = dir.Parent;
         }
+        throw new InvalidOperationException(
+            "Could not locate PTDoc.sln starting from " + AppContext.BaseDirectory +
+            ". Ensure tests are run from a full repository checkout.");
+    }
+
+    [Theory]
+    [InlineData("src/PTDoc.Api/appsettings.json", "Jwt:SigningKey")]
+    [InlineData("src/PTDoc.Api/appsettings.Development.json", "Jwt:SigningKey")]
+    public void ApiAppsettings_JwtSigningKey_MustBeAPlaceholderOrEmpty(string repoRelativePath, string configKey)
+    {
+        var fullPath = Path.Combine(FindRepoRoot(), repoRelativePath);
+        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
 
         var config = new ConfigurationBuilder()
             .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
@@ -148,21 +199,15 @@ public class ConfigurationValidationTests
 
         Assert.True(
             string.IsNullOrEmpty(keyValue) || JwtPlaceholderKeys.Contains(keyValue),
-            $"{relativePath} [{configKey}] must be a placeholder (not a real signing key). " +
+            $"{repoRelativePath} [{configKey}] must be a placeholder (not a real signing key). " +
             $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
     }
 
     [Fact]
-    public void WebAppsettings_IntakeInviteSigningKey_MustBeAPlaceholder()
+    public void WebAppsettingsDevelopment_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty()
     {
-        var relativePath = "../../../../src/PTDoc.Web/appsettings.Development.json";
-        var fullPath = Path.GetFullPath(
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath));
-
-        if (!File.Exists(fullPath))
-        {
-            return;
-        }
+        var fullPath = Path.Combine(FindRepoRoot(), "src/PTDoc.Web/appsettings.Development.json");
+        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
 
         var config = new ConfigurationBuilder()
             .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
@@ -173,7 +218,14 @@ public class ConfigurationValidationTests
         Assert.True(
             string.IsNullOrEmpty(keyValue) ||
             keyValue.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal),
-            $"appsettings.Development.json IntakeInvite:SigningKey must be a REPLACE_ placeholder. " +
+            $"src/PTDoc.Web/appsettings.Development.json IntakeInvite:SigningKey must be a REPLACE_ placeholder. " +
             $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
     }
 }
+
+/// <summary>
+/// Defines a non-parallel xUnit collection for tests that mutate process-wide environment variables.
+/// Tests in this collection run sequentially to avoid interference.
+/// </summary>
+[CollectionDefinition("EnvironmentVariables", DisableParallelization = true)]
+public class EnvironmentVariablesCollection { }
