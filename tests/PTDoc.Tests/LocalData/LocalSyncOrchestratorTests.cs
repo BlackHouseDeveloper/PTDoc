@@ -124,6 +124,29 @@ public class LocalSyncOrchestratorTests
         Assert.Equal(3, count);
     }
 
+    [Fact]
+    public async Task GetPendingCountAsync_IncludesConflictEntities()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        ctx.PatientSummaries.Add(MakePendingPatient());
+        ctx.PatientSummaries.Add(new LocalPatientSummary
+        {
+            ServerId = Guid.NewGuid(),
+            FirstName = "Conflict",
+            LastName = "Patient",
+            SyncState = SyncState.Conflict, // conflict, also needs attention
+            LastModifiedUtc = DateTime.UtcNow
+        });
+        ctx.PatientSummaries.Add(MakeSyncedPatient("Synced", "Patient")); // should NOT count
+        await ctx.SaveChangesAsync();
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var count = await orch.GetPendingCountAsync();
+
+        Assert.Equal(2, count); // 1 Pending + 1 Conflict
+    }
+
     // ── PushPendingAsync ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -154,7 +177,7 @@ public class LocalSyncOrchestratorTests
             AcceptedCount = 1,
             Items = new List<ClientSyncPushItemResult>
             {
-                new() { LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
             }
         };
         var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
@@ -234,7 +257,7 @@ public class LocalSyncOrchestratorTests
             ConflictCount = 1,
             Items = new List<ClientSyncPushItemResult>
             {
-                new() { LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Conflict", Error = "Server version is newer" }
+                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Conflict", Error = "Server version is newer" }
             }
         };
         var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
@@ -261,7 +284,7 @@ public class LocalSyncOrchestratorTests
             AcceptedCount = 1,
             Items = new List<ClientSyncPushItemResult>
             {
-                new() { LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
             }
         };
         var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
@@ -465,7 +488,7 @@ public class LocalSyncOrchestratorTests
             AcceptedCount = 1,
             Items = new List<ClientSyncPushItemResult>
             {
-                new() { LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patient.ServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
             }
         };
         var pullResponse = new ClientSyncPullResponse { Items = new List<ClientSyncPullItem>(), SyncedAt = DateTime.UtcNow };
@@ -498,5 +521,238 @@ public class LocalSyncOrchestratorTests
         Assert.Equal(1, summary.Push.SuccessCount);
         Assert.Equal(0, summary.Pull.PulledCount);
         Assert.True(summary.Duration.TotalMilliseconds >= 0);
+    }
+
+    // ── ServerId = Guid.Empty (new record create path) ────────────────────────────
+
+    [Fact]
+    public async Task PushPendingAsync_UpdatesLocalServerId_WhenNewRecordAccepted()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var newPatient = new LocalPatientSummary
+        {
+            ServerId = Guid.Empty, // never synced — no server ID yet
+            FirstName = "New",
+            LastName = "Record",
+            SyncState = SyncState.Pending,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        ctx.PatientSummaries.Add(newPatient);
+        await ctx.SaveChangesAsync();
+
+        var assignedServerId = Guid.NewGuid();
+        var serverResponse = new ClientSyncPushResponse
+        {
+            AcceptedCount = 1,
+            Items = new List<ClientSyncPushItemResult>
+            {
+                new()
+                {
+                    EntityType = "Patient",
+                    LocalId = newPatient.LocalId,
+                    ServerId = assignedServerId, // server assigns a new ID
+                    Status = "Accepted",
+                    ServerModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PushPendingAsync();
+
+        Assert.Equal(1, result.SuccessCount);
+
+        await ctx.Entry(newPatient).ReloadAsync();
+        Assert.Equal(SyncState.Synced, newPatient.SyncState);
+        Assert.Equal(assignedServerId, newPatient.ServerId); // local ServerId updated from server response
+    }
+
+    // ── Watermark not advanced on apply errors ────────────────────────────────────
+
+    [Fact]
+    public async Task PullChangesAsync_DoesNotAdvanceWatermark_WhenItemApplyFails()
+    {
+        var ctx = CreateInMemoryLocalContext();
+
+        // Seed existing metadata with a known watermark
+        var existingWatermark = DateTime.UtcNow.AddHours(-1);
+        ctx.SyncMetadata.Add(new LocalSyncMetadata { EntityType = "Patient", LastPulledAt = existingWatermark });
+        ctx.SyncMetadata.Add(new LocalSyncMetadata { EntityType = "Appointment", LastPulledAt = existingWatermark });
+        await ctx.SaveChangesAsync();
+
+        // Server returns an item with malformed DataJson that will fail to apply
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items = new List<ClientSyncPullItem>
+            {
+                new()
+                {
+                    EntityType = "Patient",
+                    ServerId = Guid.NewGuid(),
+                    Operation = "Upsert",
+                    DataJson = "THIS IS NOT VALID JSON",  // will throw during JsonDocument.Parse
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PullChangesAsync();
+
+        Assert.NotEmpty(result.Errors);
+
+        // Watermark must NOT be advanced past the failed item
+        var meta = await ctx.SyncMetadata.FirstOrDefaultAsync(m => m.EntityType == "Patient");
+        Assert.NotNull(meta);
+        Assert.Equal(existingWatermark, meta.LastPulledAt);
+    }
+
+    // ── Delete conflict protection ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PullChangesAsync_MarksConflict_WhenPendingPatientReceivesDelete()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var serverId = Guid.NewGuid();
+        var pendingPatient = new LocalPatientSummary
+        {
+            ServerId = serverId,
+            FirstName = "Edited",
+            LastName = "Patient",
+            SyncState = SyncState.Pending,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        ctx.PatientSummaries.Add(pendingPatient);
+        await ctx.SaveChangesAsync();
+
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items = new List<ClientSyncPullItem>
+            {
+                new()
+                {
+                    EntityType = "Patient",
+                    ServerId = serverId,
+                    Operation = "Delete", // server deleted while client has Pending local edits
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PullChangesAsync();
+
+        Assert.Equal(1, result.ConflictCount);
+
+        // Local record must still exist — not silently deleted
+        await ctx.Entry(pendingPatient).ReloadAsync();
+        Assert.Equal(SyncState.Conflict, pendingPatient.SyncState);
+        Assert.Equal("Edited", pendingPatient.FirstName);
+    }
+
+    // ── DateOfBirth pulled from server ───────────────────────────────────────────
+
+    [Fact]
+    public async Task PullChangesAsync_PopulatesDateOfBirth_WhenPullingNewPatient()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var serverId = Guid.NewGuid();
+        var dob = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items = new List<ClientSyncPullItem>
+            {
+                new()
+                {
+                    EntityType = "Patient",
+                    ServerId = serverId,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        FirstName = "DOB",
+                        LastName = "Test",
+                        DateOfBirth = dob,
+                        LastModifiedUtc = DateTime.UtcNow
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        await orch.PullChangesAsync();
+
+        var local = await ctx.PatientSummaries.FirstOrDefaultAsync(p => p.ServerId == serverId);
+        Assert.NotNull(local);
+        Assert.NotNull(local.DateOfBirth);
+        Assert.Equal(dob.Year, local.DateOfBirth!.Value.Year);
+        Assert.Equal(dob.Month, local.DateOfBirth!.Value.Month);
+        Assert.Equal(dob.Day, local.DateOfBirth!.Value.Day);
+    }
+
+    // ── LocalId correlation via (EntityType, LocalId) ─────────────────────────────
+
+    [Fact]
+    public async Task PushPendingAsync_CorrectlyCorrelates_WhenPatientAndAppointmentHaveSameLocalId()
+    {
+        var ctx = CreateInMemoryLocalContext();
+
+        // Use ServerId=Guid.Empty for the appointment so the server assigns a new one,
+        // letting us verify the correct entity received the correct assigned ID.
+        var patient = MakePendingPatient("Alice", "Smith");
+        var appointment = new LocalAppointmentSummary
+        {
+            ServerId = Guid.Empty, // new record — server will assign ID
+            PatientServerId = Guid.NewGuid(),
+            PatientFirstName = "Alice",
+            PatientLastName = "Smith",
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            SyncState = SyncState.Pending,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        ctx.PatientSummaries.Add(patient);
+        ctx.AppointmentSummaries.Add(appointment);
+        await ctx.SaveChangesAsync();
+
+        var assignedAppointmentServerId = Guid.NewGuid();
+        var patientServerId = patient.ServerId;
+
+        var serverResponse = new ClientSyncPushResponse
+        {
+            AcceptedCount = 2,
+            Items = new List<ClientSyncPushItemResult>
+            {
+                // Both items may share the same LocalId integer across tables — EntityType disambiguates
+                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patientServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow },
+                new() { EntityType = "Appointment", LocalId = appointment.LocalId, ServerId = assignedAppointmentServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+            }
+        };
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PushPendingAsync();
+
+        Assert.Equal(2, result.SuccessCount);
+
+        await ctx.Entry(patient).ReloadAsync();
+        await ctx.Entry(appointment).ReloadAsync();
+
+        // Patient stays Synced with original ServerId
+        Assert.Equal(SyncState.Synced, patient.SyncState);
+        Assert.Equal(patientServerId, patient.ServerId);
+
+        // Appointment is Synced with newly assigned ServerId (not the patient's ID)
+        Assert.Equal(SyncState.Synced, appointment.SyncState);
+        Assert.Equal(assignedAppointmentServerId, appointment.ServerId);
     }
 }

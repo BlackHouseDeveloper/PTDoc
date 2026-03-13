@@ -296,27 +296,41 @@ public class SyncEngine : ISyncEngine
         ClientSyncPushRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Guard: treat null or empty items as an empty batch rather than throwing.
+        if (request.Items is not { Count: > 0 })
+        {
+            return new ClientSyncPushResponse();
+        }
+
         var results = new List<ClientSyncPushItemResult>();
         int acceptedCount = 0, conflictCount = 0, errorCount = 0;
 
         foreach (var item in request.Items)
         {
+            // Normalise entity type to PascalCase so conflict detection is case-insensitive.
+            var entityType = item.EntityType?.Trim() ?? string.Empty;
+            if (entityType.Length > 1)
+                entityType = char.ToUpperInvariant(entityType[0]) + entityType[1..];
+            else if (entityType.Length == 1)
+                entityType = char.ToUpperInvariant(entityType[0]).ToString();
+
             try
             {
                 // Resolve the server ID: new records arrive with Guid.Empty
                 var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
 
                 // Check for conflict: does a more-recent server version already exist?
-                var existing = await FindExistingEntityLastModifiedAsync(item.EntityType, serverId, cancellationToken);
+                var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
                 if (existing.HasValue && existing.Value > item.LastModifiedUtc)
                 {
                     _logger.LogWarning(
                         "Client push conflict: server version is newer for {EntityType}:{ServerId}",
-                        item.EntityType, serverId);
+                        entityType, serverId);
 
                     conflictCount++;
                     results.Add(new ClientSyncPushItemResult
                     {
+                        EntityType = entityType,
                         LocalId = item.LocalId,
                         ServerId = serverId,
                         Status = "Conflict",
@@ -332,20 +346,23 @@ public class SyncEngine : ISyncEngine
                 // SyncQueueItem for audit purposes. Full entity persistence (upsert into
                 // the Patients / Appointments tables) is deferred to Sprint I+ to keep
                 // this sprint focused on the sync protocol and MAUI orchestration layer.
+                // PayloadJson is stored so Sprint I+ can replay the exact payload sent by the client.
                 var queueItem = new SyncQueueItem
                 {
-                    EntityType = item.EntityType,
+                    EntityType = entityType,
                     EntityId = serverId,
                     Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
                     EnqueuedAt = DateTime.UtcNow,
                     Status = SyncQueueStatus.Completed,
-                    CompletedAt = DateTime.UtcNow
+                    CompletedAt = DateTime.UtcNow,
+                    PayloadJson = item.DataJson
                 };
                 _context.SyncQueueItems.Add(queueItem);
 
                 acceptedCount++;
                 results.Add(new ClientSyncPushItemResult
                 {
+                    EntityType = entityType,
                     LocalId = item.LocalId,
                     ServerId = serverId,
                     Status = "Accepted",
@@ -355,10 +372,11 @@ public class SyncEngine : ISyncEngine
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
-                    item.EntityType, item.ServerId);
+                    entityType, item.ServerId);
                 errorCount++;
                 results.Add(new ClientSyncPushItemResult
                 {
+                    EntityType = entityType,
                     LocalId = item.LocalId,
                     ServerId = item.ServerId,
                     Status = "Error",
@@ -470,26 +488,24 @@ public class SyncEngine : ISyncEngine
     /// <summary>
     /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
     /// or <c>null</c> if the record does not exist on the server.
+    /// <paramref name="entityType"/> is normalised to PascalCase by the caller before this method is invoked.
     /// </summary>
     private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
         string entityType,
         Guid serverId,
         CancellationToken cancellationToken)
     {
-        return entityType switch
-        {
-            "Patient" => (await _context.Patients.AsNoTracking()
+        return string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase)
+            ? (await _context.Patients.AsNoTracking()
                 .Where(p => p.Id == serverId)
                 .Select(p => (DateTime?)p.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken)),
-
-            "Appointment" => (await _context.Appointments.AsNoTracking()
-                .Where(a => a.Id == serverId)
-                .Select(a => (DateTime?)a.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken)),
-
-            _ => null
-        };
+                .FirstOrDefaultAsync(cancellationToken))
+            : string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase)
+                ? (await _context.Appointments.AsNoTracking()
+                    .Where(a => a.Id == serverId)
+                    .Select(a => (DateTime?)a.LastModifiedUtc)
+                    .FirstOrDefaultAsync(cancellationToken))
+                : null;
     }
 
     /// <summary>

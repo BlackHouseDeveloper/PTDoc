@@ -41,6 +41,10 @@ public class ClientSyncPushRequest
 /// </summary>
 public class ClientSyncPushItemResult
 {
+    /// <summary>Echo of the entity type from the request, used to disambiguate results when
+    /// multiple entity types are pushed in the same batch (LocalId is only unique per table).</summary>
+    public string EntityType { get; set; } = string.Empty;
+
     /// <summary>Echo of the client's local primary key.</summary>
     public int LocalId { get; set; }
 

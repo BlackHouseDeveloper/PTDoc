@@ -178,6 +178,21 @@ public static class SyncEndpoints
     {
         try
         {
+            // Validate that all pushed entity types are from the known allowlist
+            if (request.Items is { Count: > 0 })
+            {
+                var unknown = request.Items
+                    .Select(i => i.EntityType)
+                    .Where(t => !_knownEntityTypes.Contains(t ?? string.Empty))
+                    .Distinct()
+                    .ToArray();
+
+                if (unknown.Length > 0)
+                {
+                    return Results.BadRequest(new { error = $"Unknown entity type(s): {string.Join(", ", unknown)}" });
+                }
+            }
+
             var result = await syncEngine.ReceiveClientPushAsync(request);
             return Results.Ok(result);
         }

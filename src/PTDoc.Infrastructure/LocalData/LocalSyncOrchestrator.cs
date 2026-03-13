@@ -37,6 +37,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true, // accept both camelCase and PascalCase responses
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false
     };
@@ -80,6 +81,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     {
         var errors = new List<string>();
         int pushedCount = 0, successCount = 0, failedCount = 0, conflictCount = 0;
+        bool patientHadAccepted = false, appointmentHadAccepted = false;
 
         // ── Collect pending patients ─────────────────────────────────────────────
         var pendingPatients = await _localContext.PatientSummaries
@@ -197,17 +199,17 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         }
 
         // ── Apply server response to local entities ───────────────────────────────
+        // Build lookup maps keyed by (EntityType, LocalId) to avoid cross-type LocalId collisions.
+        var patientByLocalId = pendingPatients.ToDictionary(p => p.LocalId);
+        var appointmentByLocalId = pendingAppointments.ToDictionary(a => a.LocalId);
         var now = DateTime.UtcNow;
 
         foreach (var itemResult in serverResponse.Items)
         {
-            // Find the local entity by LocalId
-            var localPatient = pendingPatients.FirstOrDefault(p => p.LocalId == itemResult.LocalId);
-            var localAppointment = localPatient is null
-                ? pendingAppointments.FirstOrDefault(a => a.LocalId == itemResult.LocalId)
-                : null;
+            var isPatient = string.Equals(itemResult.EntityType, "Patient", StringComparison.OrdinalIgnoreCase);
+            var isAppointment = string.Equals(itemResult.EntityType, "Appointment", StringComparison.OrdinalIgnoreCase);
 
-            if (localPatient is not null)
+            if (isPatient && patientByLocalId.TryGetValue(itemResult.LocalId, out var localPatient))
             {
                 switch (itemResult.Status)
                 {
@@ -218,6 +220,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         if (localPatient.ServerId == Guid.Empty)
                             localPatient.ServerId = itemResult.ServerId;
                         successCount++;
+                        patientHadAccepted = true;
                         break;
 
                     case "Conflict":
@@ -235,7 +238,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         break;
                 }
             }
-            else if (localAppointment is not null)
+            else if (isAppointment && appointmentByLocalId.TryGetValue(itemResult.LocalId, out var localAppointment))
             {
                 switch (itemResult.Status)
                 {
@@ -245,6 +248,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         if (localAppointment.ServerId == Guid.Empty)
                             localAppointment.ServerId = itemResult.ServerId;
                         successCount++;
+                        appointmentHadAccepted = true;
                         break;
 
                     case "Conflict":
@@ -265,12 +269,11 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         await _localContext.SaveChangesAsync(cancellationToken);
 
-        // ── Update push watermarks ───────────────────────────────────────────────
-        if (successCount > 0)
-        {
+        // ── Update push watermarks per entity type (only when that type had accepted items) ──
+        if (patientHadAccepted)
             await UpdateSyncMetadataAsync("Patient", lastPushedAt: now, cancellationToken: cancellationToken);
+        if (appointmentHadAccepted)
             await UpdateSyncMetadataAsync("Appointment", lastPushedAt: now, cancellationToken: cancellationToken);
-        }
 
         return new LocalPushResult
         {
@@ -369,10 +372,26 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             }
         }
 
+        // Flush all tracked changes in a single SaveChangesAsync call rather than
+        // saving per item (which would create many small transactions on device storage).
+        await _localContext.SaveChangesAsync(cancellationToken);
+
         // ── Update pull watermarks ───────────────────────────────────────────────
-        var pullTime = pullResponse.SyncedAt;
-        await UpdateSyncMetadataAsync("Patient", lastPulledAt: pullTime, cancellationToken: cancellationToken);
-        await UpdateSyncMetadataAsync("Appointment", lastPulledAt: pullTime, cancellationToken: cancellationToken);
+        // Only advance the watermark when all items were applied without errors.
+        // If any item failed, we keep the old watermark so the next pull re-fetches
+        // the failed changes and nothing is silently lost.
+        if (errors.Count == 0)
+        {
+            var pullTime = pullResponse.SyncedAt;
+            await UpdateSyncMetadataAsync("Patient", lastPulledAt: pullTime, cancellationToken: cancellationToken);
+            await UpdateSyncMetadataAsync("Appointment", lastPulledAt: pullTime, cancellationToken: cancellationToken);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Pull watermarks NOT advanced due to {ErrorCount} application error(s); will re-fetch on next pull.",
+                errors.Count);
+        }
 
         return new LocalPullResult
         {
@@ -386,10 +405,11 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     /// <inheritdoc/>
     public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
     {
+        // Count both Pending (not yet pushed) and Conflict (needs resolution) — neither is synced.
         var patientCount = await _localContext.PatientSummaries
-            .CountAsync(p => p.SyncState == SyncState.Pending, cancellationToken);
+            .CountAsync(p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken);
         var appointmentCount = await _localContext.AppointmentSummaries
-            .CountAsync(a => a.SyncState == SyncState.Pending, cancellationToken);
+            .CountAsync(a => a.SyncState == SyncState.Pending || a.SyncState == SyncState.Conflict, cancellationToken);
         return patientCount + appointmentCount;
     }
 
@@ -406,11 +426,19 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         if (item.Operation == "Delete")
         {
-            if (local is not null)
+            if (local is null) return ApplyResult.Applied;
+
+            // Protect locally-pending edits from silent deletion
+            if (local.SyncState == SyncState.Pending)
             {
-                _localContext.PatientSummaries.Remove(local);
-                await _localContext.SaveChangesAsync(cancellationToken);
+                local.SyncState = SyncState.Conflict;
+                _logger.LogWarning(
+                    "Delete conflict for Patient ServerId={ServerId}: local is Pending — marking Conflict instead of deleting",
+                    item.ServerId);
+                return ApplyResult.Conflict;
             }
+
+            _localContext.PatientSummaries.Remove(local);
             return ApplyResult.Applied;
         }
 
@@ -420,7 +448,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         if (local is null)
         {
-            // New record from server — insert
+            // New record from server — insert (no SaveChangesAsync here; caller batches the save)
             var newPatient = new LocalPatientSummary
             {
                 ServerId = item.ServerId,
@@ -429,12 +457,12 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 MedicalRecordNumber = GetStringCaseInsensitive(root, "MedicalRecordNumber"),
                 Phone = GetStringCaseInsensitive(root, "Phone"),
                 Email = GetStringCaseInsensitive(root, "Email"),
+                DateOfBirth = GetDateTimeCaseInsensitive(root, "DateOfBirth"),
                 LastModifiedUtc = item.LastModifiedUtc,
                 SyncState = SyncState.Synced,
                 LastSyncedUtc = DateTime.UtcNow
             };
             _localContext.PatientSummaries.Add(newPatient);
-            await _localContext.SaveChangesAsync(cancellationToken);
             return ApplyResult.Applied;
         }
 
@@ -443,7 +471,6 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         {
             // Local version is same age or newer — conflict, do not overwrite
             local.SyncState = SyncState.Conflict;
-            await _localContext.SaveChangesAsync(cancellationToken);
             _logger.LogWarning(
                 "Pull conflict for Patient ServerId={ServerId}: local is Pending with equal/newer timestamp",
                 item.ServerId);
@@ -456,10 +483,10 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         local.MedicalRecordNumber = GetStringCaseInsensitive(root, "MedicalRecordNumber") ?? local.MedicalRecordNumber;
         local.Phone = GetStringCaseInsensitive(root, "Phone") ?? local.Phone;
         local.Email = GetStringCaseInsensitive(root, "Email") ?? local.Email;
+        local.DateOfBirth = GetDateTimeCaseInsensitive(root, "DateOfBirth") ?? local.DateOfBirth;
         local.LastModifiedUtc = item.LastModifiedUtc;
         local.SyncState = SyncState.Synced;
         local.LastSyncedUtc = DateTime.UtcNow;
-        await _localContext.SaveChangesAsync(cancellationToken);
         return ApplyResult.Applied;
     }
 
@@ -472,11 +499,19 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         if (item.Operation == "Delete")
         {
-            if (local is not null)
+            if (local is null) return ApplyResult.Applied;
+
+            // Protect locally-pending edits from silent deletion
+            if (local.SyncState == SyncState.Pending)
             {
-                _localContext.AppointmentSummaries.Remove(local);
-                await _localContext.SaveChangesAsync(cancellationToken);
+                local.SyncState = SyncState.Conflict;
+                _logger.LogWarning(
+                    "Delete conflict for Appointment ServerId={ServerId}: local is Pending — marking Conflict instead of deleting",
+                    item.ServerId);
+                return ApplyResult.Conflict;
             }
+
+            _localContext.AppointmentSummaries.Remove(local);
             return ApplyResult.Applied;
         }
 
@@ -491,33 +526,30 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
                 PatientFirstName = string.Empty,
                 PatientLastName = string.Empty,
-                StartTimeUtc = GetDateTime(root, "startTimeUtc") ?? GetDateTime(root, "StartTimeUtc") ?? default,
-                EndTimeUtc = GetDateTime(root, "endTimeUtc") ?? GetDateTime(root, "EndTimeUtc") ?? default,
+                StartTimeUtc = GetDateTimeCaseInsensitive(root, "StartTimeUtc") ?? default,
+                EndTimeUtc = GetDateTimeCaseInsensitive(root, "EndTimeUtc") ?? default,
                 LastModifiedUtc = item.LastModifiedUtc,
                 SyncState = SyncState.Synced,
                 LastSyncedUtc = DateTime.UtcNow
             };
             _localContext.AppointmentSummaries.Add(newAppt);
-            await _localContext.SaveChangesAsync(cancellationToken);
             return ApplyResult.Applied;
         }
 
         if (local.SyncState == SyncState.Pending && item.LastModifiedUtc <= local.LastModifiedUtc)
         {
             local.SyncState = SyncState.Conflict;
-            await _localContext.SaveChangesAsync(cancellationToken);
             _logger.LogWarning(
                 "Pull conflict for Appointment ServerId={ServerId}: local is Pending with equal/newer timestamp",
                 item.ServerId);
             return ApplyResult.Conflict;
         }
 
-        local.StartTimeUtc = GetDateTime(root, "startTimeUtc") ?? GetDateTime(root, "StartTimeUtc") ?? local.StartTimeUtc;
-        local.EndTimeUtc = GetDateTime(root, "endTimeUtc") ?? GetDateTime(root, "EndTimeUtc") ?? local.EndTimeUtc;
+        local.StartTimeUtc = GetDateTimeCaseInsensitive(root, "StartTimeUtc") ?? local.StartTimeUtc;
+        local.EndTimeUtc = GetDateTimeCaseInsensitive(root, "EndTimeUtc") ?? local.EndTimeUtc;
         local.LastModifiedUtc = item.LastModifiedUtc;
         local.SyncState = SyncState.Synced;
         local.LastSyncedUtc = DateTime.UtcNow;
-        await _localContext.SaveChangesAsync(cancellationToken);
         return ApplyResult.Applied;
     }
 
@@ -549,10 +581,12 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         if (lastPushedAt.HasValue) meta.LastPushedAt = lastPushedAt;
         if (lastPulledAt.HasValue) meta.LastPulledAt = lastPulledAt;
 
-        // Refresh pending count
+        // Refresh unsynced count: both Pending and Conflict entities require attention
         meta.PendingCount = entityType == "Patient"
-            ? await _localContext.PatientSummaries.CountAsync(p => p.SyncState == SyncState.Pending, cancellationToken)
-            : await _localContext.AppointmentSummaries.CountAsync(a => a.SyncState == SyncState.Pending, cancellationToken);
+            ? await _localContext.PatientSummaries.CountAsync(
+                p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken)
+            : await _localContext.AppointmentSummaries.CountAsync(
+                a => a.SyncState == SyncState.Pending || a.SyncState == SyncState.Conflict, cancellationToken);
 
         await _localContext.SaveChangesAsync(cancellationToken);
     }
@@ -573,6 +607,18 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
         var pascalCase = char.ToUpperInvariant(propertyName[0]) + propertyName[1..];
         return GetString(root, camelCase) ?? GetString(root, pascalCase);
+    }
+
+    /// <summary>
+    /// Reads a DateTime? property trying camelCase first, then PascalCase (single pass, no redundant lookup).
+    /// </summary>
+    private static DateTime? GetDateTimeCaseInsensitive(JsonElement root, string propertyName)
+    {
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+        var result = GetDateTime(root, camelCase);
+        if (result.HasValue) return result;
+        var pascalCase = char.ToUpperInvariant(propertyName[0]) + propertyName[1..];
+        return GetDateTime(root, pascalCase);
     }
 
     private static Guid? GetGuid(JsonElement root, string propertyName) =>
