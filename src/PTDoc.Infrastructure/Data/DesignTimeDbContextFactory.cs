@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.Extensions.Configuration;
 
 namespace PTDoc.Infrastructure.Data;
 
@@ -12,7 +11,7 @@ namespace PTDoc.Infrastructure.Data;
 ///   <item><description><c>sqlserver</c> – Microsoft SQL Server</description></item>
 ///   <item><description><c>postgres</c> – PostgreSQL via Npgsql</description></item>
 /// </list>
-/// Set <c>Database:ConnectionString</c> (or the provider-specific env vars) for non-SQLite providers.
+/// Set <c>Database__ConnectionString</c> for non-SQLite providers.
 /// </summary>
 public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
 {
@@ -27,7 +26,9 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
             case "sqlserver":
                 {
                     var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString")
-                        ?? "Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True";
+                        ?? throw new InvalidOperationException(
+                            "Set the Database__ConnectionString environment variable when using EF_PROVIDER=sqlserver. " +
+                            "Example: Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=<password>;TrustServerCertificate=True");
                     optionsBuilder.UseSqlServer(connectionString,
                         o => o.MigrationsAssembly(typeof(DesignTimeDbContextFactory).Assembly.GetName().Name));
                     break;
@@ -36,7 +37,9 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
             case "postgres":
                 {
                     var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString")
-                        ?? "Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=postgres";
+                        ?? throw new InvalidOperationException(
+                            "Set the Database__ConnectionString environment variable when using EF_PROVIDER=postgres. " +
+                            "Example: Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=<password>");
                     optionsBuilder.UseNpgsql(connectionString,
                         o => o.MigrationsAssembly(typeof(DesignTimeDbContextFactory).Assembly.GetName().Name));
                     break;

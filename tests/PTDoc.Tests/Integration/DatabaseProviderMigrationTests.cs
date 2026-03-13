@@ -76,14 +76,8 @@ public class DatabaseProviderMigrationTests : IDisposable
     [Trait("Category", "DatabaseProvider")]
     public async Task SqlServer_Schema_Creates_And_Persists_Data()
     {
-        var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString");
-        var provider = (Environment.GetEnvironmentVariable("DB_PROVIDER") ?? "sqlite").ToLowerInvariant();
-
-        if (string.IsNullOrWhiteSpace(connectionString) || provider != "sqlserver")
-        {
-            // Skip – SQL Server not configured in this environment
+        if (!TryGetProviderConnectionString("sqlserver", out var connectionString))
             return;
-        }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
@@ -114,14 +108,8 @@ public class DatabaseProviderMigrationTests : IDisposable
     [Trait("Category", "DatabaseProvider")]
     public async Task PostgreSQL_Schema_Creates_And_Persists_Data()
     {
-        var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString");
-        var provider = (Environment.GetEnvironmentVariable("DB_PROVIDER") ?? "sqlite").ToLowerInvariant();
-
-        if (string.IsNullOrWhiteSpace(connectionString) || provider != "postgres")
-        {
-            // Skip – PostgreSQL not configured in this environment
+        if (!TryGetProviderConnectionString("postgres", out var connectionString))
             return;
-        }
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(connectionString)
@@ -146,6 +134,26 @@ public class DatabaseProviderMigrationTests : IDisposable
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns true (and the connection string) when the current environment is
+    /// configured for the requested provider. Returns false to skip the test
+    /// silently when the provider container is not available (e.g. local dev).
+    /// </summary>
+    private static bool TryGetProviderConnectionString(string expectedProvider, out string connectionString)
+    {
+        var provider = (Environment.GetEnvironmentVariable("DB_PROVIDER") ?? "sqlite").ToLowerInvariant();
+        var cs = Environment.GetEnvironmentVariable("Database__ConnectionString");
+
+        if (string.IsNullOrWhiteSpace(cs) || provider != expectedProvider)
+        {
+            connectionString = string.Empty;
+            return false;
+        }
+
+        connectionString = cs;
+        return true;
+    }
 
     private static async Task AssertPersistenceWorksCoreAsync(ApplicationDbContext context, string providerLabel)
     {
