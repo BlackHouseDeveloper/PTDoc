@@ -120,9 +120,9 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
 
 // Sprint G: Apply security headers to all Web responses.
+// Must run before UseStaticFiles so static-file and redirect responses also include the headers.
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -133,6 +133,8 @@ app.Use(async (context, next) =>
         "camera=(), microphone=(), geolocation=(), payment=()";
     await next();
 });
+
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();

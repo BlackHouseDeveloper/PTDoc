@@ -12,6 +12,10 @@ namespace PTDoc.Infrastructure.Security;
 /// - Content-Security-Policy: default-src 'none' — disallows all embedded resources (API only)
 /// - Permissions-Policy                  — disables sensitive browser features
 ///
+/// <see cref="ApplyHeaders"/> is also called directly from the global exception handler
+/// because <c>UseExceptionHandler</c> resets the response (clearing headers) before
+/// writing the 500 body — re-applying headers there ensures error responses are also hardened.
+///
 /// Decision reference: Sprint G — Security Hardening and Compliance Guardrails.
 /// </summary>
 public sealed class SecurityHeadersMiddleware
@@ -25,22 +29,31 @@ public sealed class SecurityHeadersMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        ApplyHeaders(context.Response);
+        await _next(context);
+    }
+
+    /// <summary>
+    /// Applies the standard API security headers to <paramref name="response"/>.
+    /// Extracted as a static helper so the global exception handler can call it
+    /// after <c>UseExceptionHandler</c> resets the response.
+    /// </summary>
+    public static void ApplyHeaders(HttpResponse response)
+    {
         // Prevent MIME sniffing
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        response.Headers["X-Content-Type-Options"] = "nosniff";
 
         // Block iframe embedding — API responses should never be framed
-        context.Response.Headers["X-Frame-Options"] = "DENY";
+        response.Headers["X-Frame-Options"] = "DENY";
 
         // No Referer headers from API responses to external services
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        response.Headers["Referrer-Policy"] = "no-referrer";
 
         // API does not serve HTML; disallow all embedded resources
-        context.Response.Headers["Content-Security-Policy"] = "default-src 'none'";
+        response.Headers["Content-Security-Policy"] = "default-src 'none'";
 
         // Disable browser features not needed by the API
-        context.Response.Headers["Permissions-Policy"] =
+        response.Headers["Permissions-Policy"] =
             "camera=(), microphone=(), geolocation=(), payment=()";
-
-        await _next(context);
     }
 }

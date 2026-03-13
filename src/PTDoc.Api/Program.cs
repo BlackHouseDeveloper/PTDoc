@@ -268,15 +268,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             OnAuthenticationFailed = async context =>
             {
-                // Resolve scoped IAuditService from the request scope
-                var auditService = context.HttpContext.RequestServices
-                    .GetRequiredService<IAuditService>();
+                // Only audit when a Bearer token was actually presented.
+                // Requests without an Authorization header are not auditable auth failures
+                // and would cause unnecessary log volume / DoS risk if audited.
+                var authHeader = context.HttpContext.Request.Headers.Authorization.ToString();
+                if (string.IsNullOrEmpty(authHeader) ||
+                    !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
 
-                var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
-                var reason = context.Exception?.GetType().Name ?? "Unknown";
+                try
+                {
+                    var auditService = context.HttpContext.RequestServices
+                        .GetRequiredService<IAuditService>();
 
-                await auditService.LogAuthEventAsync(
-                    PTDoc.Application.Compliance.AuditEvent.TokenValidationFailed(ipAddress, reason));
+                    var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
+                    var reason = context.Exception?.GetType().Name ?? "Unknown";
+
+                    await auditService.LogAuthEventAsync(
+                        PTDoc.Application.Compliance.AuditEvent.TokenValidationFailed(ipAddress, reason),
+                        context.HttpContext.RequestAborted);
+                }
+                catch
+                {
+                    // Audit failures must never break authentication — swallow silently.
+                }
             }
         };
     });
@@ -296,6 +313,10 @@ app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
     {
+        // The exception handler pipeline resets the response (including clearing headers).
+        // Re-apply security headers here so error responses are also hardened.
+        SecurityHeadersMiddleware.ApplyHeaders(context.Response);
+
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
 

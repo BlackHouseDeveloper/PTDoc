@@ -122,4 +122,25 @@ public class SecurityHeadersTests
                 $"Required security header '{header}' was not set by SecurityHeadersMiddleware.");
         }
     }
+
+    /// <summary>
+    /// Validates that <see cref="SecurityHeadersMiddleware.ApplyHeaders"/> sets the same
+    /// headers as the middleware's <c>InvokeAsync</c> path.
+    /// This method is called directly from the global exception handler so that 500 error
+    /// responses (whose response is reset by UseExceptionHandler) also carry the headers.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Security")]
+    public void ApplyHeaders_Static_SetsAllRequiredHeaders()
+    {
+        var context = new DefaultHttpContext();
+
+        SecurityHeadersMiddleware.ApplyHeaders(context.Response);
+
+        Assert.Equal("nosniff", context.Response.Headers["X-Content-Type-Options"].ToString());
+        Assert.Equal("DENY", context.Response.Headers["X-Frame-Options"].ToString());
+        Assert.Equal("no-referrer", context.Response.Headers["Referrer-Policy"].ToString());
+        Assert.Equal("default-src 'none'", context.Response.Headers["Content-Security-Policy"].ToString());
+        Assert.False(string.IsNullOrEmpty(context.Response.Headers["Permissions-Policy"].ToString()));
+    }
 }
