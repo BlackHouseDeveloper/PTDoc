@@ -8,7 +8,7 @@
 3. **Use existing patterns** - prefer reusing over inventing new approaches
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
-6. **File placement first** - always consult `architect.md` for file placement; if unavailable, use `docs/ARCHITECTURE.md`
+6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
@@ -19,6 +19,31 @@
 - Do NOT open/cite every doc for every task
 - Consult docs only when they directly affect your current work
 - Trust your knowledge of .NET/Blazor for standard patterns
+
+**Documentation Authority Hierarchy (Highest → Lowest)**
+1. **Primary architecture & system design**
+  - [PTDocs+ Branch-Specific Database Blueprint and Phased Plan for UI Completion](../docs/PTDocs+%20Branch-Specific%20Database%20Blueprint%20and%20Phased%20Plan%20for%20UI-Completiondeep-research-report.md)
+  - [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+  - [docs/SYNC_ENGINE.md](../docs/SYNC_ENGINE.md)
+2. **Repository workflow & guardrails**
+  - This file ([.github/copilot-instructions.md](copilot-instructions.md))
+  - [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)
+  - [docs/CI.md](../docs/CI.md)
+3. **Implementation-specific guidance**
+  - [README.md](../README.md)
+  - [docs/SECURITY.md](../docs/SECURITY.md)
+  - [docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)
+  - [docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)
+  - [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)
+  - [docs/BUILD.md](../docs/BUILD.md)
+4. **Supporting UI & reference docs**
+  - [docs/context/ptdoc-figma-make-prototype-v5-context.md](../docs/context/ptdoc-figma-make-prototype-v5-context.md)
+  - [docs/Blazor-Context.md](../docs/Blazor-Context.md)
+  - [docs/style-system.md](../docs/style-system.md)
+  - [docs/ACCESSIBILITY_USAGE.md](../docs/ACCESSIBILITY_USAGE.md)
+  - [docs/design-system/THEME_VISUAL_GUIDE.md](../docs/design-system/THEME_VISUAL_GUIDE.md)
+5. **General framework knowledge**
+  - Use external framework guidance only when repository documentation does not define the behavior.
 
 ---
 
