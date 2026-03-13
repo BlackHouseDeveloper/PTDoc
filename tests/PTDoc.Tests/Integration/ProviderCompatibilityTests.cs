@@ -95,8 +95,8 @@ public class ProviderCompatibilityTests : IAsyncDisposable
 
         _context.IntakeForms.AddRange(form1, form2);
 
-        // Act & Assert
-        await Assert.ThrowsAnyAsync<Exception>(() => _context.SaveChangesAsync());
+        // Act & Assert: unique constraint must produce a DbUpdateException, not any other error
+        await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
     }
 
     [Fact]

@@ -77,6 +77,15 @@ if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
 // Determine provider (defaults to Sqlite for local development)
 var dbProvider = builder.Configuration.GetValue<string>("Database:Provider") ?? "Sqlite";
 
+// Validate provider value at startup to catch typos / misconfiguration early
+var supportedProviders = new[] { "Sqlite", "SqlServer", "Postgres" };
+if (!supportedProviders.Contains(dbProvider, StringComparer.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException(
+        $"Unsupported Database:Provider value '{dbProvider}'. " +
+        $"Supported values are: {string.Join(", ", supportedProviders)}.");
+}
+
 // Check if encryption is enabled (SQLite only)
 var encryptionEnabled = builder.Configuration.GetValue<bool>("Database:Encryption:Enabled");
 
@@ -130,7 +139,7 @@ else if (string.Equals(dbProvider, "Postgres", StringComparison.OrdinalIgnoreCas
         }
     });
 }
-else if (encryptionEnabled)
+else if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase) && encryptionEnabled)
 {
     // Encrypted SQLite mode
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
