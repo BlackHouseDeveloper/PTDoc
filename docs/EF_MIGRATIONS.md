@@ -174,6 +174,117 @@ See `docs/SECURITY.md` for key management requirements.
 Encryption is transparent to the migrations assembly — the same
 `PTDoc.Infrastructure.Migrations.Sqlite` assembly is used with or without encryption.
 
+## Production Deployment
+
+### Overview
+
+Migrations are **not applied automatically in production** by default
+(`Database:AutoMigrate` defaults to `false` when `ASPNETCORE_ENVIRONMENT` is not
+`Development`).  Apply them explicitly during your deployment process using the
+EF Core CLI commands below.
+
+### Environment Variables — Runtime API
+
+These variables are read by the API at startup:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `ASPNETCORE_ENVIRONMENT` | Set to `Production` for production deployments | `Production` |
+| `Database__Provider` | Database provider (`SqlServer` or `Postgres`) | `SqlServer` |
+| `ConnectionStrings__PTDocsServer` | Full runtime connection string | `Server=db;Database=PTDoc;...` |
+| `Jwt__SigningKey` | JWT signing secret (≥ 32 chars) | *(from secrets manager)* |
+| `Database__AutoMigrate` | Override auto-migrate behavior (optional) | `false` |
+
+### Environment Variables — EF Core CLI (`dotnet ef`)
+
+The `DesignTimeDbContextFactory` reads these variables when you run `dotnet ef` commands:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `EF_PROVIDER` | Provider for `dotnet ef` tools | `sqlserver` or `postgres` |
+| `Database__ConnectionString` | Connection string for EF CLI only | `Server=db;Database=PTDoc;...` |
+
+> **Security:** Never commit connection strings or signing keys to the repository.
+> Inject them via environment variables, container secrets, or a secrets manager
+> (e.g. Azure Key Vault, AWS Secrets Manager, HashiCorp Vault).
+
+### Applying Migrations — SQL Server
+
+```bash
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="Server=prod-db;Database=PTDoc;Integrated Security=True;" \
+  dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+  -s src/PTDoc.Api
+```
+
+### Applying Migrations — PostgreSQL
+
+```bash
+EF_PROVIDER=postgres \
+  Database__ConnectionString="Host=prod-db;Port=5432;Database=ptdoc;Username=ptdoc;Password=..." \
+  dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.Postgres \
+  -s src/PTDoc.Api
+```
+
+### Generating a SQL Script for Review
+
+Generate an idempotent SQL script to review before applying to production:
+
+```bash
+# SQL Server
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="..." \
+  dotnet ef migrations script --idempotent \
+  -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+  -s src/PTDoc.Api \
+  -o migration_sqlserver.sql
+
+# PostgreSQL
+EF_PROVIDER=postgres \
+  Database__ConnectionString="..." \
+  dotnet ef migrations script --idempotent \
+  -p src/PTDoc.Infrastructure.Migrations.Postgres \
+  -s src/PTDoc.Api \
+  -o migration_postgres.sql
+```
+
+### Enabling Auto-Migrate in Production (Optional)
+
+If your deployment pipeline manages database lifecycle automatically (e.g.
+a container orchestrator that guarantees exactly-one startup), you can enable
+automatic migration at startup:
+
+```json
+// appsettings.Production.json  — or set via environment variable
+{
+  "Database": {
+    "AutoMigrate": true
+  }
+}
+```
+
+Or via environment variable:
+
+```bash
+Database__AutoMigrate=true
+```
+
+> **Warning:** Only enable this when you have exactly one API instance starting
+> at a time. Concurrent startup with auto-migration can cause race conditions.
+
+### Rollback
+
+```bash
+# Revert to a specific migration (SQL Server example)
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="..." \
+  dotnet ef database update PreviousMigrationName \
+  -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+  -s src/PTDoc.Api
+```
+
 ## Troubleshooting
 
 ### Error: "No DbContext was found"
