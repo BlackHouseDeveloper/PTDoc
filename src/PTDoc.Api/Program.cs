@@ -34,7 +34,9 @@ using PTDoc.Infrastructure.Observability;
 using PTDoc.Infrastructure.Pdf;
 using PTDoc.Infrastructure.Security;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Infrastructure.BackgroundJobs;
 using PTDoc.Infrastructure.Sync;
+using PTDoc.Application.BackgroundJobs;
 using PTDoc.Integrations.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +50,14 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Register sync services
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
+
+// Register background job services (Sprint I)
+builder.Services.Configure<SyncRetryOptions>(
+    builder.Configuration.GetSection(SyncRetryOptions.SectionName));
+builder.Services.Configure<SessionCleanupOptions>(
+    builder.Configuration.GetSection(SessionCleanupOptions.SectionName));
+builder.Services.AddHostedService<SyncRetryBackgroundService>();
+builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 
 // Register compliance services
 builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();

@@ -689,6 +689,63 @@ The CI `db-migration-validate` job (Sprint F) validates:
 2. **Migration state tests** — `[Category=Observability]` tests verify that
    `GetPendingMigrationsAsync()` returns an empty list after `MigrateAsync()`.
 
+## Background Jobs & Async Processing (Sprint I)
+
+PTDoc uses native .NET hosted services (`BackgroundService`) for periodic maintenance tasks.
+No external job queue or scheduler is required for current workloads.
+
+### Services
+
+| Service | Project | Default Interval | Purpose |
+|---------|---------|-----------------|---------|
+| `SyncRetryBackgroundService` | Infrastructure | 30 s | Resets eligible failed sync queue items to `Pending` and triggers a push cycle |
+| `SessionCleanupBackgroundService` | Infrastructure | 5 min | Revokes expired user sessions via `IAuthService.CleanupExpiredSessionsAsync` |
+
+### Configuration
+
+Options are read from `appsettings.json` (or environment variables):
+
+```json
+{
+  "BackgroundJobs": {
+    "SyncRetry": {
+      "Interval": "00:00:30",
+      "MinRetryDelay": "00:01:00"
+    },
+    "SessionCleanup": {
+      "Interval": "00:05:00"
+    }
+  }
+}
+```
+
+- **`BackgroundJobs:SyncRetry:Interval`** — how often the retry sweep runs (default 30 s).
+- **`BackgroundJobs:SyncRetry:MinRetryDelay`** — minimum age of `LastAttemptAt` before an item is eligible for retry (default 60 s, prevents hot-retry loops).
+- **`BackgroundJobs:SessionCleanup:Interval`** — how often expired sessions are swept (default 5 min).
+
+### Design Principles
+
+- Each hosted service is registered as a **singleton** (standard for `IHostedService`).
+- Scoped services (`ApplicationDbContext`, `ISyncEngine`, `IAuthService`) are consumed
+  via **`IServiceScopeFactory`** — a fresh scope is created per execution cycle.
+- Jobs are **idempotent**: running them multiple times produces the same result.
+- A failure in one cycle is logged and the service continues to the next interval —
+  a transient error never kills the background host.
+- **No items beyond `MaxRetries`** are ever reset — permanent failures stay `Failed`.
+- **`MinRetryDelay`** prevents hot-retry of items that just failed.
+
+### Adding a New Background Job
+
+1. Add configuration options to `PTDoc.Application/BackgroundJobs/IBackgroundJobService.cs`.
+2. Implement `BackgroundService` + `IBackgroundJobService` in `PTDoc.Infrastructure/BackgroundJobs/`.
+3. Register in `PTDoc.Api/Program.cs`:
+   ```csharp
+   builder.Services.Configure<YourJobOptions>(
+       builder.Configuration.GetSection(YourJobOptions.SectionName));
+   builder.Services.AddHostedService<YourBackgroundService>();
+   ```
+4. Add unit tests in `tests/PTDoc.Tests/BackgroundJobs/`.
+
 ## Related Documentation
 
 - [BUILD.md](BUILD.md) - Build instructions

@@ -47,6 +47,24 @@
 
 ---
 
+## Authoritative Documentation
+
+> **Governance rule:** If the AI encounters a design decision, it **must consult these documents instead of making assumptions**. These are the canonical PFPT specification documents that govern all system behavior, compliance requirements, and architecture decisions.
+
+| Document | Scope | When to Consult |
+|----------|-------|-----------------|
+| **PTDoc (PFPT) Backend Technical Design Document (TDD)** | Backend architecture, service contracts, data models | Any backend design decision, adding services, changing APIs |
+| **PTDoc (PFPT) Unified Functional Specification Document (Master FSD)** | Functional requirements, feature definitions, user stories | Implementing any user-facing feature or business workflow |
+| **PTDoc (PFPT) AI Prompt Specification – Assessment & Plan of Care** | AI behavior constraints, prompt design, output rules | Any feature that produces, stores, or acts on AI-generated content |
+| **PTDoc (PFPT) Medicare Rules Engine Specification** | CMS compliance rules, billing codes, documentation requirements | Any feature touching clinical notes, billing, or Medicare documentation |
+| **PTDoc (PFPT) Offline Sync & Conflict Resolution Specification** | Offline-first behavior, sync queue semantics, conflict strategies | Any change to sync logic, queue state, or MAUI offline behavior |
+| **PTDoc (PFPT) Blazor Component & Page Mapping** | UI structure, component hierarchy, page routing | Implementing or restructuring Blazor pages and components |
+| **PTDoc (PFPT) QA Acceptance Test Matrix** | Acceptance criteria, test scenarios, coverage expectations | Defining test coverage for any new feature or changed behavior |
+
+These documents supersede any general .NET/Blazor framework knowledge when there is a conflict. They also supersede assumptions derived from code patterns alone when the system behavior is non-obvious or compliance-sensitive.
+
+---
+
 ## Doc Map - When to Consult What
 
 ### Setup & Running
@@ -250,6 +268,81 @@ PTDoc.UI           → Shared Blazor components
 
 ---
 
+## Implementation Rules
+
+The following rules are **mandatory** and apply to every code change made in this repository. They enforce the architecture defined in the Backend TDD and HIPAA compliance requirements.
+
+1. **Do not violate the architecture defined in the Backend TDD.**  
+   Clean Architecture layer boundaries must be respected. `PTDoc.Application` must never reference `PTDoc.Infrastructure`. `PTDoc.Core` must have zero dependencies.
+
+2. **All business rules must be enforced server-side, not only in the UI.**  
+   Validation in Blazor components is for user experience only. The API must independently validate all business rules, access controls, and clinical logic.
+
+3. **Signed clinical data must remain immutable.**  
+   Once a clinical record (assessment, plan of care, note) has been countersigned or finalized, no code path may overwrite or silently update it. All amendment workflows must create versioned records or audit entries.
+
+4. **AI output must never be persisted automatically.**  
+   AI-generated suggestions, summaries, or clinical text must always pass through an explicit clinician review and acceptance step before being written to the database. No background process or auto-save may persist AI output directly.
+
+5. **Offline-first behavior must be preserved.**  
+   Any change to sync logic, queue state machines, or MAUI data access must maintain the offline-first guarantee. Consult the *PTDoc (PFPT) Offline Sync & Conflict Resolution Specification* before modifying sync behavior.
+
+6. **Medicare documentation rules must always be enforced.**  
+   Any feature involving clinical notes, time tracking, billing codes, or plan-of-care generation must comply with the rules defined in the *PTDoc (PFPT) Medicare Rules Engine Specification*. These rules are not optional.
+
+---
+
+## Testing Requirements
+
+Every feature implemented in this repository **must include tests**. Pull requests without tests for changed behavior are incomplete. Test coverage must align with the scenarios defined in the *PTDoc (PFPT) QA Acceptance Test Matrix*.
+
+### Required Test Types
+
+| Type | Coverage Target | Location |
+|------|----------------|----------|
+| **Unit Tests** | Business rules, services, rules engine logic, DTO validation | `tests/PTDoc.UnitTests/` |
+| **Integration Tests** | API endpoints, persistence behavior, EF Core queries | `tests/PTDoc.IntegrationTests/` |
+| **Compliance Tests** | Medicare rules, AI output constraints, role-based permissions, PHI access | `tests/PTDoc.ComplianceTests/` |
+| **Offline Sync Tests** | Conflict resolution strategies, sync queue state transitions | `tests/PTDoc.IntegrationTests/` (MAUI sync sub-area) |
+
+> **Note:** Test projects `PTDoc.UnitTests`, `PTDoc.IntegrationTests`, and `PTDoc.ComplianceTests` are the canonical targets. Until these are scaffolded, place tests in `tests/PTDoc.Tests/` using `[Category=...]` attributes to logically segregate them.
+
+### Minimum Coverage Expectations
+
+- **Business rules** — every rule defined in the Master FSD must have at least one positive and one negative unit test
+- **API endpoints** — all new endpoints require at least one integration test covering the happy path and one covering authorization rejection
+- **Sync queue** — any change to `SyncQueueStatus` state transitions must have tests covering all reachable states
+- **Medicare rules engine** — every rule in the Medicare Rules Engine Specification must have a compliance test
+- **AI constraints** — tests must verify that AI output is never written to the database without explicit acceptance
+
+### Test Placement Rules
+
+- Unit tests targeting `PTDoc.Core` or `PTDoc.Application` → `tests/PTDoc.UnitTests/`
+- Integration tests targeting API or EF Core behavior → `tests/PTDoc.IntegrationTests/`
+- Compliance, Medicare, and AI constraint tests → `tests/PTDoc.ComplianceTests/`
+- Background service and hosted service tests → unit tests using `IServiceScopeFactory` mocks
+- No pull request should be considered complete if required tests are missing.
+
+---
+
+## Release Quality Gate
+
+A feature is considered **complete and mergeable** only when all of the following conditions are met:
+
+- [ ] All automated tests pass (`dotnet test` exits with code 0)
+- [ ] No QA Acceptance Test Matrix scenario is broken or newly excluded
+- [ ] Architecture rules are respected — no cross-layer references violate Clean Architecture
+- [ ] No PHI (Protected Health Information) is written to logs, error messages, or telemetry
+- [ ] Offline-first behavior is preserved for all MAUI/sync-related changes
+- [ ] Medicare documentation rules remain enforced for any clinical feature
+- [ ] AI output is not auto-persisted anywhere in the changed code paths
+- [ ] Signed clinical records cannot be silently overwritten by the change
+- [ ] StyleCop formatting passes (`dotnet format --verify-no-changes`)
+- [ ] CodeQL security scan reports no new high/critical alerts
+- [ ] `CHANGELOG.md` `[Unreleased]` section updated if the change is user-visible
+
+---
+
 ## When to Consult Docs - Decision Checklist
 
 **Consult docs when:**
@@ -365,9 +458,46 @@ dotnet test --filter "Category=Unit"   # Unit tests only
 
 ---
 
-**Last Updated:** March 2026 (Sprint F: observability, migration safety, and operational guardrails)  
-**Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
-**Healthcare:** HIPAA-conscious design required
+## AI Development Behavior
+
+### Core Principles
+
+The AI agent must adhere to these behavioral rules in every session:
+
+- **Prefer small, incremental changes.** Each commit should address one concern. Large refactors must be explicitly requested.
+- **Avoid refactoring unrelated files.** Only touch files directly relevant to the task at hand.
+- **Never delete documentation.** Existing doc files and inline comments must be preserved unless the user explicitly requests removal.
+- **Avoid speculative architecture.** Do not add abstractions, interfaces, or patterns that are not required by the current task.
+- **Consult repository documentation rather than invent behavior.** When uncertain about how something works in this system, read the relevant doc file before writing code.
+
+### When Uncertainty Exists
+
+When the AI is uncertain about:
+
+| Uncertainty Type | Action Required |
+|-----------------|-----------------|
+| Data model structure or relationships | Consult the **Backend TDD** |
+| Business rule logic or edge cases | Consult the **Master FSD** |
+| Clinical note or plan-of-care behavior | Consult the **AI Prompt Specification** |
+| Medicare billing or documentation rules | Consult the **Medicare Rules Engine Specification** |
+| Sync queue behavior or conflict resolution | Consult the **Offline Sync & Conflict Resolution Specification** |
+| Component layout or page routing | Consult the **Blazor Component & Page Mapping** |
+| Test coverage expectations | Consult the **QA Acceptance Test Matrix** |
+| Architecture layer boundaries | Consult `docs/ARCHITECTURE.md` |
+| Database migrations or provider config | Consult `docs/EF_MIGRATIONS.md` |
+| Security, auth, or HIPAA controls | Consult `docs/SECURITY.md` |
+
+### Prohibited AI Actions
+
+The AI must **never**:
+
+- Commit or suggest committing secrets, keys, or credentials
+- Auto-persist AI-generated clinical content without a clinician acceptance step
+- Overwrite finalized or countersigned clinical records
+- Log PHI, patient identifiers, or raw tokens
+- Introduce new external dependencies without consulting the security advisory database
+- Make breaking changes to the sync queue state machine without updating tests
+- Remove or skip existing tests to make a build pass
 
 ---
 
@@ -381,3 +511,9 @@ For every task, follow this flow:
 4. **Implement** - Small, incremental changes
 5. **Verify** - Build, test, check for errors
 6. **Document** - Only if creating new patterns (not every change)
+
+---
+
+**Last Updated:** March 2026 (Sprint I: background jobs, async processing, and PFPT governance sections added)  
+**Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
+**Healthcare:** HIPAA-conscious design required
