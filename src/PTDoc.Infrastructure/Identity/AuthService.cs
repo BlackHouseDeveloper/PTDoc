@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -17,15 +18,17 @@ public class AuthService : IAuthService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AuthService> _logger;
+    private readonly IAuditService _auditService;
 
     // HIPAA-compliant session timeouts
     private static readonly TimeSpan InactivityTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan AbsoluteTimeout = TimeSpan.FromHours(8);
 
-    public AuthService(ApplicationDbContext context, ILogger<AuthService> logger)
+    public AuthService(ApplicationDbContext context, ILogger<AuthService> logger, IAuditService auditService)
     {
         _context = context;
         _logger = logger;
+        _auditService = auditService;
     }
 
     public async Task<AuthResult?> AuthenticateAsync(
@@ -50,6 +53,9 @@ public class AuthService : IAuthService
                 await LogLoginAttemptAsync(username, null, false, ipAddress, userAgent,
                     "User not found", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
+                // Emit audit event (no username logged to avoid enumeration info leakage)
+                await _auditService.LogAuthEventAsync(
+                    AuditEvent.LoginFailed(ipAddress, "UserNotFound"), cancellationToken);
                 return null;
             }
 
@@ -59,6 +65,8 @@ public class AuthService : IAuthService
                 await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
                     "User account is inactive", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
+                await _auditService.LogAuthEventAsync(
+                    AuditEvent.LoginFailed(ipAddress, "AccountInactive"), cancellationToken);
                 return null;
             }
 
@@ -71,6 +79,8 @@ public class AuthService : IAuthService
                 await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
                     "Invalid PIN", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
+                await _auditService.LogAuthEventAsync(
+                    AuditEvent.LoginFailed(ipAddress, "InvalidCredentials"), cancellationToken);
                 return null;
             }
 
@@ -102,7 +112,11 @@ public class AuthService : IAuthService
 
             await _context.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("User {Username} logged in successfully", username);
+            _logger.LogInformation("User {UserId} logged in successfully", user.Id);
+
+            // Emit structured audit event for successful login
+            await _auditService.LogAuthEventAsync(
+                AuditEvent.LoginSuccess(user.Id, ipAddress), cancellationToken);
 
             return new AuthResult
             {
@@ -180,7 +194,11 @@ public class AuthService : IAuthService
             session.RevokedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("User logged out, session revoked");
+            _logger.LogInformation("User {UserId} logged out, session revoked", session.UserId);
+
+            // Emit structured audit event for logout
+            await _auditService.LogAuthEventAsync(
+                AuditEvent.Logout(session.UserId), cancellationToken);
         }
     }
 

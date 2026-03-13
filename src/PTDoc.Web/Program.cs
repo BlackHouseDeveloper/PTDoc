@@ -122,6 +122,18 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
+// Sprint G: Apply security headers to all Web responses.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    // SAMEORIGIN allows embedding within the same site (needed for Blazor Server SSR)
+    context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] =
+        "camera=(), microphone=(), geolocation=(), payment=()";
+    await next();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
