@@ -74,12 +74,65 @@ if (!string.IsNullOrEmpty(dbDirectory) && !Directory.Exists(dbDirectory))
     Directory.CreateDirectory(dbDirectory);
 }
 
-// Check if encryption is enabled
+// Determine provider (defaults to Sqlite for local development)
+var dbProvider = builder.Configuration.GetValue<string>("Database:Provider") ?? "Sqlite";
+
+// Check if encryption is enabled (SQLite only)
 var encryptionEnabled = builder.Configuration.GetValue<bool>("Database:Encryption:Enabled");
 
-if (encryptionEnabled)
+if (string.Equals(dbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
 {
-    // Encrypted mode - use SQLCipher with pre-opened connection
+    // SQL Server provider
+    var sqlServerConnStr = builder.Configuration.GetConnectionString("PTDocsServer")
+        ?? throw new InvalidOperationException(
+            "ConnectionStrings:PTDocsServer must be set when Database:Provider is SqlServer.");
+
+    builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+    {
+        options.UseSqlServer(sqlServerConnStr,
+            x =>
+            {
+                x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer");
+                x.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(30), errorNumbersToAdd: null);
+            });
+
+        var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
+        options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+
+        if (builder.Environment.IsDevelopment())
+        {
+            options.EnableDetailedErrors();
+        }
+    });
+}
+else if (string.Equals(dbProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
+{
+    // PostgreSQL provider
+    var postgresConnStr = builder.Configuration.GetConnectionString("PTDocsServer")
+        ?? throw new InvalidOperationException(
+            "ConnectionStrings:PTDocsServer must be set when Database:Provider is Postgres.");
+
+    builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+    {
+        options.UseNpgsql(postgresConnStr,
+            x =>
+            {
+                x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres");
+                x.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(30), errorCodesToAdd: null);
+            });
+
+        var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
+        options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+
+        if (builder.Environment.IsDevelopment())
+        {
+            options.EnableDetailedErrors();
+        }
+    });
+}
+else if (encryptionEnabled)
+{
+    // Encrypted SQLite mode
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
         // Get and validate encryption key
@@ -110,7 +163,8 @@ if (encryptionEnabled)
         }
 
         // Pass the pre-opened, encrypted connection to EF
-        options.UseSqlite(connection);
+        options.UseSqlite(connection,
+            x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
 
         // Add interceptor with dependency injection
         var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
@@ -127,7 +181,8 @@ else
     // Plain SQLite mode (default - existing behavior)
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
-        options.UseSqlite($"Data Source={dbPath}");
+        options.UseSqlite($"Data Source={dbPath}",
+            x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
 
         // Add interceptor with dependency injection
         var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();

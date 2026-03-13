@@ -221,20 +221,20 @@ if [ "$CREATE_MIGRATION" = true ]; then
   fi
   
   # Check if Initial migration exists
-  MIGRATION_DIR="$ROOT_DIR/src/PTDoc.Infrastructure/Data/Migrations"
+  MIGRATION_DIR="$ROOT_DIR/src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations"
   if [ -d "$MIGRATION_DIR" ] && [ "$(ls -A "$MIGRATION_DIR" 2>/dev/null)" ]; then
     log_warn "Migrations already exist in $MIGRATION_DIR"
     log_warn "Skipping migration creation"
   else
     verbose "Creating Initial migration..."
     EF_PROVIDER=sqlite dotnet ef migrations add Initial \
-      -p "$ROOT_DIR/src/PTDoc.Infrastructure" \
+      -p "$ROOT_DIR/src/PTDoc.Infrastructure.Migrations.Sqlite" \
       -s "$ROOT_DIR/src/PTDoc.Api" \
       ${VERBOSE:+--verbose}
     
     log "Applying migration to database..."
     EF_PROVIDER=sqlite dotnet ef database update \
-      -p "$ROOT_DIR/src/PTDoc.Infrastructure" \
+      -p "$ROOT_DIR/src/PTDoc.Infrastructure.Migrations.Sqlite" \
       -s "$ROOT_DIR/src/PTDoc.Api" \
       ${VERBOSE:+--verbose}
     

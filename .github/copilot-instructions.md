@@ -51,9 +51,11 @@
   - **Skip when:** Logic changes, not touching CSS
 
 ### Database Operations
-- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, database setup
-  - **Use when:** Schema changes, adding migrations, database errors
+- **[docs/EF_MIGRATIONS.md](../docs/EF_MIGRATIONS.md)** - EF Core migrations, multi-provider workflow (Sprint B)
+  - **Use when:** Schema changes, adding migrations, switching database provider, configuring `Database:Provider`, database errors
   - **Skip when:** UI work, no data model changes
+  - **Multi-provider:** Migrations are split into `PTDoc.Infrastructure.Migrations.{Sqlite|SqlServer|Postgres}` assemblies
+  - **Provider config:** Set `Database:Provider` to `Sqlite` (default), `SqlServer`, or `Postgres`
 
 ### Platform Differences
 - **[docs/RUNTIME_TARGETS.md](../docs/RUNTIME_TARGETS.md)** - Web vs MAUI differences
@@ -153,6 +155,8 @@ PTDoc.UI           → Shared Blazor components
 - [ ] Implementing UI from Figma (need design specs)
 - [ ] Component not rendering (lifecycle/parameter issues)
 - [ ] Database schema changes (migrations needed)
+- [ ] Switching database provider (`Database:Provider` config)
+- [ ] Adding migrations for a new provider (Sqlite/SqlServer/Postgres)
 - [ ] Platform-specific behavior (auth, storage, APIs)
 - [ ] First-time setup or build issues
 - [ ] Accessibility requirements unclear
@@ -172,6 +176,9 @@ PTDoc.UI           → Shared Blazor components
 PTDoc.Core/        → Domain entities (zero deps)
 PTDoc.Application/ → Interfaces, DTOs (depends on Core)
 PTDoc.Infrastructure/ → EF Core, services (implements Application)
+PTDoc.Infrastructure.Migrations.Sqlite/    → SQLite migrations assembly (Sprint B)
+PTDoc.Infrastructure.Migrations.SqlServer/ → SQL Server migrations assembly (Sprint B)
+PTDoc.Infrastructure.Migrations.Postgres/  → PostgreSQL migrations assembly (Sprint B)
 PTDoc.Api/         → REST API, JWT auth
 PTDoc.Web/         → Blazor WebAssembly web app
 PTDoc.Maui/        → .NET MAUI Blazor app (mobile/desktop)
@@ -188,6 +195,9 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 - Domain entities/models/enums/value objects → `PTDoc.Core/Models/`
 - Services interfaces → `PTDoc.Application/Services/`
 - Services implementations → `PTDoc.Infrastructure/Services/`
+- EF Core migrations (SQLite) → `PTDoc.Infrastructure.Migrations.Sqlite/Migrations/`
+- EF Core migrations (SQL Server) → `PTDoc.Infrastructure.Migrations.SqlServer/Migrations/`
+- EF Core migrations (Postgres) → `PTDoc.Infrastructure.Migrations.Postgres/Migrations/`
 
 ---
 
@@ -216,9 +226,18 @@ dotnet build PTDoc.sln          # Build all
 dotnet run --project src/PTDoc.Api --urls http://localhost:5170   # API
 dotnet run --project src/PTDoc.Web                                # Web
 
-# Database
-./PTDoc-Foundry.sh --create-migration --seed   # Setup DB
-EF_PROVIDER=sqlite dotnet ef migrations add MigrationName --project src/PTDoc.Infrastructure --startup-project src/PTDoc.Api
+# Database (multi-provider - Sprint B)
+./PTDoc-Foundry.sh --create-migration --seed   # Setup SQLite DB (default)
+
+# Add migration - specify provider-specific migrations project
+EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api --context ApplicationDbContext
+
+# Apply migration
+EF_PROVIDER=sqlite dotnet ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
+  -s src/PTDoc.Api
 
 # Test
 dotnet test                     # All tests
@@ -227,7 +246,7 @@ dotnet test --filter "Category=Unit"   # Unit tests only
 
 ---
 
-**Last Updated:** February 2026  
+**Last Updated:** March 2026 (Sprint B: multi-provider migrations)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required
 
