@@ -39,7 +39,8 @@ public class DatabaseProviderMigrationTests : IDisposable
         await _sqliteConnection.OpenAsync();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_sqliteConnection)
+            .UseSqlite(_sqliteConnection,
+                x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         // Act – apply migrations
@@ -58,7 +59,8 @@ public class DatabaseProviderMigrationTests : IDisposable
         await _sqliteConnection.OpenAsync();
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_sqliteConnection)
+            .UseSqlite(_sqliteConnection,
+                x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
             .Options;
 
         using var context = new ApplicationDbContext(options);

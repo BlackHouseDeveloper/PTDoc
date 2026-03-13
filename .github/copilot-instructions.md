@@ -89,6 +89,11 @@
   - **Use when:** Platform-specific behavior (auth, storage, API URLs)
   - **Skip when:** Shared component logic
 
+### MAUI Offline Persistence & Local Database
+- **[docs/MOBILE_ARCHITECTURE.md](../docs/MOBILE_ARCHITECTURE.md)** - MAUI encrypted local SQLite, offline-first persistence
+  - **Use when:** Adding local cache entities, implementing offline data access, debugging SQLCipher init, extending sync scaffolding, reviewing encryption key lifecycle
+  - **Skip when:** Web-only changes, server-side API work, no MAUI-specific behavior
+
 ### Development Workflows
 - **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)** - Scripts, testing, workflows
   - **Use when:** Running tests, using helper scripts, debugging setup
