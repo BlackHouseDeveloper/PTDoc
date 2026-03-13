@@ -25,6 +25,9 @@ namespace PTDoc.Tests.Security;
 /// </summary>
 public class AuthAuditTests : IAsyncDisposable
 {
+    /// <summary>JWT compact serialization always starts with this Base64url-encoded header prefix.</summary>
+    private const string JwtHeaderPrefix = "eyJ";
+
     private readonly SqliteConnection _connection;
     private readonly ApplicationDbContext _context;
     private readonly AuditService _auditService;
@@ -202,7 +205,7 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.Equal("Warning", record.Severity);
 
         // Metadata JSON must not contain raw token value
-        Assert.DoesNotContain("eyJ", record.MetadataJson);    // JWT header prefix
+        Assert.DoesNotContain(JwtHeaderPrefix, record.MetadataJson);    // JWT header prefix
         Assert.DoesNotContain("signingkey", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
