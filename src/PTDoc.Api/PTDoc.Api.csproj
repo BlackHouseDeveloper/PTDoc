@@ -3,6 +3,9 @@
   <ItemGroup>
     <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\PTDoc.Infrastructure.Migrations.Sqlite\PTDoc.Infrastructure.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\PTDoc.Infrastructure.Migrations.SqlServer\PTDoc.Infrastructure.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\PTDoc.Infrastructure.Migrations.Postgres\PTDoc.Infrastructure.Migrations.Postgres.csproj" />
     <ProjectReference Include="..\PTDoc.AI\PTDoc.AI.csproj" />
     <ProjectReference Include="..\PTDoc.Integrations\PTDoc.Integrations.csproj" />
   </ItemGroup>
@@ -14,6 +17,8 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.4" />
   </ItemGroup>
 
   <PropertyGroup>

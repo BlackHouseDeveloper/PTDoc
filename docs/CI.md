@@ -340,7 +340,7 @@ Before production deployment:
 ```bash
 # Revert to previous migration
 EF_PROVIDER=sqlite dotnet ef database update PreviousMigrationName \
-  -p src/PTDoc.Infrastructure \
+  -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
 ```
 
