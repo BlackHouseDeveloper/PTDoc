@@ -114,7 +114,80 @@ CI workflows generate ephemeral signing keys at runtime using `openssl rand`. No
 
 ---
 
+## Sprint G — Security Hardening and Compliance Guardrails
 
+Sprint G (March 2026) added the following security controls.
+
+### Security Response Headers (`SecurityHeadersMiddleware`)
+
+Every HTTP response from the API now includes:
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `X-Content-Type-Options` | `nosniff` | Prevents MIME-type sniffing |
+| `X-Frame-Options` | `DENY` | Blocks clickjacking via iframe embedding |
+| `Referrer-Policy` | `no-referrer` | Suppresses Referer header leakage |
+| `Content-Security-Policy` | `default-src 'none'` | Disallows all embedded resources (API only) |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | Disables browser features |
+
+The Web application also applies a subset of these headers (excluding CSP to preserve Blazor Server compatibility):
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+
+**Implementation:** `src/PTDoc.Infrastructure/Security/SecurityHeadersMiddleware.cs`
+
+### Safe Exception Handling (API)
+
+`PTDoc.Api` now includes a global exception handler (`app.UseExceptionHandler`) that:
+- Returns a generic `500` JSON response (no stack traces, no internal details)
+- Logs the exception internally using structured logging (method + path, no PHI)
+- Includes a `correlationId` (ASP.NET Core `TraceIdentifier`) in the response for support tracing
+
+```json
+{
+  "error": "An unexpected error occurred. Please try again later.",
+  "correlationId": "<trace-id>"
+}
+```
+
+### Authentication Audit Trail
+
+Authentication events are now written to the `AuditLogs` database table via `IAuditService.LogAuthEventAsync` in addition to the structured application logger.
+
+Audit event types:
+
+| Event | Severity | Notes |
+|-------|----------|-------|
+| `LoginSuccess` | Info | Records `UserId` and IP address. No username. |
+| `LoginFailed` | Warning | Records IP address and reason code only. No PIN, password, or username. |
+| `Logout` | Info | Records `UserId`. |
+| `TokenValidationFailed` | Warning | Records IP address and exception type. No raw token value. |
+
+**CRITICAL constraint:** Auth audit metadata must **never** contain:
+- PIN or password values
+- Raw bearer token strings
+- Patient names or other PHI
+
+### JWT Bearer Token Validation Failures
+
+The JWT bearer middleware now fires an `OnAuthenticationFailed` event that writes a `TokenValidationFailed` audit record when a bearer token is rejected. Only the exception type and IP address are recorded — the raw token is never logged.
+
+**Implementation:** `src/PTDoc.Api/Program.cs` (`AddJwtBearer` → `options.Events`)
+
+### PHI Safety Rules (Logging)
+
+The following rules apply across all logging and telemetry:
+
+1. **No PHI in application logs** — Patient names, DOB, clinical note content, or contact info must not appear in `ILogger<T>` output.
+2. **Audit metadata is ID-only** — Audit records use entity IDs and event type codes, never PHI field values.
+3. **Auth events use reason codes** — Failure reasons are terse codes (e.g., `InvalidCredentials`, `UserNotFound`) not raw user input.
+4. **Exception messages are suppressed** — The global exception handler returns a generic message to clients; full exception details go to the logger only.
+
+---
+
+## Session Management
 
 ### Automatic Session Termination
 - Web sessions automatically terminate after 15 minutes of inactivity
@@ -218,11 +291,11 @@ Production should use stricter timeouts as configured in the code defaults.
 
 ### Logging
 All authentication events are logged:
-- User login attempts (success/failure)
-- Token refresh operations
-- Session expirations
-- Logout events
-- Token validation failures
+- User login attempts (success/failure) — to `AuditLogs` table and `ILogger`
+- Token refresh operations — to `ILogger`
+- Session expirations — to `ILogger`
+- Logout events — to `AuditLogs` table and `ILogger`
+- Token validation failures — to `AuditLogs` table
 
 ### Monitoring
 Implement monitoring for:
@@ -240,6 +313,8 @@ Implement monitoring for:
 6. **Enable MFA** for administrative access
 7. **Regular security audits** of authentication flow
 8. **HIPAA audit trail** for all patient data access
+9. **Security response headers** on all HTTP responses (Sprint G)
+10. **Generic error responses** to prevent information leakage (Sprint G)
 
 ## Troubleshooting
 
