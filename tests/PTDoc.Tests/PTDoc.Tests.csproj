@@ -36,6 +36,8 @@
     <ProjectReference Include="..\..\src\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.Sqlite\PTDoc.Infrastructure.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.SqlServer\PTDoc.Infrastructure.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.Postgres\PTDoc.Infrastructure.Migrations.Postgres.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.AI\PTDoc.AI.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Integrations\PTDoc.Integrations.csproj" />
   </ItemGroup>

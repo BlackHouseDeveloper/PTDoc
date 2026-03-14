@@ -83,14 +83,15 @@ public class DatabaseProviderMigrationTests : IDisposable
             "SQL Server provider not configured — set DB_PROVIDER=sqlserver and Database__ConnectionString.");
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer(connectionString)
+            .UseSqlServer(connectionString,
+                x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer"))
             .Options;
 
         using var context = new ApplicationDbContext(options);
 
-        // Use EnsureDeleted + EnsureCreated for CI isolation (no migration files for SQL Server yet)
+        // Sprint Q: use MigrateAsync() — migration application, not EnsureCreated
         await context.Database.EnsureDeletedAsync();
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.MigrateAsync();
 
         try
         {
@@ -116,13 +117,15 @@ public class DatabaseProviderMigrationTests : IDisposable
             "PostgreSQL provider not configured — set DB_PROVIDER=postgres and Database__ConnectionString.");
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
+            .UseNpgsql(connectionString,
+                x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"))
             .Options;
 
         using var context = new ApplicationDbContext(options);
 
+        // Sprint Q: use MigrateAsync() — migration application, not EnsureCreated
         await context.Database.EnsureDeletedAsync();
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.MigrateAsync();
 
         try
         {
@@ -195,6 +198,7 @@ public class DatabaseProviderMigrationTests : IDisposable
         _ = await context.SyncConflictArchives.CountAsync();
         _ = await context.ExternalSystemMappings.CountAsync();
         _ = await context.Addendums.CountAsync();
+        _ = await context.ObjectiveMetrics.CountAsync();
     }
 
     public void Dispose()
