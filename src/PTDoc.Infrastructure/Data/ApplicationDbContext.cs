@@ -44,6 +44,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
     public DbSet<Addendum> Addendums => Set<Addendum>();
+    public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -122,6 +123,10 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
             entity.Property(e => e.AccessToken).HasMaxLength(256).IsRequired();
+
+            // Sprint O: TDD §5.2 IntakeResponse contract fields
+            entity.Property(e => e.PainMapData).IsRequired();
+            entity.Property(e => e.Consents).IsRequired();
         });
 
         // Configure User
@@ -251,6 +256,21 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ClinicalNoteId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure ObjectiveMetric (Sprint O: TDD §5.4)
+        modelBuilder.Entity<ObjectiveMetric>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NoteId);
+
+            entity.Property(e => e.Value).HasMaxLength(200).IsRequired();
+
+            // Relationship to ClinicalNote
+            entity.HasOne(e => e.Note)
+                .WithMany(n => n.ObjectiveMetrics)
+                .HasForeignKey(e => e.NoteId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Sprint J: Configure Clinic (tenant) entity

@@ -27,6 +27,13 @@ public class IntakeForm : ISyncTrackedEntity
     // Response data (JSON blob)
     public string ResponseJson { get; set; } = "{}";
 
+    // TDD §5.2 IntakeResponse contract alignment
+    /// <summary>Body region pain map data (JSON). Maps to TDD PainMapData field.</summary>
+    public string PainMapData { get; set; } = "{}";
+
+    /// <summary>Patient consents (HIPAA, treatment authorisation) as JSON. Maps to TDD Consents field.</summary>
+    public string Consents { get; set; } = "{}";
+
     // Submission
     public DateTime? SubmittedAt { get; set; }
 

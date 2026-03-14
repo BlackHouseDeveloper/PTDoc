@@ -43,6 +43,7 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     public Patient? Patient { get; set; }
     public Appointment? Appointment { get; set; }
     public Clinic? Clinic { get; set; }
+    public ICollection<ObjectiveMetric> ObjectiveMetrics { get; set; } = new List<ObjectiveMetric>();
 }
 
 public enum NoteType
