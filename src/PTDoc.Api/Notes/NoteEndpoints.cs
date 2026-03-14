@@ -152,6 +152,6 @@ public static class NoteEndpoints
             MetricType = m.MetricType,
             Value = m.Value,
             IsWNL = m.IsWNL
-        })
+        }).ToList()
     };
 }

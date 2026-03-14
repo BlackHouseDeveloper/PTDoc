@@ -45,7 +45,9 @@ public static class PatientEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
-        // Validate required fields
+        // Validate required fields explicitly.
+        // Minimal API endpoints do not auto-validate DataAnnotations without an endpoint filter;
+        // this ensures a proper 400 response with a consistent error shape.
         if (string.IsNullOrWhiteSpace(request.FirstName))
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -239,6 +241,6 @@ public static class PatientEndpoints
             MetricType = m.MetricType,
             Value = m.Value,
             IsWNL = m.IsWNL
-        })
+        }).ToList()
     };
 }

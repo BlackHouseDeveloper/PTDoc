@@ -256,7 +256,7 @@ public class SprintOIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task ObjectiveMetric_AllRequiredFields_MatchTddSpec()
+    public void ObjectiveMetric_AllRequiredFields_MatchTddSpec()
     {
         // Verify that all TDD §5.4 fields are present on the entity
         var metric = new ObjectiveMetric
@@ -274,7 +274,6 @@ public class SprintOIntegrationTests : IAsyncDisposable
         Assert.Equal(MetricType.ROM, metric.MetricType);
         Assert.Equal("120°", metric.Value);
         Assert.False(metric.IsWNL);
-        await Task.CompletedTask;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

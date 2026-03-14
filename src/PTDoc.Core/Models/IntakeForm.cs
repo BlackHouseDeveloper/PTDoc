@@ -31,7 +31,7 @@ public class IntakeForm : ISyncTrackedEntity
     /// <summary>Body region pain map data (JSON). Maps to TDD PainMapData field.</summary>
     public string PainMapData { get; set; } = "{}";
 
-    /// <summary>Patient consents (HIPAA, treatment authorisation) as JSON. Maps to TDD Consents field.</summary>
+    /// <summary>Patient consents (HIPAA, treatment authorization) as JSON. Maps to TDD Consents field.</summary>
     public string Consents { get; set; } = "{}";
 
     // Submission

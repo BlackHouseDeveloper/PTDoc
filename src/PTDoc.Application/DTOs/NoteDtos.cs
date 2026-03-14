@@ -84,5 +84,5 @@ public sealed class NoteResponse
     public string CptCodesJson { get; set; } = "[]";
     public Guid? ClinicId { get; set; }
     public DateTime LastModifiedUtc { get; set; }
-    public IEnumerable<ObjectiveMetricResponse> ObjectiveMetrics { get; set; } = Enumerable.Empty<ObjectiveMetricResponse>();
+    public IReadOnlyCollection<ObjectiveMetricResponse> ObjectiveMetrics { get; set; } = Array.Empty<ObjectiveMetricResponse>();
 }
