@@ -216,7 +216,7 @@ pull request. The policy and its rationale are documented in `docs/REMEDIATION_B
 
 | Step | Description |
 |------|-------------|
-| Config file scan | Extracts `Jwt:SigningKey` and `IntakeInvite:SigningKey` from every tracked JSON config file and verifies the value is either empty or a known placeholder. |
+| Config file scan | Uses `git ls-files` to enumerate all tracked `appsettings*.json` files, then verifies that any `Jwt:SigningKey` or `IntakeInvite:SigningKey` present is either empty or a known placeholder. JSON parse errors cause an explicit failure (not a silent pass). |
 | `[Category=SecretPolicy]` tests | Runs `ConfigurationValidationTests` tests tagged `SecretPolicy`, which assert the same invariant independently through the .NET configuration stack. |
 
 ### When It Fails

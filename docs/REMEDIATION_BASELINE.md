@@ -87,7 +87,7 @@ The new `ci-secret-policy.yml` workflow (Sprint K) enforces this policy on every
    which asserts the same invariant independently via the .NET configuration stack.
 
 Both gates must pass for a PR to merge. See `.github/workflows/ci-secret-policy.yml` and
-[Secret Policy CI (Sprint K)](#) in `docs/CI.md`.
+[Secret Policy CI (Sprint K)](CI.md#secret-policy-ci-sprint-k) in `docs/CI.md`.
 
 ---
 

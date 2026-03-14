@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### CI.md Update
 - **Secret Policy CI (Sprint K)** section added to `docs/CI.md` documenting the new `ci-secret-policy.yml` workflow, failure conditions, approved placeholder values, and local reproduction commands.
 
-
+### Added - Phase 8: Platform Integration & Completion
 
 #### SQLCipher End-to-End Encryption
 - **Database.Encryption.Enabled** - Toggleable encryption via appsettings (default: false)
