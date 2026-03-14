@@ -43,6 +43,13 @@ The workflow also includes the `db-migration-validate` job (Sprint F) that verif
 ### `codeql.yml` – Security Scanning
 Static analysis via GitHub CodeQL on every pull request.
 
+### `ci-secret-policy.yml` – Secret Policy Enforcement (Sprint K)
+Runs on every pull request against `main`. Enforces the PFPT secret management policy:
+- Scans tracked JSON config files for real signing keys (non-placeholder, non-empty values).
+- Runs `[Category=SecretPolicy]` tests, which assert the same invariant via the .NET configuration stack.
+
+See [Secret Policy CI (Sprint K)](#secret-policy-ci-sprint-k) below.
+
 ---
 
 ## Database Provider Testing
@@ -196,6 +203,43 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
 EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes \
   -p src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s src/PTDoc.Api
+```
+
+---
+
+## Secret Policy CI (Sprint K)
+
+**Sprint K** introduced `ci-secret-policy.yml` to enforce the PFPT secret management policy on every
+pull request. The policy and its rationale are documented in `docs/REMEDIATION_BASELINE.md`.
+
+### What the Job Does
+
+| Step | Description |
+|------|-------------|
+| Config file scan | Extracts `Jwt:SigningKey` and `IntakeInvite:SigningKey` from every tracked JSON config file and verifies the value is either empty or a known placeholder. |
+| `[Category=SecretPolicy]` tests | Runs `ConfigurationValidationTests` tests tagged `SecretPolicy`, which assert the same invariant independently through the .NET configuration stack. |
+
+### When It Fails
+
+The job blocks merging when:
+- A tracked config file contains a signing key that is not in the approved placeholder list and is not empty.
+- Any `[Category=SecretPolicy]` test fails.
+
+### Approved Placeholders
+
+| File | Key | Permitted Value |
+|------|-----|-----------------|
+| `src/PTDoc.Api/appsettings.json` | `Jwt:SigningKey` | `REPLACE_WITH_A_MIN_32_CHAR_SECRET` or `""` |
+| `src/PTDoc.Api/appsettings.Development.json` | `Jwt:SigningKey` | `DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET` or `""` |
+| `src/PTDoc.Web/appsettings.Development.json` | `IntakeInvite:SigningKey` | Any value starting with `REPLACE_` or `""` |
+
+### Running Locally
+
+```bash
+# Run SecretPolicy tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=SecretPolicy" \
+  --verbosity normal
 ```
 
 ---
