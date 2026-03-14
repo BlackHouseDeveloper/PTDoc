@@ -16,7 +16,7 @@ public static class NoteEndpoints
 {
     public static void MapNoteCrudEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/notes")
+        var group = app.MapGroup("/api/v1/notes")
             .RequireAuthorization()
             .WithTags("Notes");
 
@@ -57,15 +57,18 @@ public static class NoteEndpoints
         if (!patientExists)
             return Results.NotFound(new { error = $"Patient {request.PatientId} not found." });
 
-        // Validate appointment FK if provided
+        // Validate appointment FK if provided: must exist and belong to the same patient
         if (request.AppointmentId.HasValue)
         {
-            var appointmentExists = await db.Appointments
+            var appointment = await db.Appointments
                 .AsNoTracking()
-                .AnyAsync(a => a.Id == request.AppointmentId.Value, cancellationToken);
+                .FirstOrDefaultAsync(a => a.Id == request.AppointmentId.Value, cancellationToken);
 
-            if (!appointmentExists)
+            if (appointment is null)
                 return Results.UnprocessableEntity(new { error = $"Appointment {request.AppointmentId} not found." });
+
+            if (appointment.PatientId != request.PatientId)
+                return Results.UnprocessableEntity(new { error = $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}." });
         }
 
         var clinicId = tenantContext.GetCurrentClinicId();
@@ -76,9 +79,9 @@ public static class NoteEndpoints
             PatientId = request.PatientId,
             AppointmentId = request.AppointmentId,
             NoteType = request.NoteType,
-            ContentJson = request.ContentJson,
+            ContentJson = string.IsNullOrWhiteSpace(request.ContentJson) ? "{}" : request.ContentJson,
             DateOfService = request.DateOfService,
-            CptCodesJson = request.CptCodesJson,
+            CptCodesJson = string.IsNullOrWhiteSpace(request.CptCodesJson) ? "[]" : request.CptCodesJson,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -88,7 +91,7 @@ public static class NoteEndpoints
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync(cancellationToken);
 
-        return Results.Created($"/api/notes/{note.Id}", ToResponse(note));
+        return Results.Created($"/api/v1/notes/{note.Id}", ToResponse(note));
     }
 
     // PUT /api/notes/{id}

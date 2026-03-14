@@ -349,6 +349,12 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<IntakeForm>()
             .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == null || f.ClinicId == CurrentClinicId);
+
+        // Sprint O: ObjectiveMetric is accessed only through its parent ClinicalNote,
+        // which already has its own query filter. Filter ObjectiveMetric via the note's ClinicId
+        // so that direct queries on db.ObjectiveMetrics are also tenant-scoped.
+        modelBuilder.Entity<ObjectiveMetric>()
+            .HasQueryFilter(m => CurrentClinicId == null || m.Note!.ClinicId == null || m.Note!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>

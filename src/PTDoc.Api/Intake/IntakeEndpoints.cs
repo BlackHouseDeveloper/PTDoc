@@ -4,6 +4,8 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace PTDoc.Api.Intake;
 
@@ -16,7 +18,7 @@ public static class IntakeEndpoints
 {
     public static void MapIntakeEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/intake")
+        var group = app.MapGroup("/api/v1/intake")
             .RequireAuthorization()
             .WithTags("Intake");
 
@@ -29,7 +31,7 @@ public static class IntakeEndpoints
             .WithSummary("Get an intake response by ID");
     }
 
-    // POST /api/intake
+    // POST /api/v1/intake
     private static async Task<IResult> CreateIntake(
         [FromBody] CreateIntakeRequest request,
         [FromServices] ApplicationDbContext db,
@@ -43,6 +45,10 @@ public static class IntakeEndpoints
                 { nameof(request.PatientId), ["PatientId is required."] }
             });
 
+        // Default null JSON fields to valid empty JSON objects so EF doesn't fail
+        var painMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
+        var consents    = string.IsNullOrWhiteSpace(request.Consents)    ? "{}" : request.Consents;
+
         // Verify the patient exists and is visible to this tenant
         var patientExists = await db.Patients
             .AsNoTracking()
@@ -54,15 +60,21 @@ public static class IntakeEndpoints
         var clinicId = tenantContext.GetCurrentClinicId();
         var userId = identityContext.GetCurrentUserId();
 
+        // Generate a cryptographically secure token and store its SHA-256 hash.
+        // The raw token can be shared with the patient to access the self-completion form.
+        var rawTokenBytes = RandomNumberGenerator.GetBytes(32);
+        var rawToken = Convert.ToHexString(rawTokenBytes).ToLowerInvariant(); // 64-char hex
+        var tokenHash = HashToken(rawToken);
+
         var intake = new IntakeForm
         {
             PatientId = request.PatientId,
-            PainMapData = request.PainMapData,
-            Consents = request.Consents,
-            ResponseJson = request.ResponseJson,
+            PainMapData = painMapData,
+            Consents = consents,
+            ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson,
             TemplateVersion = request.TemplateVersion,
             IsLocked = false,
-            AccessToken = Guid.NewGuid().ToString("N"), // Hashed token placeholder
+            AccessToken = tokenHash, // SHA-256 hash of the raw token
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -72,10 +84,10 @@ public static class IntakeEndpoints
         db.IntakeForms.Add(intake);
         await db.SaveChangesAsync(cancellationToken);
 
-        return Results.Created($"/api/intake/{intake.Id}", ToResponse(intake));
+        return Results.Created($"/api/v1/intake/{intake.Id}", ToResponse(intake));
     }
 
-    // GET /api/intake/{id}
+    // GET /api/v1/intake/{id}
     private static async Task<IResult> GetIntake(
         Guid id,
         [FromServices] ApplicationDbContext db,
@@ -106,4 +118,14 @@ public static class IntakeEndpoints
         ClinicId = f.ClinicId,
         LastModifiedUtc = f.LastModifiedUtc
     };
+
+    /// <summary>
+    /// Produces a lowercase hex SHA-256 hash of the given token, consistent with the Session.TokenHash pattern.
+    /// </summary>
+    private static string HashToken(string token)
+    {
+        using var sha256 = SHA256.Create();
+        var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(token));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
 }

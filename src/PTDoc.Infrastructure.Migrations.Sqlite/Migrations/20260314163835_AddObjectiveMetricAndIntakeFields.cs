@@ -16,14 +16,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 table: "IntakeForms",
                 type: "TEXT",
                 nullable: false,
-                defaultValue: "");
+                defaultValue: "{}");
 
             migrationBuilder.AddColumn<string>(
                 name: "PainMapData",
                 table: "IntakeForms",
                 type: "TEXT",
                 nullable: false,
-                defaultValue: "");
+                defaultValue: "{}");
 
             migrationBuilder.CreateTable(
                 name: "ObjectiveMetrics",

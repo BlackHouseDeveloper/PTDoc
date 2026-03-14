@@ -16,7 +16,7 @@ public static class PatientEndpoints
 {
     public static void MapPatientEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/patients")
+        var group = app.MapGroup("/api/v1/patients")
             .RequireAuthorization()
             .WithTags("Patients");
 
@@ -92,7 +92,7 @@ public static class PatientEndpoints
         db.Patients.Add(patient);
         await db.SaveChangesAsync(cancellationToken);
 
-        return Results.Created($"/api/patients/{patient.Id}", ToResponse(patient));
+        return Results.Created($"/api/v1/patients/{patient.Id}", ToResponse(patient));
     }
 
     // GET /api/patients/{id}
@@ -127,10 +127,26 @@ public static class PatientEndpoints
 
         // Apply only provided (non-null) fields
         if (request.FirstName is not null)
-            patient.FirstName = request.FirstName.Trim();
+        {
+            var trimmedFirst = request.FirstName.Trim();
+            if (trimmedFirst.Length == 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { nameof(request.FirstName), ["FirstName cannot be empty or whitespace."] }
+                });
+            patient.FirstName = trimmedFirst;
+        }
 
         if (request.LastName is not null)
-            patient.LastName = request.LastName.Trim();
+        {
+            var trimmedLast = request.LastName.Trim();
+            if (trimmedLast.Length == 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { nameof(request.LastName), ["LastName cannot be empty or whitespace."] }
+                });
+            patient.LastName = trimmedLast;
+        }
 
         if (request.DateOfBirth is not null)
             patient.DateOfBirth = request.DateOfBirth.Value;
