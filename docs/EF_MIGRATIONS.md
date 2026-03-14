@@ -73,7 +73,7 @@ EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
 ```bash
 EF_PROVIDER=sqlserver \
   Database__ConnectionString="Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True" \
-  Jwt__SigningKey="<placeholder-for-tooling>" \
+  Jwt__SigningKey="ef-tooling-only-placeholder-key-min-32-chars!" \
   dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure.Migrations.SqlServer \
   -s ./src/PTDoc.Api \
@@ -85,12 +85,16 @@ EF_PROVIDER=sqlserver \
 ```bash
 EF_PROVIDER=postgres \
   Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=postgres" \
-  Jwt__SigningKey="<placeholder-for-tooling>" \
+  Jwt__SigningKey="ef-tooling-only-placeholder-key-min-32-chars!" \
   dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure.Migrations.Postgres \
   -s ./src/PTDoc.Api \
   --context PTDoc.Infrastructure.Data.ApplicationDbContext
 ```
+
+> **Note:** `Jwt__SigningKey` is required because `PTDoc.Api` validates it at design-time.
+> The value is only used to satisfy startup validation and is **not** a real secret.
+> It must be **at least 32 characters** or the startup check will throw before EF CLI can run.
 
 ### Apply Migrations
 

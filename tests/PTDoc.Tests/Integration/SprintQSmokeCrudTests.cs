@@ -19,7 +19,12 @@ namespace PTDoc.Tests.Integration;
 ///   SQLite  – always runs (in-memory).
 ///   SQL Server – skipped unless DB_PROVIDER=sqlserver + Database__ConnectionString are set.
 ///   PostgreSQL – skipped unless DB_PROVIDER=postgres + Database__ConnectionString are set.
+///
+/// The class is placed in the "ProviderDatabase" xUnit collection (DisableParallelization=true)
+/// so that SQL Server / PostgreSQL tests that call EnsureDeletedAsync/MigrateAsync against the
+/// same shared CI database do not race each other.
 /// </summary>
+[Collection("ProviderDatabase")]
 public class SprintQSmokeCrudTests : IDisposable
 {
     private SqliteConnection? _sqliteConnection;
@@ -435,3 +440,11 @@ public class SprintQSmokeCrudTests : IDisposable
         _sqliteConnection?.Dispose();
     }
 }
+
+/// <summary>
+/// Defines a non-parallel xUnit collection for provider database tests that operate against
+/// a shared SQL Server or PostgreSQL CI container. Tests in this collection run sequentially
+/// to avoid concurrent EnsureDeletedAsync/MigrateAsync races on the same database.
+/// </summary>
+[CollectionDefinition("ProviderDatabase", DisableParallelization = true)]
+public class ProviderDatabaseCollection { }
