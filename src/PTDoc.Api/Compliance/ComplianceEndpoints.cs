@@ -78,8 +78,8 @@ public static class ComplianceEndpoints
                 }
 
                 // Domain guard: PTA cannot sign Evaluation, Progress Note, or Discharge notes.
-                var userRole = httpContext.User.IsInRole(Roles.PTA);
-                if (userRole)
+                var isPta = httpContext.User.IsInRole(Roles.PTA);
+                if (isPta)
                 {
                     var noteType = await db.ClinicalNotes
                         .AsNoTracking()

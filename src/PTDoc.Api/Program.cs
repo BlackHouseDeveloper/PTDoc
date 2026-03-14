@@ -263,33 +263,10 @@ if (jwtConfig != null)
 
 builder.Services.AddAuthorization(options =>
 {
-    // PatientRead: clinical staff and therapy aides can view patient demographics
-    options.AddPolicy(AuthorizationPolicies.PatientRead,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Aide));
-
-    // PatientWrite: licensed clinicians and admin can create/update patient records
-    options.AddPolicy(AuthorizationPolicies.PatientWrite,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-
-    // NoteRead: only clinical staff can read clinical notes (not Aide or Patient)
-    options.AddPolicy(AuthorizationPolicies.NoteRead,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-
-    // NoteWrite: only licensed clinicians can create/update notes (Admin is read-only per FSD §3.1)
-    options.AddPolicy(AuthorizationPolicies.NoteWrite,
-        p => p.RequireRole(Roles.PT, Roles.PTA));
-
-    // IntakeRead: clinical staff and patients can read intake forms
-    options.AddPolicy(AuthorizationPolicies.IntakeRead,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Patient));
-
-    // IntakeWrite: clinical staff can create intake forms for patients
-    options.AddPolicy(AuthorizationPolicies.IntakeWrite,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-
-    // ClinicalStaff: sync and compliance evaluation — all authenticated staff
-    options.AddPolicy(AuthorizationPolicies.ClinicalStaff,
-        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+    // Sprint P: All RBAC policies are defined in AuthorizationPolicies.AddPTDocAuthorizationPolicies()
+    // (PTDoc.Application/Services/IRoleService.cs) so that Program.cs and the RBAC test suite
+    // always use the same authoritative policy definitions.
+    options.AddPTDocAuthorizationPolicies();
 });
 
 // Sprint J: Register a combined authentication policy that routes between the legacy JWT scheme
@@ -390,6 +367,15 @@ app.UseExceptionHandler(errorApp =>
         // The exception handler pipeline resets the response (including clearing headers).
         // Re-apply security headers here so error responses are also hardened.
         SecurityHeadersMiddleware.ApplyHeaders(context.Response);
+
+        // Sprint P: Re-apply the HSTS header in production so 500 responses also carry
+        // the Strict-Transport-Security directive. UseHsts() middleware applies it on the
+        // normal pipeline path, but the exception handler resets headers before writing
+        // the 500 body, so we need to set it explicitly here.
+        if (!app.Environment.IsDevelopment())
+        {
+            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        }
 
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";

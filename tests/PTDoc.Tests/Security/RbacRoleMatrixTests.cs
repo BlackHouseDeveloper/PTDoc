@@ -90,59 +90,67 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     [Fact]
     public void RegisteredPolicies_IncludeExpectedRoles()
     {
+        // Build an authorization provider using the same shared registration used by Program.cs.
         var services = new ServiceCollection();
-        services.AddAuthorization(options =>
-        {
-            options.AddPolicy(AuthorizationPolicies.PatientRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Aide));
-            options.AddPolicy(AuthorizationPolicies.PatientWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.NoteRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.NoteWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA));
-            options.AddPolicy(AuthorizationPolicies.IntakeRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Patient));
-            options.AddPolicy(AuthorizationPolicies.IntakeWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.ClinicalStaff,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-        });
+        services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
 
         var sp = services.BuildServiceProvider();
         var authOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
 
-        Assert.NotNull(authOptions.GetPolicy(AuthorizationPolicies.NoteWrite));
-        Assert.NotNull(authOptions.GetPolicy(AuthorizationPolicies.PatientRead));
-        Assert.NotNull(authOptions.GetPolicy(AuthorizationPolicies.ClinicalStaff));
+        // Helper: extract all allowed roles from a named policy's RolesAuthorizationRequirement.
+        static IReadOnlySet<string> GetAllowedRoles(AuthorizationPolicy? policy)
+        {
+            var requirement = policy?.Requirements
+                .OfType<Microsoft.AspNetCore.Authorization.Infrastructure.RolesAuthorizationRequirement>()
+                .FirstOrDefault();
+            return requirement?.AllowedRoles is not null
+                ? new HashSet<string>(requirement.AllowedRoles)
+                : new HashSet<string>();
+        }
+
+        // NoteWrite: only PT and PTA (Admin is read-only per FSD §3.1)
+        var noteWriteRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.NoteWrite));
+        Assert.Contains(Roles.PT, noteWriteRoles);
+        Assert.Contains(Roles.PTA, noteWriteRoles);
+        Assert.DoesNotContain(Roles.Admin, noteWriteRoles);
+        Assert.DoesNotContain(Roles.Aide, noteWriteRoles);
+        Assert.DoesNotContain(Roles.Patient, noteWriteRoles);
+
+        // PatientRead: PT, PTA, Admin, Aide (not Patient)
+        var patientReadRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.PatientRead));
+        Assert.Contains(Roles.PT, patientReadRoles);
+        Assert.Contains(Roles.PTA, patientReadRoles);
+        Assert.Contains(Roles.Admin, patientReadRoles);
+        Assert.Contains(Roles.Aide, patientReadRoles);
+        Assert.DoesNotContain(Roles.Patient, patientReadRoles);
+
+        // IntakeRead: PT, PTA, Admin, Patient (not Aide)
+        var intakeReadRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.IntakeRead));
+        Assert.Contains(Roles.PT, intakeReadRoles);
+        Assert.Contains(Roles.Patient, intakeReadRoles);
+        Assert.DoesNotContain(Roles.Aide, intakeReadRoles);
+
+        // ClinicalStaff: PT, PTA, Admin (not Aide, not Patient)
+        var clinicalStaffRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.ClinicalStaff));
+        Assert.Contains(Roles.PT, clinicalStaffRoles);
+        Assert.Contains(Roles.PTA, clinicalStaffRoles);
+        Assert.Contains(Roles.Admin, clinicalStaffRoles);
+        Assert.DoesNotContain(Roles.Aide, clinicalStaffRoles);
+        Assert.DoesNotContain(Roles.Patient, clinicalStaffRoles);
     }
 
     // ─── Authorization service evaluation tests ──────────────────────────────
 
     /// <summary>
-    /// Evaluates a named authorization policy against a user with the given role.
+    /// Evaluates a named authorization policy against a user with the given role,
+    /// using the production policy registrations from <see cref="AuthorizationPolicies.AddPTDocAuthorizationPolicies"/>.
     /// </summary>
     private static async Task<bool> EvaluatePolicyAsync(string policyName, string role)
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddAuthorizationCore(options =>
-        {
-            options.AddPolicy(AuthorizationPolicies.PatientRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Aide));
-            options.AddPolicy(AuthorizationPolicies.PatientWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.NoteRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.NoteWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA));
-            options.AddPolicy(AuthorizationPolicies.IntakeRead,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Patient));
-            options.AddPolicy(AuthorizationPolicies.IntakeWrite,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-            options.AddPolicy(AuthorizationPolicies.ClinicalStaff,
-                p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
-        });
+        // Use the shared registration so any drift from Program.cs will fail these tests.
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
 
         var sp = services.BuildServiceProvider();
         var authService = sp.GetRequiredService<IAuthorizationService>();
@@ -317,14 +325,19 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     public async Task PT_IsAuthorizedForNoteWrite_AndNotSubjectToPtaDomainGuard()
     {
         // PT has the NoteWrite role and is not restricted by the PTA domain guard.
-        // The domain guard only applies when role == PTA.
+        // The domain guard only applies when ClaimsPrincipal.IsInRole(Roles.PTA) is true.
         var ptHasNoteWrite = await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.PT);
         Assert.True(ptHasNoteWrite, "PT must be authorized by the NoteWrite policy");
 
-        // Simulate the domain guard decision for a PT user.
-        // The guard is gated on IsInRole(PTA) — a PT user bypasses it entirely.
-        var ptIsPta = string.Equals(Roles.PT, Roles.PTA, StringComparison.OrdinalIgnoreCase);
-        Assert.False(ptIsPta, "PT role is not PTA, so the domain guard is not applied");
+        // Construct a real PT ClaimsPrincipal and verify IsInRole(PTA) is false —
+        // confirming that the domain guard in the sign endpoint is not triggered for PT users.
+        var ptIdentity = new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.Role, Roles.PT) },
+            authenticationType: "Test");
+        var ptPrincipal = new ClaimsPrincipal(ptIdentity);
+
+        Assert.False(ptPrincipal.IsInRole(Roles.PTA),
+            "A PT principal must not satisfy IsInRole(PTA); the domain guard must not apply");
     }
 
     [Theory]
@@ -362,9 +375,32 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.NotNull(savedNote);
         Assert.Equal(noteType, savedNote.NoteType);
 
-        // PT users are not subject to the PTA domain guard (role check fails before guard runs)
-        var ptIsPta = string.Equals(Roles.PT, Roles.PTA, StringComparison.OrdinalIgnoreCase);
-        Assert.False(ptIsPta, "PT role does not trigger the PTA domain guard");
+        // PT users are not subject to the PTA domain guard.
+        // Verify using a real ClaimsPrincipal that a PT user's IsInRole(PTA) returns false,
+        // which means the guard block in the sign endpoint is never entered for PT.
+        var ptIdentity = new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.Role, Roles.PT) },
+            authenticationType: "Test");
+        var ptPrincipal = new ClaimsPrincipal(ptIdentity);
+
+        Assert.False(ptPrincipal.IsInRole(Roles.PTA),
+            "PT principal must not satisfy IsInRole(PTA), so the domain guard does not apply");
+    }
+
+    // ─── PTA domain guard: IsInRole check correctness ─────────────────────────
+
+    [Fact]
+    public void DomainGuard_PtaPrincipal_IsInRolePTA_IsTrue()
+    {
+        // Verify that a ClaimsPrincipal with the PTA role satisfies IsInRole(Roles.PTA).
+        // This is the condition that gates the domain guard in the sign endpoint.
+        var ptaIdentity = new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.Role, Roles.PTA) },
+            authenticationType: "Test");
+        var ptaPrincipal = new ClaimsPrincipal(ptaIdentity);
+
+        Assert.True(ptaPrincipal.IsInRole(Roles.PTA),
+            "PTA principal must satisfy IsInRole(PTA) to trigger the domain guard");
     }
 
     // ─── ClinicalStaff policy ────────────────────────────────────────────────

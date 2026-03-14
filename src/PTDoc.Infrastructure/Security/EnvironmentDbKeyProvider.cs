@@ -21,8 +21,11 @@ public class EnvironmentDbKeyProvider : IDbKeyProvider
             throw new InvalidOperationException(
                 $"Database encryption key not found. " +
                 $"Set the {KeyEnvironmentVariable} environment variable to a cryptographically secure random key " +
-                $"(minimum 32 characters). For development, generate a key with: " +
-                $"openssl rand -base64 32");
+                $"(minimum 32 characters). " +
+                $"Generate one using the repo bootstrap script (macOS/Linux: ./setup-dev-secrets.sh, " +
+                $"Windows: .\\setup-dev-secrets.ps1) or manually with: " +
+                $"openssl rand -base64 32 (macOS/Linux) or " +
+                $"[Convert]::ToBase64String((1..32 | ForEach-Object {{ [byte](Get-Random -Max 256) }})) (PowerShell).");
         }
 
         if (key.Length < 32)
