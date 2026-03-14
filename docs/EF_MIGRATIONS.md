@@ -65,48 +65,36 @@ EF_PROVIDER=sqlite dotnet ef dbcontext info \
 EF_PROVIDER=sqlite dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure.Migrations.Sqlite \
   -s ./src/PTDoc.Api \
-  --context ApplicationDbContext
+  --context PTDoc.Infrastructure.Data.ApplicationDbContext
 ```
 
 #### SQL Server
 
 ```bash
-dotnet ef migrations add MigrationName \
+EF_PROVIDER=sqlserver \
+  Database__ConnectionString="Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True" \
+  Jwt__SigningKey="ef-tooling-only-placeholder-key-min-32-chars!" \
+  dotnet ef migrations add MigrationName \
   -p ./src/PTDoc.Infrastructure.Migrations.SqlServer \
   -s ./src/PTDoc.Api \
-  --context ApplicationDbContext
+  --context PTDoc.Infrastructure.Data.ApplicationDbContext
 ```
 
 #### PostgreSQL
 
 ```bash
-dotnet ef migrations add MigrationName \
-  -p ./src/PTDoc.Infrastructure.Migrations.Postgres \
-  -s ./src/PTDoc.Api \
-  --context ApplicationDbContext
-```
-
-### Create New Migration (SQL Server)
-
-```bash
-EF_PROVIDER=sqlserver \
-  Database__ConnectionString="Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True" \
-  dotnet ef migrations add MigrationName \
-  -p ./src/PTDoc.Infrastructure \
-  -s ./src/PTDoc.Api \
-  --output-dir Data/Migrations/SqlServer
-```
-
-### Create New Migration (PostgreSQL)
-
-```bash
 EF_PROVIDER=postgres \
   Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=postgres" \
+  Jwt__SigningKey="ef-tooling-only-placeholder-key-min-32-chars!" \
   dotnet ef migrations add MigrationName \
-  -p ./src/PTDoc.Infrastructure \
+  -p ./src/PTDoc.Infrastructure.Migrations.Postgres \
   -s ./src/PTDoc.Api \
-  --output-dir Data/Migrations/Postgres
+  --context PTDoc.Infrastructure.Data.ApplicationDbContext
 ```
+
+> **Note:** `Jwt__SigningKey` is required because `PTDoc.Api` validates it at design-time.
+> The value is only used to satisfy startup validation and is **not** a real secret.
+> It must be **at least 32 characters** or the startup check will throw before EF CLI can run.
 
 ### Apply Migrations
 

@@ -6,6 +6,10 @@ name: "Database Provider CI"
 #
 # Sprint F: Added db-migration-validate job that verifies no pending migrations exist
 # and runs [Category=Observability] tests for migration-state health checks.
+#
+# Sprint Q: Migration assemblies for all three providers. All provider jobs now apply
+# migrations via EF CLI (MigrateAsync) and run CRUD smoke tests for Patient, IntakeForm,
+# ClinicalNote, and ObjectiveMetric. EnsureCreated is no longer used.
 
 on:
   pull_request:
@@ -100,11 +104,15 @@ jobs:
     - name: Restore dependencies
       run: |
         dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Infrastructure.Migrations.SqlServer/PTDoc.Infrastructure.Migrations.SqlServer.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
         dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
 
     - name: Build
       run: |
         dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Infrastructure.Migrations.SqlServer/PTDoc.Infrastructure.Migrations.SqlServer.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
         dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Create PTDoc CI database
@@ -113,6 +121,22 @@ jobs:
           /opt/mssql-tools18/bin/sqlcmd \
           -S localhost -U sa -P 'CI_Strong!Passw0rd' -C \
           -Q "IF DB_ID('PTDoc_CI') IS NULL CREATE DATABASE PTDoc_CI;"
+
+    - name: Restore local .NET tools (pinned dotnet-ef)
+      run: dotnet tool restore
+
+    - name: Apply SQL Server migrations via EF CLI
+      env:
+        EF_PROVIDER: sqlserver
+        Database__ConnectionString: "Server=localhost,1433;Database=PTDoc_CI;User Id=sa;Password=CI_Strong!Passw0rd;TrustServerCertificate=True"
+        Jwt__SigningKey: ci-sqlserver-ephemeral-key-migration-apply-placeholder
+      run: |
+        dotnet tool run dotnet-ef database update \
+          -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+          -s src/PTDoc.Api \
+          --context PTDoc.Infrastructure.Data.ApplicationDbContext \
+          --no-build \
+          --configuration Release
 
     - name: Run SQL Server schema & persistence tests
       env:
@@ -170,12 +194,32 @@ jobs:
     - name: Restore dependencies
       run: |
         dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Infrastructure.Migrations.Postgres/PTDoc.Infrastructure.Migrations.Postgres.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
         dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
 
     - name: Build
       run: |
         dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Infrastructure.Migrations.Postgres/PTDoc.Infrastructure.Migrations.Postgres.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
         dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Restore local .NET tools (pinned dotnet-ef)
+      run: dotnet tool restore
+
+    - name: Apply PostgreSQL migrations via EF CLI
+      env:
+        EF_PROVIDER: postgres
+        Database__ConnectionString: "Host=localhost;Port=5432;Database=ptdoc_ci;Username=ptdoc_ci;Password=ci_postgres_pass"
+        Jwt__SigningKey: ci-postgres-ephemeral-key-migration-apply-placeholder
+      run: |
+        dotnet tool run dotnet-ef database update \
+          -p src/PTDoc.Infrastructure.Migrations.Postgres \
+          -s src/PTDoc.Api \
+          --context PTDoc.Infrastructure.Data.ApplicationDbContext \
+          --no-build \
+          --configuration Release
 
     - name: Run PostgreSQL schema & persistence tests
       env:
