@@ -183,6 +183,7 @@ public class ConfigurationValidationTests
             ". Ensure tests are run from a full repository checkout.");
     }
 
+    [Trait("Category", "SecretPolicy")]
     [Theory]
     [InlineData("src/PTDoc.Api/appsettings.json", "Jwt:SigningKey")]
     [InlineData("src/PTDoc.Api/appsettings.Development.json", "Jwt:SigningKey")]
@@ -203,6 +204,7 @@ public class ConfigurationValidationTests
             $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
     }
 
+    [Trait("Category", "SecretPolicy")]
     [Fact]
     public void WebAppsettingsDevelopment_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty()
     {
