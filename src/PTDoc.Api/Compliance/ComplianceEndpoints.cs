@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Data;
+using System.Security.Claims;
 
 namespace PTDoc.Api.Compliance;
 
 /// <summary>
 /// API endpoints for compliance and Medicare rules.
 /// Backend-only - no UI dependencies.
+/// Sprint P: RBAC enforcement per FSD §3.
 /// </summary>
 public static class ComplianceEndpoints
 {
@@ -14,7 +20,7 @@ public static class ComplianceEndpoints
     {
         var complianceGroup = app.MapGroup("/api/v1/compliance")
             .WithTags("Compliance")
-            .RequireAuthorization();
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // Rule evaluation endpoints
         complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}",
@@ -55,17 +61,38 @@ public static class ComplianceEndpoints
     public static void MapNoteEndpoints(this WebApplication app)
     {
         var notesGroup = app.MapGroup("/api/v1/notes")
-            .WithTags("Notes")
-            .RequireAuthorization();
+            .WithTags("Notes");
 
-        // Signature endpoint
+        // Signature endpoint — requires licensed clinician (PT or PTA).
+        // Domain guard: PTA may only sign Daily notes (not Eval, ProgressNote, or Discharge)
+        // per FSD §3.3 and Medicare documentation rules.
         notesGroup.MapPost("/{noteId:guid}/sign",
-            async (Guid noteId, ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
+            async (Guid noteId, ISignatureService signatureService,
+                   IIdentityContextAccessor identityContext,
+                   ApplicationDbContext db,
+                   HttpContext httpContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
                 if (userId == Guid.Empty)
                 {
                     return Results.Unauthorized();
+                }
+
+                // Domain guard: PTA cannot sign Evaluation, Progress Note, or Discharge notes.
+                var userRole = httpContext.User.FindFirstValue(ClaimTypes.Role);
+                if (string.Equals(userRole, Roles.PTA, StringComparison.OrdinalIgnoreCase))
+                {
+                    var noteType = await db.ClinicalNotes
+                        .AsNoTracking()
+                        .Where(n => n.Id == noteId)
+                        .Select(n => (NoteType?)n.NoteType)
+                        .FirstOrDefaultAsync(httpContext.RequestAborted);
+
+                    if (noteType == null)
+                        return Results.NotFound(new { error = $"Note {noteId} not found." });
+
+                    if (noteType != NoteType.Daily)
+                        return Results.Forbid();
                 }
 
                 var result = await signatureService.SignNoteAsync(noteId, userId);
@@ -82,9 +109,10 @@ public static class ComplianceEndpoints
                     signedUtc = result.SignedUtc
                 });
             })
-            .WithName("SignNote");
+            .WithName("SignNote")
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        // Addendum endpoint
+        // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",
             async (Guid noteId, [FromBody] AddendumRequest request,
                    ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
@@ -108,16 +136,18 @@ public static class ComplianceEndpoints
                     addendumId = result.AddendumId
                 });
             })
-            .WithName("CreateAddendum");
+            .WithName("CreateAddendum")
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        // Verify signature endpoint
+        // Verify signature — readable by all clinical staff (PT, PTA, Admin).
         notesGroup.MapGet("/{noteId:guid}/verify-signature",
             async (Guid noteId, ISignatureService signatureService) =>
             {
                 var isValid = await signatureService.VerifySignatureAsync(noteId);
                 return Results.Ok(new { isValid });
             })
-            .WithName("VerifySignature");
+            .WithName("VerifySignature")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
     }
 }
 

@@ -18,14 +18,11 @@ public class EnvironmentDbKeyProvider : IDbKeyProvider
 
         if (string.IsNullOrWhiteSpace(key))
         {
-            // For development, generate a deterministic key (NOT for production)
-            if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
-            {
-                return await Task.FromResult("dev-encryption-key-minimum-32-chars-required-for-sqlcipher");
-            }
-
             throw new InvalidOperationException(
-                $"Database encryption key not found. Set {KeyEnvironmentVariable} environment variable or configure Azure Key Vault.");
+                $"Database encryption key not found. " +
+                $"Set the {KeyEnvironmentVariable} environment variable to a cryptographically secure random key " +
+                $"(minimum 32 characters). For development, generate a key with: " +
+                $"openssl rand -base64 32");
         }
 
         if (key.Length < 32)

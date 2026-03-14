@@ -22,6 +22,7 @@ using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Services;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
@@ -260,7 +261,36 @@ if (jwtConfig != null)
     }
 }
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // PatientRead: clinical staff and therapy aides can view patient demographics
+    options.AddPolicy(AuthorizationPolicies.PatientRead,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Aide));
+
+    // PatientWrite: licensed clinicians and admin can create/update patient records
+    options.AddPolicy(AuthorizationPolicies.PatientWrite,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+
+    // NoteRead: only clinical staff can read clinical notes (not Aide or Patient)
+    options.AddPolicy(AuthorizationPolicies.NoteRead,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+
+    // NoteWrite: only licensed clinicians can create/update notes (Admin is read-only per FSD §3.1)
+    options.AddPolicy(AuthorizationPolicies.NoteWrite,
+        p => p.RequireRole(Roles.PT, Roles.PTA));
+
+    // IntakeRead: clinical staff and patients can read intake forms
+    options.AddPolicy(AuthorizationPolicies.IntakeRead,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Patient));
+
+    // IntakeWrite: clinical staff can create intake forms for patients
+    options.AddPolicy(AuthorizationPolicies.IntakeWrite,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+
+    // ClinicalStaff: sync and compliance evaluation — all authenticated staff
+    options.AddPolicy(AuthorizationPolicies.ClinicalStaff,
+        p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+});
 
 // Sprint J: Register a combined authentication policy that routes between the legacy JWT scheme
 // and the PIN-based session token scheme.
@@ -393,6 +423,14 @@ app.UseExceptionHandler(errorApp =>
 
 // Sprint G: Apply security headers to all API responses.
 app.UseMiddleware<SecurityHeadersMiddleware>();
+
+// Sprint P: HTTPS enforcement — redirect HTTP to HTTPS in all environments.
+// HSTS is only applied outside Development to avoid browser pin issues on localhost.
+app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
 
 // Sprint F: Log selected database provider at startup for operational visibility
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();

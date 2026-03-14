@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -11,14 +12,15 @@ namespace PTDoc.Api.Notes;
 /// CRUD endpoints for clinical notes.
 /// PUT is restricted to draft (unsigned) notes per Medicare immutability rules.
 /// Sprint O: TDD §6.3 Clinical Notes APIs
+/// Sprint P: RBAC enforcement — NoteWrite requires PT or PTA role.
 /// </summary>
 public static class NoteEndpoints
 {
     public static void MapNoteCrudEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/notes")
-            .RequireAuthorization()
-            .WithTags("Notes");
+            .WithTags("Notes")
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
         group.MapPost("/", CreateNote)
             .WithName("CreateNote")
