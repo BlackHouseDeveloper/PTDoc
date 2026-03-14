@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using Microsoft.Extensions.Logging;
 
@@ -6,6 +7,7 @@ namespace PTDoc.Api.Sync;
 
 /// <summary>
 /// API endpoints for offline-first synchronization.
+/// Sprint P: RBAC enforcement — ClinicalStaff policy (PT, PTA, Admin).
 /// </summary>
 public static class SyncEndpoints
 {
@@ -13,7 +15,7 @@ public static class SyncEndpoints
     {
         var syncGroup = app.MapGroup("/api/v1/sync")
             .WithTags("Synchronization")
-            .RequireAuthorization(); // All sync endpoints require authentication
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // POST /api/v1/sync/run - Manual full sync trigger
         syncGroup.MapPost("/run", RunFullSync)

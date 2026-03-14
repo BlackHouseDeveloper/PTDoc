@@ -22,6 +22,7 @@ using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Services;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
@@ -260,7 +261,13 @@ if (jwtConfig != null)
     }
 }
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Sprint P: All RBAC policies are defined in AuthorizationPolicies.AddPTDocAuthorizationPolicies()
+    // (PTDoc.Application/Services/IRoleService.cs) so that Program.cs and the RBAC test suite
+    // always use the same authoritative policy definitions.
+    options.AddPTDocAuthorizationPolicies();
+});
 
 // Sprint J: Register a combined authentication policy that routes between the legacy JWT scheme
 // and the PIN-based session token scheme.
@@ -361,6 +368,15 @@ app.UseExceptionHandler(errorApp =>
         // Re-apply security headers here so error responses are also hardened.
         SecurityHeadersMiddleware.ApplyHeaders(context.Response);
 
+        // Sprint P: Re-apply the HSTS header in production so 500 responses also carry
+        // the Strict-Transport-Security directive. UseHsts() middleware applies it on the
+        // normal pipeline path, but the exception handler resets headers before writing
+        // the 500 body, so we need to set it explicitly here.
+        if (!app.Environment.IsDevelopment())
+        {
+            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        }
+
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
 
@@ -393,6 +409,14 @@ app.UseExceptionHandler(errorApp =>
 
 // Sprint G: Apply security headers to all API responses.
 app.UseMiddleware<SecurityHeadersMiddleware>();
+
+// Sprint P: HTTPS enforcement — redirect HTTP to HTTPS in all environments.
+// HSTS is only applied outside Development to avoid browser pin issues on localhost.
+app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
 
 // Sprint F: Log selected database provider at startup for operational visibility
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();

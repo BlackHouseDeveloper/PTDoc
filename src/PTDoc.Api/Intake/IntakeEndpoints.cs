@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
@@ -13,22 +14,24 @@ namespace PTDoc.Api.Intake;
 /// Endpoints for patient intake responses.
 /// Supports tenant scoping and locking after evaluation.
 /// Sprint O: TDD §6.2 Intake APIs
+/// Sprint P: RBAC enforcement — separate read/write policies.
 /// </summary>
 public static class IntakeEndpoints
 {
     public static void MapIntakeEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/intake")
-            .RequireAuthorization()
             .WithTags("Intake");
 
         group.MapPost("/", CreateIntake)
             .WithName("CreateIntake")
-            .WithSummary("Create an intake response for a patient");
+            .WithSummary("Create an intake response for a patient")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
 
         group.MapGet("/{id:guid}", GetIntake)
             .WithName("GetIntake")
-            .WithSummary("Get an intake response by ID");
+            .WithSummary("Get an intake response by ID")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
     }
 
     // POST /api/v1/intake

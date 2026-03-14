@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -11,30 +12,34 @@ namespace PTDoc.Api.Patients;
 /// CRUD endpoints for patient records.
 /// All endpoints are tenant-scoped (clinic_id from JWT claim).
 /// Sprint O: TDD §6.1 Patient APIs
+/// Sprint P: RBAC enforcement per FSD §3
 /// </summary>
 public static class PatientEndpoints
 {
     public static void MapPatientEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/patients")
-            .RequireAuthorization()
             .WithTags("Patients");
 
         group.MapPost("/", CreatePatient)
             .WithName("CreatePatient")
-            .WithSummary("Create a new patient");
+            .WithSummary("Create a new patient")
+            .RequireAuthorization(AuthorizationPolicies.PatientWrite);
 
         group.MapGet("/{id:guid}", GetPatient)
             .WithName("GetPatient")
-            .WithSummary("Get a patient by ID");
+            .WithSummary("Get a patient by ID")
+            .RequireAuthorization(AuthorizationPolicies.PatientRead);
 
         group.MapPut("/{id:guid}", UpdatePatient)
             .WithName("UpdatePatient")
-            .WithSummary("Update an existing patient");
+            .WithSummary("Update an existing patient")
+            .RequireAuthorization(AuthorizationPolicies.PatientWrite);
 
         group.MapGet("/{id:guid}/notes", GetPatientNotes)
             .WithName("GetPatientNotes")
-            .WithSummary("Get clinical notes for a patient");
+            .WithSummary("Get clinical notes for a patient")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
     }
 
     // POST /api/patients
