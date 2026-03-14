@@ -746,6 +746,114 @@ Options are read from `appsettings.json` (or environment variables):
    ```
 4. Add unit tests in `tests/PTDoc.Tests/BackgroundJobs/`.
 
+## Multi-Tenant / Multi-Clinic Architecture (Sprint J)
+
+PTDoc is designed to operate in a multi-clinic (multi-tenant) environment where each clinic's data is completely isolated from others.
+
+### Tenancy Model
+
+PTDoc uses a **shared-database, shared-schema** tenancy model with row-level filtering. All clinics share the same database tables. Each row in tenant-scoped tables carries a `ClinicId` foreign key that identifies its owning clinic.
+
+This model was chosen because:
+- It avoids the operational complexity of database-per-tenant
+- It matches the current infrastructure and EF Core capabilities
+- Row-level filtering can be enforced at the ORM layer via global query filters
+
+### Tenant Entity
+
+```csharp
+// PTDoc.Core/Models/Clinic.cs
+public class Clinic
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; }    // Display name
+    public string Slug { get; set; }    // URL-friendly identifier (unique)
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+```
+
+### Tenant-Scoped Entities
+
+The following entities carry `ClinicId` and are subject to tenant filtering:
+
+| Entity           | ClinicId | Notes                                        |
+|------------------|----------|----------------------------------------------|
+| `Patient`        | ✓        | Root aggregate; all related data inherits scope |
+| `Appointment`    | ✓        | Denormalized from Patient for query efficiency |
+| `ClinicalNote`   | ✓        | Denormalized from Patient for query efficiency |
+| `IntakeForm`     | ✓        | Denormalized from Patient for query efficiency |
+| `User`           | ✓        | Clinicians belong to one clinic              |
+
+Non-clinical entities (`AuditLog`, `SyncQueueItem`, `Session`, etc.) are **not** tenant-scoped — they are system-level or user-level.
+
+### Data Access Isolation
+
+Tenant isolation is enforced via **EF Core global query filters** on `ApplicationDbContext`:
+
+```csharp
+// Applied automatically to every query on tenant-scoped entities
+modelBuilder.Entity<Patient>()
+    .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
+```
+
+- If a tenant scope is active (`clinic_id` JWT claim present), queries automatically add `WHERE ClinicId = @current` to every query.
+- If no tenant scope exists (system-level background jobs), the filter is bypassed and all rows are visible.
+- Legacy rows with `ClinicId = NULL` (pre-Sprint J data) remain visible to all clinics for backward compatibility.
+
+To intentionally bypass filters for admin/migration operations:
+```csharp
+context.Set<Patient>().IgnoreQueryFilters().Where(...);
+```
+
+### Tenant Context Flow
+
+```
+JWT Token (clinic_id claim)
+    ↓
+HttpTenantContextAccessor.GetCurrentClinicId()
+    ↓
+ApplicationDbContext._tenantContext?.GetCurrentClinicId()
+    ↓
+EF Core global query filter evaluation per query
+```
+
+### Identity Integration
+
+The `clinic_id` is embedded in JWT access tokens at authentication time:
+
+```
+POST /auth/token → ClaimsIdentity includes: Claim("clinic_id", user.ClinicId.ToString())
+POST /api/v1/auth/pin-login → AuthResult.ClinicId from User.ClinicId
+GET /api/v1/auth/me → CurrentUserResponse.ClinicId
+```
+
+The `ITenantContextAccessor` interface (in `PTDoc.Application/Identity`) abstracts the tenant-resolution logic. The `HttpTenantContextAccessor` implementation reads the `clinic_id` JWT claim from the HTTP context.
+
+### Backward Compatibility
+
+Existing deployments are preserved:
+- `ClinicId` is **nullable** on all entities — existing rows without a clinic assignment continue to work.
+- Legacy patients (null ClinicId) are visible to any tenant context.
+- New patients/appointments created by a clinic-scoped user automatically receive that clinic's ID (set at the service/API layer when creating records).
+
+### Development Default Clinic
+
+The `DatabaseSeeder` seeds a default development clinic:
+- **ID:** `00000000-0000-0000-0000-000000000100`
+- **Name:** `PTDoc Development Clinic`
+- **Slug:** `ptdoc-dev`
+- The `testuser` is assigned to this clinic.
+- The demo `CredentialValidator` includes this clinic ID in JWT claims.
+
+### Adding a New Clinic (Future)
+
+When implementing full clinic management:
+1. Create a `POST /api/v1/admin/clinics` endpoint
+2. Assign users to the new clinic via `User.ClinicId`
+3. New clinical records created by those users automatically inherit the clinic scope
+4. No data migration required for existing records (they remain `null`-scoped)
+
 ## Related Documentation
 
 - [BUILD.md](BUILD.md) - Build instructions
