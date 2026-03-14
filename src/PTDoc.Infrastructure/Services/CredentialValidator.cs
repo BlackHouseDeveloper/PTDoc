@@ -2,6 +2,8 @@ namespace PTDoc.Infrastructure.Services;
 
 using System.Security.Claims;
 using PTDoc.Application.Auth;
+using PTDoc.Infrastructure.Data.Seeders;
+using PTDoc.Infrastructure.Identity;
 
 /// <summary>
 /// Demo credential validator for development and testing purposes only.
@@ -37,7 +39,10 @@ public sealed class CredentialValidator : ICredentialValidator
             new Claim(ClaimTypes.NameIdentifier, DemoPin),
             new Claim(ClaimTypes.Name, DemoDisplayName),
             new Claim(ClaimTypes.Email, $"{DemoPin}@demo.pin"),
-            new Claim(ClaimTypes.Role, "Clinician")
+            new Claim(ClaimTypes.Role, "Clinician"),
+            // Sprint J: Include clinic scope in JWT so tenant-aware query filters activate.
+            // References the canonical default clinic ID from DatabaseSeeder to avoid drift.
+            new Claim(HttpTenantContextAccessor.ClinicIdClaimType, DatabaseSeeder.DefaultClinicId.ToString())
         };
 
         return Task.FromResult<ClaimsIdentity?>(new ClaimsIdentity(claims, "PTDocAuth"));

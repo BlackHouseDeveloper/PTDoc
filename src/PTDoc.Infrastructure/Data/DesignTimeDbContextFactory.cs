@@ -30,7 +30,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
                             "Set the Database__ConnectionString environment variable when using EF_PROVIDER=sqlserver. " +
                             "Example: Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=<password>;TrustServerCertificate=True");
                     optionsBuilder.UseSqlServer(connectionString,
-                        o => o.MigrationsAssembly(typeof(DesignTimeDbContextFactory).Assembly.GetName().Name));
+                        o => o.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer"));
                     break;
                 }
 
@@ -41,7 +41,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
                             "Set the Database__ConnectionString environment variable when using EF_PROVIDER=postgres. " +
                             "Example: Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=<password>");
                     optionsBuilder.UseNpgsql(connectionString,
-                        o => o.MigrationsAssembly(typeof(DesignTimeDbContextFactory).Assembly.GetName().Name));
+                        o => o.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"));
                     break;
                 }
 
@@ -49,7 +49,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
                 {
                     var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH") ?? "PTDoc_design.db";
                     optionsBuilder.UseSqlite($"Data Source={dbPath}",
-                        o => o.MigrationsAssembly(typeof(DesignTimeDbContextFactory).Assembly.GetName().Name));
+                        o => o.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
                     break;
                 }
         }

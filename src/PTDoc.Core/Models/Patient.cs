@@ -34,8 +34,16 @@ public class Patient : ISyncTrackedEntity
     // Soft delete
     public bool IsArchived { get; set; }
 
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic that owns this patient record. Null for legacy records pre-Sprint J migration.
+    /// All queries are automatically filtered to the current user's clinic.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
+
     // Navigation properties
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
     public ICollection<ClinicalNote> ClinicalNotes { get; set; } = new List<ClinicalNote>();
     public ICollection<IntakeForm> IntakeForms { get; set; } = new List<IntakeForm>();
+    public Clinic? Clinic { get; set; }
 }

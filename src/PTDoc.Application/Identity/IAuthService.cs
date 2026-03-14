@@ -61,6 +61,8 @@ public class AuthResult
     public required string Token { get; init; }
     public required DateTime ExpiresAt { get; init; }
     public required string Role { get; init; }
+    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>
@@ -73,6 +75,8 @@ public class SessionInfo
     public required string Role { get; init; }
     public required DateTime ExpiresAt { get; init; }
     public required DateTime LastActivityAt { get; init; }
+    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>
@@ -86,4 +90,6 @@ public class UserInfo
     public required string LastName { get; init; }
     public required string Role { get; init; }
     public required bool IsActive { get; init; }
+    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+    public Guid? ClinicId { get; init; }
 }

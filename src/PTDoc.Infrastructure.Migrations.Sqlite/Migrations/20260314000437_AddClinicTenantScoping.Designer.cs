@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PTDoc.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using PTDoc.Infrastructure.Data;
 namespace PTDoc.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260314000437_AddClinicTenantScoping")]
+    partial class AddClinicTenantScoping
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.4");
@@ -767,18 +770,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
                 {
-                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
-                        .WithMany()
-                        .HasForeignKey("ClinicId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("Appointments")
                         .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Clinic");
 
                     b.Navigation("Patient");
                 });
@@ -790,11 +786,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("AppointmentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
-                        .WithMany()
-                        .HasForeignKey("ClinicId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("ClinicalNotes")
                         .HasForeignKey("PatientId")
@@ -802,8 +793,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Appointment");
-
-                    b.Navigation("Clinic");
 
                     b.Navigation("Patient");
                 });
@@ -821,18 +810,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
                 {
-                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
-                        .WithMany()
-                        .HasForeignKey("ClinicId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("IntakeForms")
                         .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Clinic");
 
                     b.Navigation("Patient");
                 });
