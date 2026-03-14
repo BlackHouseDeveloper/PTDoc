@@ -5,7 +5,6 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
-using System.Security.Claims;
 
 namespace PTDoc.Api.Compliance;
 
@@ -79,8 +78,8 @@ public static class ComplianceEndpoints
                 }
 
                 // Domain guard: PTA cannot sign Evaluation, Progress Note, or Discharge notes.
-                var userRole = httpContext.User.FindFirstValue(ClaimTypes.Role);
-                if (string.Equals(userRole, Roles.PTA, StringComparison.OrdinalIgnoreCase))
+                var userRole = httpContext.User.IsInRole(Roles.PTA);
+                if (userRole)
                 {
                     var noteType = await db.ClinicalNotes
                         .AsNoTracking()

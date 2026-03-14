@@ -314,35 +314,57 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task PT_CanSign_AllNoteTypes()
+    public async Task PT_IsAuthorizedForNoteWrite_AndNotSubjectToPtaDomainGuard()
     {
-        // PT role is not restricted by the PTA domain guard.
-        // Verify that a PT user (role != PTA) would bypass the guard entirely.
-        foreach (var noteType in Enum.GetValues<NoteType>())
-        {
-            var patient = CreateTestPatient();
-            _db.Patients.Add(patient);
+        // PT has the NoteWrite role and is not restricted by the PTA domain guard.
+        // The domain guard only applies when role == PTA.
+        var ptHasNoteWrite = await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.PT);
+        Assert.True(ptHasNoteWrite, "PT must be authorized by the NoteWrite policy");
 
-            var note = new ClinicalNote
-            {
-                PatientId = patient.Id,
-                NoteType = noteType,
-                ContentJson = "{}",
-                DateOfService = DateTime.UtcNow,
-                CptCodesJson = "[]",
-                LastModifiedUtc = DateTime.UtcNow,
-                ModifiedByUserId = Guid.NewGuid(),
-                SyncState = SyncState.Pending
-            };
-            _db.ClinicalNotes.Add(note);
-        }
+        // Simulate the domain guard decision for a PT user.
+        // The guard is gated on IsInRole(PTA) — a PT user bypasses it entirely.
+        var ptIsPta = string.Equals(Roles.PT, Roles.PTA, StringComparison.OrdinalIgnoreCase);
+        Assert.False(ptIsPta, "PT role is not PTA, so the domain guard is not applied");
+    }
+
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    [InlineData(NoteType.Daily)]
+    public async Task PT_CanSignAllNoteTypes_DomainGuardDoesNotApply(NoteType noteType)
+    {
+        // Arrange: create a note of the given type
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = noteType,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            CptCodesJson = "[]",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        // PT users skip the PTA domain guard — the guard only executes when role == PTA.
-        // This test asserts that no additional restriction exists for PT.
-        var ptRole = Roles.PT;
-        var isPta = string.Equals(ptRole, Roles.PTA, StringComparison.OrdinalIgnoreCase);
-        Assert.False(isPta); // PT is not PTA, so the domain guard is not applied
+        // Verify the note was persisted with the correct type
+        var savedNote = await _db.ClinicalNotes
+            .AsNoTracking()
+            .Where(n => n.Id == note.Id)
+            .Select(n => new { n.NoteType })
+            .FirstOrDefaultAsync();
+
+        Assert.NotNull(savedNote);
+        Assert.Equal(noteType, savedNote.NoteType);
+
+        // PT users are not subject to the PTA domain guard (role check fails before guard runs)
+        var ptIsPta = string.Equals(Roles.PT, Roles.PTA, StringComparison.OrdinalIgnoreCase);
+        Assert.False(ptIsPta, "PT role does not trigger the PTA domain guard");
     }
 
     // ─── ClinicalStaff policy ────────────────────────────────────────────────
@@ -380,11 +402,10 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     // ─── Encryption key policy ───────────────────────────────────────────────
 
     [Fact]
-    public void EnvironmentDbKeyProvider_WithoutEnvVar_ThrowsWithoutDevFallback()
+    public async Task EnvironmentDbKeyProvider_WithoutEnvVar_ThrowsWithoutDevFallback()
     {
-        // Ensure the deterministic dev fallback key has been removed.
-        // The provider must throw when PTDOC_DB_ENCRYPTION_KEY is not set,
-        // even in a Development environment.
+        // Sprint P: the deterministic dev fallback key has been removed.
+        // The provider must fail-closed in all environments when the key is not set.
         var previousKey = Environment.GetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY");
         var previousEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
@@ -394,13 +415,7 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         try
         {
             var provider = new PTDoc.Infrastructure.Security.EnvironmentDbKeyProvider();
-            var ex = Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetKeyAsync());
-            // If we reach here it means the async method threw synchronously
-            _ = ex;
-        }
-        catch (InvalidOperationException)
-        {
-            // Exception thrown synchronously — also acceptable
+            await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetKeyAsync());
         }
         finally
         {
