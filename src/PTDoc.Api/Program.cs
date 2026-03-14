@@ -14,7 +14,10 @@ using PTDoc.Api.Compliance;
 using PTDoc.Api.Diagnostics;
 using PTDoc.Api.Health;
 using PTDoc.Api.Identity;
+using PTDoc.Api.Intake;
 using PTDoc.Api.Integrations;
+using PTDoc.Api.Notes;
+using PTDoc.Api.Patients;
 using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
 using PTDoc.Application.AI;
@@ -482,6 +485,9 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 // Register all API endpoints
 app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
 app.MapPinAuthEndpoints(); // New PIN-based auth
+app.MapPatientEndpoints(); // Sprint O: Patient CRUD
+app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
+app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
 app.MapSyncEndpoints(); // Sync endpoints
 app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
