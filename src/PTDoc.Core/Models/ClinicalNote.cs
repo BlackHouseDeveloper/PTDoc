@@ -32,6 +32,13 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // CPT codes (for billing)
     public string CptCodesJson { get; set; } = "[]"; // Array of CPT codes with units
 
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic that owns this note. Null for legacy records pre-Sprint J migration.
+    /// Denormalized from Patient for efficient query filtering.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
+
     // Navigation properties
     public Patient? Patient { get; set; }
     public Appointment? Appointment { get; set; }

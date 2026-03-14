@@ -29,6 +29,13 @@ public class Appointment : ISyncTrackedEntity
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
 
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic that owns this appointment. Null for legacy records pre-Sprint J migration.
+    /// Denormalized from Patient for efficient query filtering.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
+
     // Navigation properties
     public Patient? Patient { get; set; }
 }

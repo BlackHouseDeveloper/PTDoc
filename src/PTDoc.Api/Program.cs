@@ -46,6 +46,7 @@ builder.Services.AddHttpContextAccessor();
 
 // Register identity services
 builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor>();
+builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>(); // Sprint J: clinic/tenant scoping
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Register sync services

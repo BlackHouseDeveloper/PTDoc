@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Infrastructure.Data;
@@ -6,13 +7,25 @@ namespace PTDoc.Infrastructure.Data;
 /// <summary>
 /// Application database context for PTDoc.
 /// Supports both SQLite (local-first) and SQL Server (cloud) via provider configuration.
+/// Sprint J: Tenant-aware query filtering scopes all clinical data to the current clinic.
 /// </summary>
 public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+    private readonly ITenantContextAccessor? _tenantContext;
+
+    /// <summary>
+    /// Primary constructor used at runtime — receives tenant context for per-clinic filtering.
+    /// </summary>
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        ITenantContextAccessor? tenantContext = null)
         : base(options)
     {
+        _tenantContext = tenantContext;
     }
+
+    // Tenant entity (Sprint J)
+    public DbSet<Clinic> Clinics => Set<Clinic>();
 
     // Clinical entities
     public DbSet<Patient> Patients => Set<Patient>();
@@ -239,5 +252,74 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.ClinicalNoteId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        // Sprint J: Configure Clinic (tenant) entity
+        modelBuilder.Entity<Clinic>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Slug).IsUnique();
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Slug).HasMaxLength(100).IsRequired();
+
+            entity.HasMany(e => e.Users)
+                .WithOne(e => e.Clinic)
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(e => e.Patients)
+                .WithOne(e => e.Clinic)
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Sprint J: Configure ClinicId FK on tenant-scoped entities
+        modelBuilder.Entity<Patient>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        modelBuilder.Entity<Appointment>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        modelBuilder.Entity<ClinicalNote>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        modelBuilder.Entity<IntakeForm>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
+        // Filters are bypassed when no tenant scope is active (system jobs, unauthenticated requests).
+        // Use context.Set<T>().IgnoreQueryFilters() to intentionally bypass for admin operations.
+        // Note: HasQueryFilter references `this` so the clinic ID is resolved per-query at runtime.
+        modelBuilder.Entity<Patient>()
+            .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<Appointment>()
+            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicId == null || a.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<ClinicalNote>()
+            .HasQueryFilter(n => CurrentClinicId == null || n.ClinicId == null || n.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<IntakeForm>()
+            .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == null || f.ClinicId == CurrentClinicId);
     }
+
+    /// <summary>
+    /// Returns the current tenant's clinic ID for use in global query filters.
+    /// Evaluated at query execution time, not at model creation time.
+    /// </summary>
+    private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
 }

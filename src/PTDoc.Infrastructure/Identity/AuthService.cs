@@ -124,7 +124,8 @@ public class AuthService : IAuthService
                 Username = user.Username,
                 Token = token,
                 ExpiresAt = session.ExpiresAt,
-                Role = user.Role
+                Role = user.Role,
+                ClinicId = user.ClinicId
             };
         }
         catch (Exception ex)
@@ -176,7 +177,8 @@ public class AuthService : IAuthService
             Username = session.User.Username,
             Role = session.User.Role,
             ExpiresAt = session.ExpiresAt,
-            LastActivityAt = session.LastActivityAt ?? session.CreatedAt
+            LastActivityAt = session.LastActivityAt ?? session.CreatedAt,
+            ClinicId = session.User.ClinicId
         };
     }
 
@@ -228,7 +230,8 @@ public class AuthService : IAuthService
             FirstName = user.FirstName,
             LastName = user.LastName,
             Role = user.Role,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            ClinicId = user.ClinicId
         };
     }
 
