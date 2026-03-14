@@ -226,17 +226,85 @@ public class SyncClientProtocolTests
     [Fact]
     public async Task GetClientDeltaAsync_DefaultTypes_IncludesAllAllowedEntities()
     {
-        // Arrange: verify default entity types include all Sprint R entities
+        // Arrange: seed one row for each Sprint R entity type
         var context = CreateInMemoryContext();
+        var watermark = DateTime.UtcNow.AddHours(-1);
+
+        var patient = new Patient
+        {
+            FirstName = "Default",
+            LastName = "Test",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        context.Appointments.Add(new Appointment
+        {
+            PatientId = patient.Id,
+            StartTimeUtc = DateTime.UtcNow,
+            EndTimeUtc = DateTime.UtcNow.AddHours(1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        });
+
+        context.IntakeForms.Add(new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        });
+
+        var clinicalNote = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.ClinicalNotes.Add(clinicalNote);
+
+        // ObjectiveMetric.NoteId references clinicalNote.Id which is set in the initializer
+        // (Guid.NewGuid()), so no intermediate save is needed.
+        context.ObjectiveMetrics.Add(new ObjectiveMetric
+        {
+            NoteId = clinicalNote.Id,
+            BodyPart = BodyPart.Knee,
+            MetricType = MetricType.ROM,
+            Value = "90",
+            IsWNL = false
+        });
+
+        context.AuditLogs.Add(new AuditLog
+        {
+            EventType = "PatientAccess",
+            Severity = "Info",
+            TimestampUtc = DateTime.UtcNow,
+            CorrelationId = Guid.NewGuid().ToString()
+        });
+
+        await context.SaveChangesAsync();
+
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
 
-        // Act: pull with no entity type filter (uses default)
-        var result = await syncEngine.GetClientDeltaAsync(sinceUtc: null, entityTypes: null);
+        // Act: pull with no entity type filter (uses default allowlist)
+        var result = await syncEngine.GetClientDeltaAsync(sinceUtc: watermark, entityTypes: null);
 
-        // Assert: pulls succeeds without errors (no entities in DB, so 0 items)
+        // Assert: all six Sprint R entity types are present
         Assert.NotNull(result);
-        Assert.Empty(result.Items);
         Assert.True(result.SyncedAt > DateTime.MinValue);
+
+        var entityTypes = result.Items.Select(i => i.EntityType).Distinct().ToHashSet();
+        Assert.Contains("Patient", entityTypes);
+        Assert.Contains("Appointment", entityTypes);
+        Assert.Contains("IntakeForm", entityTypes);
+        Assert.Contains("ClinicalNote", entityTypes);
+        Assert.Contains("ObjectiveMetric", entityTypes);
+        Assert.Contains("AuditLog", entityTypes);
     }
 
     // ── ReceiveClientPushAsync – conflict rules tests ─────────────────────────
@@ -745,5 +813,185 @@ public class SyncClientProtocolTests
         Assert.Contains("immutable", signedResult.Error, StringComparison.OrdinalIgnoreCase);
 
         Assert.Equal("Accepted", draftResult.Status);
+    }
+
+    // ── Case-insensitive entity type handling tests ───────────────────────────
+
+    [Theory]
+    [InlineData("clinicalnote")]
+    [InlineData("CLINICALNOTE")]
+    [InlineData("ClinicalNote")]
+    public async Task ReceiveClientPushAsync_RejectsSigned_WhenEntityTypeCasingVaries(string entityTypeCasing)
+    {
+        // Arrange: signed note should be rejected regardless of client-supplied casing
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Casing",
+            LastName = "Test",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            SignatureHash = "abc123",
+            SignedUtc = DateTime.UtcNow.AddHours(-1),
+            SignedByUserId = Guid.NewGuid(),
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = entityTypeCasing,
+                    ServerId = noteId,
+                    LocalId = 1,
+                    Operation = "Update",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: signed note rejected regardless of casing
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal("Conflict", response.Items[0].Status);
+        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("intakeform")]
+    [InlineData("INTAKEFORM")]
+    [InlineData("IntakeForm")]
+    public async Task ReceiveClientPushAsync_RejectsLockedIntake_WhenEntityTypeCasingVaries(string entityTypeCasing)
+    {
+        // Arrange: locked intake should be rejected regardless of client-supplied casing
+        var context = CreateInMemoryContext();
+        var formId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Casing",
+            LastName = "Test2",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        context.IntakeForms.Add(new IntakeForm
+        {
+            Id = formId,
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = entityTypeCasing,
+                    ServerId = formId,
+                    LocalId = 1,
+                    Operation = "Update",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: locked intake rejected regardless of casing
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal("Conflict", response.Items[0].Status);
+        Assert.Contains("locked", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("clinicalnote")]
+    [InlineData("CLINICALNOTE")]
+    public async Task ReceiveClientPushAsync_DetectsTimestampConflict_WhenEntityTypeCasingVaries(string entityTypeCasing)
+    {
+        // Arrange: server has a more recent draft note; client uses varied casing
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Casing",
+            LastName = "Test3",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow, // server is newer
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = entityTypeCasing,
+                    ServerId = noteId,
+                    LocalId = 1,
+                    Operation = "Update",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow.AddHours(-1) // client is older
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: timestamp conflict detected regardless of casing
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal("Conflict", response.Items[0].Status);
+        Assert.Contains("newer", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
     }
 }

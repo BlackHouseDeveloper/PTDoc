@@ -555,11 +555,24 @@ public class SyncEngine : ISyncEngine
 
         if (effectiveTypes.Contains("ObjectiveMetric", StringComparer.OrdinalIgnoreCase))
         {
-            // ObjectiveMetric has no LastModifiedUtc; sync by parent note's LastModifiedUtc
+            // ObjectiveMetric has no LastModifiedUtc; sync by parent note's LastModifiedUtc.
+            // Use a join to fetch only the note's timestamp — avoids loading the full ClinicalNote row.
             var metrics = await _context.ObjectiveMetrics
                 .AsNoTracking()
-                .Include(m => m.Note)
-                .Where(m => m.Note != null && m.Note.LastModifiedUtc > effectiveSince)
+                .Join(
+                    _context.ClinicalNotes.Where(n => n.LastModifiedUtc > effectiveSince),
+                    m => m.NoteId,
+                    n => n.Id,
+                    (m, n) => new
+                    {
+                        m.Id,
+                        m.NoteId,
+                        m.BodyPart,
+                        m.MetricType,
+                        m.Value,
+                        m.IsWNL,
+                        NoteLastModifiedUtc = n.LastModifiedUtc
+                    })
                 .ToListAsync(cancellationToken);
 
             foreach (var m in metrics)
@@ -578,7 +591,7 @@ public class SyncEngine : ISyncEngine
                         m.Value,
                         m.IsWNL
                     }, jsonOptions),
-                    LastModifiedUtc = m.Note?.LastModifiedUtc ?? effectiveSince
+                    LastModifiedUtc = m.NoteLastModifiedUtc
                 });
             }
         }
@@ -628,42 +641,44 @@ public class SyncEngine : ISyncEngine
     /// <summary>
     /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
     /// or <c>null</c> if the record does not exist on the server.
-    /// <paramref name="entityType"/> is normalised to PascalCase by the caller before this method is invoked.
+    /// Uses case-insensitive comparison to handle varying client casing (e.g. "clinicalnote", "ClinicalNote").
     /// </summary>
     private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
         string entityType,
         Guid serverId,
         CancellationToken cancellationToken)
     {
-        return entityType switch
-        {
-            "Patient" => await _context.Patients.AsNoTracking()
+        if (string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase))
+            return await _context.Patients.AsNoTracking()
                 .Where(p => p.Id == serverId)
                 .Select(p => (DateTime?)p.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken),
+                .FirstOrDefaultAsync(cancellationToken);
 
-            "Appointment" => await _context.Appointments.AsNoTracking()
+        if (string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase))
+            return await _context.Appointments.AsNoTracking()
                 .Where(a => a.Id == serverId)
                 .Select(a => (DateTime?)a.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken),
+                .FirstOrDefaultAsync(cancellationToken);
 
-            "IntakeForm" => await _context.IntakeForms.AsNoTracking()
+        if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+            return await _context.IntakeForms.AsNoTracking()
                 .Where(i => i.Id == serverId)
                 .Select(i => (DateTime?)i.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken),
+                .FirstOrDefaultAsync(cancellationToken);
 
-            "ClinicalNote" => await _context.ClinicalNotes.AsNoTracking()
+        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+            return await _context.ClinicalNotes.AsNoTracking()
                 .Where(n => n.Id == serverId)
                 .Select(n => (DateTime?)n.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken),
+                .FirstOrDefaultAsync(cancellationToken);
 
-            "AuditLog" => await _context.AuditLogs.AsNoTracking()
+        if (string.Equals(entityType, "AuditLog", StringComparison.OrdinalIgnoreCase))
+            return await _context.AuditLogs.AsNoTracking()
                 .Where(a => a.Id == serverId)
                 .Select(a => (DateTime?)a.TimestampUtc)
-                .FirstOrDefaultAsync(cancellationToken),
+                .FirstOrDefaultAsync(cancellationToken);
 
-            _ => null
-        };
+        return null;
     }
 
     /// <summary>
