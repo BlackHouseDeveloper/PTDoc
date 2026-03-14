@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -258,7 +259,34 @@ if (jwtConfig != null)
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// Sprint J: Register a combined authentication policy that routes between the legacy JWT scheme
+// and the PIN-based session token scheme.
+// - JWT tokens (3 dot-separated parts) → JwtBearerDefaults.AuthenticationScheme
+// - Session tokens (opaque base64 strings) → SessionTokenAuthHandler.SchemeName
+// This ensures HttpTenantContextAccessor (reads HttpContext.User claims) receives a
+// ClaimsPrincipal with the clinic_id claim for both authentication paths.
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = "Combined";
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddPolicyScheme("Combined", "JWT or Session Token", policyOptions =>
+    {
+        policyOptions.ForwardDefaultSelector = ctx =>
+        {
+            var authHeader = ctx.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(authHeader) &&
+                authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = authHeader["Bearer ".Length..].Trim();
+                // JWT tokens have exactly 3 base64url segments separated by dots
+                return token.Split('.').Length == 3
+                    ? JwtBearerDefaults.AuthenticationScheme
+                    : SessionTokenAuthHandler.SchemeName;
+            }
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
     .AddJwtBearer(options =>
     {
         var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
@@ -307,7 +335,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
             }
         };
-    });
+    })
+    .AddScheme<AuthenticationSchemeOptions, SessionTokenAuthHandler>(
+        SessionTokenAuthHandler.SchemeName, _ => { });
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton(TimeProvider.System);

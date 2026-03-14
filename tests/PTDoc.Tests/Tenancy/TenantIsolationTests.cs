@@ -19,7 +19,7 @@ public class TenantIsolationTests
     private static readonly Guid ClinicB = Guid.Parse("20000000-0000-0000-0000-000000000002");
 
     /// <summary>
-    /// Creates an in-memory context scoped to the given clinic ID (simulating a request from that clinic).
+    /// Creates an in-memory context with no tenant scope (system-level access, no clinic filtering).
     /// </summary>
     private static ApplicationDbContext CreateSystemContext(string dbName)
     {
@@ -321,20 +321,28 @@ public class TenantIsolationTests
         Assert.Null(accessor.GetCurrentClinicId());
     }
 
+    // ─── ITenantContextAccessor.HasTenantScope default interface member ────────
+    // Uses a concrete fake implementation so the default interface method is exercised directly,
+    // rather than asserting GetCurrentClinicId().HasValue which would not test HasTenantScope.
+
+    private sealed class FixedTenantAccessor : ITenantContextAccessor
+    {
+        private readonly Guid? _clinicId;
+        public FixedTenantAccessor(Guid? clinicId) => _clinicId = clinicId;
+        public Guid? GetCurrentClinicId() => _clinicId;
+    }
+
     [Fact]
     public void ITenantContextAccessor_HasTenantScope_Returns_True_When_ClinicId_Present()
     {
-        var tenantMock = new Mock<ITenantContextAccessor>();
-        tenantMock.Setup(x => x.GetCurrentClinicId()).Returns(ClinicA);
-        // HasTenantScope has default implementation in the interface
-        Assert.True(tenantMock.Object.GetCurrentClinicId().HasValue);
+        ITenantContextAccessor accessor = new FixedTenantAccessor(ClinicA);
+        Assert.True(accessor.HasTenantScope);
     }
 
     [Fact]
     public void ITenantContextAccessor_HasTenantScope_Returns_False_When_No_ClinicId()
     {
-        var tenantMock = new Mock<ITenantContextAccessor>();
-        tenantMock.Setup(x => x.GetCurrentClinicId()).Returns((Guid?)null);
-        Assert.False(tenantMock.Object.GetCurrentClinicId().HasValue);
+        ITenantContextAccessor accessor = new FixedTenantAccessor(null);
+        Assert.False(accessor.HasTenantScope);
     }
 }

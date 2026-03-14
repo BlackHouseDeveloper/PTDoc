@@ -42,6 +42,7 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // Navigation properties
     public Patient? Patient { get; set; }
     public Appointment? Appointment { get; set; }
+    public Clinic? Clinic { get; set; }
 }
 
 public enum NoteType

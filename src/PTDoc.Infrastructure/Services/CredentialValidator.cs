@@ -2,6 +2,7 @@ namespace PTDoc.Infrastructure.Services;
 
 using System.Security.Claims;
 using PTDoc.Application.Auth;
+using PTDoc.Infrastructure.Data.Seeders;
 using PTDoc.Infrastructure.Identity;
 
 /// <summary>
@@ -13,9 +14,6 @@ public sealed class CredentialValidator : ICredentialValidator
 {
     private const string DemoPin = "1234";
     private const string DemoDisplayName = "Dr. Demo Clinician";
-
-    // Sprint J: Default demo clinic ID — matches the seeded Clinic record in DatabaseSeeder.
-    private static readonly Guid DemoClinicId = Guid.Parse("00000000-0000-0000-0000-000000000100");
 
     public CredentialValidator()
     {
@@ -43,7 +41,8 @@ public sealed class CredentialValidator : ICredentialValidator
             new Claim(ClaimTypes.Email, $"{DemoPin}@demo.pin"),
             new Claim(ClaimTypes.Role, "Clinician"),
             // Sprint J: Include clinic scope in JWT so tenant-aware query filters activate.
-            new Claim(HttpTenantContextAccessor.ClinicIdClaimType, DemoClinicId.ToString())
+            // References the canonical default clinic ID from DatabaseSeeder to avoid drift.
+            new Claim(HttpTenantContextAccessor.ClinicIdClaimType, DatabaseSeeder.DefaultClinicId.ToString())
         };
 
         return Task.FromResult<ClaimsIdentity?>(new ClaimsIdentity(claims, "PTDocAuth"));

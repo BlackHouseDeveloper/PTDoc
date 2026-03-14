@@ -39,4 +39,5 @@ public class IntakeForm : ISyncTrackedEntity
 
     // Navigation properties
     public Patient? Patient { get; set; }
+    public Clinic? Clinic { get; set; }
 }

@@ -280,19 +280,33 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
         });
 
+        // Appointment, ClinicalNote, and IntakeForm carry ClinicId as a true FK to Clinic.
+        // Denormalized from Patient for efficient per-clinic query filtering.
         modelBuilder.Entity<Appointment>(entity =>
         {
             entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ClinicalNote>(entity =>
         {
             entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<IntakeForm>(entity =>
         {
             entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<User>(entity =>

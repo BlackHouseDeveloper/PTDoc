@@ -20,30 +20,54 @@ public static class DatabaseSeeder
     /// <summary>
     /// Seeds a test user for development and testing.
     /// Username: "testuser", PIN: "1234"
+    /// Idempotent: each entity type is checked independently so upgrading an existing
+    /// dev database to Sprint J (which adds the Clinic table) still seeds the default clinic
+    /// and attaches testuser to it.
     /// </summary>
     public static async Task SeedTestDataAsync(ApplicationDbContext context, ILogger logger)
     {
+        logger.LogInformation("Checking seed data...");
+
+        // Sprint J: Ensure the default development clinic exists regardless of whether
+        // users were already seeded. This allows existing dev databases to gain the
+        // default clinic after upgrading to Sprint J without a full re-seed.
+        var clinicExists = await context.Clinics
+            .AnyAsync(c => c.Id == DefaultClinicId);
+
+        if (!clinicExists)
+        {
+            logger.LogInformation("Seeding default development clinic...");
+            var defaultClinic = new Clinic
+            {
+                Id = DefaultClinicId,
+                Name = "PTDoc Development Clinic",
+                Slug = "ptdoc-dev",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            context.Clinics.Add(defaultClinic);
+            await context.SaveChangesAsync();
+            logger.LogInformation("Default clinic seeded.");
+        }
+
         // Check if we already have users
         var hasUsers = await context.Users.AnyAsync();
         if (hasUsers)
         {
-            logger.LogInformation("Database already contains users, skipping seed");
+            // Existing users: attach testuser to the default clinic if it's not already assigned.
+            var testUser = await context.Users
+                .FirstOrDefaultAsync(u => u.Username == "testuser");
+            if (testUser != null && testUser.ClinicId == null)
+            {
+                testUser.ClinicId = DefaultClinicId;
+                await context.SaveChangesAsync();
+                logger.LogInformation("Attached testuser to default development clinic.");
+            }
+            logger.LogInformation("Database already contains users, skipping full seed");
             return;
         }
 
         logger.LogInformation("Seeding test data...");
-
-        // Sprint J: Seed the default development clinic so users can be assigned to a tenant.
-        var defaultClinic = new Clinic
-        {
-            Id = DefaultClinicId,
-            Name = "PTDoc Development Clinic",
-            Slug = "ptdoc-dev",
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        context.Clinics.Add(defaultClinic);
 
         // Create system user (for background operations — no clinic assignment)
         var systemUser = new User
@@ -59,7 +83,7 @@ public static class DatabaseSeeder
         };
 
         // Create test user for development — assigned to the default clinic
-        var testUser = new User
+        var newTestUser = new User
         {
             Id = Guid.NewGuid(),
             Username = "testuser",
@@ -76,7 +100,7 @@ public static class DatabaseSeeder
             ClinicId = DefaultClinicId // Sprint J: assign to default clinic
         };
 
-        context.Users.AddRange(systemUser, testUser);
+        context.Users.AddRange(systemUser, newTestUser);
         await context.SaveChangesAsync();
 
         logger.LogInformation("Test data seeded successfully. Test user: {Username} (PIN configured separately)", "testuser");

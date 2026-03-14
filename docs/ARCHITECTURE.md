@@ -797,8 +797,8 @@ modelBuilder.Entity<Patient>()
     .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
 ```
 
-- If a tenant scope is active (`clinic_id` JWT claim present), queries automatically add `WHERE ClinicId = @current` to every query.
-- If no tenant scope exists (system-level background jobs), the filter is bypassed and all rows are visible.
+- If a tenant scope is active (`clinic_id` claim present — set by either the JWT handler or `SessionTokenAuthHandler`), queries automatically add `WHERE ClinicId = @current` to every query.
+- If no tenant scope exists (system-level background jobs, unauthenticated requests), the filter is bypassed and all rows are visible.
 - Legacy rows with `ClinicId = NULL` (pre-Sprint J data) remain visible to all clinics for backward compatibility.
 
 To intentionally bypass filters for admin/migration operations:
@@ -808,27 +808,46 @@ context.Set<Patient>().IgnoreQueryFilters().Where(...);
 
 ### Tenant Context Flow
 
+PTDoc has two independent authentication paths. Both activate the same tenant query filters by populating `HttpContext.User` with a `ClaimsPrincipal` that includes the `clinic_id` claim.
+
+**JWT auth flow** (`POST /auth/token` → legacy endpoint):
 ```
-JWT Token (clinic_id claim)
-    ↓
-HttpTenantContextAccessor.GetCurrentClinicId()
+Bearer JWT → JwtBearerDefaults.AuthenticationScheme
+    ↓ ASP.NET Core JWT middleware validates and sets HttpContext.User
+    ↓ (clinic_id claim must be embedded in JWT during token issuance)
+HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
     ↓
 ApplicationDbContext._tenantContext?.GetCurrentClinicId()
     ↓
 EF Core global query filter evaluation per query
 ```
 
+**PIN / session-token auth flow** (`POST /api/v1/auth/pin-login`):
+```
+Bearer session-token → SessionTokenAuthHandler (registered as "SessionToken" scheme)
+    ↓ AuthService.ValidateSessionAsync resolves session → user → ClinicId
+    ↓ Handler sets HttpContext.User with clinic_id claim
+HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
+    ↓
+ApplicationDbContext._tenantContext?.GetCurrentClinicId()
+    ↓
+EF Core global query filter evaluation per query
+```
+
+A `"Combined"` policy scheme (registered in `Program.cs`) automatically routes Bearer tokens to the correct handler based on token shape: JWTs have exactly 3 dot-separated parts; session tokens are opaque base64 strings without dots.
+
 ### Identity Integration
 
-The `clinic_id` is embedded in JWT access tokens at authentication time:
+The `clinic_id` is surfaced through both auth flows:
 
 ```
 POST /auth/token → ClaimsIdentity includes: Claim("clinic_id", user.ClinicId.ToString())
-POST /api/v1/auth/pin-login → AuthResult.ClinicId from User.ClinicId
+POST /api/v1/auth/pin-login → AuthResult.ClinicId (returned to client); also
+    embedded in HttpContext.User via SessionTokenAuthHandler on subsequent requests
 GET /api/v1/auth/me → CurrentUserResponse.ClinicId
 ```
 
-The `ITenantContextAccessor` interface (in `PTDoc.Application/Identity`) abstracts the tenant-resolution logic. The `HttpTenantContextAccessor` implementation reads the `clinic_id` JWT claim from the HTTP context.
+The `ITenantContextAccessor` interface (in `PTDoc.Application/Identity`) abstracts tenant-resolution. `HttpTenantContextAccessor` reads the `clinic_id` claim from `HttpContext.User` — this works for both JWT and session-token auth because both set `HttpContext.User` via their respective authentication handlers.
 
 ### Backward Compatibility
 
@@ -839,12 +858,12 @@ Existing deployments are preserved:
 
 ### Development Default Clinic
 
-The `DatabaseSeeder` seeds a default development clinic:
-- **ID:** `00000000-0000-0000-0000-000000000100`
+The `DatabaseSeeder` seeds a default development clinic (idempotent — safe to run on upgraded databases):
+- **ID:** `DatabaseSeeder.DefaultClinicId` = `00000000-0000-0000-0000-000000000100`
 - **Name:** `PTDoc Development Clinic`
 - **Slug:** `ptdoc-dev`
-- The `testuser` is assigned to this clinic.
-- The demo `CredentialValidator` includes this clinic ID in JWT claims.
+- The `testuser` is assigned to this clinic (updated if already exists without a clinic assignment).
+- The demo `CredentialValidator` references `DatabaseSeeder.DefaultClinicId` (single source of truth).
 
 ### Adding a New Clinic (Future)
 
