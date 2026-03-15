@@ -121,10 +121,10 @@ public sealed class TenantIsolationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task CrossTenant_TamperWrite_PatientClinicId_IsIsolated()
+    public async Task CrossTenant_TamperWrite_ClinicIdIsStampedToCurrentTenant()
     {
-        // Arrange: attempt to write a patient record with Clinic A's ClinicId
-        // while impersonating Clinic B's tenant context.
+        // Arrange: Clinic B context tries to write a patient record with Clinic A's ClinicId.
+        // SaveChanges enforcement must overwrite ClinicId to ClinicB (the active tenant).
         await using var ctxB = BuildContext(ClinicB);
 
         var tamperedPatient = new Patient
@@ -137,15 +137,41 @@ public sealed class TenantIsolationTests : IAsyncDisposable
         ctxB.Patients.Add(tamperedPatient);
         await ctxB.SaveChangesAsync();
 
-        // The record IS written with ClinicId = ClinicA as stored.
-        // Verify Clinic B cannot read it back (it lives in Clinic A's partition).
-        var visibleToB = await ctxB.Patients.ToListAsync();
-        Assert.Empty(visibleToB);
+        // Assert: ClinicId was overwritten to ClinicB by SaveChanges enforcement.
+        Assert.Equal(ClinicB, tamperedPatient.ClinicId);
 
-        // Verify Clinic A CAN read it (it was written to the A partition).
+        // Clinic B CAN read it back (it was stamped with ClinicB).
+        var visibleToB = await ctxB.Patients.ToListAsync();
+        Assert.Single(visibleToB);
+
+        // Clinic A CANNOT see it (it was NOT written into Clinic A's partition).
         await using var ctxA = BuildContext(ClinicA);
         var visibleToA = await ctxA.Patients.ToListAsync();
-        Assert.Single(visibleToA);
+        Assert.Empty(visibleToA);
+    }
+
+    [Fact]
+    public async Task CrossTenant_ModifyWrite_IsRejected()
+    {
+        // Arrange: seed a patient in Clinic A via the bypass context.
+        var patient = await SeedPatientAsync(ClinicA);
+
+        // Act: Clinic B context attempts to modify an entity it does not own.
+        await using var ctxB = BuildContext(ClinicB);
+
+        var foreignPatient = new Patient
+        {
+            Id = patient.Id,
+            ClinicId = ClinicA, // belongs to ClinicA
+            FirstName = "Hacked",
+            LastName = "Write"
+        };
+
+        ctxB.Patients.Update(foreignPatient);
+
+        // Assert: SaveChangesAsync must throw because the entity's ClinicId != ClinicB.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ctxB.SaveChangesAsync());
     }
 
     [Fact]

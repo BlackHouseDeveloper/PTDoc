@@ -90,6 +90,30 @@ public sealed class AuditLoggingTests : IAsyncDisposable
         Assert.Equal(nameof(SOAPNote), entry.EntityType);
     }
 
+    [Fact]
+    public async Task AuditLog_TenantFilter_IsolatesPerClinic()
+    {
+        // Arrange: write audit entries for two different clinics via the bypass context.
+        var clinicX = Guid.NewGuid();
+        var clinicY = Guid.NewGuid();
+        await _auditService.LogNoteEditedAsync(clinicX, NoteId, UserId);
+        await _auditService.LogNoteEditedAsync(clinicY, NoteId, UserId);
+
+        // Act: query with a tenant context scoped to ClinicX.
+        var tenantX = new PTDoc.Services.TenantContext();
+        tenantX.SetClinicId(clinicX);
+        var options = new DbContextOptionsBuilder<PTDocDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+        await using var ctxX = new PTDocDbContext(options, tenantX);
+
+        var entriesX = await ctxX.AuditLogs.ToListAsync();
+
+        // Assert: only ClinicX's audit entries are visible.
+        Assert.Single(entriesX);
+        Assert.Equal(clinicX, entriesX[0].ClinicId);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _context.DisposeAsync();

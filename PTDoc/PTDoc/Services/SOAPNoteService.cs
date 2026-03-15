@@ -13,6 +13,7 @@ public class SOAPNoteService : BaseService, ISOAPNoteService
     private readonly PTDocDbContext _context;
     private readonly IComplianceService _compliance;
     private readonly IAuditService _auditService;
+    private readonly ITenantContext _tenantContext;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SOAPNoteService"/> class.
@@ -20,17 +21,20 @@ public class SOAPNoteService : BaseService, ISOAPNoteService
     /// <param name="context">Database context for data access.</param>
     /// <param name="compliance">Compliance rules service.</param>
     /// <param name="auditService">Audit logging service.</param>
+    /// <param name="tenantContext">Current tenant (clinic) context.</param>
     /// <param name="logger">Logger instance for logging operations.</param>
     public SOAPNoteService(
         PTDocDbContext context,
         IComplianceService compliance,
         IAuditService auditService,
+        ITenantContext tenantContext,
         ILogger<SOAPNoteService> logger)
         : base(logger)
     {
         _context = context;
         _compliance = compliance;
         _auditService = auditService;
+        _tenantContext = tenantContext;
     }
 
     /// <inheritdoc/>
@@ -75,6 +79,11 @@ public class SOAPNoteService : BaseService, ISOAPNoteService
         return await ExecuteWithErrorHandlingAsync(
             async () =>
             {
+                // Always derive ClinicId from the authenticated tenant context to prevent
+                // callers from writing notes into a different clinic's partition.
+                if (_tenantContext.ClinicId != Guid.Empty)
+                    soapNote.ClinicId = _tenantContext.ClinicId;
+
                 // Enforce Progress Note hard stop for Daily notes.
                 if (soapNote.NoteType == NoteType.Daily)
                 {
@@ -100,20 +109,28 @@ public class SOAPNoteService : BaseService, ISOAPNoteService
         return await ExecuteWithErrorHandlingAsync(
             async () =>
             {
-                // Load the current DB state (not the caller-supplied entity) to check the signature
-                // lock. This prevents a tamper vector where a caller passes IsCompleted=false on an
-                // already-signed note to bypass the immutability guard.
+                // Load the current DB state (not the caller-supplied entity) to:
+                //  1. Check signature lock – prevents a tamper vector where a caller passes
+                //     IsCompleted=false on an already-signed note to bypass immutability.
+                //  2. Preserve signature fields – prevents self-signing through the Update path.
+                //  3. Preserve ClinicId – prevents cross-tenant writes by ID.
+                //  4. Fail fast if the note is not found in the current tenant scope.
                 var existing = await _context.SOAPNotes.AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Id == soapNote.Id);
+                    .FirstOrDefaultAsync(s => s.Id == soapNote.Id)
+                    ?? throw new InvalidOperationException(
+                        $"SOAP note {soapNote.Id} not found or not accessible in the current clinic.");
 
-                if (existing != null)
+                var lockCheck = _compliance.EnforceSignatureLock(existing);
+                if (!lockCheck.IsAllowed)
                 {
-                    var lockCheck = _compliance.EnforceSignatureLock(existing);
-                    if (!lockCheck.IsAllowed)
-                    {
-                        throw new ComplianceException(lockCheck.RuleCode, lockCheck.Message);
-                    }
+                    throw new ComplianceException(lockCheck.RuleCode, lockCheck.Message);
                 }
+
+                // Copy immutable fields from the persisted record to prevent tampering.
+                soapNote.ClinicId = existing.ClinicId;
+                soapNote.IsCompleted = existing.IsCompleted;
+                soapNote.SignedAt = existing.SignedAt;
+                soapNote.SignedBy = existing.SignedBy;
 
                 _context.SOAPNotes.Update(soapNote);
                 await _context.SaveChangesAsync();

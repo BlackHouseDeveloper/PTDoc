@@ -16,8 +16,11 @@ public class PTDocDbContext : DbContext
     /// </summary>
     /// <param name="options">Database context options.</param>
     /// <param name="tenantContext">
-    /// Optional tenant context used to apply per-clinic query filters.
-    /// When <c>null</c> (e.g. design-time / test scenarios), tenant filters are bypassed.
+    /// Tenant context injected via DI.  When provided with a non-empty <c>ClinicId</c>,
+    /// per-clinic query filters and write-time tenant enforcement are both active.
+    /// Pass <c>null</c> (or a context with <c>ClinicId == Guid.Empty</c>) only in
+    /// design-time / migration / system-administrative scenarios where full schema
+    /// access is explicitly required.
     /// </param>
     public PTDocDbContext(DbContextOptions<PTDocDbContext> options, ITenantContext? tenantContext = null)
         : base(options)
@@ -95,7 +98,62 @@ public class PTDocDbContext : DbContext
             }
         }
 
+        // Enforce tenant ownership on all tenant-scoped writes when a clinic is active.
+        // Added entities have their ClinicId stamped with CurrentClinicId.
+        // Modified entities whose ClinicId does not match CurrentClinicId are rejected.
+        EnforceTenantOwnership();
+
         return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Stamps <c>ClinicId</c> on new tenant-scoped entities and rejects modifications
+    /// that would move an entity into a different clinic's partition.
+    /// This is a no-op when <c>CurrentClinicId == Guid.Empty</c> (system/design-time context).
+    /// </summary>
+    private void EnforceTenantOwnership()
+    {
+        if (CurrentClinicId == Guid.Empty) return;
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Added && entry.State != EntityState.Modified) continue;
+
+            switch (entry.Entity)
+            {
+                case Patient patient:
+                    if (entry.State == EntityState.Added)
+                        patient.ClinicId = CurrentClinicId;
+                    else if (patient.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: Patient {patient.Id} belongs to a different clinic.");
+                    break;
+
+                case SOAPNote note:
+                    if (entry.State == EntityState.Added)
+                        note.ClinicId = CurrentClinicId;
+                    else if (note.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: SOAPNote {note.Id} belongs to a different clinic.");
+                    break;
+
+                case Insurance insurance:
+                    if (entry.State == EntityState.Added)
+                        insurance.ClinicId = CurrentClinicId;
+                    else if (insurance.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: Insurance {insurance.Id} belongs to a different clinic.");
+                    break;
+
+                case AuditLog auditLog:
+                    if (entry.State == EntityState.Added)
+                        auditLog.ClinicId = CurrentClinicId;
+                    else if (auditLog.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: AuditLog {auditLog.Id} belongs to a different clinic.");
+                    break;
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -121,6 +179,10 @@ public class PTDocDbContext : DbContext
         modelBuilder.Entity<Insurance>().HasQueryFilter(i =>
             !i.IsDeleted &&
             (CurrentClinicId == Guid.Empty || i.ClinicId == CurrentClinicId));
+
+        // AuditLog is tenant-scoped: each clinic sees only its own audit entries.
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(a =>
+            CurrentClinicId == Guid.Empty || a.ClinicId == CurrentClinicId);
 
         // Configure Patient
         modelBuilder.Entity<Patient>(entity =>

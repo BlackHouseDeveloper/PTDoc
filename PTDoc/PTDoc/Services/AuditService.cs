@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Data;
 using PTDoc.Models;
@@ -35,21 +36,27 @@ public class AuditService : IAuditService
 
     private async Task AppendAsync(Guid clinicId, string eventType, string entityType, Guid entityId, string? userId)
     {
+        var auditLog = new AuditLog
+        {
+            ClinicId = clinicId,
+            EventType = eventType,
+            EntityType = entityType,
+            EntityId = entityId,
+            UserId = userId,
+            TimestampUtc = DateTime.UtcNow
+        };
+
+        _context.AuditLogs.Add(auditLog);
         try
         {
-            _context.AuditLogs.Add(new AuditLog
-            {
-                ClinicId = clinicId,
-                EventType = eventType,
-                EntityType = entityType,
-                EntityId = entityId,
-                UserId = userId,
-                TimestampUtc = DateTime.UtcNow
-            });
             await _context.SaveChangesAsync();
         }
         catch (Exception ex)
         {
+            // Detach the failed entry so it doesn't poison subsequent SaveChanges calls
+            // on the same request-scoped DbContext.
+            _context.Entry(auditLog).State = EntityState.Detached;
+
             // Audit failures must not disrupt primary operations; log and continue.
             _logger.LogError(ex, "Failed to write audit log entry for event {EventType} on {EntityType}/{EntityId}",
                 eventType, entityType, entityId);

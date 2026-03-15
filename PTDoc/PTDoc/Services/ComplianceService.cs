@@ -30,26 +30,29 @@ public class ComplianceService : IComplianceService
     /// <inheritdoc/>
     public async Task<ComplianceResult> CheckProgressNoteRequiredAsync(Guid patientId, Guid clinicId)
     {
-        // Retrieve all non-deleted notes for the patient within the clinic, ordered most-recent first.
-        var notes = await _context.SOAPNotes
-            .Where(n => n.PatientId == patientId && n.ClinicId == clinicId && !n.IsDeleted)
-            .OrderByDescending(n => n.VisitDate)
-            .ToListAsync();
+        // Use targeted aggregate queries rather than loading all notes into memory.
+        var baseQuery = _context.SOAPNotes
+            .Where(n => n.PatientId == patientId && n.ClinicId == clinicId && !n.IsDeleted);
 
-        if (notes.Count == 0)
+        var hasAnyNotes = await baseQuery.AnyAsync();
+        if (!hasAnyNotes)
         {
             return ComplianceResult.Pass("PN_FREQUENCY", "No prior notes – initial note permitted.");
         }
 
-        // Find the most-recent Progress Note or Evaluation.
-        var lastPnOrEval = notes.FirstOrDefault(n =>
-            n.NoteType == NoteType.ProgressNote || n.NoteType == NoteType.Evaluation);
+        // Find the most-recent Progress Note or Evaluation date (single aggregate query).
+        var lastPnOrEvalDate = await baseQuery
+            .Where(n => n.NoteType == NoteType.ProgressNote || n.NoteType == NoteType.Evaluation)
+            .MaxAsync(n => (DateTime?)n.VisitDate);
 
-        if (lastPnOrEval == null)
+        if (lastPnOrEvalDate == null)
         {
-            // Only daily (or discharge) notes on record. Check whether a PN is now overdue.
-            var daysSinceFirst = (DateTime.UtcNow.Date - notes.Last().VisitDate.Date).Days;
-            var dailyCount = notes.Count(n => n.NoteType == NoteType.Daily);
+            // No PN/Eval on record – check episode start date and daily visit count.
+            var earliestDate = await baseQuery.MinAsync(n => (DateTime?)n.VisitDate);
+            // earliestDate is guaranteed non-null: hasAnyNotes==true confirms at least one note exists.
+            var daysSinceFirst = (DateTime.UtcNow.Date - earliestDate!.Value.Date).Days;
+            var dailyCount = await baseQuery
+                .CountAsync(n => n.NoteType == NoteType.Daily);
 
             if (dailyCount >= ProgressNoteVisitThreshold || daysSinceFirst >= ProgressNoteDayThreshold)
             {
@@ -67,11 +70,10 @@ public class ComplianceService : IComplianceService
             return ComplianceResult.Pass("PN_FREQUENCY", "Progress Note not yet required.");
         }
 
-        // Count daily visits since the last PN/Eval.
-        var visitsSincePn = notes
-            .Where(n => n.VisitDate > lastPnOrEval.VisitDate && n.NoteType == NoteType.Daily)
-            .Count();
-        var daysSincePn = (DateTime.UtcNow.Date - lastPnOrEval.VisitDate.Date).Days;
+        // Count daily visits since the last PN/Eval (single aggregate query).
+        var visitsSincePn = await baseQuery
+            .CountAsync(n => n.NoteType == NoteType.Daily && n.VisitDate > lastPnOrEvalDate);
+        var daysSincePn = (DateTime.UtcNow.Date - lastPnOrEvalDate.Value.Date).Days;
 
         if (visitsSincePn >= ProgressNoteVisitThreshold || daysSincePn >= ProgressNoteDayThreshold)
         {
@@ -97,6 +99,11 @@ public class ComplianceService : IComplianceService
         if (durationMinutes < 0)
         {
             return ComplianceResult.HardStop("8MIN_RULE", "Duration cannot be negative.");
+        }
+
+        if (billedUnits < 0)
+        {
+            return ComplianceResult.HardStop("8MIN_RULE", "Billed units cannot be negative.");
         }
 
         int allowedUnits = CalculateAllowedUnits(durationMinutes);

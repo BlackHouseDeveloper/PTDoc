@@ -135,6 +135,16 @@ public sealed class ComplianceTests : IAsyncDisposable
         Assert.Equal("8MIN_RULE", result.RuleCode);
     }
 
+    [Fact]
+    public void EightMinuteRule_NegativeBilledUnits_ReturnsHardStop()
+    {
+        var svc = BuildComplianceService();
+        var result = svc.ValidateEightMinuteRule(30, -1);
+
+        Assert.False(result.IsAllowed);
+        Assert.Equal("8MIN_RULE", result.RuleCode);
+    }
+
     // ---------------------------------------------------------------------------
     // Signature immutability
     // ---------------------------------------------------------------------------
@@ -195,7 +205,6 @@ public sealed class ComplianceTests : IAsyncDisposable
 
     private ComplianceService BuildComplianceService()
     {
-        var audit = new AuditService(_context, NullLogger<AuditService>.Instance);
         return new ComplianceService(_context, NullLogger<ComplianceService>.Instance);
     }
 
