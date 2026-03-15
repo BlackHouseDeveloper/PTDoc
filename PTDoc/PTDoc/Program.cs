@@ -15,17 +15,20 @@ builder.Services.AddRazorComponents()
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
     ?? "Data Source=ptdoc.db";
 
-builder.Services.AddDbContext<PTDocDbContext>(options =>
+// Register scoped tenant context so each request has its own clinic scope.
+builder.Services.AddScoped<ITenantContext, TenantContext>();
+
+builder.Services.AddDbContext<PTDocDbContext>((sp, options) =>
 {
-    // For SQLite (local development, offline-first)
     options.UseSqlite(connectionString);
-    
-    // For future SQL Server/Azure SQL migration, uncomment and use:
-    // options.UseSqlServer(connectionString);
+    // PTDocDbContext receives the scoped ITenantContext to apply per-clinic query filters.
+    // For future SQL Server/Azure SQL migration, replace UseSqlite with UseSqlServer.
 });
 
 // Register application services
 builder.Services.AddScoped<IPatientService, PatientService>();
+builder.Services.AddScoped<IComplianceService, ComplianceService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ISOAPNoteService, SOAPNoteService>();
 builder.Services.AddScoped<IInsuranceService, InsuranceService>();
 builder.Services.AddScoped<IAppStateService, AppStateService>();
