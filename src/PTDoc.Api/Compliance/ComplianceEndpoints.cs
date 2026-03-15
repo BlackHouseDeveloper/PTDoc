@@ -55,6 +55,21 @@ public static class ComplianceEndpoints
                 return Results.Ok(result);
             })
             .WithName("EvaluateImmutability");
+
+        // Sprint N: Clinical validation — documentation completeness + Medicare compliance.
+        complianceGroup.MapGet("/validate/clinical/{noteId:guid}",
+            async (Guid noteId, IClinicalRulesEngine clinicalRulesEngine) =>
+            {
+                var violations = await clinicalRulesEngine.RunClinicalValidationAsync(noteId);
+                return Results.Ok(new
+                {
+                    noteId,
+                    violations,
+                    hasBlockingViolations = violations.Any(v => v.Blocking),
+                    canSign = violations.All(v => !v.Blocking)
+                });
+            })
+            .WithName("ValidateClinicalNote");
     }
 
     public static void MapNoteEndpoints(this WebApplication app)
@@ -98,6 +113,15 @@ public static class ComplianceEndpoints
 
                 if (!result.Success)
                 {
+                    // Sprint N: Surface blocking validation failures with a 422 Unprocessable Entity.
+                    if (result.ValidationFailures is { Count: > 0 })
+                    {
+                        return Results.UnprocessableEntity(new
+                        {
+                            error = result.ErrorMessage,
+                            validationFailures = result.ValidationFailures
+                        });
+                    }
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
 
