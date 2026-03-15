@@ -94,17 +94,39 @@ public static class NoteEndpoints
             }
         }
 
-        // Sprint S: 8-minute rule validation — validate CPT units when total minutes are provided.
-        RuleResult? eightMinWarning = null;
-        if (request.TotalMinutes.HasValue && !string.IsNullOrWhiteSpace(request.CptCodesJson) && request.CptCodesJson != "[]")
+        // Sprint S: 8-minute rule validation — runs only when TotalMinutes is explicitly provided.
+        // Negative TotalMinutes → 400; malformed CptCodesJson when TotalMinutes present → 400;
+        // rules engine Error → 400; Warning → advisory in response (note still created).
+        ComplianceWarning? complianceWarning = null;
+        if (request.TotalMinutes.HasValue)
         {
-            var cptCodes = TryDeserializeCptCodes(request.CptCodesJson);
-            if (cptCodes is not null && cptCodes.Any(c => c.IsTimed))
+            if (request.TotalMinutes.Value < 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { nameof(request.TotalMinutes), ["TotalMinutes must be zero or greater."] }
+                });
+
+            if (!string.IsNullOrWhiteSpace(request.CptCodesJson) && request.CptCodesJson != "[]")
             {
-                var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
-                    request.TotalMinutes.Value, cptCodes, cancellationToken);
-                if (eightMinResult.Severity == RuleSeverity.Warning)
-                    eightMinWarning = eightMinResult;
+                var cptCodes = TryDeserializeCptCodes(request.CptCodesJson);
+                if (cptCodes is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
+                    });
+
+                if (cptCodes.Any(c => c.IsTimed))
+                {
+                    var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
+                        request.TotalMinutes.Value, cptCodes, cancellationToken);
+                    if (!eightMinResult.IsValid)
+                        return Results.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            { "8MinuteRule", [eightMinResult.Message] }
+                        });
+                    if (eightMinResult.Severity == RuleSeverity.Warning)
+                        complianceWarning = ToComplianceWarning(eightMinResult);
+                }
             }
         }
 
@@ -128,22 +150,11 @@ public static class NoteEndpoints
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync(cancellationToken);
 
-        // Include any 8-minute rule advisory warning alongside the created note
-        if (eightMinWarning is not null)
+        return Results.Created($"/api/v1/notes/{note.Id}", new NoteOperationResponse
         {
-            return Results.Created($"/api/v1/notes/{note.Id}", new
-            {
-                note = ToResponse(note),
-                complianceWarning = new
-                {
-                    ruleId = eightMinWarning.RuleId,
-                    message = eightMinWarning.Message,
-                    data = eightMinWarning.Data
-                }
-            });
-        }
-
-        return Results.Created($"/api/v1/notes/{note.Id}", ToResponse(note));
+            Note = ToResponse(note),
+            ComplianceWarning = complianceWarning
+        });
     }
 
     // PUT /api/notes/{id}
@@ -171,6 +182,44 @@ public static class NoteEndpoints
             return Results.Conflict(new { error = immutabilityResult.Message });
         }
 
+        // Sprint S: 8-minute rule validation on update — runs only when TotalMinutes is provided.
+        // Uses the incoming CptCodesJson (if being updated) or the existing saved value.
+        // Negative TotalMinutes → 400; malformed JSON when TotalMinutes present → 400;
+        // rules engine Error → 400; Warning → advisory in response (update still saved).
+        ComplianceWarning? complianceWarning = null;
+        if (request.TotalMinutes.HasValue)
+        {
+            if (request.TotalMinutes.Value < 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { nameof(request.TotalMinutes), ["TotalMinutes must be zero or greater."] }
+                });
+
+            var effectiveCptCodesJson = request.CptCodesJson ?? note.CptCodesJson;
+            if (!string.IsNullOrWhiteSpace(effectiveCptCodesJson) && effectiveCptCodesJson != "[]")
+            {
+                var cptCodes = TryDeserializeCptCodes(effectiveCptCodesJson);
+                if (cptCodes is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
+                    });
+
+                if (cptCodes.Any(c => c.IsTimed))
+                {
+                    var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
+                        request.TotalMinutes.Value, cptCodes, cancellationToken);
+                    if (!eightMinResult.IsValid)
+                        return Results.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            { "8MinuteRule", [eightMinResult.Message] }
+                        });
+                    if (eightMinResult.Severity == RuleSeverity.Warning)
+                        complianceWarning = ToComplianceWarning(eightMinResult);
+                }
+            }
+        }
+
         if (request.ContentJson is not null)
             note.ContentJson = request.ContentJson;
 
@@ -190,36 +239,31 @@ public static class NoteEndpoints
         // Sprint S: Audit logging — record every successful note edit.
         await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), cancellationToken);
 
-        // Sprint S: 8-minute rule validation on update — if CPT codes and total minutes provided,
-        // validate the updated billing units and include any advisory warning in the response.
-        if (request.TotalMinutes.HasValue && !string.IsNullOrWhiteSpace(note.CptCodesJson) && note.CptCodesJson != "[]")
+        return Results.Ok(new NoteOperationResponse
         {
-            var cptCodes = TryDeserializeCptCodes(note.CptCodesJson);
-            if (cptCodes is not null && cptCodes.Any(c => c.IsTimed))
-            {
-                var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
-                    request.TotalMinutes.Value, cptCodes, cancellationToken);
-                if (eightMinResult.Severity == RuleSeverity.Warning)
-                {
-                    return Results.Ok(new
-                    {
-                        note = ToResponse(note),
-                        complianceWarning = new
-                        {
-                            ruleId = eightMinResult.RuleId,
-                            message = eightMinResult.Message,
-                            data = eightMinResult.Data
-                        }
-                    });
-                }
-            }
-        }
-
-        return Results.Ok(ToResponse(note));
+            Note = ToResponse(note),
+            ComplianceWarning = complianceWarning
+        });
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Maps a RuleResult to a ComplianceWarning DTO for inclusion in the response.
+    /// Called only when the rule fired at Warning severity.
+    /// </summary>
+    private static ComplianceWarning ToComplianceWarning(RuleResult result) => new()
+    {
+        RuleId = result.RuleId,
+        Message = result.Message,
+        Data = result.Data
+    };
+
+    /// <summary>
+    /// Attempts to deserialize a CPT codes JSON string.
+    /// Returns null when the JSON is malformed — callers that have <c>TotalMinutes</c> set
+    /// must treat a null return as a validation failure and reject the request.
+    /// </summary>
     private static List<CptCodeEntry>? TryDeserializeCptCodes(string cptCodesJson)
     {
         try
@@ -229,9 +273,6 @@ public static class NoteEndpoints
         }
         catch (JsonException)
         {
-            // Malformed CptCodesJson: skip 8-minute rule validation rather than failing the request.
-            // The endpoint accepts arbitrary JSON strings for CptCodesJson; if the content is
-            // unparseable the compliance check is bypassed and the note is still saved.
             return null;
         }
     }

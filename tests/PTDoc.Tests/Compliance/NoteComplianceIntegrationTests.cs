@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Moq;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -22,7 +21,6 @@ public class NoteComplianceIntegrationTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly RulesEngine _rulesEngine;
     private readonly AuditService _auditService;
-    private readonly Mock<IAuditService> _mockAuditService;
 
     public NoteComplianceIntegrationTests()
     {
@@ -32,7 +30,6 @@ public class NoteComplianceIntegrationTests : IDisposable
 
         _context = new ApplicationDbContext(options);
         _auditService = new AuditService(_context);
-        _mockAuditService = new Mock<IAuditService>();
         _rulesEngine = new RulesEngine(_context, _auditService);
     }
 
@@ -169,6 +166,25 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.True(result.IsValid);
         Assert.Equal(RuleSeverity.Info, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
+    }
+
+    [Fact]
+    public async Task EightMinuteRule_NegativeTotalMinutes_ReturnsError()
+    {
+        // The rules engine returns Error for negative TotalMinutes.
+        // The endpoint validates TotalMinutes >= 0 before calling the engine,
+        // so this confirms the endpoint should reject such requests with a 400.
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = 1, IsTimed = true }
+        };
+
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(-1, cptCodes);
+
+        Assert.False(result.IsValid);
+        Assert.Equal(RuleSeverity.Error, result.Severity);
+        Assert.Equal("8MIN_RULE", result.RuleId);
+        Assert.Contains("negative", result.Message.ToLower());
     }
 
     // ─── Signature locking ───────────────────────────────────────────────────

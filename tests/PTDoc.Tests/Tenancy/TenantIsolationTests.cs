@@ -303,10 +303,10 @@ public class TenantIsolationTests
     }
 
     [Fact]
-    public async Task CrossTenant_IntakeForm_Write_Blocked_Via_PatientBelonging()
+    public async Task CrossTenant_IntakeForm_Read_Blocked_By_ClinicId_Filter()
     {
-        // An intake form cannot be looked up cross-tenant because the patient
-        // it belongs to is also filtered. Clinic B cannot find Clinic A's intake forms.
+        // Clinic B cannot read Clinic A's intake forms because the IntakeForm entity
+        // carries its own ClinicId column and the global query filter blocks it directly.
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
