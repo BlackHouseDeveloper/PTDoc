@@ -338,23 +338,28 @@ public class ApplicationDbContext : DbContext
         // Filters are bypassed when no tenant scope is active (system jobs, unauthenticated requests).
         // Use context.Set<T>().IgnoreQueryFilters() to intentionally bypass for admin operations.
         // Note: HasQueryFilter references `this` so the clinic ID is resolved per-query at runtime.
+        //
+        // Sprint S: Strict tenant isolation — removed the ClinicId == null pass-through.
+        // Records without a ClinicId are no longer visible to any tenant-scoped context.
+        // System contexts (CurrentClinicId == null) still see all records for admin/background jobs.
         modelBuilder.Entity<Patient>()
-            .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
+            .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == CurrentClinicId);
 
         modelBuilder.Entity<Appointment>()
-            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicId == null || a.ClinicId == CurrentClinicId);
+            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicId == CurrentClinicId);
 
         modelBuilder.Entity<ClinicalNote>()
-            .HasQueryFilter(n => CurrentClinicId == null || n.ClinicId == null || n.ClinicId == CurrentClinicId);
+            .HasQueryFilter(n => CurrentClinicId == null || n.ClinicId == CurrentClinicId);
 
         modelBuilder.Entity<IntakeForm>()
-            .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == null || f.ClinicId == CurrentClinicId);
+            .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == CurrentClinicId);
 
         // Sprint O: ObjectiveMetric is accessed only through its parent ClinicalNote,
         // which already has its own query filter. Filter ObjectiveMetric via the note's ClinicId
         // so that direct queries on db.ObjectiveMetrics are also tenant-scoped.
+        // Sprint S: null ClinicId on parent note is no longer permitted through the tenant filter.
         modelBuilder.Entity<ObjectiveMetric>()
-            .HasQueryFilter(m => CurrentClinicId == null || m.Note!.ClinicId == null || m.Note!.ClinicId == CurrentClinicId);
+            .HasQueryFilter(m => CurrentClinicId == null || m.Note!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>

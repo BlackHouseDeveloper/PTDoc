@@ -24,6 +24,14 @@ public sealed class CreateNoteRequest
 
     /// <summary>CPT codes as a JSON array string.</summary>
     public string CptCodesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Total treatment time in minutes. When provided together with timed CPT codes, the
+    /// 8-minute rule is validated and any advisory warning is included in the response.
+    /// Omitting this field skips 8-minute rule validation.
+    /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
+    /// </summary>
+    public int? TotalMinutes { get; set; }
 }
 
 /// <summary>Request DTO for updating a draft clinical note.</summary>
@@ -36,6 +44,14 @@ public sealed class UpdateNoteRequest
 
     /// <summary>CPT codes as a JSON array string.</summary>
     public string? CptCodesJson { get; set; }
+
+    /// <summary>
+    /// Total treatment time in minutes. When provided together with timed CPT codes, the
+    /// 8-minute rule is validated and any advisory warning is included in the response.
+    /// Omitting this field skips 8-minute rule validation.
+    /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
+    /// </summary>
+    public int? TotalMinutes { get; set; }
 }
 
 // ─── Objective Metric DTOs ────────────────────────────────────────────────────
@@ -85,4 +101,27 @@ public sealed class NoteResponse
     public Guid? ClinicId { get; set; }
     public DateTime LastModifiedUtc { get; set; }
     public IReadOnlyCollection<ObjectiveMetricResponse> ObjectiveMetrics { get; set; } = Array.Empty<ObjectiveMetricResponse>();
+}
+
+/// <summary>
+/// Advisory compliance warning surfaced alongside a note operation.
+/// Returned when a compliance rule fires at <c>Warning</c> severity (e.g., 8-minute rule).
+/// A non-null ComplianceWarning does NOT block the operation — it is informational.
+/// </summary>
+public sealed class ComplianceWarning
+{
+    public string RuleId { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public Dictionary<string, object> Data { get; set; } = new();
+}
+
+/// <summary>
+/// Unified response envelope for create and update note operations.
+/// <c>ComplianceWarning</c> is non-null only when an advisory rule fired (e.g., 8-minute rule).
+/// Sprint S: Replaces inconsistent anonymous wrapper shapes with a typed contract.
+/// </summary>
+public sealed class NoteOperationResponse
+{
+    public NoteResponse Note { get; set; } = null!;
+    public ComplianceWarning? ComplianceWarning { get; set; }
 }

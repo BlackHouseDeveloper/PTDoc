@@ -27,6 +27,11 @@ public interface IAuditService
     Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Logs a note edit event (content or CPT codes changed on a draft note).
+    /// </summary>
+    Task LogNoteEditedAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Logs an authentication event (login success/failure, logout, token validation failure).
     /// CRITICAL: Must NOT include PIN, raw tokens, or PHI in metadata.
     /// </summary>
@@ -106,6 +111,22 @@ public class AuditEvent
             {
                 ["NoteId"] = noteId,
                 ["AddendumId"] = addendumId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent NoteEdited(Guid noteId, Guid userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "NoteEdited",
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

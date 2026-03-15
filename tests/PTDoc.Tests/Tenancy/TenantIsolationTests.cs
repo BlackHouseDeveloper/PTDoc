@@ -184,28 +184,149 @@ public class TenantIsolationTests
         Assert.Equal(patientA.Id, forms[0].PatientId);
     }
 
-    // ─── Legacy (null ClinicId) backward compatibility ────────────────────────
+    // ─── Sprint S: Strict tenant isolation — null ClinicId is hidden from tenant contexts ─
 
     [Fact]
-    public async Task Legacy_Patients_With_No_ClinicId_Are_Visible_To_Any_Tenant_Context()
+    public async Task NullClinicId_Records_Are_Hidden_From_Tenant_Context()
     {
-        // Legacy records that pre-date Sprint J have null ClinicId.
-        // They should remain accessible to avoid breaking existing workflows.
+        // Sprint S: Records without a ClinicId must NOT be visible to any tenant-scoped context.
+        // Only system contexts (CurrentClinicId == null) can see unscoped records.
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
-        // One legacy patient (no clinic), one scoped patient
+        // One unscoped record (no ClinicId), one properly scoped record
         seedCtx.Patients.AddRange(
-            new Patient { FirstName = "Legacy", LastName = "Patient", DateOfBirth = new DateTime(1970, 1, 1), ClinicId = null },
-            new Patient { FirstName = "Scoped", LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
+            new Patient { FirstName = "Unscoped", LastName = "Patient", DateOfBirth = new DateTime(1970, 1, 1), ClinicId = null },
+            new Patient { FirstName = "Scoped",   LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
         );
         await seedCtx.SaveChangesAsync();
 
         await using var ctxA = CreateTenantContext(ClinicA, dbName);
         var patients = await ctxA.Patients.ToListAsync();
 
-        // Both legacy and scoped are visible (null ClinicId passes the filter)
-        Assert.Equal(2, patients.Count);
+        // Only the scoped (ClinicA) patient is visible — unscoped record is now hidden
+        Assert.Single(patients);
+        Assert.Equal("Scoped", patients[0].FirstName);
+    }
+
+    [Fact]
+    public async Task NullClinicId_Records_Are_Visible_To_System_Context()
+    {
+        // System context (no tenant scope) must still see all records including unscoped ones.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        seedCtx.Patients.AddRange(
+            new Patient { FirstName = "Unscoped", LastName = "Patient", DateOfBirth = new DateTime(1970, 1, 1), ClinicId = null },
+            new Patient { FirstName = "Scoped",   LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var sysCtx = CreateSystemContext(dbName);
+        var all = await sysCtx.Patients.ToListAsync();
+
+        // System context sees everything
+        Assert.Equal(2, all.Count);
+    }
+
+    // ─── Sprint S: Cross-tenant read/write blocking ────────────────────────────
+
+    [Fact]
+    public async Task CrossTenant_Patient_Read_Is_Blocked()
+    {
+        // Clinic B must not be able to read Clinic A's patients.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        seedCtx.Patients.AddRange(
+            new Patient { FirstName = "ClinicA", LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA },
+            new Patient { FirstName = "ClinicB", LastName = "Patient", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxB = CreateTenantContext(ClinicB, dbName);
+        var patients = await ctxB.Patients.ToListAsync();
+
+        Assert.Single(patients);
+        Assert.DoesNotContain(patients, p => p.FirstName == "ClinicA");
+        Assert.Contains(patients, p => p.FirstName == "ClinicB");
+    }
+
+    [Fact]
+    public async Task CrossTenant_ClinicalNote_Read_Is_Blocked()
+    {
+        // Clinic B must not be able to read Clinic A's clinical notes.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "P", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+        await seedCtx.SaveChangesAsync();
+
+        // Clinic B context cannot see Clinic A's notes
+        await using var ctxB = CreateTenantContext(ClinicB, dbName);
+        var notesVisibleToB = await ctxB.ClinicalNotes.ToListAsync();
+
+        Assert.Single(notesVisibleToB);
+        Assert.Equal(noteB.Id, notesVisibleToB[0].Id);
+        Assert.DoesNotContain(notesVisibleToB, n => n.Id == noteA.Id);
+    }
+
+    [Fact]
+    public async Task CrossTenant_NoteUpdate_Is_Blocked_By_Query_Filter()
+    {
+        // A Clinic B context cannot find (and therefore cannot update) Clinic A's notes.
+        // The query filter makes Clinic A's notes invisible to Clinic B, which results
+        // in a null lookup — equivalent to a 404 in the API layer.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        seedCtx.Patients.Add(patientA);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        seedCtx.ClinicalNotes.Add(noteA);
+        await seedCtx.SaveChangesAsync();
+
+        // Clinic B context attempts to locate Clinic A's note
+        await using var ctxB = CreateTenantContext(ClinicB, dbName);
+        var found = await ctxB.ClinicalNotes
+            .FirstOrDefaultAsync(n => n.Id == noteA.Id);
+
+        // Query filter hides Clinic A's note from Clinic B — note is not found
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task CrossTenant_IntakeForm_Read_Blocked_By_ClinicId_Filter()
+    {
+        // Clinic B cannot read Clinic A's intake forms because the IntakeForm entity
+        // carries its own ClinicId column and the global query filter blocks it directly.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        seedCtx.Patients.Add(patientA);
+
+        var formA = new IntakeForm
+        {
+            PatientId = patientA.Id,
+            TemplateVersion = "v1",
+            AccessToken = Guid.NewGuid().ToString("N"),
+            ClinicId = ClinicA
+        };
+        seedCtx.IntakeForms.Add(formA);
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxB = CreateTenantContext(ClinicB, dbName);
+        var found = await ctxB.IntakeForms.FirstOrDefaultAsync(f => f.Id == formA.Id);
+
+        Assert.Null(found);
     }
 
     // ─── AuthResult includes ClinicId ─────────────────────────────────────────
