@@ -409,7 +409,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Appointments_ClinicId",
                 table: "Appointments",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_LastModifiedUtc",
@@ -462,7 +462,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_ClinicalNotes_ClinicId",
                 table: "ClinicalNotes",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClinicalNotes_DateOfService",
@@ -521,7 +521,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_IntakeForms_ClinicId",
                 table: "IntakeForms",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IntakeForms_LastModifiedUtc",
@@ -563,7 +563,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Patients_ClinicId",
                 table: "Patients",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Patients_Email",
@@ -643,7 +643,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Users_ClinicId",
                 table: "Users",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",

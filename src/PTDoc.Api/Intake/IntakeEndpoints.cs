@@ -50,7 +50,7 @@ public static class IntakeEndpoints
 
         // Default null JSON fields to valid empty JSON objects so EF doesn't fail
         var painMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
-        var consents    = string.IsNullOrWhiteSpace(request.Consents)    ? "{}" : request.Consents;
+        var consents = string.IsNullOrWhiteSpace(request.Consents) ? "{}" : request.Consents;
 
         // Verify the patient exists and is visible to this tenant
         var patientExists = await db.Patients
