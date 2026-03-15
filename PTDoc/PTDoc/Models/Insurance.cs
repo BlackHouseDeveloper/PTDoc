@@ -6,6 +6,12 @@ namespace PTDoc.Models;
 public sealed class Insurance : Entity
 {
     /// <summary>
+    /// Gets or sets the clinic (tenant) identifier that owns this insurance record.
+    /// Required – no cross-tenant access is permitted.
+    /// </summary>
+    public Guid ClinicId { get; set; }
+
+    /// <summary>
     /// Gets or sets the patient identifier associated with this insurance.
     /// </summary>
     public Guid PatientId { get; set; }

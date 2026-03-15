@@ -6,6 +6,12 @@ namespace PTDoc.Models;
 public sealed class Patient : Entity
 {
     /// <summary>
+    /// Gets or sets the clinic (tenant) identifier that owns this patient record.
+    /// Required – no cross-tenant access is permitted.
+    /// </summary>
+    public Guid ClinicId { get; set; }
+
+    /// <summary>
     /// Gets or sets the Medical Record Number (MRN) for the patient.
     /// </summary>
     public string? MRN { get; set; }

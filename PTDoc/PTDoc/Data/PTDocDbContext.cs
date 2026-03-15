@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Models;
+using PTDoc.Services;
 
 namespace PTDoc.Data;
 
@@ -8,12 +9,23 @@ namespace PTDoc.Data;
 /// </summary>
 public class PTDocDbContext : DbContext
 {
+    private readonly ITenantContext? _tenantContext;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="PTDocDbContext"/> class.
     /// </summary>
     /// <param name="options">Database context options.</param>
-    public PTDocDbContext(DbContextOptions<PTDocDbContext> options) : base(options)
+    /// <param name="tenantContext">
+    /// Tenant context injected via DI.  When provided with a non-empty <c>ClinicId</c>,
+    /// per-clinic query filters and write-time tenant enforcement are both active.
+    /// Pass <c>null</c> (or a context with <c>ClinicId == Guid.Empty</c>) only in
+    /// design-time / migration / system-administrative scenarios where full schema
+    /// access is explicitly required.
+    /// </param>
+    public PTDocDbContext(DbContextOptions<PTDocDbContext> options, ITenantContext? tenantContext = null)
+        : base(options)
     {
+        _tenantContext = tenantContext;
     }
 
     /// <summary>
@@ -35,6 +47,24 @@ public class PTDocDbContext : DbContext
     /// Gets the app states entity set.
     /// </summary>
     public DbSet<AppState> AppStates => Set<AppState>();
+
+    /// <summary>
+    /// Gets the audit logs entity set.
+    /// </summary>
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    /// <summary>
+    /// Returns the current clinic identifier from the tenant context.
+    /// Returns <c>Guid.Empty</c> when no tenant context is active.
+    /// <para>
+    /// <b>Security note:</b> <c>Guid.Empty</c> is treated as an explicit bypass that disables the
+    /// per-clinic filter. This is intentional for system/design-time/test contexts where full access
+    /// is required. In production, every request handler <em>must</em> set a non-Empty ClinicId on
+    /// the <see cref="ITenantContext"/> before performing any data access.  The filter therefore has
+    /// <em>no</em> <c>ClinicId == null</c> path – the only bypass is via the Guid.Empty sentinel.
+    /// </para>
+    /// </summary>
+    private Guid CurrentClinicId => _tenantContext?.ClinicId ?? Guid.Empty;
 
     /// <inheritdoc/>
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -68,7 +98,62 @@ public class PTDocDbContext : DbContext
             }
         }
 
+        // Enforce tenant ownership on all tenant-scoped writes when a clinic is active.
+        // Added entities have their ClinicId stamped with CurrentClinicId.
+        // Modified entities whose ClinicId does not match CurrentClinicId are rejected.
+        EnforceTenantOwnership();
+
         return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Stamps <c>ClinicId</c> on new tenant-scoped entities and rejects modifications
+    /// that would move an entity into a different clinic's partition.
+    /// This is a no-op when <c>CurrentClinicId == Guid.Empty</c> (system/design-time context).
+    /// </summary>
+    private void EnforceTenantOwnership()
+    {
+        if (CurrentClinicId == Guid.Empty) return;
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Added && entry.State != EntityState.Modified) continue;
+
+            switch (entry.Entity)
+            {
+                case Patient patient:
+                    if (entry.State == EntityState.Added)
+                        patient.ClinicId = CurrentClinicId;
+                    else if (patient.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: Patient {patient.Id} belongs to a different clinic.");
+                    break;
+
+                case SOAPNote note:
+                    if (entry.State == EntityState.Added)
+                        note.ClinicId = CurrentClinicId;
+                    else if (note.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: SOAPNote {note.Id} belongs to a different clinic.");
+                    break;
+
+                case Insurance insurance:
+                    if (entry.State == EntityState.Added)
+                        insurance.ClinicId = CurrentClinicId;
+                    else if (insurance.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: Insurance {insurance.Id} belongs to a different clinic.");
+                    break;
+
+                case AuditLog auditLog:
+                    if (entry.State == EntityState.Added)
+                        auditLog.ClinicId = CurrentClinicId;
+                    else if (auditLog.ClinicId != CurrentClinicId)
+                        throw new InvalidOperationException(
+                            $"Cross-tenant write rejected: AuditLog {auditLog.Id} belongs to a different clinic.");
+                    break;
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -76,10 +161,28 @@ public class PTDocDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Global soft-delete filter for entities
-        modelBuilder.Entity<Patient>().HasQueryFilter(p => !p.IsDeleted);
-        modelBuilder.Entity<SOAPNote>().HasQueryFilter(s => !s.IsDeleted);
-        modelBuilder.Entity<Insurance>().HasQueryFilter(i => !i.IsDeleted);
+        // -----------------------------------------------------------------------
+        // Global filters: soft-delete + strict tenant isolation.
+        // The ClinicId filter uses CurrentClinicId which safely returns Guid.Empty
+        // when no tenant context is set. Guid.Empty is treated as "bypass" so that
+        // design-time and admin contexts work without a tenant. All other contexts
+        // must have a non-Empty ClinicId set – the "== null" bypass path is absent.
+        // -----------------------------------------------------------------------
+        modelBuilder.Entity<Patient>().HasQueryFilter(p =>
+            !p.IsDeleted &&
+            (CurrentClinicId == Guid.Empty || p.ClinicId == CurrentClinicId));
+
+        modelBuilder.Entity<SOAPNote>().HasQueryFilter(s =>
+            !s.IsDeleted &&
+            (CurrentClinicId == Guid.Empty || s.ClinicId == CurrentClinicId));
+
+        modelBuilder.Entity<Insurance>().HasQueryFilter(i =>
+            !i.IsDeleted &&
+            (CurrentClinicId == Guid.Empty || i.ClinicId == CurrentClinicId));
+
+        // AuditLog is tenant-scoped: each clinic sees only its own audit entries.
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(a =>
+            CurrentClinicId == Guid.Empty || a.ClinicId == CurrentClinicId);
 
         // Configure Patient
         modelBuilder.Entity<Patient>(entity =>
@@ -99,6 +202,7 @@ public class PTDocDbContext : DbContext
             entity.HasIndex(e => new { e.UpdatedAt, e.CreatedAt });
             entity.HasIndex(e => e.Email);
             entity.HasIndex(e => e.IsDeleted);
+            entity.HasIndex(e => e.ClinicId);
         });
 
         // Configure SOAPNote
@@ -110,10 +214,12 @@ public class PTDocDbContext : DbContext
             entity.Property(s => s.Plan).HasMaxLength(4000);
             entity.Property(s => s.DiagnosisCode).HasMaxLength(20);
             entity.Property(s => s.TreatmentCode).HasMaxLength(20);
+            entity.Property(s => s.SignedBy).HasMaxLength(256);
 
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.VisitDate);
             entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.ClinicId);
 
             entity.HasOne(s => s.Patient)
                   .WithMany(p => p.SOAPNotes)
@@ -133,6 +239,7 @@ public class PTDocDbContext : DbContext
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.PolicyNumber);
             entity.HasIndex(e => e.IsDeleted);
+            entity.HasIndex(e => e.ClinicId);
 
             entity.HasOne(i => i.Patient)
                   .WithMany(p => p.Insurances)
@@ -148,6 +255,20 @@ public class PTDocDbContext : DbContext
             entity.Property(a => a.Description).HasMaxLength(500);
 
             entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        // Configure AuditLog
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.EntityType).HasMaxLength(100);
+            entity.Property(e => e.UserId).HasMaxLength(256);
+            entity.Property(e => e.Details).HasMaxLength(2000);
+
+            entity.HasIndex(e => e.TimestampUtc);
+            entity.HasIndex(e => e.ClinicId);
+            entity.HasIndex(e => new { e.EntityType, e.EntityId });
         });
     }
 }

@@ -6,6 +6,12 @@ namespace PTDoc.Models;
 public sealed class SOAPNote : Entity
 {
     /// <summary>
+    /// Gets or sets the clinic (tenant) identifier that owns this note.
+    /// Required – no cross-tenant access is permitted.
+    /// </summary>
+    public Guid ClinicId { get; set; }
+
+    /// <summary>
     /// Gets or sets the patient identifier associated with this note.
     /// </summary>
     public Guid PatientId { get; set; }
@@ -51,9 +57,26 @@ public sealed class SOAPNote : Entity
     public int? DurationMinutes { get; set; }
 
     /// <summary>
+    /// Gets or sets the type of note per Medicare classification.
+    /// </summary>
+    public NoteType NoteType { get; set; } = NoteType.Daily;
+
+    /// <summary>
     /// Gets or sets a value indicating whether the note has been signed/completed.
+    /// Signed notes are immutable – editing is blocked once this is true.
     /// </summary>
     public bool IsCompleted { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the UTC timestamp when the note was signed.
+    /// Null if the note has not been signed.
+    /// </summary>
+    public DateTime? SignedAt { get; set; }
+
+    /// <summary>
+    /// Gets or sets the identifier of the user who signed the note.
+    /// </summary>
+    public string? SignedBy { get; set; }
 
     /// <summary>
     /// Gets or sets the patient associated with this note.

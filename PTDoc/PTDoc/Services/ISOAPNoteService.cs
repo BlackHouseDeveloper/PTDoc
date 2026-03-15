@@ -29,16 +29,20 @@ public interface ISOAPNoteService
 
     /// <summary>
     /// Creates a new SOAP note.
+    /// Enforces Progress Note hard stop for Daily notes if Medicare thresholds are exceeded.
     /// </summary>
     /// <param name="soapNote">The SOAP note to create.</param>
     /// <returns>The created SOAP note.</returns>
+    /// <exception cref="ComplianceException">Thrown when a compliance rule blocks the creation.</exception>
     Task<SOAPNote> CreateSOAPNoteAsync(SOAPNote soapNote);
 
     /// <summary>
     /// Updates an existing SOAP note.
+    /// Blocks edits to signed (locked) notes and writes an audit entry on success.
     /// </summary>
     /// <param name="soapNote">The SOAP note to update.</param>
     /// <returns>The updated SOAP note.</returns>
+    /// <exception cref="ComplianceException">Thrown when the note is signed and immutable.</exception>
     Task<SOAPNote> UpdateSOAPNoteAsync(SOAPNote soapNote);
 
     /// <summary>
@@ -47,4 +51,21 @@ public interface ISOAPNoteService
     /// <param name="id">The SOAP note's unique identifier.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task DeleteSOAPNoteAsync(Guid id);
+
+    /// <summary>
+    /// Signs a SOAP note, locking it from further edits and writing an audit entry.
+    /// </summary>
+    /// <param name="id">The SOAP note's unique identifier.</param>
+    /// <param name="userId">Identifier of the user signing the note.</param>
+    /// <returns>The signed SOAP note.</returns>
+    /// <exception cref="ComplianceException">Thrown when the note is already signed.</exception>
+    Task<SOAPNote> SignSOAPNoteAsync(Guid id, string userId);
+
+    /// <summary>
+    /// Writes an audit log entry recording that a note was exported.
+    /// </summary>
+    /// <param name="id">The SOAP note's unique identifier.</param>
+    /// <param name="userId">Identifier of the user who initiated the export.</param>
+    Task LogNoteExportedAsync(Guid id, string? userId);
 }
+
