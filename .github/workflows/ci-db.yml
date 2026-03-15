@@ -14,7 +14,6 @@ name: "Database Provider CI"
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:

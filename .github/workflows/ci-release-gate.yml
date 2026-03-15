@@ -18,7 +18,6 @@ name: "Release Gate (Sprint T)"
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:

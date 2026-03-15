@@ -3,7 +3,6 @@ name: "Core CI"
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    branches: [ "main" ]
 
 permissions:
   contents: read

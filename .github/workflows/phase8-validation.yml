@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
-    branches: [ "main", "develop", "phase8-continue" ]
 
 jobs:
   phase8-validation:
