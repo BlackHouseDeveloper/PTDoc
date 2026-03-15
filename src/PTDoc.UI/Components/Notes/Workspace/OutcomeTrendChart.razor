@@ -16,7 +16,11 @@
         var baseline = ordered.First();
         var latest = ordered.Last();
         var improvementPct = Registry.CalculateImprovementPercent(MeasureType, baseline.Score, latest.Score);
-        var mcidReached = Math.Abs(latest.Score - baseline.Score) >= def.MinimumClinicallyImportantDifference;
+        // Direction-aware MCID: improvement for HigherIsBetter means score went up,
+        // for LowerIsBetter (disability scales) improvement means score went down.
+        var mcidReached = def.HigherIsBetter
+            ? (latest.Score - baseline.Score) >= def.MinimumClinicallyImportantDifference
+            : (baseline.Score - latest.Score) >= def.MinimumClinicallyImportantDifference;
 
         <div class="trend-chart__header">
             <span class="trend-chart__measure-name">@def.Abbreviation — @def.FullName</span>

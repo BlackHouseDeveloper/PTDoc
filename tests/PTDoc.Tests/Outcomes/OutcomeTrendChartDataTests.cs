@@ -68,23 +68,27 @@ public class OutcomeTrendChartDataTests
     // ──────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(50, 40, true)]   // ODI: 10-point improvement = MCID reached
-    [InlineData(50, 41, false)]  // ODI: 9-point improvement = MCID not reached
+    [InlineData(50, 40, true)]   // ODI: 10-point drop = MCID improvement reached
+    [InlineData(50, 41, false)]  // ODI: 9-point drop = MCID not reached
     [InlineData(50, 50, false)]  // ODI: no change
+    [InlineData(40, 50, false)]  // ODI: score increased (worsening) — MCID not reached
     public void McidReached_ODI_CorrectDetection(double baseline, double current, bool expectedReached)
     {
         var def = _registry.GetDefinition(OutcomeMeasureType.OswestryDisabilityIndex);
-        var mcidReached = Math.Abs(current - baseline) >= def.MinimumClinicallyImportantDifference;
+        // ODI: lower is better — improvement = baseline minus current >= MCID
+        var mcidReached = (baseline - current) >= def.MinimumClinicallyImportantDifference;
         Assert.Equal(expectedReached, mcidReached);
     }
 
     [Theory]
-    [InlineData(40, 49, true)]   // LEFS: 9-point improvement = MCID reached
-    [InlineData(40, 48, false)]  // LEFS: 8-point improvement = MCID not reached
+    [InlineData(40, 49, true)]   // LEFS: 9-point gain = MCID improvement reached
+    [InlineData(40, 48, false)]  // LEFS: 8-point gain = MCID not reached
+    [InlineData(49, 40, false)]  // LEFS: score decreased (worsening) — MCID not reached
     public void McidReached_LEFS_CorrectDetection(double baseline, double current, bool expectedReached)
     {
         var def = _registry.GetDefinition(OutcomeMeasureType.LEFS);
-        var mcidReached = Math.Abs(current - baseline) >= def.MinimumClinicallyImportantDifference;
+        // LEFS: higher is better — improvement = current minus baseline >= MCID
+        var mcidReached = (current - baseline) >= def.MinimumClinicallyImportantDifference;
         Assert.Equal(expectedReached, mcidReached);
     }
 

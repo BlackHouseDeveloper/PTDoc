@@ -1,11 +1,11 @@
 .outcome-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-4, 1rem);
-    padding: var(--spacing-4, 1rem);
-    border: 1px solid var(--border-subtle, #e2e8f0);
-    border-radius: var(--radius-md, 0.5rem);
-    background: var(--surface-card, #ffffff);
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
 }
 
 .outcome-panel__header {
@@ -15,78 +15,78 @@
 }
 
 .outcome-panel__title {
-    font-size: var(--text-base, 1rem);
+    font-size: var(--text-base);
     font-weight: 600;
-    color: var(--text-primary, #1a202c);
+    color: var(--foreground);
     margin: 0;
 }
 
 .outcome-panel__error {
-    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
-    background: var(--color-error-bg, #fff5f5);
-    border: 1px solid var(--color-error, #e53e3e);
-    border-radius: var(--radius-sm, 0.25rem);
-    color: var(--color-error, #e53e3e);
-    font-size: var(--text-sm, 0.875rem);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: rgba(var(--destructive-rgb), 0.08);
+    border: 1px solid var(--destructive);
+    border-radius: var(--radius-sm);
+    color: var(--destructive);
+    font-size: var(--text-sm);
 }
 
 .outcome-panel__select-row,
 .outcome-panel__score-row {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-1, 0.25rem);
+    gap: var(--spacing-1);
 }
 
 .outcome-panel__label {
-    font-size: var(--text-sm, 0.875rem);
+    font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--text-secondary, #4a5568);
+    color: var(--muted-foreground);
 }
 
 .outcome-panel__select,
 .outcome-panel__score-input {
-    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
-    border: 1px solid var(--border-default, #cbd5e0);
-    border-radius: var(--radius-sm, 0.25rem);
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--text-primary, #1a202c);
-    background: var(--surface-input, #ffffff);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    background: var(--input-background);
     width: 100%;
     max-width: 28rem;
 }
 
 .outcome-panel__select:disabled,
 .outcome-panel__score-input:disabled {
-    background: var(--surface-disabled, #f7fafc);
+    background: var(--muted);
     cursor: not-allowed;
     opacity: 0.6;
 }
 
 .outcome-panel__select:focus,
 .outcome-panel__score-input:focus {
-    outline: 2px solid var(--primary, #3b82f6);
+    outline: 2px solid var(--ring);
     outline-offset: 1px;
-    border-color: var(--primary, #3b82f6);
+    border-color: var(--ring);
 }
 
 .outcome-panel__definition {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-1, 0.25rem);
-    padding: var(--spacing-3, 0.75rem);
-    background: var(--surface-subtle, #f7fafc);
-    border-radius: var(--radius-sm, 0.25rem);
+    gap: var(--spacing-1);
+    padding: var(--spacing-3);
+    background: var(--muted);
+    border-radius: var(--radius-sm);
 }
 
 .outcome-panel__description {
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--text-secondary, #4a5568);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
     margin: 0;
 }
 
 .outcome-panel__range {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--text-muted, #718096);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
 }
 
 .outcome-panel__direction {
@@ -94,74 +94,74 @@
 }
 
 .outcome-panel__direction--up {
-    color: var(--color-success, #38a169);
+    color: var(--success);
 }
 
 .outcome-panel__direction--down {
-    color: var(--color-info, #3182ce);
+    color: var(--info);
 }
 
 .outcome-panel__interpretation {
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--text-secondary, #4a5568);
-    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
-    background: var(--surface-highlight, #ebf8ff);
-    border-radius: var(--radius-sm, 0.25rem);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: var(--accent);
+    border-radius: var(--radius-sm);
 }
 
 .outcome-panel__record-btn {
     align-self: flex-start;
-    padding: var(--spacing-2, 0.5rem) var(--spacing-4, 1rem);
-    background: var(--primary, #3b82f6);
-    color: var(--text-on-primary, #ffffff);
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--primary);
+    color: var(--primary-foreground);
     border: none;
-    border-radius: var(--radius-sm, 0.25rem);
-    font-size: var(--text-sm, 0.875rem);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: opacity var(--transition-fast);
 }
 
 .outcome-panel__record-btn:hover:not(:disabled) {
-    background: var(--primary-hover, #2563eb);
+    opacity: 0.9;
 }
 
 .outcome-panel__record-btn:disabled {
-    background: var(--surface-disabled, #e2e8f0);
-    color: var(--text-muted, #718096);
+    background: var(--muted);
+    color: var(--muted-foreground);
     cursor: not-allowed;
 }
 
 .outcome-panel__history {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-2, 0.5rem);
+    gap: var(--spacing-2);
 }
 
 .outcome-panel__history-title {
-    font-size: var(--text-sm, 0.875rem);
+    font-size: var(--text-sm);
     font-weight: 600;
-    color: var(--text-primary, #1a202c);
+    color: var(--foreground);
     margin: 0;
 }
 
 .outcome-panel__history-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--text-sm, 0.875rem);
+    font-size: var(--text-sm);
 }
 
 .outcome-panel__history-table th,
 .outcome-panel__history-table td {
-    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    padding: var(--spacing-2) var(--spacing-3);
     text-align: left;
-    border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+    border-bottom: 1px solid var(--border);
 }
 
 .outcome-panel__history-table th {
     font-weight: 600;
-    color: var(--text-secondary, #4a5568);
-    background: var(--surface-subtle, #f7fafc);
+    color: var(--muted-foreground);
+    background: var(--muted);
 }
 
 .outcome-panel__history-table tr:last-child td {

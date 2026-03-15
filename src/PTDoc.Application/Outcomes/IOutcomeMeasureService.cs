@@ -47,7 +47,7 @@ public interface IOutcomeMeasureService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns the most recent result for a patient and measure type (baseline or latest reading).
+    /// Returns the most recent result (by <c>DateRecorded</c>) for a patient and measure type.
     /// </summary>
     /// <param name="patientId">The patient identifier.</param>
     /// <param name="measureType">The instrument to query.</param>
@@ -57,3 +57,13 @@ public interface IOutcomeMeasureService
         OutcomeMeasureType measureType,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Lightweight payload raised by <c>OutcomeMeasurePanel</c> when a score is recorded.
+/// Does not carry <c>ClinicianId</c> — the caller (API or service layer) must supply
+/// the authenticated user's ID before persisting via <see cref="IOutcomeMeasureService"/>.
+/// </summary>
+public sealed record OutcomeScoreEntry(
+    OutcomeMeasureType MeasureType,
+    double Score,
+    DateTime DateRecorded);

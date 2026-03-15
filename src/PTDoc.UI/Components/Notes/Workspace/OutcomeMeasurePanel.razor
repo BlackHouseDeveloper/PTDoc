@@ -140,10 +140,13 @@
     public bool IsReadOnly { get; set; }
 
     /// <summary>
-    /// Raised when a new score is recorded. Passes the recorded result.
+    /// Raised when a new score is recorded.
+    /// The payload contains measure type, score, and timestamp only.
+    /// The caller must supply the authenticated clinician ID when persisting
+    /// via <see cref="IOutcomeMeasureService.RecordResultAsync"/>.
     /// </summary>
     [Parameter]
-    public EventCallback<OutcomeMeasureResult> OnScoreRecorded { get; set; }
+    public EventCallback<OutcomeScoreEntry> OnScoreRecorded { get; set; }
 
     // ──────────────────────────────────────────────────────────────
     // State
@@ -195,19 +198,12 @@
 
         try
         {
-            var result = new OutcomeMeasureResult
-            {
-                PatientId = PatientId,
-                MeasureType = _selectedDefinition!.MeasureType,
-                Score = _scoreInput!.Value,
-                DateRecorded = DateTime.UtcNow,
-                // ClinicianId must be supplied by the caller (API/service layer)
-                // when handling OnScoreRecorded. Set to Empty here as a placeholder;
-                // the persisting service receives the authenticated user's ID directly.
-                ClinicianId = Guid.Empty
-            };
+            var entry = new OutcomeScoreEntry(
+                _selectedDefinition!.MeasureType,
+                _scoreInput!.Value,
+                DateTime.UtcNow);
 
-            await OnScoreRecorded.InvokeAsync(result);
+            await OnScoreRecorded.InvokeAsync(entry);
 
             // Reset form after successful record
             _selectedMeasureTypeRaw = string.Empty;

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Outcomes;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -8,14 +9,18 @@ namespace PTDoc.Infrastructure.Outcomes;
 /// <summary>
 /// EF Core-backed implementation of <see cref="IOutcomeMeasureService"/>.
 /// Persists and retrieves <see cref="OutcomeMeasureResult"/> entities.
+/// <c>ClinicId</c> is automatically populated from the active tenant context so that
+/// results remain visible under the global query filter.
 /// </summary>
 public sealed class OutcomeMeasureService : IOutcomeMeasureService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ITenantContextAccessor? _tenantContext;
 
-    public OutcomeMeasureService(ApplicationDbContext db)
+    public OutcomeMeasureService(ApplicationDbContext db, ITenantContextAccessor? tenantContext = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _tenantContext = tenantContext;
     }
 
     /// <inheritdoc />
@@ -34,7 +39,10 @@ public sealed class OutcomeMeasureService : IOutcomeMeasureService
             Score = score,
             ClinicianId = clinicianId,
             NoteId = noteId,
-            DateRecorded = DateTime.UtcNow
+            DateRecorded = DateTime.UtcNow,
+            // Capture the current tenant's clinic ID so the result is visible
+            // under the global query filter (tenant-scoped contexts filter on ClinicId).
+            ClinicId = _tenantContext?.GetCurrentClinicId()
         };
 
         _db.OutcomeMeasureResults.Add(result);

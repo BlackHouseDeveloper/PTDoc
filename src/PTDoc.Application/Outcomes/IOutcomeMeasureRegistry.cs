@@ -75,8 +75,8 @@ public sealed record OutcomeMeasureDefinition
     public required double MaxScore { get; init; }
 
     /// <summary>
-    /// True when a higher score indicates worse outcome (disability scales).
-    /// False when a higher score indicates better function (e.g. LEFS).
+    /// True when a higher score indicates better outcome (e.g. LEFS: higher = better function).
+    /// False when a higher score indicates worse outcome (disability scales such as ODI, DASH, NDI).
     /// </summary>
     public required bool HigherIsBetter { get; init; }
 
@@ -89,7 +89,8 @@ public sealed record OutcomeMeasureDefinition
     /// <summary>Body parts for which this measure is recommended.</summary>
     public required IReadOnlyList<BodyPart> RecommendedForBodyParts { get; init; }
 
-    /// <summary>Scoring bands used for interpretation (ordered from best to worst).</summary>
+    /// <summary>Scoring bands used for interpretation (ordered by ascending score, min→max).
+    /// <c>InterpretScore</c> relies on this ordering to clamp out-of-range values correctly.</summary>
     public required IReadOnlyList<ScoringBand> ScoringBands { get; init; }
 }
 
