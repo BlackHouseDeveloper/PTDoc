@@ -409,7 +409,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Appointments_ClinicId",
                 table: "Appointments",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_LastModifiedUtc",
@@ -435,7 +435,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_AuditLogs_EntityType_EntityId",
                 table: "AuditLogs",
                 columns: new[] { "EntityType", "EntityId" },
-                filter: "EntityType IS NOT NULL AND EntityId IS NOT NULL");
+                filter: "\"EntityType\" IS NOT NULL AND \"EntityId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AuditLogs_EventType",
@@ -451,7 +451,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_AuditLogs_UserId",
                 table: "AuditLogs",
                 column: "UserId",
-                filter: "UserId IS NOT NULL");
+                filter: "\"UserId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClinicalNotes_AppointmentId",
@@ -462,7 +462,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_ClinicalNotes_ClinicId",
                 table: "ClinicalNotes",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClinicalNotes_DateOfService",
@@ -521,7 +521,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_IntakeForms_ClinicId",
                 table: "IntakeForms",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IntakeForms_LastModifiedUtc",
@@ -547,7 +547,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_LoginAttempts_UserId",
                 table: "LoginAttempts",
                 column: "UserId",
-                filter: "UserId IS NOT NULL");
+                filter: "\"UserId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_LoginAttempts_Username",
@@ -563,13 +563,13 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Patients_ClinicId",
                 table: "Patients",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Patients_Email",
                 table: "Patients",
                 column: "Email",
-                filter: "Email IS NOT NULL");
+                filter: "\"Email\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Patients_FirstName_LastName",
@@ -586,7 +586,7 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 table: "Patients",
                 column: "MedicalRecordNumber",
                 unique: true,
-                filter: "MedicalRecordNumber IS NOT NULL");
+                filter: "\"MedicalRecordNumber\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Sessions_ExpiresAt",
@@ -643,14 +643,14 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                 name: "IX_Users_ClinicId",
                 table: "Users",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",
                 table: "Users",
                 column: "Email",
                 unique: true,
-                filter: "Email IS NOT NULL");
+                filter: "\"Email\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_IsActive",

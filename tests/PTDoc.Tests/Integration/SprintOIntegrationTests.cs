@@ -150,8 +150,8 @@ public class SprintOIntegrationTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
 
         _db.ObjectiveMetrics.AddRange(
-            new ObjectiveMetric { NoteId = note.Id, BodyPart = BodyPart.Knee,    MetricType = MetricType.ROM, Value = "120°", IsWNL = false },
-            new ObjectiveMetric { NoteId = note.Id, BodyPart = BodyPart.Shoulder, MetricType = MetricType.MMT, Value = "4/5",  IsWNL = false }
+            new ObjectiveMetric { NoteId = note.Id, BodyPart = BodyPart.Knee, MetricType = MetricType.ROM, Value = "120°", IsWNL = false },
+            new ObjectiveMetric { NoteId = note.Id, BodyPart = BodyPart.Shoulder, MetricType = MetricType.MMT, Value = "4/5", IsWNL = false }
         );
         await _db.SaveChangesAsync();
 
@@ -240,7 +240,7 @@ public class SprintOIntegrationTests : IAsyncDisposable
         using var seedDb = new ApplicationDbContext(opts, systemTenant.Object);
         seedDb.Patients.AddRange(
             new Patient { FirstName = "Alice", LastName = "A", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = clinicA },
-            new Patient { FirstName = "Bob",   LastName = "B", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = clinicB }
+            new Patient { FirstName = "Bob", LastName = "B", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = clinicB }
         );
         await seedDb.SaveChangesAsync();
 
@@ -306,17 +306,17 @@ public class SprintOIntegrationTests : IAsyncDisposable
         Guid patientId,
         string painData = "{}",
         string consents = "{}") => new()
-    {
-        PatientId = patientId,
-        TemplateVersion = "1.0",
-        AccessToken = Guid.NewGuid().ToString("N"),
-        IsLocked = false,
-        PainMapData = painData,
-        Consents = consents,
-        ResponseJson = "{}",
-        ClinicId = null,
-        LastModifiedUtc = DateTime.UtcNow,
-        ModifiedByUserId = Guid.NewGuid(),
-        SyncState = SyncState.Synced
-    };
+        {
+            PatientId = patientId,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString("N"),
+            IsLocked = false,
+            PainMapData = painData,
+            Consents = consents,
+            ResponseJson = "{}",
+            ClinicId = null,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
 }

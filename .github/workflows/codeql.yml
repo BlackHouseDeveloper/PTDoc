@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
-    branches: [ "main", "develop", "phase8-continue" ]
   schedule:
     - cron: '30 2 * * 1'  # Weekly on Monday at 2:30 AM UTC
 

@@ -13,6 +13,7 @@ namespace PTDoc.Tests.Sync;
 /// Tests for sync conflict resolution rules.
 /// Covers draft LWW, signed immutability, and intake locking.
 /// </summary>
+[Xunit.Trait("Category", "OfflineSync")]
 public class SyncConflictResolutionTests
 {
     private ApplicationDbContext CreateInMemoryContext()

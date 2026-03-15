@@ -56,7 +56,7 @@ public class TenantIsolationTests
 
         seedCtx.Patients.AddRange(
             new Patient { FirstName = "Alice", LastName = "ClinicA", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA },
-            new Patient { FirstName = "Bob",   LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
+            new Patient { FirstName = "Bob", LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -77,7 +77,7 @@ public class TenantIsolationTests
 
         seedCtx.Patients.AddRange(
             new Patient { FirstName = "Alice", LastName = "ClinicA", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA },
-            new Patient { FirstName = "Bob",   LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
+            new Patient { FirstName = "Bob", LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -99,7 +99,7 @@ public class TenantIsolationTests
 
         seedCtx.Patients.AddRange(
             new Patient { FirstName = "Alice", LastName = "ClinicA", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA },
-            new Patient { FirstName = "Bob",   LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
+            new Patient { FirstName = "Bob", LastName = "ClinicB", DateOfBirth = new DateTime(1985, 5, 5), ClinicId = ClinicB }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -197,7 +197,7 @@ public class TenantIsolationTests
         // One unscoped record (no ClinicId), one properly scoped record
         seedCtx.Patients.AddRange(
             new Patient { FirstName = "Unscoped", LastName = "Patient", DateOfBirth = new DateTime(1970, 1, 1), ClinicId = null },
-            new Patient { FirstName = "Scoped",   LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
+            new Patient { FirstName = "Scoped", LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -218,7 +218,7 @@ public class TenantIsolationTests
 
         seedCtx.Patients.AddRange(
             new Patient { FirstName = "Unscoped", LastName = "Patient", DateOfBirth = new DateTime(1970, 1, 1), ClinicId = null },
-            new Patient { FirstName = "Scoped",   LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
+            new Patient { FirstName = "Scoped", LastName = "Patient", DateOfBirth = new DateTime(1990, 1, 1), ClinicId = ClinicA }
         );
         await seedCtx.SaveChangesAsync();
 

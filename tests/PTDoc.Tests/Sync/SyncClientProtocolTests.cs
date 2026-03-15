@@ -16,6 +16,7 @@ namespace PTDoc.Tests.Sync;
 ///  - Conflict resolution rules (draft LWW, signed immutable, intake locked)
 ///  - Reconnect sync and multi-device conflict scenarios
 /// </summary>
+[Xunit.Trait("Category", "OfflineSync")]
 public class SyncClientProtocolTests
 {
     private ApplicationDbContext CreateInMemoryContext()
