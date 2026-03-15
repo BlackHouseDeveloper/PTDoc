@@ -19,8 +19,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches: [ "main" ]
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
