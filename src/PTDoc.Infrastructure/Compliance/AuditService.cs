@@ -49,6 +49,16 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogAiGenerationAttemptAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
+    public async Task LogAiGenerationAcceptedAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
         var auditLog = new AuditLog

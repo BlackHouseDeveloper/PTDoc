@@ -26,6 +26,11 @@ public static class AiEndpoints
             .WithName("GeneratePlan")
             .WithSummary("Generate AI plan of care text")
             .WithDescription("Stateless AI generation - does NOT save to database");
+
+        group.MapPost("/goals", GenerateGoals)
+            .WithName("GenerateGoals")
+            .WithSummary("Generate AI goal narratives")
+            .WithDescription("Stateless AI generation - does NOT save to database");
     }
 
     private static async Task<IResult> GenerateAssessment(
@@ -56,24 +61,10 @@ public static class AiEndpoints
         var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
-            var auditEvent = new AuditEvent
-            {
-                EventType = "AiGeneration",
-                UserId = userGuid,
-                Metadata = new Dictionary<string, object>
-                {
-                    { "GenerationType", "Assessment" },
-                    { "TemplateVersion", result.Metadata.TemplateVersion },
-                    { "Model", result.Metadata.Model },
-                    { "Success", result.Success },
-                    { "TokenCount", result.Metadata.TokenCount ?? 0 },
-                    { "Timestamp", DateTime.UtcNow }
-                }
-            };
-
-            // Log as rule evaluation since it's the closest existing method
-            // Alternatively, we could add a new LogAiGenerationAsync method
-            await auditService.LogRuleEvaluationAsync(auditEvent, cancellationToken);
+            var auditEvent = AuditEvent.AiGenerationAttempt(Guid.Empty, "Assessment", result.Metadata.Model, userGuid);
+            auditEvent.Metadata["TokenCount"] = result.Metadata.TokenCount ?? 0;
+            auditEvent.Metadata["Success"] = result.Success;
+            await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 
         if (!result.Success)
@@ -122,26 +113,13 @@ public static class AiEndpoints
         var result = await aiService.GeneratePlanAsync(request, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
-        var userId = httpContext.User.FindFirst("user_id")?.Value;
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
-            var auditEvent = new AuditEvent
-            {
-                EventType = "AiGeneration",
-                UserId = userGuid,
-                Metadata = new Dictionary<string, object>
-                {
-                    { "GenerationType", "Plan" },
-                    { "TemplateVersion", result.Metadata.TemplateVersion },
-                    { "Model", result.Metadata.Model },
-                    { "Success", result.Success },
-                    { "TokenCount", result.Metadata.TokenCount ?? 0 },
-                    { "Timestamp", DateTime.UtcNow }
-                }
-            };
-
-            // Log as rule evaluation since it's the closest existing method
-            await auditService.LogRuleEvaluationAsync(auditEvent, cancellationToken);
+            var auditEvent = AuditEvent.AiGenerationAttempt(Guid.Empty, "Plan", result.Metadata.Model, userGuid);
+            auditEvent.Metadata["TokenCount"] = result.Metadata.TokenCount ?? 0;
+            auditEvent.Metadata["Success"] = result.Success;
+            await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 
         if (!result.Success)
@@ -156,6 +134,68 @@ public static class AiEndpoints
         {
             generatedText = result.GeneratedText,
             metadata = new
+            {
+                templateVersion = result.Metadata.TemplateVersion,
+                model = result.Metadata.Model,
+                generatedAt = result.Metadata.GeneratedAtUtc,
+                tokenCount = result.Metadata.TokenCount
+            }
+        });
+    }
+
+    private static async Task<IResult> GenerateGoals(
+        [FromBody] GoalNarrativesGenerationRequest request,
+        [FromServices] IAiClinicalGenerationService clinicalService,
+        [FromServices] IAuditService auditService,
+        [FromServices] IConfiguration configuration,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        // Feature flag check
+        var enableAi = configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration", false);
+        if (!enableAi)
+        {
+            return Results.StatusCode(403);
+        }
+
+        // Validate request
+        if (string.IsNullOrWhiteSpace(request.Diagnosis))
+        {
+            return Results.BadRequest(new { error = "Diagnosis is required" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FunctionalLimitations))
+        {
+            return Results.BadRequest(new { error = "FunctionalLimitations is required" });
+        }
+
+        // Generate AI content
+        var result = await clinicalService.GenerateGoalNarrativesAsync(request, cancellationToken);
+
+        // Audit logging (NO PHI - only metadata)
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null && Guid.TryParse(userId, out var userGuid))
+        {
+            var model = result.Metadata?.Model ?? "unknown";
+            var auditEvent = AuditEvent.AiGenerationAttempt(request.NoteId, "Goals", model, userGuid);
+            auditEvent.Metadata["Success"] = result.Success;
+            await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
+        }
+
+        if (!result.Success)
+        {
+            return Results.Problem(
+                detail: result.ErrorMessage,
+                statusCode: 500,
+                title: "AI Generation Failed");
+        }
+
+        return Results.Ok(new
+        {
+            generatedText = result.GeneratedText,
+            confidence = result.Confidence,
+            warnings = result.Warnings,
+            metadata = result.Metadata == null ? null : new
             {
                 templateVersion = result.Metadata.TemplateVersion,
                 model = result.Metadata.Model,

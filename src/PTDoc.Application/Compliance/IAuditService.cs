@@ -36,6 +36,18 @@ public interface IAuditService
     /// CRITICAL: Must NOT include PIN, raw tokens, or PHI in metadata.
     /// </summary>
     Task LogAuthEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs an AI generation attempt event.
+    /// NO PHI — only generation type, model, and note identity metadata.
+    /// </summary>
+    Task LogAiGenerationAttemptAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs clinician acceptance of AI-generated content.
+    /// NO PHI — only generation type and note identity metadata.
+    /// </summary>
+    Task LogAiGenerationAcceptedAsync(AuditEvent auditEvent, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -207,6 +219,53 @@ public class AuditEvent
             {
                 ["IpAddress"] = ipAddress ?? "unknown",
                 ["Reason"] = reason,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event for an AI generation attempt.
+    /// NO PHI — only generation type, model, and note identity.
+    /// </summary>
+    public static AuditEvent AiGenerationAttempt(Guid noteId, string generationType, string model, Guid? userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "AiGenerationAttempt",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["GenerationType"] = generationType,
+                ["Model"] = model,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event when a clinician accepts AI-generated content.
+    /// NO PHI — only generation type and note identity.
+    /// </summary>
+    public static AuditEvent AiGenerationAccepted(Guid noteId, string generationType, Guid? userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "AiGenerationAccepted",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["GenerationType"] = generationType,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

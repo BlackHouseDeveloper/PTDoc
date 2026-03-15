@@ -72,6 +72,8 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();
+builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
+builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
 
 // Register integration services
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services

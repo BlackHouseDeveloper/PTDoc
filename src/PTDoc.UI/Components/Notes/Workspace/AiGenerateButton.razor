@@ -1,0 +1,62 @@
+<button type="button"
+        class="ai-generate-btn @(IsGenerating ? "ai-generate-btn--loading" : "") @(IsDisabled ? "ai-generate-btn--disabled" : "")"
+        disabled="@(IsDisabled || IsGenerating)"
+        aria-disabled="@(IsDisabled || IsGenerating)"
+        aria-busy="@IsGenerating"
+        aria-label="@(IsGenerating ? "Generating AI suggestion…" : ButtonLabel)"
+        data-testid="@TestId"
+        @onclick="HandleClickAsync">
+
+    @if (IsGenerating)
+    {
+        <span class="ai-generate-btn__spinner" aria-hidden="true"></span>
+        <span>Generating…</span>
+    }
+    else
+    {
+        <svg class="ai-generate-btn__icon" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M7 1.16667L8.75583 4.72917L12.8333 5.32417L9.91667 8.16417L10.5117 12.25L7 10.395L3.48833 12.25L4.08333 8.16417L1.16667 5.32417L5.24417 4.72917L7 1.16667Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </svg>
+        <span>@ButtonLabel</span>
+    }
+</button>
+
+@if (IsDisabled && !string.IsNullOrEmpty(DisabledReason))
+{
+    <p class="ai-generate-btn__disabled-note" role="note" data-testid="@($"{TestId}-disabled-reason")">
+        @DisabledReason
+    </p>
+}
+
+@code {
+    /// <summary>Label shown on the button when idle.</summary>
+    [Parameter] public string ButtonLabel { get; set; } = "Generate with AI";
+
+    /// <summary>When true, shows the spinner and disables the button.</summary>
+    [Parameter] public bool IsGenerating { get; set; } = false;
+
+    /// <summary>When true, the button is disabled (e.g. note is signed).</summary>
+    [Parameter] public bool IsDisabled { get; set; } = false;
+
+    /// <summary>
+    /// Optional message explaining why the button is disabled.
+    /// Only rendered when <see cref="IsDisabled"/> is true.
+    /// </summary>
+    [Parameter] public string? DisabledReason { get; set; }
+
+    /// <summary>Raised when the clinician clicks Generate.</summary>
+    [Parameter] public EventCallback OnGenerate { get; set; }
+
+    /// <summary>data-testid for automation.</summary>
+    [Parameter] public string TestId { get; set; } = "ai-generate-btn";
+
+    private Task HandleClickAsync()
+    {
+        if (IsDisabled || IsGenerating)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnGenerate.InvokeAsync();
+    }
+}
