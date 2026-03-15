@@ -39,6 +39,11 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogNoteEditedAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     public async Task LogAuthEventAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);

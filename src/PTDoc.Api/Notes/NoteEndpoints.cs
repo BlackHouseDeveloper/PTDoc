@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 
 namespace PTDoc.Api.Notes;
 
@@ -13,6 +15,8 @@ namespace PTDoc.Api.Notes;
 /// PUT is restricted to draft (unsigned) notes per Medicare immutability rules.
 /// Sprint O: TDD §6.3 Clinical Notes APIs
 /// Sprint P: RBAC enforcement — NoteWrite requires PT or PTA role.
+/// Sprint S: Compliance rule integration — PN frequency hard stop, 8-minute rule validation,
+///           audit logging for note edits.
 /// </summary>
 public static class NoteEndpoints
 {
@@ -37,6 +41,7 @@ public static class NoteEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IRulesEngine rulesEngine,
         CancellationToken cancellationToken)
     {
         if (request.PatientId == Guid.Empty)
@@ -73,6 +78,36 @@ public static class NoteEndpoints
                 return Results.UnprocessableEntity(new { error = $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}." });
         }
 
+        // Sprint S: Progress Note hard stop — block Daily note creation when PN is required.
+        // Per Medicare guidelines, a Progress Note must be written every 10 visits or 30 days.
+        if (request.NoteType == NoteType.Daily)
+        {
+            var pnFreqResult = await rulesEngine.ValidateProgressNoteFrequencyAsync(request.PatientId, cancellationToken);
+            if (pnFreqResult.Severity == RuleSeverity.HardStop)
+            {
+                return Results.UnprocessableEntity(new
+                {
+                    error = pnFreqResult.Message,
+                    ruleId = pnFreqResult.RuleId,
+                    data = pnFreqResult.Data
+                });
+            }
+        }
+
+        // Sprint S: 8-minute rule validation — validate CPT units when total minutes are provided.
+        RuleResult? eightMinWarning = null;
+        if (request.TotalMinutes.HasValue && !string.IsNullOrWhiteSpace(request.CptCodesJson) && request.CptCodesJson != "[]")
+        {
+            var cptCodes = TryDeserializeCptCodes(request.CptCodesJson);
+            if (cptCodes is not null && cptCodes.Any(c => c.IsTimed))
+            {
+                var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
+                    request.TotalMinutes.Value, cptCodes, cancellationToken);
+                if (eightMinResult.Severity == RuleSeverity.Warning)
+                    eightMinWarning = eightMinResult;
+            }
+        }
+
         var clinicId = tenantContext.GetCurrentClinicId();
         var userId = identityContext.GetCurrentUserId();
 
@@ -93,6 +128,21 @@ public static class NoteEndpoints
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync(cancellationToken);
 
+        // Include any 8-minute rule advisory warning alongside the created note
+        if (eightMinWarning is not null)
+        {
+            return Results.Created($"/api/v1/notes/{note.Id}", new
+            {
+                note = ToResponse(note),
+                complianceWarning = new
+                {
+                    ruleId = eightMinWarning.RuleId,
+                    message = eightMinWarning.Message,
+                    data = eightMinWarning.Data
+                }
+            });
+        }
+
         return Results.Created($"/api/v1/notes/{note.Id}", ToResponse(note));
     }
 
@@ -102,6 +152,8 @@ public static class NoteEndpoints
         [FromBody] UpdateNoteRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
+        [FromServices] IRulesEngine rulesEngine,
         CancellationToken cancellationToken)
     {
         var note = await db.ClinicalNotes
@@ -111,9 +163,13 @@ public static class NoteEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {id} not found." });
 
-        // Signed notes are immutable per Medicare requirements (TDD §3 + §8.2)
-        if (note.SignedUtc.HasValue)
-            return Results.Conflict(new { error = "Signed notes cannot be modified. Use POST /api/notes/{id}/addendum to append." });
+        // Sprint S: Signature locking — enforce note immutability via the rules engine.
+        // Signed notes cannot be modified; clinicians must create an addendum instead.
+        var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
+        if (!immutabilityResult.IsValid)
+        {
+            return Results.Conflict(new { error = immutabilityResult.Message });
+        }
 
         if (request.ContentJson is not null)
             note.ContentJson = request.ContentJson;
@@ -124,13 +180,60 @@ public static class NoteEndpoints
         if (request.CptCodesJson is not null)
             note.CptCodesJson = request.CptCodesJson;
 
+        var userId = identityContext.GetCurrentUserId();
         note.LastModifiedUtc = DateTime.UtcNow;
-        note.ModifiedByUserId = identityContext.GetCurrentUserId();
+        note.ModifiedByUserId = userId;
         note.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
 
+        // Sprint S: Audit logging — record every successful note edit.
+        await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), cancellationToken);
+
+        // Sprint S: 8-minute rule validation on update — if CPT codes and total minutes provided,
+        // validate the updated billing units and include any advisory warning in the response.
+        if (request.TotalMinutes.HasValue && !string.IsNullOrWhiteSpace(note.CptCodesJson) && note.CptCodesJson != "[]")
+        {
+            var cptCodes = TryDeserializeCptCodes(note.CptCodesJson);
+            if (cptCodes is not null && cptCodes.Any(c => c.IsTimed))
+            {
+                var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
+                    request.TotalMinutes.Value, cptCodes, cancellationToken);
+                if (eightMinResult.Severity == RuleSeverity.Warning)
+                {
+                    return Results.Ok(new
+                    {
+                        note = ToResponse(note),
+                        complianceWarning = new
+                        {
+                            ruleId = eightMinResult.RuleId,
+                            message = eightMinResult.Message,
+                            data = eightMinResult.Data
+                        }
+                    });
+                }
+            }
+        }
+
         return Results.Ok(ToResponse(note));
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private static List<CptCodeEntry>? TryDeserializeCptCodes(string cptCodesJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<CptCodeEntry>>(cptCodesJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            // Malformed CptCodesJson: skip 8-minute rule validation rather than failing the request.
+            // The endpoint accepts arbitrary JSON strings for CptCodesJson; if the content is
+            // unparseable the compliance check is bypassed and the note is still saved.
+            return null;
+        }
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

@@ -24,6 +24,12 @@ public sealed class CreateNoteRequest
 
     /// <summary>CPT codes as a JSON array string.</summary>
     public string CptCodesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Total treatment time in minutes. Required to validate the 8-minute rule when CPT codes are provided.
+    /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
+    /// </summary>
+    public int? TotalMinutes { get; set; }
 }
 
 /// <summary>Request DTO for updating a draft clinical note.</summary>
@@ -36,6 +42,12 @@ public sealed class UpdateNoteRequest
 
     /// <summary>CPT codes as a JSON array string.</summary>
     public string? CptCodesJson { get; set; }
+
+    /// <summary>
+    /// Total treatment time in minutes. Required to validate the 8-minute rule when CPT codes are updated.
+    /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
+    /// </summary>
+    public int? TotalMinutes { get; set; }
 }
 
 // ─── Objective Metric DTOs ────────────────────────────────────────────────────
