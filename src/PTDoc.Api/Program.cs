@@ -75,6 +75,10 @@ builder.Services.AddScoped<IAiService, OpenAiService>();
 builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
 builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
 
+// Register Sprint M: Outcome Measure services
+builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
+builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PTDoc.Infrastructure.Outcomes.OutcomeMeasureService>();
+
 // Register integration services
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
 builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();

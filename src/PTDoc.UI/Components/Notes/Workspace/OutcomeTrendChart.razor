@@ -1,0 +1,120 @@
+@using PTDoc.Application.Outcomes
+@using PTDoc.Core.Models
+@inject IOutcomeMeasureRegistry Registry
+
+<div class="trend-chart" data-testid="outcome-trend-chart">
+    @if (!Results.Any())
+    {
+        <div class="trend-chart__empty" data-testid="trend-chart-empty">
+            No outcome data recorded yet. Record a score above to begin tracking trends.
+        </div>
+    }
+    else
+    {
+        var def = Registry.GetDefinition(MeasureType);
+        var ordered = Results.OrderBy(r => r.DateRecorded).ToList();
+        var baseline = ordered.First();
+        var latest = ordered.Last();
+        var improvementPct = Registry.CalculateImprovementPercent(MeasureType, baseline.Score, latest.Score);
+        var mcidReached = Math.Abs(latest.Score - baseline.Score) >= def.MinimumClinicallyImportantDifference;
+
+        <div class="trend-chart__header">
+            <span class="trend-chart__measure-name">@def.Abbreviation — @def.FullName</span>
+
+            <div class="trend-chart__indicators">
+                <span class="@GetImprovementClass(improvementPct)" data-testid="trend-improvement-indicator">
+                    @(improvementPct >= 0 ? "▲" : "▼") @Math.Abs(improvementPct).ToString("F1")% change
+                </span>
+
+                @if (mcidReached)
+                {
+                    <span class="trend-chart__mcid-badge" data-testid="trend-mcid-badge">
+                        MCID reached
+                    </span>
+                }
+            </div>
+        </div>
+
+        <div class="trend-chart__baseline-row" data-testid="trend-baseline-row">
+            <span class="trend-chart__baseline-label">Baseline (@baseline.DateRecorded.ToLocalTime().ToString("MM/dd/yyyy")):</span>
+            <span class="trend-chart__baseline-value">
+                @baseline.Score.ToString("F1") @def.ScoreUnit
+                — @Registry.InterpretScore(MeasureType, baseline.Score)
+            </span>
+        </div>
+
+        <div class="trend-chart__bars" data-testid="trend-chart-bars" aria-label="Outcome score trend">
+            @foreach (var result in ordered)
+            {
+                var barPercent = CalculateBarPercent(def, result.Score);
+                var label = Registry.InterpretScore(MeasureType, result.Score);
+                var isBaseline = result == baseline;
+                var isLatest = result == latest;
+                <div class="trend-chart__bar-row @(isLatest ? "trend-chart__bar-row--latest" : "")"
+                     data-testid="trend-bar-row">
+                    <span class="trend-chart__bar-date">@result.DateRecorded.ToLocalTime().ToString("MM/dd")</span>
+                    <div class="trend-chart__bar-track" role="img" aria-label="@label: @result.Score.ToString("F1") @def.ScoreUnit">
+                        <div class="trend-chart__bar-fill @GetBarColorClass(improvementPct, isLatest)"
+                             style="width: @barPercent.ToString("F1")%">
+                        </div>
+                    </div>
+                    <span class="trend-chart__bar-score">
+                        @result.Score.ToString("F1")
+                        @if (isBaseline)
+                        {
+                            <span class="trend-chart__baseline-tag">baseline</span>
+                        }
+                    </span>
+                </div>
+            }
+        </div>
+
+        <div class="trend-chart__legend">
+            <span class="trend-chart__legend-item">
+                MCID: @def.MinimumClinicallyImportantDifference.ToString("F0") @def.ScoreUnit
+            </span>
+            <span class="trend-chart__legend-item">
+                Range: @def.MinScore – @def.MaxScore @def.ScoreUnit
+            </span>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The outcome measure type to display trends for.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public OutcomeMeasureType MeasureType { get; set; }
+
+    /// <summary>
+    /// The chronologically ordered results to plot.
+    /// Should all be for the same patient and measure type.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<OutcomeMeasureResult> Results { get; set; } = Array.Empty<OutcomeMeasureResult>();
+
+    // ──────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────
+
+    private static double CalculateBarPercent(OutcomeMeasureDefinition def, double score)
+    {
+        var range = def.MaxScore - def.MinScore;
+        if (range == 0) return 100;
+        return Math.Clamp((score - def.MinScore) / range * 100.0, 0, 100);
+    }
+
+    private static string GetImprovementClass(double improvementPct) =>
+        improvementPct >= 0
+            ? "trend-chart__improvement trend-chart__improvement--positive"
+            : "trend-chart__improvement trend-chart__improvement--negative";
+
+    private static string GetBarColorClass(double improvementPct, bool isLatest)
+    {
+        if (!isLatest) return "trend-chart__bar-fill--neutral";
+        return improvementPct >= 0
+            ? "trend-chart__bar-fill--positive"
+            : "trend-chart__bar-fill--negative";
+    }
+}

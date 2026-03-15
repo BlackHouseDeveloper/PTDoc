@@ -153,9 +153,57 @@ public sealed record GoalNarrativesGenerationRequest
     public string? LongTermGoals { get; init; }
 
     /// <summary>
+    /// Outcome measure context to inform goal generation with quantitative targets.
+    /// Optional: when provided, goals will reference the measure and improvement target.
+    /// </summary>
+    public OutcomeContext? OutcomeContext { get; init; }
+
+    /// <summary>
     /// Safety guard: generation is rejected when true.
     /// </summary>
     public bool IsNoteSigned { get; init; } = false;
+}
+
+/// <summary>
+/// Outcome measure data used to inform AI goal generation.
+/// No PHI — contains only measurement metadata and scores.
+/// </summary>
+public sealed record OutcomeContext
+{
+    /// <summary>
+    /// The name of the outcome measure instrument (e.g. "LEFS", "ODI").
+    /// </summary>
+    public required string MeasureName { get; init; }
+
+    /// <summary>
+    /// The patient's baseline (initial) score.
+    /// </summary>
+    public required double BaselineScore { get; init; }
+
+    /// <summary>
+    /// The patient's most recent score.
+    /// </summary>
+    public required double CurrentScore { get; init; }
+
+    /// <summary>
+    /// The maximum possible score for the instrument.
+    /// </summary>
+    public required double MaxScore { get; init; }
+
+    /// <summary>
+    /// Whether a higher score is better (true for LEFS, false for ODI/DASH/NDI).
+    /// </summary>
+    public required bool HigherIsBetter { get; init; }
+
+    /// <summary>
+    /// The minimum clinically important difference for this measure.
+    /// </summary>
+    public double MinimumClinicallyImportantDifference { get; init; }
+
+    /// <summary>
+    /// Human-readable interpretation of the current score (e.g. "Moderate disability").
+    /// </summary>
+    public string? CurrentInterpretation { get; init; }
 }
 
 // ──────────────────────────────────────────────────────────────────

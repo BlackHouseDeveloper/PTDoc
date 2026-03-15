@@ -1,0 +1,169 @@
+.outcome-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4, 1rem);
+    padding: var(--spacing-4, 1rem);
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-md, 0.5rem);
+    background: var(--surface-card, #ffffff);
+}
+
+.outcome-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.outcome-panel__title {
+    font-size: var(--text-base, 1rem);
+    font-weight: 600;
+    color: var(--text-primary, #1a202c);
+    margin: 0;
+}
+
+.outcome-panel__error {
+    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    background: var(--color-error-bg, #fff5f5);
+    border: 1px solid var(--color-error, #e53e3e);
+    border-radius: var(--radius-sm, 0.25rem);
+    color: var(--color-error, #e53e3e);
+    font-size: var(--text-sm, 0.875rem);
+}
+
+.outcome-panel__select-row,
+.outcome-panel__score-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1, 0.25rem);
+}
+
+.outcome-panel__label {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 500;
+    color: var(--text-secondary, #4a5568);
+}
+
+.outcome-panel__select,
+.outcome-panel__score-input {
+    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    border: 1px solid var(--border-default, #cbd5e0);
+    border-radius: var(--radius-sm, 0.25rem);
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-primary, #1a202c);
+    background: var(--surface-input, #ffffff);
+    width: 100%;
+    max-width: 28rem;
+}
+
+.outcome-panel__select:disabled,
+.outcome-panel__score-input:disabled {
+    background: var(--surface-disabled, #f7fafc);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.outcome-panel__select:focus,
+.outcome-panel__score-input:focus {
+    outline: 2px solid var(--primary, #3b82f6);
+    outline-offset: 1px;
+    border-color: var(--primary, #3b82f6);
+}
+
+.outcome-panel__definition {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1, 0.25rem);
+    padding: var(--spacing-3, 0.75rem);
+    background: var(--surface-subtle, #f7fafc);
+    border-radius: var(--radius-sm, 0.25rem);
+}
+
+.outcome-panel__description {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-secondary, #4a5568);
+    margin: 0;
+}
+
+.outcome-panel__range {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted, #718096);
+}
+
+.outcome-panel__direction {
+    font-weight: 600;
+}
+
+.outcome-panel__direction--up {
+    color: var(--color-success, #38a169);
+}
+
+.outcome-panel__direction--down {
+    color: var(--color-info, #3182ce);
+}
+
+.outcome-panel__interpretation {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-secondary, #4a5568);
+    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    background: var(--surface-highlight, #ebf8ff);
+    border-radius: var(--radius-sm, 0.25rem);
+}
+
+.outcome-panel__record-btn {
+    align-self: flex-start;
+    padding: var(--spacing-2, 0.5rem) var(--spacing-4, 1rem);
+    background: var(--primary, #3b82f6);
+    color: var(--text-on-primary, #ffffff);
+    border: none;
+    border-radius: var(--radius-sm, 0.25rem);
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.outcome-panel__record-btn:hover:not(:disabled) {
+    background: var(--primary-hover, #2563eb);
+}
+
+.outcome-panel__record-btn:disabled {
+    background: var(--surface-disabled, #e2e8f0);
+    color: var(--text-muted, #718096);
+    cursor: not-allowed;
+}
+
+.outcome-panel__history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2, 0.5rem);
+}
+
+.outcome-panel__history-title {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--text-primary, #1a202c);
+    margin: 0;
+}
+
+.outcome-panel__history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm, 0.875rem);
+}
+
+.outcome-panel__history-table th,
+.outcome-panel__history-table td {
+    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.outcome-panel__history-table th {
+    font-weight: 600;
+    color: var(--text-secondary, #4a5568);
+    background: var(--surface-subtle, #f7fafc);
+}
+
+.outcome-panel__history-table tr:last-child td {
+    border-bottom: none;
+}
