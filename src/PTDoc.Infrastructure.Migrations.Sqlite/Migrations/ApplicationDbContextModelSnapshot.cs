@@ -466,6 +466,49 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("ObjectiveMetrics");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.OutcomeMeasureResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicianId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DateRecorded")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MeasureType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("NoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("DateRecorded");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("PatientId", "MeasureType");
+
+                    b.ToTable("OutcomeMeasureResults");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -884,6 +927,31 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.OutcomeMeasureResult", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Note");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>

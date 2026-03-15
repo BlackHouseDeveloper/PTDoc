@@ -290,7 +290,25 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
         sb.AppendLine("2. Patient will independently perform home exercise program as evidenced by verbal return demonstration.");
         sb.AppendLine();
         sb.AppendLine("LONG-TERM GOALS (4–8 weeks):");
-        sb.AppendLine($"1. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by functional outcome measure improvement.");
+
+        if (request.OutcomeContext is not null)
+        {
+            var ctx = request.OutcomeContext;
+            var improvementTarget = ctx.HigherIsBetter
+                ? ctx.CurrentScore + ctx.MinimumClinicallyImportantDifference
+                : ctx.CurrentScore - ctx.MinimumClinicallyImportantDifference;
+            var clampedTarget = ctx.HigherIsBetter
+                ? Math.Min(improvementTarget, ctx.MaxScore)
+                : Math.Max(improvementTarget, 0);
+
+            sb.AppendLine($"1. Patient will improve {ctx.MeasureName} score from {ctx.CurrentScore:F0} to ≥{clampedTarget:F0}" +
+                          $" (MCID: {ctx.MinimumClinicallyImportantDifference:F0} points) as evidenced by re-assessment at discharge.");
+        }
+        else
+        {
+            sb.AppendLine($"1. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by functional outcome measure improvement.");
+        }
+
         sb.AppendLine("2. Patient will demonstrate independence with a self-management program as evidenced by discharge from skilled physical therapy.");
         return sb.ToString();
     }

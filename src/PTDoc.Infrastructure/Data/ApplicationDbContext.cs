@@ -46,6 +46,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Addendum> Addendums => Set<Addendum>();
     public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
 
+    // Sprint M: Outcome Measures (TDD §9)
+    public DbSet<OutcomeMeasureResult> OutcomeMeasureResults => Set<OutcomeMeasureResult>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -273,6 +276,34 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // Configure OutcomeMeasureResult (Sprint M: TDD §9)
+        modelBuilder.Entity<OutcomeMeasureResult>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => new { e.PatientId, e.MeasureType });
+            entity.HasIndex(e => e.DateRecorded);
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+
+            // Relationship to Patient
+            entity.HasOne(e => e.Patient)
+                .WithMany()
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Optional relationship to ClinicalNote
+            entity.HasOne(e => e.Note)
+                .WithMany()
+                .HasForeignKey(e => e.NoteId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Optional relationship to Clinic (tenant)
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // Sprint J: Configure Clinic (tenant) entity
         modelBuilder.Entity<Clinic>(entity =>
         {
@@ -360,6 +391,10 @@ public class ApplicationDbContext : DbContext
         // Sprint S: null ClinicId on parent note is no longer permitted through the tenant filter.
         modelBuilder.Entity<ObjectiveMetric>()
             .HasQueryFilter(m => CurrentClinicId == null || m.Note!.ClinicId == CurrentClinicId);
+
+        // Sprint M: OutcomeMeasureResult carries its own ClinicId for efficient tenant filtering.
+        modelBuilder.Entity<OutcomeMeasureResult>()
+            .HasQueryFilter(r => CurrentClinicId == null || r.ClinicId == CurrentClinicId);
     }
 
     /// <summary>
