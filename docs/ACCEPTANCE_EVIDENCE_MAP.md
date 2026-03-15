@@ -162,13 +162,16 @@ Each row records:
 | I — Background Jobs | 8 | 7 | 1 | 0 |
 | J — Tenant Isolation | 5 | 5 | 0 | 0 |
 | K — Secret Policy CI | 3 | 3 | 0 | 0 |
+| L — Clinical Workflow Engine | 5 | 5 | 0 | 0 |
+| M — Medicare Compliance | 5 | 5 | 0 | 0 |
+| N — External Integrations | 4 | 2 | 2 | 0 |
 | O — Domain Completion | 4 | 4 | 0 | 0 |
 | P — RBAC Enforcement | 4 | 4 | 0 | 0 |
 | Q — Migration CI Parity | 3 | 3 | 0 | 0 |
 | R — Sync Completeness | 3 | 3 | 0 | 0 |
 | S — Tenant Gating | 3 | 3 | 0 | 0 |
 | T — Release Readiness | 5 | 5 | 0 | 0 |
-| **Total** | **86** | **85** | **1** | **0** |
+| **Total** | **100** | **97** | **3** | **0** |
 
 ---
 
@@ -179,6 +182,41 @@ Each row records:
 | CI scans tracked config files for real signing keys | CI Gate | `ci-secret-policy.yml` — `secret-policy-scan` job | ✅ | — |
 | `[Category=SecretPolicy]` tests enforce same invariant | Test + CI Gate | `Security/ConfigurationValidationTests.cs` + `ci-secret-policy.yml` | ✅ | — |
 | Policy documented and developer workflow established | Manual | `docs/REMEDIATION_BASELINE.md §1`, `setup-dev-secrets.sh` | ✅ | — |
+
+---
+
+## Sprint L — Clinical Workflow Engine
+
+| Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
+|---|---|---|---|---|
+| ClinicalNote lifecycle supports Eval/Daily/Progress/Discharge | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
+| PatientEpisode and ClinicalVisit entities persist correctly | Test | `Integration/SprintQSmokeCrudTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
+| Goal tracking and updates persist between notes | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+| Progress note trigger logic supported by domain model | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+| Discharge workflow supported in domain model | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
+
+---
+
+## Sprint M — Medicare Compliance & Documentation Validation
+
+| Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
+|---|---|---|---|---|
+| SOAP note structure required before note signing | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+| CPT code documentation enforced | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+| Note validation prior to signing enforced | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+| Compliance validation executed in CI | CI Gate | `ci-release-gate.yml` — `compliance-gate` job | ✅ | — |
+| Progress note compliance rules enforced | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
+
+---
+
+## Sprint N — External Integrations
+
+| Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
+|---|---|---|---|---|
+| Integration service layer defined for external APIs | Manual | `Infrastructure/IntegrationClients/` | ✅ | — |
+| API client scaffolding exists for external services | Manual | `Infrastructure/IntegrationClients/` | ⚠️ Partial | — |
+| Integration retry and error handling implemented | Test | `Integration/IntegrationServiceTests.cs` | ⚠️ Partial | — |
+| Integration security rules enforce API key handling | Manual | `docs/SECURITY.md` | ✅ | — |
 
 ---
 
@@ -253,11 +291,13 @@ Each row records:
 
 ## Open Gap Assignments
 
-All remediable gaps from Sprints A–S have been resolved. One known partial item remains
-out of scope per Sprint T constraints:
+All remediable gaps from Sprints A–S have been resolved. Known partial items remain where
+evidence is intentionally scaffolded or out of Sprint T scope:
 
 | Gap | Status | Note |
 |---|---|---|
+| External integration API client scaffolding completeness | ⚠️ Partial | Integration clients are scaffolded under `Infrastructure/IntegrationClients/`; full provider implementations are not in current scope |
+| Integration retry/error handling completeness across all external providers | ⚠️ Partial | Baseline behavior is covered by `Integration/IntegrationServiceTests.cs`; advanced provider-specific scenarios remain partial |
 | Multi-node background job concurrency safety (distributed lock) | ⚠️ Partial | Not in Sprint T scope — safe in single-node deployments; distributed lock would require new dev scope which Sprint T prohibits |
 
 ---
