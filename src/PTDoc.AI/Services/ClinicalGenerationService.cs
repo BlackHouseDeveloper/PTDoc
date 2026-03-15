@@ -68,14 +68,14 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
 
         try
         {
-            // Map to the lower-level IAiService request
+            // Sanitize all clinician-entered strings before forwarding to the AI provider
             var aiRequest = new AiAssessmentRequest
             {
-                ChiefComplaint = request.ChiefComplaint,
-                PatientHistory = request.PatientHistory,
-                CurrentSymptoms = request.CurrentSymptoms,
-                PriorLevelOfFunction = request.PriorLevelOfFunction,
-                ExaminationFindings = request.ExaminationFindings
+                ChiefComplaint = _promptBuilder.SanitizeInput(request.ChiefComplaint),
+                PatientHistory = request.PatientHistory is not null ? _promptBuilder.SanitizeInput(request.PatientHistory) : null,
+                CurrentSymptoms = request.CurrentSymptoms is not null ? _promptBuilder.SanitizeInput(request.CurrentSymptoms) : null,
+                PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
+                ExaminationFindings = request.ExaminationFindings is not null ? _promptBuilder.SanitizeInput(request.ExaminationFindings) : null
             };
 
             var aiResult = await _aiService.GenerateAssessmentAsync(aiRequest, cancellationToken);
@@ -138,12 +138,13 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
 
         try
         {
+            // Sanitize all clinician-entered strings before forwarding to the AI provider
             var aiRequest = new AiPlanRequest
             {
-                Diagnosis = request.Diagnosis,
-                AssessmentSummary = request.AssessmentSummary,
-                Goals = request.Goals,
-                Precautions = request.Precautions
+                Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
+                AssessmentSummary = request.AssessmentSummary is not null ? _promptBuilder.SanitizeInput(request.AssessmentSummary) : null,
+                Goals = request.Goals is not null ? _promptBuilder.SanitizeInput(request.Goals) : null,
+                Precautions = request.Precautions is not null ? _promptBuilder.SanitizeInput(request.Precautions) : null
             };
 
             var aiResult = await _aiService.GeneratePlanAsync(aiRequest, cancellationToken);
@@ -208,11 +209,8 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
         {
             var model = _configuration["Ai:Model"] ?? DefaultModel;
 
-            // Build prompt using the modular prompt builder
-            var prompt = _promptBuilder.BuildGoalsPrompt(request);
-
-            // Use mock generation since the underlying IAiService doesn't have a goals endpoint
-            // In production this will call the AI provider directly via the prompt
+            // Use mock generation since the underlying IAiService doesn't have a goals endpoint.
+            // In production this will call the AI provider via a prompt built by ClinicalPromptBuilder.
             var generatedText = GenerateMockGoals(request);
 
             var warnings = BuildGoalWarnings(request);

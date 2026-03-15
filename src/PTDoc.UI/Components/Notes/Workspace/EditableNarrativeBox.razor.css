@@ -5,7 +5,7 @@
 }
 
 .editable-narrative-box__label {
-    font-size: var(--font-size-sm);
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
 }
@@ -15,16 +15,16 @@
     align-items: center;
     gap: var(--spacing-2);
     padding: var(--spacing-2) var(--spacing-3);
-    background: var(--warning-50, #fffbeb);
-    border: 1px solid var(--warning, #f59e0b);
+    background: rgba(var(--warning-rgb), 0.1);
+    border: 1px solid var(--warning);
     border-radius: var(--radius-md);
-    color: var(--warning-700, #92400e);
-    font-size: var(--font-size-sm);
+    color: var(--foreground);
+    font-size: var(--text-sm);
 }
 
 .editable-narrative-box__review-icon {
     flex-shrink: 0;
-    color: var(--warning, #f59e0b);
+    color: var(--warning);
 }
 
 .editable-narrative-box__review-text {
@@ -43,7 +43,7 @@
     background: var(--background);
     color: var(--foreground);
     font-family: inherit;
-    font-size: var(--font-size-sm);
+    font-size: var(--text-sm);
     line-height: 1.6;
     resize: vertical;
     transition: border-color 0.15s ease;
@@ -64,8 +64,8 @@
 }
 
 .editable-narrative-box__textarea--pending {
-    border-color: var(--warning, #f59e0b);
-    background: var(--warning-50, #fffbeb);
+    border-color: var(--warning);
+    background: rgba(var(--warning-rgb), 0.05);
 }
 
 .editable-narrative-box__action-row {
@@ -77,12 +77,12 @@
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-1);
-    padding: var(--spacing-1-5) var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-3);
     background: var(--primary);
     color: var(--primary-foreground);
     border: none;
     border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
     transition: opacity 0.15s ease;
@@ -100,12 +100,12 @@
 .editable-narrative-box__discard-btn {
     display: inline-flex;
     align-items: center;
-    padding: var(--spacing-1-5) var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-3);
     background: transparent;
     color: var(--muted-foreground);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease;
@@ -121,7 +121,7 @@
 }
 
 .editable-narrative-box__accepted-note {
-    font-size: var(--font-size-xs);
+    font-size: var(--text-xs);
     color: var(--success, #16a34a);
     margin: 0;
 }

@@ -42,7 +42,7 @@
         <EditableNarrativeBox @ref="_narrativeBox"
                               Label="Clinical Assessment Narrative"
                               Placeholder="Enter or generate the assessment narrative…"
-                              Value="@AssessmentText"
+                              Value="@_assessmentText"
                               ValueChanged="OnNarrativeChangedAsync"
                               OnAccepted="OnNarrativeAcceptedAsync"
                               OnDiscarded="OnNarrativeDiscardedAsync"
@@ -53,7 +53,7 @@
         <EditableNarrativeBox @ref="_limitationsBox"
                               Label="Functional Limitations"
                               Placeholder="Describe identified functional limitations…"
-                              Value="@FunctionalLimitations"
+                              Value="@_functionalLimitations"
                               ValueChanged="OnLimitationsChangedAsync"
                               IsReadOnly="@IsNoteSigned"
                               Rows="4"
@@ -68,6 +68,8 @@
     private bool _isGenerating = false;
     private string? _errorMessage;
     private List<string> _generationWarnings = new();
+    private string _assessmentText = string.Empty;
+    private string _functionalLimitations = string.Empty;
 
     // ──────────────────────────────────────────────────────────────
     // Parameters
@@ -134,6 +136,13 @@
     [Parameter]
     public EventCallback<string> OnAiAccepted { get; set; }
 
+    protected override void OnParametersSet()
+    {
+        // Sync backing fields from parameters so we never mutate parameters directly
+        _assessmentText = AssessmentText;
+        _functionalLimitations = FunctionalLimitations;
+    }
+
     // ──────────────────────────────────────────────────────────────
     // Generation flow: Generate → Review → Accept
     // ──────────────────────────────────────────────────────────────
@@ -166,7 +175,7 @@
                 ChiefComplaint = ChiefComplaint!,
                 CurrentSymptoms = CurrentSymptoms,
                 ExaminationFindings = ExaminationFindings,
-                FunctionalLimitations = FunctionalLimitations,
+                FunctionalLimitations = _functionalLimitations,
                 IsNoteSigned = IsNoteSigned
             };
 
@@ -206,13 +215,13 @@
 
     private Task OnNarrativeChangedAsync(string value)
     {
-        AssessmentText = value;
+        _assessmentText = value;
         return AssessmentTextChanged.InvokeAsync(value);
     }
 
     private async Task OnNarrativeAcceptedAsync(string acceptedText)
     {
-        AssessmentText = acceptedText;
+        _assessmentText = acceptedText;
         _generationWarnings.Clear();
         await AssessmentTextChanged.InvokeAsync(acceptedText);
         await OnAiAccepted.InvokeAsync(acceptedText);
@@ -226,7 +235,7 @@
 
     private Task OnLimitationsChangedAsync(string value)
     {
-        FunctionalLimitations = value;
+        _functionalLimitations = value;
         return FunctionalLimitationsChanged.InvokeAsync(value);
     }
 

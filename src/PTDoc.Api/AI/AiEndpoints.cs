@@ -61,9 +61,14 @@ public static class AiEndpoints
         var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
-            var auditEvent = AuditEvent.AiGenerationAttempt(Guid.Empty, "Assessment", result.Metadata.Model, userGuid);
+            var auditEvent = AuditEvent.AiGenerationAttempt(
+                noteId: null,
+                generationType: "Assessment",
+                model: result.Metadata.Model,
+                userId: userGuid,
+                success: result.Success,
+                errorMessage: result.Success ? null : result.ErrorMessage);
             auditEvent.Metadata["TokenCount"] = result.Metadata.TokenCount ?? 0;
-            auditEvent.Metadata["Success"] = result.Success;
             await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 
@@ -116,9 +121,14 @@ public static class AiEndpoints
         var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
-            var auditEvent = AuditEvent.AiGenerationAttempt(Guid.Empty, "Plan", result.Metadata.Model, userGuid);
+            var auditEvent = AuditEvent.AiGenerationAttempt(
+                noteId: null,
+                generationType: "Plan",
+                model: result.Metadata.Model,
+                userId: userGuid,
+                success: result.Success,
+                errorMessage: result.Success ? null : result.ErrorMessage);
             auditEvent.Metadata["TokenCount"] = result.Metadata.TokenCount ?? 0;
-            auditEvent.Metadata["Success"] = result.Success;
             await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 
@@ -169,6 +179,11 @@ public static class AiEndpoints
             return Results.BadRequest(new { error = "FunctionalLimitations is required" });
         }
 
+        if (request.NoteId == Guid.Empty)
+        {
+            return Results.BadRequest(new { error = "A valid NoteId is required" });
+        }
+
         // Generate AI content
         var result = await clinicalService.GenerateGoalNarrativesAsync(request, cancellationToken);
 
@@ -177,8 +192,13 @@ public static class AiEndpoints
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
             var model = result.Metadata?.Model ?? "unknown";
-            var auditEvent = AuditEvent.AiGenerationAttempt(request.NoteId, "Goals", model, userGuid);
-            auditEvent.Metadata["Success"] = result.Success;
+            var auditEvent = AuditEvent.AiGenerationAttempt(
+                noteId: request.NoteId,
+                generationType: "Goals",
+                model: model,
+                userId: userGuid,
+                success: result.Success,
+                errorMessage: result.Success ? null : result.ErrorMessage);
             await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 

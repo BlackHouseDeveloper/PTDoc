@@ -23,7 +23,7 @@
                   aria-label="@(string.IsNullOrEmpty(Label) ? Placeholder : Label)"
                   aria-readonly="@IsReadOnly"
                   data-testid="@($"{TestId}-textarea")"
-                  value="@Value"
+                  value="@_currentValue"
                   @oninput="OnInputChangedAsync">
         </textarea>
     </div>
@@ -63,6 +63,7 @@
     private string _inputId = $"narrative-{Guid.NewGuid():N}";
     private ReviewState _reviewState = ReviewState.None;
     private bool _hasClinicianEdits = false;
+    private string _currentValue = string.Empty;
 
     /// <summary>The current text value of the narrative box.</summary>
     [Parameter] public string Value { get; set; } = string.Empty;
@@ -91,6 +92,13 @@
     /// <summary>data-testid prefix for automation.</summary>
     [Parameter] public string TestId { get; set; } = "editable-narrative-box";
 
+    protected override void OnParametersSet()
+    {
+        // Keep backing field in sync when parent pushes a new value
+        // (safe because ValueChanged always keeps the parent up-to-date)
+        _currentValue = Value;
+    }
+
     /// <summary>
     /// Called by the parent (e.g. AssessmentTab) to load AI-generated text for review.
     /// Does NOT overwrite if the clinician has already made edits.
@@ -98,41 +106,41 @@
     public async Task LoadAiSuggestionAsync(string aiText)
     {
         // Safety: do not overwrite clinician edits
-        if (_hasClinicianEdits && !string.IsNullOrWhiteSpace(Value))
+        if (_hasClinicianEdits && !string.IsNullOrWhiteSpace(_currentValue))
         {
             return;
         }
 
-        Value = aiText;
+        _currentValue = aiText;
         _reviewState = ReviewState.Pending;
         _hasClinicianEdits = false;
 
-        await ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(_currentValue);
         StateHasChanged();
     }
 
     private async Task OnInputChangedAsync(ChangeEventArgs e)
     {
-        Value = e.Value?.ToString() ?? string.Empty;
+        _currentValue = e.Value?.ToString() ?? string.Empty;
         _hasClinicianEdits = true;
         _reviewState = ReviewState.None;
-        await ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(_currentValue);
     }
 
     private async Task AcceptAsync()
     {
         _reviewState = ReviewState.Accepted;
-        await OnAccepted.InvokeAsync(Value);
+        await OnAccepted.InvokeAsync(_currentValue);
         StateHasChanged();
     }
 
     private async Task DiscardAsync()
     {
-        Value = string.Empty;
+        _currentValue = string.Empty;
         _reviewState = ReviewState.None;
         _hasClinicianEdits = false;
 
-        await ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(_currentValue);
         await OnDiscarded.InvokeAsync();
         StateHasChanged();
     }

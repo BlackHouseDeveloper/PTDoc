@@ -7,9 +7,13 @@ namespace PTDoc.AI;
 /// Converts structured clinical inputs into safe, consistent prompt text.
 ///
 /// Safety rules enforced:
-/// - No patient name, MRN, DOB, or other direct identifiers are included.
-/// - Only de-contextualized clinical observations are embedded in prompts.
-/// - Field labels are sanitized to prevent prompt injection.
+/// - <c>NoteId</c> and other internal system identifiers are never embedded in prompts.
+/// - Known prompt-injection tokens are stripped from all user-supplied strings.
+/// - Optional fields are omitted entirely when empty, to keep prompts concise.
+///
+/// Note: Callers are responsible for not passing direct patient identifiers
+/// (name, MRN, DOB, etc.) as field values. This class strips injection tokens
+/// but does not perform general PHI redaction.
 /// </summary>
 public sealed class ClinicalPromptBuilder
 {
@@ -118,8 +122,18 @@ public sealed class ClinicalPromptBuilder
     }
 
     /// <summary>
-    /// Strips tokens that could allow prompt injection.
-    /// Only printable ASCII / basic Unicode characters are kept.
+    /// Strips known prompt-injection tokens from a single input string.
+    /// Trims whitespace and collapses multiple internal spaces.
+    /// </summary>
+    /// <remarks>
+    /// This targets structural injection patterns (e.g. role override headers)
+    /// rather than PHI redaction. Callers must ensure no direct patient
+    /// identifiers are passed as input values.
+    /// </remarks>
+    public string SanitizeInput(string input) => Sanitize(input);
+
+    /// <summary>
+    /// Internal sanitization: strips prompt-injection tokens and collapses whitespace.
     /// </summary>
     private static string Sanitize(string input)
     {

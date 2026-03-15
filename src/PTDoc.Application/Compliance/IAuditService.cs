@@ -226,25 +226,44 @@ public class AuditEvent
 
     /// <summary>
     /// Creates an audit event for an AI generation attempt.
-    /// NO PHI — only generation type, model, and note identity.
+    /// NO PHI — only generation type, model, and (optionally) note identity.
     /// </summary>
-    public static AuditEvent AiGenerationAttempt(Guid noteId, string generationType, string model, Guid? userId)
+    /// <param name="noteId">Note being authored. Pass <c>null</c> when no note ID is available for the endpoint.</param>
+    /// <param name="generationType">Short label such as "Assessment", "Plan", or "Goals".</param>
+    /// <param name="model">AI model name, e.g. "gpt-4".</param>
+    /// <param name="userId">Authenticated user performing the generation.</param>
+    /// <param name="success">Whether the generation succeeded.</param>
+    /// <param name="errorMessage">Optional error description when <paramref name="success"/> is false.</param>
+    public static AuditEvent AiGenerationAttempt(
+        Guid? noteId,
+        string generationType,
+        string model,
+        Guid? userId,
+        bool success = true,
+        string? errorMessage = null)
     {
+        var metadata = new Dictionary<string, object>
+        {
+            ["GenerationType"] = generationType,
+            ["Model"] = model,
+            ["Timestamp"] = DateTime.UtcNow
+        };
+
+        if (noteId.HasValue)
+        {
+            metadata["NoteId"] = noteId.Value;
+        }
+
         return new AuditEvent
         {
             EventType = "AiGenerationAttempt",
-            Severity = "Info",
-            Success = true,
+            Severity = success ? "Info" : "Warning",
+            Success = success,
+            ErrorMessage = errorMessage,
             UserId = userId,
-            EntityType = "ClinicalNote",
+            EntityType = noteId.HasValue ? "ClinicalNote" : null,
             EntityId = noteId,
-            Metadata = new Dictionary<string, object>
-            {
-                ["NoteId"] = noteId,
-                ["GenerationType"] = generationType,
-                ["Model"] = model,
-                ["Timestamp"] = DateTime.UtcNow
-            }
+            Metadata = metadata
         };
     }
 
