@@ -10,7 +10,7 @@
         <h3 class="note-validation-panel__title">Clinical Validation</h3>
         <button type="button"
                 class="note-validation-panel__revalidate-btn"
-                @onclick="ValidateAsync"
+                @onclick="OnRevalidateClickedAsync"
                 disabled="@(_isLoading || IsNoteSigned)"
                 aria-label="Re-run validation"
                 data-testid="note-validation-revalidate-btn">
@@ -28,6 +28,10 @@
     @if (_isLoading)
     {
         <p class="note-validation-panel__loading" role="status" aria-live="polite">Validating note…</p>
+    }
+    else if (_errorMessage is not null)
+    {
+        <p class="note-validation-panel__error" role="alert" data-testid="note-validation-error">@_errorMessage</p>
     }
     else if (_blockingViolations.Count > 0 || _warnings.Count > 0 || _complianceAlerts.Count > 0)
     {
@@ -98,6 +102,7 @@
 @code {
     private bool _isLoading = false;
     private bool _hasValidated = false;
+    private string? _errorMessage;
     private Guid _lastValidatedNoteId = Guid.Empty;
     private List<RuleEvaluationResult> _blockingViolations = new();
     private List<RuleEvaluationResult> _warnings = new();
@@ -139,11 +144,21 @@
     protected override async Task OnParametersSetAsync()
     {
         // Re-validate when NoteId changes (e.g., navigating between notes).
-        if (NoteId != Guid.Empty && NoteId != _lastValidatedNoteId)
+        // Guard: skip if already loading or NoteId hasn't changed.
+        if (NoteId != Guid.Empty && NoteId != _lastValidatedNoteId && !_isLoading)
         {
             await ValidateAsync();
         }
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // Event handlers
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Blazor-compatible Task-returning handler for the Re-validate button click.
+    /// </summary>
+    private Task OnRevalidateClickedAsync() => ValidateAsync();
 
     // ──────────────────────────────────────────────────────────────
     // Public API — callable by parent (e.g., sign button handler)
@@ -157,14 +172,22 @@
     {
         if (NoteId == Guid.Empty) return true;
 
+        // Capture NoteId locally so stale async results can be discarded if the
+        // user navigates to a different note while validation is in flight.
+        var validatingNoteId = NoteId;
+
         _isLoading = true;
         _hasValidated = false;
+        _errorMessage = null;
         _lastValidatedNoteId = Guid.Empty;
         StateHasChanged();
 
         try
         {
-            var violations = await ClinicalRulesEngine.RunClinicalValidationAsync(NoteId);
+            var violations = await ClinicalRulesEngine.RunClinicalValidationAsync(validatingNoteId);
+
+            // Discard results if the user navigated to a different note mid-flight.
+            if (NoteId != validatingNoteId) return false;
 
             _blockingViolations = violations.Where(v => v.Blocking).ToList();
             _warnings = violations
@@ -175,7 +198,7 @@
                 .ToList();
 
             _hasValidated = true;
-            _lastValidatedNoteId = NoteId;
+            _lastValidatedNoteId = validatingNoteId;
 
             var canSign = _blockingViolations.Count == 0;
             await OnValidated.InvokeAsync(canSign);
@@ -183,7 +206,15 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Clinical validation failed for note {NoteId}", NoteId);
+            Logger.LogError(ex, "Clinical validation failed for note {NoteId}", validatingNoteId);
+
+            // Surface the error in the panel and notify parent that signing is not allowed.
+            if (NoteId == validatingNoteId)
+            {
+                _errorMessage = "Validation could not be completed. Please try again.";
+                _hasValidated = true;
+                await OnValidated.InvokeAsync(false);
+            }
             return false;
         }
         finally

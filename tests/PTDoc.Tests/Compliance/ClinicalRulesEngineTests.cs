@@ -41,6 +41,22 @@ public class ClinicalRulesEngineTests : IDisposable
         Assert.Equal(ValidationSeverity.Error, result[0].Severity);
     }
 
+    // ─── Invalid ContentJson ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RunClinicalValidation_MalformedContentJson_BlockingInvalidContentError()
+    {
+        var note = AddNote(NoteType.Daily, "NOT_VALID_JSON{{{{");
+
+        var result = await _engine.RunClinicalValidationAsync(note.Id);
+
+        var rule = result.FirstOrDefault(r => r.RuleId == "INVALID_CONTENT_JSON");
+        Assert.NotNull(rule);
+        Assert.True(rule.Blocking);
+        Assert.Equal(ValidationSeverity.Error, rule.Severity);
+        Assert.Equal(RuleCategory.DocCompleteness, rule.Category);
+    }
+
     // ─── Documentation completeness: objective measures ───────────────────────
 
     [Fact]

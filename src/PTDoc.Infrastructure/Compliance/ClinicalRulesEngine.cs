@@ -65,7 +65,15 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         }
         catch (JsonException)
         {
-            // Treat unparseable JSON as empty content — completeness rules will fire.
+            // ContentJson is malformed — add a blocking violation so the note cannot be signed.
+            results.Add(new RuleEvaluationResult
+            {
+                RuleId = "INVALID_CONTENT_JSON",
+                Category = RuleCategory.DocCompleteness,
+                Severity = ValidationSeverity.Error,
+                Message = "Note content is malformed and cannot be validated. Save the note again before signing.",
+                Blocking = true
+            });
         }
 
         // ── Documentation Completeness ────────────────────────────────────────
