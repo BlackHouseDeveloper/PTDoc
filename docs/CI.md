@@ -50,6 +50,10 @@ Runs on every pull request against `main`. Enforces the PFPT secret management p
 
 See [Secret Policy CI (Sprint K)](#secret-policy-ci-sprint-k) below.
 
+### `ci-release-gate.yml` – Release Gate Suite (Sprint T)
+Runs on every pull request against `main` and on every push to `main`. The final CI gate
+suite required for release readiness. See [Release Gate CI (Sprint T)](#release-gate-ci-sprint-t) below.
+
 ---
 
 ## Database Provider Testing
@@ -241,6 +245,70 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=SecretPolicy" \
   --verbosity normal
 ```
+
+---
+
+## Release Gate CI (Sprint T)
+
+**Sprint T** introduced `ci-release-gate.yml` to serve as the final CI gate suite for
+release readiness validation. It runs on every pull request against `main` and on every
+push to `main`.
+
+### Gate Jobs
+
+| Job | Filter | Purpose |
+|-----|--------|---------|
+| `rbac-gate` | `Category=RBAC` | Validates RBAC policy enforcement (role matrix, PTA restrictions, policy constants) |
+| `tenant-gate` | `Category=Tenancy` | Validates tenant isolation (EF query filters, ClinicId scoping, cross-clinic data gating) |
+| `offline-sync-gate` | `Category=OfflineSync` | Validates offline sync protocol, conflict resolution (LWW, signed immutability, intake locking), and encrypted sync queue persistence |
+| `compliance-gate` | `Category=Compliance` | Validates Medicare rules engine (PN frequency, eval/discharge timing), note immutability, and audit trail |
+| `release-summary` | (aggregates above) | Checks all gates passed, generates a timestamped release readiness checklist artifact |
+
+### Test Category Coverage
+
+The following test files are tagged and must pass their respective gate:
+
+| `[Category=RBAC]` | `Security/RbacRoleMatrixTests.cs` |
+| `[Category=Tenancy]` | `Tenancy/TenantIsolationTests.cs` |
+| `[Category=OfflineSync]` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `Integration/SyncIntegrationTests.cs` |
+| `[Category=Compliance]` | `Compliance/RulesEngineTests.cs`, `Compliance/SignatureServiceTests.cs`, `Compliance/NoteComplianceIntegrationTests.cs` |
+
+### Release Readiness Artifact
+
+Every `release-summary` job run uploads a `release-readiness-checklist-{run_number}.md`
+artifact (retained 90 days) documenting the gate result, commit SHA, and checklist for
+manual sign-off items.
+
+### When It Fails
+
+The `release-summary` job fails (and blocks merging) when any of the four gate jobs did
+not succeed. Each gate job also fails individually if its `dotnet test` run reports any
+failing tests.
+
+### Running Locally
+
+```bash
+# RBAC tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=RBAC" --verbosity normal
+
+# Tenant isolation tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=Tenancy" --verbosity normal
+
+# Offline sync tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=OfflineSync" --verbosity normal
+
+# Compliance tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=Compliance" --verbosity normal
+```
+
+### Related Documentation
+
+- `docs/RELEASE_READINESS_REPORT.md` — full release evidence pack
+- `docs/ACCEPTANCE_EVIDENCE_MAP.md` — acceptance criteria → evidence mapping through Sprint T
 
 ---
 

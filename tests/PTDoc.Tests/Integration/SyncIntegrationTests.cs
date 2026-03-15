@@ -13,6 +13,7 @@ namespace PTDoc.Tests.Integration;
 /// Integration tests for sync queue persistence with encrypted databases.
 /// Validates that encryption does not break sync functionality.
 /// </summary>
+[Xunit.Trait("Category", "OfflineSync")]
 public class SyncIntegrationTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;

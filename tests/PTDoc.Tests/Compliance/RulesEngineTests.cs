@@ -7,6 +7,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Compliance;
 
+[Xunit.Trait("Category", "Compliance")]
 public class RulesEngineTests : IDisposable
 {
     private readonly ApplicationDbContext _context;

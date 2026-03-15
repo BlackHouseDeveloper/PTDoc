@@ -9,6 +9,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Compliance;
 
+[Xunit.Trait("Category", "Compliance")]
 public class SignatureServiceTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
