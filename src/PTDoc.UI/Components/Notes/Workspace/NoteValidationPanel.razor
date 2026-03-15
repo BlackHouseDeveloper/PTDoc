@@ -1,0 +1,226 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.Compliance
+
+@inject IClinicalRulesEngine ClinicalRulesEngine
+@inject ILogger<NoteValidationPanel> Logger
+
+<div class="note-validation-panel" data-testid="note-validation-panel" role="region" aria-label="Clinical validation">
+
+    <div class="note-validation-panel__header">
+        <h3 class="note-validation-panel__title">Clinical Validation</h3>
+        <button type="button"
+                class="note-validation-panel__revalidate-btn"
+                @onclick="OnRevalidateClickedAsync"
+                disabled="@(_isLoading || IsNoteSigned)"
+                aria-label="Re-run validation"
+                data-testid="note-validation-revalidate-btn">
+            @if (_isLoading)
+            {
+                <span aria-hidden="true">Checking…</span>
+            }
+            else
+            {
+                <span aria-hidden="true">Re-validate</span>
+            }
+        </button>
+    </div>
+
+    @if (_isLoading)
+    {
+        <p class="note-validation-panel__loading" role="status" aria-live="polite">Validating note…</p>
+    }
+    else if (_errorMessage is not null)
+    {
+        <p class="note-validation-panel__error" role="alert" data-testid="note-validation-error">@_errorMessage</p>
+    }
+    else if (_blockingViolations.Count > 0 || _warnings.Count > 0 || _complianceAlerts.Count > 0)
+    {
+        @if (_blockingViolations.Count > 0)
+        {
+            <div class="note-validation-panel__section note-validation-panel__section--blocking"
+                 role="alert"
+                 aria-label="Blocking errors that prevent signing"
+                 data-testid="note-validation-blocking">
+                <h4 class="note-validation-panel__section-title">Blocking Errors</h4>
+                <ul class="note-validation-panel__list" role="list">
+                    @foreach (var v in _blockingViolations)
+                    {
+                        <li class="note-validation-panel__item note-validation-panel__item--error">
+                            <span class="note-validation-panel__rule-id" aria-label="Rule">@v.RuleId</span>
+                            <span class="note-validation-panel__message">@v.Message</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_warnings.Count > 0)
+        {
+            <div class="note-validation-panel__section note-validation-panel__section--warnings"
+                 aria-label="Warnings"
+                 data-testid="note-validation-warnings">
+                <h4 class="note-validation-panel__section-title">Warnings</h4>
+                <ul class="note-validation-panel__list" role="list">
+                    @foreach (var v in _warnings)
+                    {
+                        <li class="note-validation-panel__item note-validation-panel__item--warning">
+                            <span class="note-validation-panel__rule-id" aria-label="Rule">@v.RuleId</span>
+                            <span class="note-validation-panel__message">@v.Message</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_complianceAlerts.Count > 0)
+        {
+            <div class="note-validation-panel__section note-validation-panel__section--compliance"
+                 aria-label="Compliance alerts"
+                 data-testid="note-validation-compliance">
+                <h4 class="note-validation-panel__section-title">Compliance Alerts</h4>
+                <ul class="note-validation-panel__list" role="list">
+                    @foreach (var v in _complianceAlerts)
+                    {
+                        <li class="note-validation-panel__item note-validation-panel__item--info">
+                            <span class="note-validation-panel__rule-id" aria-label="Rule">@v.RuleId</span>
+                            <span class="note-validation-panel__message">@v.Message</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+    }
+    else if (_hasValidated)
+    {
+        <div class="note-validation-panel__pass" role="status" data-testid="note-validation-pass">
+            <span>&#10003; No compliance issues found. Note is ready to sign.</span>
+        </div>
+    }
+
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private bool _hasValidated = false;
+    private string? _errorMessage;
+    private Guid _lastValidatedNoteId = Guid.Empty;
+    private List<RuleEvaluationResult> _blockingViolations = new();
+    private List<RuleEvaluationResult> _warnings = new();
+    private List<RuleEvaluationResult> _complianceAlerts = new();
+
+    // ──────────────────────────────────────────────────────────────
+    // Parameters
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The note ID to validate. Required.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Guid NoteId { get; set; }
+
+    /// <summary>
+    /// When true, the note is signed. Validation re-run is disabled.
+    /// </summary>
+    [Parameter]
+    public bool IsNoteSigned { get; set; } = false;
+
+    /// <summary>
+    /// Raised after validation completes. Provides <c>true</c> when
+    /// there are no blocking violations (note can be signed).
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnValidated { get; set; }
+
+    // ──────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ──────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Initial load is handled by OnParametersSetAsync.
+        await base.OnInitializedAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Re-validate when NoteId changes (e.g., navigating between notes).
+        // Guard: skip if already loading or NoteId hasn't changed.
+        if (NoteId != Guid.Empty && NoteId != _lastValidatedNoteId && !_isLoading)
+        {
+            await ValidateAsync();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Event handlers
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Blazor-compatible Task-returning handler for the Re-validate button click.
+    /// </summary>
+    private Task OnRevalidateClickedAsync() => ValidateAsync();
+
+    // ──────────────────────────────────────────────────────────────
+    // Public API — callable by parent (e.g., sign button handler)
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs clinical validation and updates the panel.
+    /// Returns true when no blocking violations were found.
+    /// </summary>
+    public async Task<bool> ValidateAsync()
+    {
+        if (NoteId == Guid.Empty) return true;
+
+        // Capture NoteId locally so stale async results can be discarded if the
+        // user navigates to a different note while validation is in flight.
+        var validatingNoteId = NoteId;
+
+        _isLoading = true;
+        _hasValidated = false;
+        _errorMessage = null;
+        _lastValidatedNoteId = Guid.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var violations = await ClinicalRulesEngine.RunClinicalValidationAsync(validatingNoteId);
+
+            // Discard results if the user navigated to a different note mid-flight.
+            if (NoteId != validatingNoteId) return false;
+
+            _blockingViolations = violations.Where(v => v.Blocking).ToList();
+            _warnings = violations
+                .Where(v => !v.Blocking && v.Severity == ValidationSeverity.Warning)
+                .ToList();
+            _complianceAlerts = violations
+                .Where(v => !v.Blocking && v.Severity == ValidationSeverity.Info)
+                .ToList();
+
+            _hasValidated = true;
+            _lastValidatedNoteId = validatingNoteId;
+
+            var canSign = _blockingViolations.Count == 0;
+            await OnValidated.InvokeAsync(canSign);
+            return canSign;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical validation failed for note {NoteId}", validatingNoteId);
+
+            // Surface the error in the panel and notify parent that signing is not allowed.
+            if (NoteId == validatingNoteId)
+            {
+                _errorMessage = "Validation could not be completed. Please try again.";
+                _hasValidated = true;
+                await OnValidated.InvokeAsync(false);
+            }
+            return false;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

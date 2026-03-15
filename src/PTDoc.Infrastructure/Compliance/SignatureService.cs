@@ -12,25 +12,30 @@ namespace PTDoc.Infrastructure.Compliance;
 /// <summary>
 /// Service for managing clinical note signatures and addendums.
 /// Uses SHA-256 for deterministic signature hashing.
+/// Sprint N: Pre-sign clinical validation integrated via IClinicalRulesEngine.
 /// </summary>
 public class SignatureService : ISignatureService
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _auditService;
     private readonly IIdentityContextAccessor _identityContext;
+    private readonly IClinicalRulesEngine _clinicalRulesEngine;
 
     public SignatureService(
         ApplicationDbContext context,
         IAuditService auditService,
-        IIdentityContextAccessor identityContext)
+        IIdentityContextAccessor identityContext,
+        IClinicalRulesEngine clinicalRulesEngine)
     {
         _context = context;
         _auditService = auditService;
         _identityContext = identityContext;
+        _clinicalRulesEngine = clinicalRulesEngine;
     }
 
     /// <summary>
     /// Signs a clinical note with SHA-256 hash of canonical content.
+    /// Sprint N: Runs pre-sign clinical validation; blocking violations prevent signing.
     /// </summary>
     public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default)
     {
@@ -51,6 +56,20 @@ public class SignatureService : ISignatureService
             {
                 Success = false,
                 ErrorMessage = "Note is already signed"
+            };
+        }
+
+        // Sprint N: Run clinical validation before signing.
+        // Blocking violations prevent the note from being signed.
+        var violations = await _clinicalRulesEngine.RunClinicalValidationAsync(noteId, ct);
+        var blockingViolations = violations.Where(v => v.Blocking).ToList();
+        if (blockingViolations.Count > 0)
+        {
+            return new SignatureResult
+            {
+                Success = false,
+                ErrorMessage = "Note cannot be signed due to compliance violations. Resolve all blocking issues first.",
+                ValidationFailures = blockingViolations.AsReadOnly()
             };
         }
 

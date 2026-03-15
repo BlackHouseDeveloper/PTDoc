@@ -68,6 +68,7 @@ builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 // Register compliance services
 builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
 
 // Register AI services

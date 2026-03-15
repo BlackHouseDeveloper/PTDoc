@@ -15,6 +15,7 @@ public class SignatureServiceTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly Mock<IAuditService> _mockAuditService;
     private readonly Mock<IIdentityContextAccessor> _mockIdentityContext;
+    private readonly Mock<IClinicalRulesEngine> _mockClinicalRulesEngine;
     private readonly SignatureService _signatureService;
 
     public SignatureServiceTests()
@@ -26,7 +27,18 @@ public class SignatureServiceTests : IDisposable
         _context = new ApplicationDbContext(options);
         _mockAuditService = new Mock<IAuditService>();
         _mockIdentityContext = new Mock<IIdentityContextAccessor>();
-        _signatureService = new SignatureService(_context, _mockAuditService.Object, _mockIdentityContext.Object);
+
+        // Sprint N: Default mock returns no violations so existing signature tests pass.
+        _mockClinicalRulesEngine = new Mock<IClinicalRulesEngine>();
+        _mockClinicalRulesEngine
+            .Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        _signatureService = new SignatureService(
+            _context,
+            _mockAuditService.Object,
+            _mockIdentityContext.Object,
+            _mockClinicalRulesEngine.Object);
     }
 
     [Fact]
@@ -248,6 +260,90 @@ public class SignatureServiceTests : IDisposable
 
         // Assert
         Assert.True(isValid);
+    }
+
+    // ─── Sprint N: Pre-sign clinical validation ───────────────────────────────
+
+    [Fact]
+    public async Task SignNote_BlockingClinicalViolations_ReturnsFailureWithViolations()
+    {
+        // Arrange: mock the clinical rules engine to return a blocking violation.
+        var noteId = Guid.NewGuid();
+        var blockingViolation = new RuleEvaluationResult
+        {
+            RuleId = "DOC_GOALS",
+            Category = RuleCategory.DocCompleteness,
+            Severity = ValidationSeverity.Error,
+            Message = "Treatment goals are required.",
+            Blocking = true
+        };
+        _mockClinicalRulesEngine
+            .Setup(e => e.RunClinicalValidationAsync(noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { blockingViolation });
+
+        var note = new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _signatureService.SignNoteAsync(noteId, Guid.NewGuid());
+
+        // Assert: signing must be blocked when there are blocking violations.
+        Assert.False(result.Success);
+        Assert.NotNull(result.ValidationFailures);
+        Assert.Single(result.ValidationFailures!);
+        Assert.Equal("DOC_GOALS", result.ValidationFailures![0].RuleId);
+        Assert.True(result.ValidationFailures![0].Blocking);
+
+        // The note must NOT have been signed.
+        var noteInDb = await _context.ClinicalNotes.FindAsync(noteId);
+        Assert.Null(noteInDb!.SignatureHash);
+    }
+
+    [Fact]
+    public async Task SignNote_NonBlockingWarningsOnly_SigningSucceeds()
+    {
+        // Arrange: mock the clinical rules engine to return only non-blocking warnings.
+        var noteId = Guid.NewGuid();
+        var warning = new RuleEvaluationResult
+        {
+            RuleId = "DOC_GOALS",
+            Category = RuleCategory.DocCompleteness,
+            Severity = ValidationSeverity.Warning,
+            Message = "No goals found.",
+            Blocking = false
+        };
+        _mockClinicalRulesEngine
+            .Setup(e => e.RunClinicalValidationAsync(noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { warning });
+
+        var note = new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _signatureService.SignNoteAsync(noteId, Guid.NewGuid());
+
+        // Assert: signing should succeed; warnings do not block.
+        Assert.True(result.Success);
+        Assert.NotNull(result.SignatureHash);
+        Assert.Null(result.ValidationFailures);
     }
 
     public void Dispose()
