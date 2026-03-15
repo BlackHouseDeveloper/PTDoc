@@ -204,10 +204,11 @@ public class OutcomeMeasureRegistryTests
     }
 
     [Fact]
-    public void CalculateImprovementPercent_ZeroBaseline_ReturnsZero()
+    public void CalculateImprovementPercent_ZeroBaseline_CalculatesCorrectly()
     {
+        // LEFS: baseline 0, current 30 → 30/80 = 37.5% improvement
         var pct = _registry.CalculateImprovementPercent(OutcomeMeasureType.LEFS, 0, 30);
-        Assert.Equal(0, pct);
+        Assert.Equal(37.5, pct, precision: 2);
     }
 
     // ──────────────────────────────────────────────────────────────

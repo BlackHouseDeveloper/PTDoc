@@ -40,6 +40,14 @@ public class OutcomeTrendChartDataTests
     }
 
     [Fact]
+    public void CalculateImprovementPercent_ZeroBaseline_LEFS_CalculatesCorrectly()
+    {
+        // LEFS: baseline 0, current 20 → 20/80 = 25% improvement
+        var pct = _registry.CalculateImprovementPercent(OutcomeMeasureType.LEFS, 0, 20);
+        Assert.Equal(25.0, pct, precision: 2);
+    }
+
+    [Fact]
     public void ImprovementPercent_LEFS_40To60_Returns25Percent()
     {
         // LEFS range = 80. Gain from 40 to 60 = 20 points / 80 = 25%

@@ -201,7 +201,10 @@
                 MeasureType = _selectedDefinition!.MeasureType,
                 Score = _scoreInput!.Value,
                 DateRecorded = DateTime.UtcNow,
-                ClinicianId = Guid.Empty // populated by the service/API layer
+                // ClinicianId must be supplied by the caller (API/service layer)
+                // when handling OnScoreRecorded. Set to Empty here as a placeholder;
+                // the persisting service receives the authenticated user's ID directly.
+                ClinicianId = Guid.Empty
             };
 
             await OnScoreRecorded.InvokeAsync(result);

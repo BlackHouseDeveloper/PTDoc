@@ -54,9 +54,6 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
     /// <inheritdoc />
     public double CalculateImprovementPercent(OutcomeMeasureType measureType, double baselineScore, double currentScore)
     {
-        if (baselineScore == 0)
-            return 0;
-
         var definition = GetDefinition(measureType);
         var rawChange = currentScore - baselineScore;
         var range = definition.MaxScore - definition.MinScore;
@@ -199,6 +196,31 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
                 HigherIsBetter = false,
                 ScoreUnit = "/10",
                 MinimumClinicallyImportantDifference = 2,
+                RecommendedForBodyParts = new[]
+                {
+                    BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
+                    BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
+                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.Other
+                },
+                ScoringBands = new[]
+                {
+                    new ScoringBand { Label = "No pain", MinScore = 0, MaxScore = 0 },
+                    new ScoringBand { Label = "Mild pain", MinScore = 1, MaxScore = 3 },
+                    new ScoringBand { Label = "Moderate pain", MinScore = 4, MaxScore = 6 },
+                    new ScoringBand { Label = "Severe pain", MinScore = 7, MaxScore = 10 }
+                }
+            },
+            new()
+            {
+                MeasureType = OutcomeMeasureType.VAS,
+                Abbreviation = "VAS",
+                FullName = "Visual Analog Scale",
+                Description = "Patient-reported pain intensity on a 0–10 visual analog continuum.",
+                MinScore = 0,
+                MaxScore = 10,
+                HigherIsBetter = false,
+                ScoreUnit = "/10",
+                MinimumClinicallyImportantDifference = 1.5,
                 RecommendedForBodyParts = new[]
                 {
                     BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,

@@ -52,6 +52,8 @@ public class GoalGenerationOutcomeIntegrationTests
         Assert.True(result.Success);
         Assert.Contains("unable to sit >20 minutes", result.GeneratedText);
         Assert.DoesNotContain("MCID", result.GeneratedText);
+        // Fallback path should produce the generic return-to-prior-level goal
+        Assert.Contains("return to prior level of function", result.GeneratedText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
