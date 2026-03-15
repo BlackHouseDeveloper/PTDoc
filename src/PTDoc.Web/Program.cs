@@ -28,6 +28,11 @@ builder.Services.AddScoped<IIntakeService, MockIntakeService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 
+// Register AI generation services
+builder.Services.AddScoped<PTDoc.Application.AI.IAiService, PTDoc.AI.Services.OpenAiService>();
+builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
+builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
+
 builder.Services.Configure<IntakeInviteOptions>(
     builder.Configuration.GetSection(IntakeInviteOptions.SectionName));
 
