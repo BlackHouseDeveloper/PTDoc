@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Api.Diagnostics;
@@ -10,7 +11,7 @@ namespace PTDoc.Api.Diagnostics;
 /// Sensitive configuration values (connection strings, encryption keys) are
 /// never included in responses.
 ///
-/// Endpoint: <c>GET /diagnostics/db</c> (requires authentication)
+/// Endpoint: <c>GET /diagnostics/db</c> (requires Admin or Owner role)
 ///
 /// Decision reference: Sprint F — Observability, Migration Safety, and Operational Guardrails.
 /// </summary>
@@ -20,7 +21,7 @@ public static class DiagnosticsEndpoints
     {
         var group = app.MapGroup("/diagnostics")
             .WithTags("Diagnostics")
-            .RequireAuthorization();
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly);
 
         group.MapGet("/db", async (
             ApplicationDbContext dbContext,

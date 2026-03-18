@@ -82,7 +82,8 @@ public class RbacRoleMatrixTests : IAsyncDisposable
             AuthorizationPolicies.NoteWrite,
             AuthorizationPolicies.IntakeRead,
             AuthorizationPolicies.IntakeWrite,
-            AuthorizationPolicies.ClinicalStaff
+            AuthorizationPolicies.ClinicalStaff,
+            AuthorizationPolicies.AdminOnly
         };
 
         Assert.Equal(policyNames.Length, new HashSet<string>(policyNames).Count);
@@ -443,6 +444,79 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     public async Task ClinicalStaff_Aide_IsNotAuthorized()
     {
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.ClinicalStaff, Roles.Aide));
+    }
+
+    // ─── AdminOnly policy role matrix ────────────────────────────────────────
+
+    [Fact]
+    public async Task AdminOnly_Admin_IsAuthorized()
+    {
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.Admin));
+    }
+
+    [Fact]
+    public async Task AdminOnly_Owner_IsAuthorized()
+    {
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.Owner));
+    }
+
+    [Fact]
+    public async Task AdminOnly_PT_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.PT));
+    }
+
+    [Fact]
+    public async Task AdminOnly_PTA_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.PTA));
+    }
+
+    [Fact]
+    public async Task AdminOnly_Aide_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.Aide));
+    }
+
+    [Fact]
+    public async Task AdminOnly_FrontDesk_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.FrontDesk));
+    }
+
+    [Fact]
+    public async Task AdminOnly_Patient_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.Patient));
+    }
+
+    [Fact]
+    public void RegisteredPolicies_IncludesAdminOnlyPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
+
+        var sp = services.BuildServiceProvider();
+        var authOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        static IReadOnlySet<string> GetAllowedRoles(AuthorizationPolicy? policy)
+        {
+            var requirement = policy?.Requirements
+                .OfType<Microsoft.AspNetCore.Authorization.Infrastructure.RolesAuthorizationRequirement>()
+                .FirstOrDefault();
+            return requirement?.AllowedRoles is not null
+                ? new HashSet<string>(requirement.AllowedRoles)
+                : new HashSet<string>();
+        }
+
+        var adminOnlyRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.AdminOnly));
+        Assert.Contains(Roles.Admin, adminOnlyRoles);
+        Assert.Contains(Roles.Owner, adminOnlyRoles);
+        Assert.DoesNotContain(Roles.PT, adminOnlyRoles);
+        Assert.DoesNotContain(Roles.PTA, adminOnlyRoles);
+        Assert.DoesNotContain(Roles.Aide, adminOnlyRoles);
+        Assert.DoesNotContain(Roles.Patient, adminOnlyRoles);
+        Assert.DoesNotContain(Roles.FrontDesk, adminOnlyRoles);
     }
 
     // ─── Encryption key policy ───────────────────────────────────────────────

@@ -76,6 +76,9 @@ public static class AuthorizationPolicies
     /// <summary>Access sync and compliance evaluation endpoints — PT, PTA, Admin.</summary>
     public const string ClinicalStaff = "ClinicalStaff";
 
+    /// <summary>Admin-only access — system settings, diagnostics, configuration — Admin, Owner.</summary>
+    public const string AdminOnly = "AdminOnly";
+
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
     /// Call this from both <c>PTDoc.Api/Program.cs</c> and authorization tests to ensure
@@ -114,5 +117,9 @@ public static class AuthorizationPolicies
         // ClinicalStaff: sync and compliance evaluation — all authenticated staff
         options.AddPolicy(ClinicalStaff,
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
+
+        // AdminOnly: system settings and operational diagnostics — Owner and Admin only
+        options.AddPolicy(AdminOnly,
+            p => p.RequireRole(Roles.Admin, Roles.Owner));
     }
 }

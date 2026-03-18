@@ -1,0 +1,25 @@
+@namespace PTDoc.UI.Components.Auth
+@using Microsoft.AspNetCore.Components.Authorization
+
+<AuthorizeView Roles="@Roles">
+    <Authorized>
+        @ChildContent
+    </Authorized>
+    <NotAuthorized>
+        @FallbackContent
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    /// <summary>
+    /// Comma-separated list of roles that are allowed to see <see cref="ChildContent"/>.
+    /// Matches the <c>Roles</c> parameter of <see cref="AuthorizeView"/>.
+    /// </summary>
+    [Parameter, EditorRequired] public string? Roles { get; set; }
+
+    /// <summary>Content rendered when the user has one of the required roles.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Optional fallback content rendered when the user does not have the required role.</summary>
+    [Parameter] public RenderFragment? FallbackContent { get; set; }
+}

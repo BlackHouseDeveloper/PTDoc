@@ -1,0 +1,11 @@
+@using Microsoft.Extensions.Logging
+@inject NavigationManager Nav
+@inject ILogger<RedirectToAccessDenied> Logger
+
+@code {
+    protected override void OnInitialized()
+    {
+        Logger.LogInformation("RedirectToAccessDenied triggered for URI: {Uri}", Nav.Uri);
+        Nav.NavigateTo("/denied", forceLoad: false);
+    }
+}
