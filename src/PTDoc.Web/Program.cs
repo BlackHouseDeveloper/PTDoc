@@ -352,9 +352,13 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
 app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 {
+    var requiresExternalProviderSignOut = LogoutSessionClassifier.RequiresExternalProviderSignOut(
+        httpContext.User,
+        entraExternalIdOptions.Enabled);
+
     await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-    if (entraExternalIdOptions.Enabled)
+    if (requiresExternalProviderSignOut)
     {
         var properties = new AuthenticationProperties
         {
