@@ -5,7 +5,11 @@
 @code {
     protected override void OnInitialized()
     {
-        Logger.LogInformation("RedirectToAccessDenied triggered for URI: {Uri}", Nav.Uri);
+        var sanitizedUri = Nav.Uri?
+            .Replace("\r", string.Empty)
+            .Replace("\n", string.Empty);
+
+        Logger.LogInformation("RedirectToAccessDenied triggered for URI: {Uri}", sanitizedUri);
         Nav.NavigateTo("/denied", forceLoad: false);
     }
 }
