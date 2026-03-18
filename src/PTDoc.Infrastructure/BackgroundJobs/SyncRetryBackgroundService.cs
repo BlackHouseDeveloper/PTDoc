@@ -20,6 +20,7 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SyncRetryBackgroundService> _logger;
     private readonly SyncRetryOptions _options;
+    private bool _schemaNotReadyLogged;
 
     public SyncRetryBackgroundService(
         IServiceScopeFactory scopeFactory,
@@ -78,6 +79,20 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
     {
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var schemaStatus = await BackgroundJobDatabaseGuard.GetSchemaStatusAsync(context, cancellationToken);
+        if (!schemaStatus.IsReady)
+        {
+            LogSchemaNotReady(schemaStatus);
+            return;
+        }
+
+        if (_schemaNotReadyLogged)
+        {
+            _logger.LogInformation(
+                "SyncRetryBackgroundService: database schema is current again; resuming retries.");
+            _schemaNotReadyLogged = false;
+        }
+
         var syncEngine = scope.ServiceProvider.GetRequiredService<ISyncEngine>();
 
         var cutoff = DateTime.UtcNow - _options.MinRetryDelay;
@@ -114,5 +129,21 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
             result.SuccessCount,
             result.FailureCount,
             result.ConflictCount);
+    }
+
+    private void LogSchemaNotReady(DatabaseSchemaStatus schemaStatus)
+    {
+        if (!_schemaNotReadyLogged)
+        {
+            _logger.LogWarning(
+                "SyncRetryBackgroundService: skipping execution because {PendingCount} database migration(s) are pending: {PendingMigrations}",
+                schemaStatus.PendingMigrations.Count,
+                string.Join(", ", schemaStatus.PendingMigrations));
+            _schemaNotReadyLogged = true;
+            return;
+        }
+
+        _logger.LogDebug(
+            "SyncRetryBackgroundService: database migrations are still pending; skipping this cycle.");
     }
 }

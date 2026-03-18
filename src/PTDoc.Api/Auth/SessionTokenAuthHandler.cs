@@ -73,9 +73,11 @@ public sealed class SessionTokenAuthHandler : AuthenticationHandler<Authenticati
 
         var claims = new List<Claim>
         {
+            new(PTDocClaimTypes.InternalUserId, session.UserId.ToString()),
             new(ClaimTypes.NameIdentifier, session.UserId.ToString()),
             new(ClaimTypes.Name, session.Username),
-            new(ClaimTypes.Role, session.Role)
+            new(ClaimTypes.Role, session.Role),
+            new(PTDocClaimTypes.AuthenticationType, "session_token")
         };
 
         // Sprint J: embed clinic scope so HttpTenantContextAccessor activates query filters.

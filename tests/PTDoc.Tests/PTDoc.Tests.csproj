@@ -38,8 +38,10 @@
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.Sqlite\PTDoc.Infrastructure.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.SqlServer\PTDoc.Infrastructure.Migrations.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure.Migrations.Postgres\PTDoc.Infrastructure.Migrations.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.Api\PTDoc.Api.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.AI\PTDoc.AI.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Integrations\PTDoc.Integrations.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.Web\PTDoc.Web.csproj" />
   </ItemGroup>
 
 </Project>

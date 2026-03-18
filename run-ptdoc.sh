@@ -27,6 +27,10 @@ API_CSPROJ="$ROOT_DIR/src/PTDoc.Api/PTDoc.Api.csproj"
 API_URL="${API_URL:-http://localhost:5170}"
 API_PORT="${API_URL##*:}"
 API_PID=""
+API_LOG_FILE="/tmp/ptdoc-api.log"
+DEV_SECRETS_SCRIPT="$ROOT_DIR/setup-dev-secrets.sh"
+DEV_SECRETS_LOG_FILE="/tmp/ptdoc-dev-secrets.log"
+SECRETS_BOOTSTRAPPED="false"
 
 # Colors
 RESET=""; BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""
@@ -79,30 +83,128 @@ start_api() {
     return
   fi
 
-  # Check if API is already running
-  if lsof -Pi :"$API_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo "${YELLOW}⚠ API already running on port $API_PORT${RESET}"
-    return
-  fi
+  get_port_listener_pids() {
+    lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN -t 2>/dev/null \
+      | sort -u \
+      | tr '\n' ' ' \
+      | sed 's/[[:space:]]*$//'
+  }
 
-  echo "${BLUE}🚀 Starting PTDoc API on $API_URL...${RESET}"
-  dotnet run --project "$API_CSPROJ" --no-build --urls "$API_URL" >/tmp/ptdoc-api.log 2>&1 &
-  API_PID=$!
-  
-  # Wait for API to be ready
-  echo -n "${BLUE}Waiting for API to start...${RESET}"
-  for i in {1..15}; do
-    if lsof -Pi :"$API_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
-      echo " ${GREEN}Ready!${RESET}"
+  describe_port_listeners() {
+    local pids
+    pids="$(get_port_listener_pids)"
+
+    if [[ -z "$pids" ]]; then
+      echo "none"
       return
     fi
-    sleep 1
-    echo -n "."
+
+    local details=""
+    local pid
+    for pid in $pids; do
+      local cmd
+      cmd="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+      if [[ -n "$cmd" ]]; then
+        details+="$cmd($pid) "
+      else
+        details+="pid:$pid "
+      fi
+    done
+
+    echo "${details% }"
+  }
+
+  is_api_healthy() {
+    if ! command -v curl >/dev/null 2>&1; then
+      return 1
+    fi
+
+    curl --silent --show-error --fail --max-time 2 \
+      "${API_URL%/}/health/live" >/dev/null 2>&1
+  }
+
+  api_failed_for_missing_secrets() {
+    [[ -f "$API_LOG_FILE" ]] || return 1
+    grep -Eiq "JWT signing key has not been configured|IntakeInvite:SigningKey has not been configured" "$API_LOG_FILE"
+  }
+
+  bootstrap_dev_secrets() {
+    if [[ "$SECRETS_BOOTSTRAPPED" == "true" ]]; then
+      return 1
+    fi
+
+    if [[ -n "${SKIP_SECRET_SETUP:-}" ]]; then
+      echo "${RED}❌ Dev secrets are missing and SKIP_SECRET_SETUP is set.${RESET}"
+      return 1
+    fi
+
+    if [[ ! -f "$DEV_SECRETS_SCRIPT" ]]; then
+      echo "${RED}❌ Dev secrets script not found at $DEV_SECRETS_SCRIPT${RESET}"
+      return 1
+    fi
+
+    echo "${YELLOW}⚠ Missing dev secrets detected. Running setup-dev-secrets.sh...${RESET}"
+    if bash "$DEV_SECRETS_SCRIPT" >"$DEV_SECRETS_LOG_FILE" 2>&1; then
+      SECRETS_BOOTSTRAPPED="true"
+      echo "${GREEN}✓ Dev secrets configured. Retrying API startup...${RESET}"
+      return 0
+    fi
+
+    echo "${RED}❌ Failed to bootstrap dev secrets. Check $DEV_SECRETS_LOG_FILE${RESET}"
+    tail -n 40 "$DEV_SECRETS_LOG_FILE" || true
+    return 1
+  }
+
+  # Check if API is already running
+  if lsof -Pi :"$API_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    listener_details="$(describe_port_listeners)"
+
+    if is_api_healthy; then
+      echo "${YELLOW}⚠ API already running and healthy at ${API_URL%/} (listeners: $listener_details)${RESET}"
+      return
+    fi
+
+    echo "${RED}❌ Port $API_PORT is already in use (listeners: $listener_details) but PTDoc API health check failed at ${API_URL%/}/health/live.${RESET}"
+    echo "${RED}   Stop the existing process or change API_URL before rerunning.${RESET}"
+    exit 1
+  fi
+
+  for attempt in 1 2; do
+    echo "${BLUE}🚀 Starting PTDoc API on $API_URL...${RESET}"
+    dotnet run --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    API_PID=$!
+
+    # Wait for API to be ready (listening + health endpoint)
+    echo -n "${BLUE}Waiting for API to become healthy...${RESET}"
+    for _ in {1..30}; do
+      if ! kill -0 "$API_PID" 2>/dev/null; then
+        echo " ${RED}Failed${RESET}"
+
+        if [[ "$attempt" -eq 1 ]] && api_failed_for_missing_secrets && bootstrap_dev_secrets; then
+          break
+        fi
+
+        echo "${RED}❌ API process exited early. Check $API_LOG_FILE${RESET}"
+        tail -n 40 "$API_LOG_FILE" || true
+        exit 1
+      fi
+
+      if is_api_healthy; then
+        echo " ${GREEN}Ready!${RESET}"
+        return
+      fi
+
+      sleep 1
+      echo -n "."
+    done
+
+    if [[ "$attempt" -eq 2 ]]; then
+      echo " ${RED}Failed${RESET}"
+      echo "${RED}❌ API failed to become healthy. Check $API_LOG_FILE for details${RESET}"
+      tail -n 40 "$API_LOG_FILE" || true
+      exit 1
+    fi
   done
-  
-  echo " ${RED}Failed${RESET}"
-  echo "${RED}❌ API failed to start. Check /tmp/ptdoc-api.log for details${RESET}"
-  exit 1
 }
 
 echo ""
@@ -124,13 +226,14 @@ case "$choice" in
   1)
     echo "${BLUE}Launching Blazor Web...${RESET}"
     echo ""
+    start_api
+    echo ""
     dotnet run --project "$WEB_CSPROJ"
     ;;
   2)
     echo "${BLUE}Building and launching Android...${RESET}"
     echo ""
     start_api
-    sleep 2
     echo ""
     echo "${BLUE}Note: Android emulator uses http://10.0.2.2:5170 to reach host API${RESET}"
     echo ""
@@ -140,7 +243,6 @@ case "$choice" in
     echo "${BLUE}Building and launching iOS simulator...${RESET}"
     echo ""
     start_api
-    sleep 2
     echo ""
     dotnet build -t:Run -f net8.0-ios "$MAUI_CSPROJ"
     ;;
@@ -148,7 +250,6 @@ case "$choice" in
     echo "${BLUE}Building and launching Mac Catalyst...${RESET}"
     echo ""
     start_api
-    sleep 2
     echo ""
     dotnet build -t:Run -f net8.0-maccatalyst "$MAUI_CSPROJ"
     ;;

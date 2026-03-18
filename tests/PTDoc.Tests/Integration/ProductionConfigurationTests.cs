@@ -130,6 +130,22 @@ public class ProductionConfigurationTests
 
     [Fact]
     [Trait("Category", "ProductionConfig")]
+    public void ConnectionString_Reads_DefaultConnection_From_Configuration()
+    {
+        const string expected = "Server=azure-sql;Database=PTDoc;User Id=ptdoc;Password=secret;";
+
+        var config = BuildConfig(new()
+        {
+            ["ConnectionStrings:DefaultConnection"] = expected
+        });
+
+        var connectionString = config.GetConnectionString("DefaultConnection");
+
+        Assert.Equal(expected, connectionString);
+    }
+
+    [Fact]
+    [Trait("Category", "ProductionConfig")]
     public void ConnectionString_Reads_PTDocsServer_From_Configuration()
     {
         const string expected = "Server=prod-db;Database=PTDoc;Integrated Security=True;";
@@ -153,6 +169,24 @@ public class ProductionConfigurationTests
         var connectionString = config.GetConnectionString("PTDocsServer");
 
         Assert.Null(connectionString);
+    }
+
+    [Fact]
+    [Trait("Category", "ProductionConfig")]
+    public void ConnectionString_DefaultConnection_Can_Be_Injected_Via_Environment_Variable_Format()
+    {
+        const string expected = "Server=azure-sql;Database=PTDoc;User=sa;Password=secret";
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = expected
+            })
+            .Build();
+
+        var connectionString = config.GetConnectionString("DefaultConnection");
+
+        Assert.Equal(expected, connectionString);
     }
 
     [Fact]

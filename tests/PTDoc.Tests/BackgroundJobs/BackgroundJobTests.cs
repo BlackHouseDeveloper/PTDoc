@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -176,7 +177,9 @@ public class BackgroundJobTests
             .Setup(a => a.CleanupExpiredSessionsAsync(It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        var context = CreateInMemoryContext();
         var services = new ServiceCollection();
+        services.AddSingleton(context);
         services.AddSingleton(mockAuth.Object);
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
@@ -190,6 +193,57 @@ public class BackgroundJobTests
         await svc.ExecuteJobAsync(CancellationToken.None);
 
         mockAuth.Verify(a => a.CleanupExpiredSessionsAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncRetryJob_SkipsGracefully_WhenMigrationsArePending()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        Assert.NotEmpty(await context.Database.GetPendingMigrationsAsync());
+
+        var scopeFactory = BuildScopeFactory(context);
+        var job = new SyncRetryBackgroundService(
+            scopeFactory,
+            NullLogger<SyncRetryBackgroundService>.Instance,
+            Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero }));
+
+        await job.ExecuteJobAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SessionCleanupJob_SkipsGracefully_WhenMigrationsArePending()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        Assert.NotEmpty(await context.Database.GetPendingMigrationsAsync());
+
+        var mockAuth = new Mock<IAuthService>();
+        var services = new ServiceCollection();
+        services.AddSingleton(context);
+        services.AddSingleton(mockAuth.Object);
+        using var provider = services.BuildServiceProvider();
+
+        var job = new SessionCleanupBackgroundService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<SessionCleanupBackgroundService>.Instance,
+            Options.Create(new SessionCleanupOptions()));
+
+        await job.ExecuteJobAsync(CancellationToken.None);
+
+        mockAuth.Verify(a => a.CleanupExpiredSessionsAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── SyncRetryOptions: defaults ───────────────────────────────────────────

@@ -63,6 +63,7 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     [Fact]
     public void Roles_AreDefinedForAllSupportedRoleNames()
     {
+        Assert.Equal("Owner", Roles.Owner);
         Assert.Equal("PT", Roles.PT);
         Assert.Equal("PTA", Roles.PTA);
         Assert.Equal("Admin", Roles.Admin);
@@ -113,6 +114,7 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.Contains(Roles.PT, noteWriteRoles);
         Assert.Contains(Roles.PTA, noteWriteRoles);
         Assert.DoesNotContain(Roles.Admin, noteWriteRoles);
+        Assert.DoesNotContain(Roles.Owner, noteWriteRoles);
         Assert.DoesNotContain(Roles.Aide, noteWriteRoles);
         Assert.DoesNotContain(Roles.Patient, noteWriteRoles);
 
@@ -121,6 +123,7 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.Contains(Roles.PT, patientReadRoles);
         Assert.Contains(Roles.PTA, patientReadRoles);
         Assert.Contains(Roles.Admin, patientReadRoles);
+        Assert.Contains(Roles.Owner, patientReadRoles);
         Assert.Contains(Roles.Aide, patientReadRoles);
         Assert.DoesNotContain(Roles.Patient, patientReadRoles);
 
@@ -135,8 +138,15 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.Contains(Roles.PT, clinicalStaffRoles);
         Assert.Contains(Roles.PTA, clinicalStaffRoles);
         Assert.Contains(Roles.Admin, clinicalStaffRoles);
+        Assert.Contains(Roles.Owner, clinicalStaffRoles);
         Assert.DoesNotContain(Roles.Aide, clinicalStaffRoles);
         Assert.DoesNotContain(Roles.Patient, clinicalStaffRoles);
+
+        var patientHepRoles = GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.PatientHepAccess));
+        Assert.Contains(Roles.Patient, patientHepRoles);
+        Assert.DoesNotContain(Roles.PT, patientHepRoles);
+        Assert.DoesNotContain(Roles.PTA, patientHepRoles);
+        Assert.DoesNotContain(Roles.Admin, patientHepRoles);
     }
 
     // ─── Authorization service evaluation tests ──────────────────────────────

@@ -156,4 +156,47 @@ public class AiServiceTests
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _aiService.GeneratePlanAsync(null!));
     }
+
+    [Fact]
+    public async Task GenerateAssessment_UsesAzureOpenAIDeployment_WhenAiModelIsNotConfigured()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "AzureOpenAIDeployment", "gpt-4o-medical" }
+            })
+            .Build();
+
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("gpt-4o-medical", result.Metadata.Model);
+    }
+
+    [Fact]
+    public async Task GenerateAssessment_Fails_WhenAiFeatureEnabledAndAzureRuntimeConfigMissing()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "FeatureFlags:EnableAiGeneration", "true" },
+                { "Ai:Model", "gpt-4" }
+            })
+            .Build();
+
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation failed. Please try again or contact support.", result.ErrorMessage);
+    }
 }

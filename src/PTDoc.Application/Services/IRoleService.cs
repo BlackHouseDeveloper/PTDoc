@@ -36,6 +36,7 @@ public sealed record DashboardLayoutConfig
 /// </summary>
 public static class Roles
 {
+    public const string Owner = "Owner";
     public const string PT = "PT";
     public const string PTA = "PTA";
     public const string FrontDesk = "FrontDesk";
@@ -51,6 +52,9 @@ public static class Roles
 /// </summary>
 public static class AuthorizationPolicies
 {
+    /// <summary>Patient-only access to the Wibbi launch broker.</summary>
+    public const string PatientHepAccess = "PatientHepAccess";
+
     /// <summary>Read patient demographics — PT, PTA, Admin, Aide.</summary>
     public const string PatientRead = "PatientRead";
 
@@ -81,15 +85,15 @@ public static class AuthorizationPolicies
     {
         // PatientRead: clinical staff and therapy aides can view patient demographics
         options.AddPolicy(PatientRead,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Aide));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.Aide));
 
         // PatientWrite: licensed clinicians and admin can create/update patient records
         options.AddPolicy(PatientWrite,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
 
         // NoteRead: only clinical staff can read clinical notes (not Aide or Patient)
         options.AddPolicy(NoteRead,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
 
         // NoteWrite: only licensed clinicians can create/update notes (Admin is read-only per FSD §3.1)
         options.AddPolicy(NoteWrite,
@@ -97,14 +101,18 @@ public static class AuthorizationPolicies
 
         // IntakeRead: clinical staff and patients can read intake forms
         options.AddPolicy(IntakeRead,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Patient));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.Patient));
 
         // IntakeWrite: clinical staff can create intake forms for patients
         options.AddPolicy(IntakeWrite,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
+
+        // PatientHepAccess: only patient identities can launch their own HEP portal session
+        options.AddPolicy(PatientHepAccess,
+            p => p.RequireRole(Roles.Patient));
 
         // ClinicalStaff: sync and compliance evaluation — all authenticated staff
         options.AddPolicy(ClinicalStaff,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
     }
 }

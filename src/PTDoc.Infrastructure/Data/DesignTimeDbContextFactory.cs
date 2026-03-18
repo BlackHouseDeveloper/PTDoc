@@ -25,10 +25,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
         {
             case "sqlserver":
                 {
-                    var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString")
-                        ?? throw new InvalidOperationException(
-                            "Set the Database__ConnectionString environment variable when using EF_PROVIDER=sqlserver. " +
-                            "Example: Server=localhost,1433;Database=PTDoc_Dev;User Id=sa;Password=<password>;TrustServerCertificate=True");
+                    var connectionString = DatabaseConnectionStringResolver.ResolveFromEnvironment().ConnectionString;
                     optionsBuilder.UseSqlServer(connectionString,
                         o => o.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer"));
                     break;
@@ -36,10 +33,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicatio
 
             case "postgres":
                 {
-                    var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString")
-                        ?? throw new InvalidOperationException(
-                            "Set the Database__ConnectionString environment variable when using EF_PROVIDER=postgres. " +
-                            "Example: Host=localhost;Port=5432;Database=ptdoc_dev;Username=postgres;Password=<password>");
+                    var connectionString = DatabaseConnectionStringResolver.ResolveFromEnvironment().ConnectionString;
                     optionsBuilder.UseNpgsql(connectionString,
                         o => o.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"));
                     break;

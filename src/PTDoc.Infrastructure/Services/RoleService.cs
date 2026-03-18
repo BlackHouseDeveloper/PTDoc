@@ -15,8 +15,8 @@ public class RoleService : IRoleService
 
     public DashboardLayoutConfig GetDashboardLayout(UserInfo user)
     {
-        // Admin gets full access
-        if (HasRole(user, Roles.Admin))
+        // Admin and owner get full access
+        if (HasRole(user, Roles.Admin) || HasRole(user, Roles.Owner))
         {
             return new DashboardLayoutConfig
             {
@@ -24,7 +24,7 @@ public class RoleService : IRoleService
                 ShowBillingWidgets = true,
                 ShowScheduleWidgets = true,
                 ShowSystemHealth = true,
-                WelcomeMessage = "Admin Dashboard"
+                WelcomeMessage = HasRole(user, Roles.Owner) ? "Owner Dashboard" : "Admin Dashboard"
             };
         }
 

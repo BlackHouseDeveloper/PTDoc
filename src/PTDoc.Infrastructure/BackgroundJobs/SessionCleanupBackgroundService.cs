@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Identity;
+using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.BackgroundJobs;
 
@@ -18,6 +19,7 @@ public sealed class SessionCleanupBackgroundService : BackgroundService, IBackgr
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SessionCleanupBackgroundService> _logger;
     private readonly SessionCleanupOptions _options;
+    private bool _schemaNotReadyLogged;
 
     public SessionCleanupBackgroundService(
         IServiceScopeFactory scopeFactory,
@@ -72,10 +74,41 @@ public sealed class SessionCleanupBackgroundService : BackgroundService, IBackgr
     public async Task ExecuteJobAsync(CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var schemaStatus = await BackgroundJobDatabaseGuard.GetSchemaStatusAsync(context, cancellationToken);
+        if (!schemaStatus.IsReady)
+        {
+            LogSchemaNotReady(schemaStatus);
+            return;
+        }
+
+        if (_schemaNotReadyLogged)
+        {
+            _logger.LogInformation(
+                "SessionCleanupBackgroundService: database schema is current again; resuming cleanup.");
+            _schemaNotReadyLogged = false;
+        }
+
         var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
         _logger.LogDebug("SessionCleanupBackgroundService: running expired session cleanup");
 
         await authService.CleanupExpiredSessionsAsync(cancellationToken);
+    }
+
+    private void LogSchemaNotReady(DatabaseSchemaStatus schemaStatus)
+    {
+        if (!_schemaNotReadyLogged)
+        {
+            _logger.LogWarning(
+                "SessionCleanupBackgroundService: skipping execution because {PendingCount} database migration(s) are pending: {PendingMigrations}",
+                schemaStatus.PendingMigrations.Count,
+                string.Join(", ", schemaStatus.PendingMigrations));
+            _schemaNotReadyLogged = true;
+            return;
+        }
+
+        _logger.LogDebug(
+            "SessionCleanupBackgroundService: database migrations are still pending; skipping this cycle.");
     }
 }

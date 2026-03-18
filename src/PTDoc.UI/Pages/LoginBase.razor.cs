@@ -25,6 +25,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected string? errorMessage;
     protected bool isLoading;
     protected bool isDarkTheme;
+    protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
 
     protected enum AuthMode
     {
@@ -34,8 +35,13 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     protected override void OnInitialized()
     {
-        returnUrl = GetReturnUrl(Navigation.Uri);
+        returnUrl = ReturnUrlValidator.ExtractFromUri(Navigation.Uri);
 
+        if (Navigation.Uri.Contains("auth_unavailable=1", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Authentication service is currently unavailable. Please try again in a moment.";
+        }
+        else
         if (Navigation.Uri.Contains("error=1", StringComparison.OrdinalIgnoreCase))
         {
             errorMessage = "Invalid PIN. Please try again.";
@@ -65,6 +71,31 @@ public abstract class LoginBase : ComponentBase, IDisposable
         await ThemeService.ToggleAsync();
     }
 
+    protected async Task HandleExternalLogin()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var started = await UserService.BeginExternalLoginAsync(returnUrl);
+            if (!started)
+            {
+                errorMessage = "External sign-in is not available right now.";
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "External login failed to start");
+            errorMessage = "We couldn't start external sign-in. Please try again.";
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
     private void OnThemeChanged()
     {
         isDarkTheme = ThemeService.IsDarkMode;
@@ -73,6 +104,11 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     protected void SwitchMode(AuthMode mode)
     {
+        if (mode == AuthMode.SignUp && !UserService.SupportsSelfServiceRegistration)
+        {
+            return;
+        }
+
         if (authMode == mode) return;
 
         authMode = mode;
@@ -88,6 +124,22 @@ public abstract class LoginBase : ComponentBase, IDisposable
         Logger.LogInformation("HandleLogin called - Username: {Username}, PIN: {Pin}", 
             loginModel.Username, 
             loginModel.Pin?.Length > 0 ? "****" : "empty");
+
+        if (string.IsNullOrWhiteSpace(loginModel.Pin))
+        {
+            errorMessage = "PIN is required.";
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        if (loginModel.Pin.Length != 4 || loginModel.Pin.Any(static ch => !char.IsDigit(ch)))
+        {
+            errorMessage = "PIN must be 4 digits.";
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
         
         isLoading = true;
         errorMessage = null;
@@ -104,7 +156,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             Logger.LogInformation("Sending to LoginAsync - Username: {Username}, Password: {Password}", 
                 username, loginModel.Pin?.Length > 0 ? "****" : "empty");
 
-            var success = await UserService.LoginAsync(username ?? string.Empty, loginModel.Pin ?? string.Empty);
+            var success = await UserService.LoginAsync(username ?? string.Empty, loginModel.Pin ?? string.Empty, returnUrl);
 
             if (!success)
             {
@@ -168,25 +220,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
             isLoading = false;
             StateHasChanged();
         }
-    }
-
-    protected static string GetReturnUrl(string uri)
-    {
-        var parsed = new Uri(uri);
-
-        if (string.IsNullOrWhiteSpace(parsed.Query))
-            return "/";
-
-        var query = parsed.Query.TrimStart('?').Split('&');
-
-        var returnUrl = query
-            .Select(pair => pair.Split('=', 2))
-            .Where(parts => parts.Length == 2 &&
-                string.Equals(parts[0], "returnUrl", StringComparison.OrdinalIgnoreCase))
-            .Select(parts => Uri.UnescapeDataString(parts[1]))
-            .FirstOrDefault();
-
-        return returnUrl ?? "/";
     }
 
     protected sealed class LoginModel

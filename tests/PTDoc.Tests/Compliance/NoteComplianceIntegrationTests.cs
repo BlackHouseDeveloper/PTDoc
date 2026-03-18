@@ -280,7 +280,7 @@ public class NoteComplianceIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task NoteEdited_AuditEvent_ContainsNoPHI()
+    public void NoteEdited_AuditEvent_ContainsNoPHI()
     {
         // NoteEdited audit events must not include PHI — only IDs and timestamps.
         var noteId = Guid.NewGuid();

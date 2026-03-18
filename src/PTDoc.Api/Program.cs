@@ -1,11 +1,16 @@
+using Azure;
+using Azure.AI.OpenAI;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using PTDoc.Api.AI;
@@ -45,13 +50,26 @@ using PTDoc.Application.BackgroundJobs;
 using PTDoc.Integrations.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
+var legacyApiAuthEnabled = builder.Configuration.GetValue<bool?>("Auth:LegacyApiAuthEnabled") ?? true;
+
+if (!builder.Environment.IsDevelopment() &&
+    AzureRuntimeConfigurationValidator.RequiresAzureOpenAiConfiguration(builder.Configuration))
+{
+    AzureRuntimeConfigurationValidator.ValidateAzureOpenAiConfiguration(builder.Configuration);
+}
 
 // Add HttpContextAccessor for identity context
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
+builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
+builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
 
 // Register identity services
+builder.Services.AddScoped<PrincipalRecordResolver>();
 builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor>();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>(); // Sprint J: clinic/tenant scoping
+builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Register sync services
@@ -86,6 +104,38 @@ builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
+{
+    ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty
+});
+builder.Services.AddSingleton(sp =>
+{
+    var options = sp.GetRequiredService<AzureBlobStorageOptions>();
+    if (string.IsNullOrWhiteSpace(options.ConnectionString))
+    {
+        throw new InvalidOperationException(
+            $"{AzureBlobStorageOptions.ConnectionStringKey} must be configured before BlobServiceClient can be used.");
+    }
+
+    return new BlobServiceClient(options.ConnectionString);
+});
+builder.Services.AddSingleton(_ => new AzureOpenAiOptions
+{
+    Endpoint = builder.Configuration[AzureOpenAiOptions.EndpointKey] ?? string.Empty,
+    ApiKey = builder.Configuration[AzureOpenAiOptions.ApiKeyKey] ?? string.Empty,
+    Deployment = builder.Configuration[AzureOpenAiOptions.DeploymentKey] ?? string.Empty
+});
+builder.Services.AddSingleton(sp =>
+{
+    var options = sp.GetRequiredService<AzureOpenAiOptions>();
+    if (string.IsNullOrWhiteSpace(options.Endpoint) || string.IsNullOrWhiteSpace(options.ApiKey))
+    {
+        throw new InvalidOperationException(
+            $"{AzureOpenAiOptions.EndpointKey} and {AzureOpenAiOptions.ApiKeyKey} must be configured before AzureOpenAIClient can be used.");
+    }
+
+    return new AzureOpenAIClient(new Uri(options.Endpoint), new AzureKeyCredential(options.ApiKey));
+});
 
 // Register Phase 7 services: Security & Observability
 builder.Services.AddScoped<IDbKeyProvider, EnvironmentDbKeyProvider>();
@@ -122,9 +172,8 @@ var encryptionEnabled = builder.Configuration.GetValue<bool>("Database:Encryptio
 if (string.Equals(dbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
 {
     // SQL Server provider
-    var sqlServerConnStr = builder.Configuration.GetConnectionString("PTDocsServer")
-        ?? throw new InvalidOperationException(
-            "ConnectionStrings:PTDocsServer must be set when Database:Provider is SqlServer.");
+    var sqlServerResolution = DatabaseConnectionStringResolver.Resolve(builder.Configuration);
+    var sqlServerConnStr = sqlServerResolution.ConnectionString;
 
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
@@ -147,9 +196,8 @@ if (string.Equals(dbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
 else if (string.Equals(dbProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
 {
     // PostgreSQL provider
-    var postgresConnStr = builder.Configuration.GetConnectionString("PTDocsServer")
-        ?? throw new InvalidOperationException(
-            "ConnectionStrings:PTDocsServer must be set when Database:Provider is Postgres.");
+    var postgresResolution = DatabaseConnectionStringResolver.Resolve(builder.Configuration);
+    var postgresConnStr = postgresResolution.ConnectionString;
 
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
@@ -239,32 +287,40 @@ builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready", "db"])
     .AddCheck<MigrationStateHealthCheck>("migrations", tags: ["ready", "migrations"]);
 
-// Validate JWT configuration on startup
-var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
-if (jwtConfig != null)
+if (entraExternalIdOptions.Enabled)
 {
-    var placeholderKeys = new[]
-    {
-        "REPLACE_WITH_A_MIN_32_CHAR_SECRET",
-        "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET"
-    };
+    ValidateEntraExternalIdApiConfiguration(entraExternalIdOptions);
+}
 
-    if (string.IsNullOrWhiteSpace(jwtConfig.SigningKey) || placeholderKeys.Contains(jwtConfig.SigningKey))
+if (legacyApiAuthEnabled)
+{
+    // Validate JWT configuration on startup
+    var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
+    if (jwtConfig != null)
     {
-        throw new InvalidOperationException(
-            "JWT signing key has not been configured. " +
-            "Run the bootstrap script to generate and store a secure key:\n" +
-            "  macOS/Linux: ./setup-dev-secrets.sh\n" +
-            "  Windows:     .\\setup-dev-secrets.ps1\n" +
-            "Or manually run: dotnet user-secrets set \"Jwt:SigningKey\" <key> " +
-            "--project src/PTDoc.Api/PTDoc.Api.csproj");
-    }
+        var placeholderKeys = new[]
+        {
+            "REPLACE_WITH_A_MIN_32_CHAR_SECRET",
+            "DEV_ONLY_REPLACE_WITH_A_MIN_32_CHAR_SECRET"
+        };
 
-    if (jwtConfig.SigningKey.Length < 32)
-    {
-        throw new InvalidOperationException(
-            $"JWT signing key must be at least 32 characters. Current length: {jwtConfig.SigningKey.Length}. " +
-            "Run ./setup-dev-secrets.sh (macOS/Linux) or .\\setup-dev-secrets.ps1 (Windows) to generate a valid key.");
+        if (string.IsNullOrWhiteSpace(jwtConfig.SigningKey) || placeholderKeys.Contains(jwtConfig.SigningKey))
+        {
+            throw new InvalidOperationException(
+                "JWT signing key has not been configured. " +
+                "Run the bootstrap script to generate and store a secure key:\n" +
+                "  macOS/Linux: ./setup-dev-secrets.sh\n" +
+                "  Windows:     .\\setup-dev-secrets.ps1\n" +
+                "Or manually run: dotnet user-secrets set \"Jwt:SigningKey\" <key> " +
+                "--project src/PTDoc.Api/PTDoc.Api.csproj");
+        }
+
+        if (jwtConfig.SigningKey.Length < 32)
+        {
+            throw new InvalidOperationException(
+                $"JWT signing key must be at least 32 characters. Current length: {jwtConfig.SigningKey.Length}. " +
+                "Run ./setup-dev-secrets.sh (macOS/Linux) or .\\setup-dev-secrets.ps1 (Windows) to generate a valid key.");
+        }
     }
 }
 
@@ -276,92 +332,100 @@ builder.Services.AddAuthorization(options =>
     options.AddPTDocAuthorizationPolicies();
 });
 
-// Sprint J: Register a combined authentication policy that routes between the legacy JWT scheme
-// and the PIN-based session token scheme.
-// - JWT tokens (3 dot-separated parts) → JwtBearerDefaults.AuthenticationScheme
-// - Session tokens (opaque base64 strings) → SessionTokenAuthHandler.SchemeName
-// This ensures HttpTenantContextAccessor (reads HttpContext.User claims) receives a
-// ClaimsPrincipal with the clinic_id claim for both authentication paths.
 builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = "CombinedBearerOrSession";
+    options.DefaultChallengeScheme = "CombinedBearerOrSession";
+})
+.AddPolicyScheme("CombinedBearerOrSession", "PTDoc bearer or session token", policyOptions =>
+{
+    policyOptions.ForwardDefaultSelector = ctx =>
     {
-        options.DefaultScheme = "Combined";
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddPolicyScheme("Combined", "JWT or Session Token", policyOptions =>
-    {
-        policyOptions.ForwardDefaultSelector = ctx =>
+        var authHeader = ctx.Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(authHeader) ||
+            !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            var authHeader = ctx.Request.Headers.Authorization.ToString();
-            if (!string.IsNullOrEmpty(authHeader) &&
-                authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return entraExternalIdOptions.Enabled ? "EntraJwt" : "LegacyJwt";
+        }
+
+        var token = authHeader["Bearer ".Length..].Trim();
+        if (token.Split('.').Length != 3)
+        {
+            return SessionTokenAuthHandler.SchemeName;
+        }
+
+        var handler = new JwtSecurityTokenHandler();
+        if (handler.CanReadToken(token))
+        {
+            var jwtToken = handler.ReadJwtToken(token);
+            var legacyIssuer = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()?.Issuer;
+            if (legacyApiAuthEnabled && !string.IsNullOrWhiteSpace(legacyIssuer) &&
+                string.Equals(jwtToken.Issuer, legacyIssuer, StringComparison.Ordinal))
             {
-                var token = authHeader["Bearer ".Length..].Trim();
-                // JWT tokens have exactly 3 base64url segments separated by dots
-                return token.Split('.').Length == 3
-                    ? JwtBearerDefaults.AuthenticationScheme
-                    : SessionTokenAuthHandler.SchemeName;
+                return "LegacyJwt";
             }
-            return JwtBearerDefaults.AuthenticationScheme;
-        };
-    })
-    .AddJwtBearer(options =>
+        }
+
+        return entraExternalIdOptions.Enabled ? "EntraJwt" : "LegacyJwt";
+    };
+})
+.AddJwtBearer("LegacyJwt", options =>
+{
+    var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
+    options.TokenValidationParameters = new TokenValidationParameters
     {
-        var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwt.Issuer,
-            ValidateAudience = true,
-            ValidAudience = jwt.Audience,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromMinutes(1)
-        };
+        ValidateIssuer = true,
+        ValidIssuer = jwt.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwt.Audience,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
+        ValidateLifetime = true,
+        NameClaimType = ClaimTypes.Name,
+        RoleClaimType = ClaimTypes.Role,
+        ClockSkew = TimeSpan.FromMinutes(1)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = AuditTokenValidationFailureAsync
+    };
+})
+.AddJwtBearer("EntraJwt", options =>
+{
+    if (!string.IsNullOrWhiteSpace(entraExternalIdOptions.Authority))
+    {
+        options.Authority = entraExternalIdOptions.Authority;
+    }
 
-        // Sprint G: Audit bearer token validation failures without logging raw token values.
-        options.Events = new JwtBearerEvents
-        {
-            OnAuthenticationFailed = async context =>
-            {
-                // Only audit when a Bearer token was actually presented.
-                // Requests without an Authorization header are not auditable auth failures
-                // and would cause unnecessary log volume / DoS risk if audited.
-                var authHeader = context.HttpContext.Request.Headers.Authorization.ToString();
-                if (string.IsNullOrEmpty(authHeader) ||
-                    !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
+    if (!string.IsNullOrWhiteSpace(entraExternalIdOptions.MetadataAddress))
+    {
+        options.MetadataAddress = entraExternalIdOptions.MetadataAddress;
+    }
 
-                try
-                {
-                    var auditService = context.HttpContext.RequestServices
-                        .GetRequiredService<IAuditService>();
-
-                    var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
-                    var reason = context.Exception?.GetType().Name ?? "Unknown";
-
-                    await auditService.LogAuthEventAsync(
-                        PTDoc.Application.Compliance.AuditEvent.TokenValidationFailed(ipAddress, reason),
-                        context.HttpContext.RequestAborted);
-                }
-                catch
-                {
-                    // Audit failures must never break authentication — swallow silently.
-                }
-            }
-        };
-    })
-    .AddScheme<AuthenticationSchemeOptions, SessionTokenAuthHandler>(
-        SessionTokenAuthHandler.SchemeName, _ => { });
+    options.Audience = entraExternalIdOptions.Audience;
+    options.MapInboundClaims = false;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        NameClaimType = ClaimTypes.Name,
+        RoleClaimType = ClaimTypes.Role,
+        ClockSkew = TimeSpan.FromMinutes(1)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = AuditTokenValidationFailureAsync
+    };
+})
+.AddScheme<AuthenticationSchemeOptions, SessionTokenAuthHandler>(
+    SessionTokenAuthHandler.SchemeName, _ => { });
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
 builder.Services.AddSingleton<JwtTokenIssuer>();
-
-builder.Services.AddScoped<ICredentialValidator, CredentialValidator>();
+builder.Services.AddScoped<ICredentialValidator, LegacyApiCredentialValidator>();
 
 var app = builder.Build();
 
@@ -384,30 +448,92 @@ app.UseExceptionHandler(errorApp =>
             context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
         }
 
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+            var statusCode = exception switch
+        {
+            ProvisioningException => StatusCodes.Status403Forbidden,
+            WibbiAuthenticationException => StatusCodes.Status502BadGateway,
+            WibbiUnsafeLaunchUrlException => StatusCodes.Status502BadGateway,
+            WibbiConfigurationException => StatusCodes.Status500InternalServerError,
+            _ => StatusCodes.Status500InternalServerError
+        };
+
+        context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
 
-        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
-        if (exceptionFeature != null)
+        if (exception != null)
         {
-            // Log the exception internally (structured, no PHI)
             var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-
-            // Sanitize user-controlled request data to prevent log forging
             var sanitizedMethod = context.Request.Method.Replace("\r", string.Empty).Replace("\n", string.Empty);
             var sanitizedPath = context.Request.Path.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
 
-            logger.LogError(
-                exceptionFeature.Error,
-                "Unhandled exception on {Method} {Path}",
-                sanitizedMethod,
-                sanitizedPath);
+            switch (exception)
+            {
+                case ProvisioningException provisioningException:
+                    logger.LogWarning(
+                        exception,
+                        "Provisioning failure on {Method} {Path}. Provider={Provider} PrincipalType={PrincipalType} FailureCode={FailureCode} SubjectHash={SubjectHash}",
+                        sanitizedMethod,
+                        sanitizedPath,
+                        provisioningException.Provider,
+                        provisioningException.PrincipalType,
+                        provisioningException.FailureCode,
+                        provisioningException.ExternalSubjectHash);
+                    break;
+                case WibbiAuthenticationException wibbiAuthenticationException:
+                    logger.LogWarning(
+                        exception,
+                        "Wibbi upstream failure on {Method} {Path}. Operation={Operation} StatusCode={StatusCode}",
+                        sanitizedMethod,
+                        sanitizedPath,
+                        wibbiAuthenticationException.Operation,
+                        wibbiAuthenticationException.UpstreamStatusCode);
+                    break;
+                case WibbiUnsafeLaunchUrlException wibbiUnsafeLaunchUrlException:
+                    logger.LogWarning(
+                        exception,
+                        "Rejected unsafe Wibbi launch response on {Method} {Path}. Operation={Operation} BlockedParameters={BlockedParameters}",
+                        sanitizedMethod,
+                        sanitizedPath,
+                        wibbiUnsafeLaunchUrlException.Operation,
+                        string.Join(", ", wibbiUnsafeLaunchUrlException.BlockedParameters));
+                    break;
+                case WibbiConfigurationException wibbiConfigurationException:
+                    logger.LogError(
+                        exception,
+                        "Wibbi configuration failure on {Method} {Path}. Operation={Operation}",
+                        sanitizedMethod,
+                        sanitizedPath,
+                        wibbiConfigurationException.Operation);
+                    break;
+                default:
+                    logger.LogError(
+                        exception,
+                        "Unhandled exception on {Method} {Path}",
+                        sanitizedMethod,
+                        sanitizedPath);
+                    break;
+            }
         }
 
-        // Return a safe generic response — never expose internal details
         var result = JsonSerializer.Serialize(new
         {
-            error = "An unexpected error occurred. Please try again later.",
+            error = exception switch
+            {
+                ProvisioningException => "Authenticated principal is not provisioned for this PTDoc environment.",
+                WibbiAuthenticationException => "The home exercise platform is temporarily unavailable.",
+                WibbiUnsafeLaunchUrlException => "The home exercise platform returned an unsafe launch response.",
+                WibbiConfigurationException => "The home exercise platform is not configured correctly.",
+                _ => "An unexpected error occurred. Please try again later."
+            },
+            code = exception switch
+            {
+                ProvisioningException provisioningException => provisioningException.FailureCode,
+                WibbiAuthenticationException => "wibbi_upstream_failure",
+                WibbiUnsafeLaunchUrlException => "wibbi_unsafe_launch_response",
+                WibbiConfigurationException => "wibbi_configuration_error",
+                _ => "unexpected_error"
+            },
             correlationId = context.TraceIdentifier
         });
         await context.Response.WriteAsync(result);
@@ -428,6 +554,19 @@ if (!app.Environment.IsDevelopment())
 // Sprint F: Log selected database provider at startup for operational visibility
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
 startupLogger.LogInformation("Database provider selected: {DbProvider}", dbProvider);
+if (!string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+{
+    var connectionStringResolution = DatabaseConnectionStringResolver.Resolve(builder.Configuration);
+    startupLogger.LogInformation(
+        "Database connection string source selected: {SourceKey}",
+        connectionStringResolution.SourceKey);
+    if (connectionStringResolution.IsLegacySource)
+    {
+        startupLogger.LogWarning(
+            "Legacy database connection string key in use: {SourceKey}. Prefer ConnectionStrings:DefaultConnection.",
+            connectionStringResolution.SourceKey);
+    }
+}
 
 // Auto-migrate: defaults to true in Development, false in Production.
 // Override with Database:AutoMigrate = true/false in configuration or environment variables.
@@ -476,6 +615,7 @@ if (autoMigrate)
 }
 
 app.UseAuthentication();
+app.UseMiddleware<ProvisioningGuardMiddleware>();
 app.UseAuthorization();
 
 // Health check endpoints (Sprint F – unauthenticated, standard deployment probe pattern)
@@ -514,7 +654,10 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 // Register all API endpoints
-app.MapAuthEndpoints(); // Old JWT auth (to be deprecated)
+if (legacyApiAuthEnabled)
+{
+    app.MapAuthEndpoints();
+}
 app.MapPinAuthEndpoints(); // New PIN-based auth
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
@@ -528,3 +671,45 @@ app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 
 app.Run();
+
+static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)
+{
+    var authHeader = context.HttpContext.Request.Headers.Authorization.ToString();
+    if (string.IsNullOrEmpty(authHeader) ||
+        !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    try
+    {
+        var auditService = context.HttpContext.RequestServices.GetRequiredService<IAuditService>();
+        var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
+        var reason = context.Exception?.GetType().Name ?? "Unknown";
+
+        await auditService.LogAuthEventAsync(
+            AuditEvent.TokenValidationFailed(ipAddress, reason),
+            context.HttpContext.RequestAborted);
+    }
+    catch
+    {
+        // Audit failures must never break authentication.
+    }
+}
+
+static void ValidateEntraExternalIdApiConfiguration(EntraExternalIdOptions options)
+{
+    var missingTenantMetadata = string.IsNullOrWhiteSpace(options.MetadataAddressOverride)
+        && (string.IsNullOrWhiteSpace(options.Domain) || string.IsNullOrWhiteSpace(options.TenantId));
+
+    if (missingTenantMetadata ||
+        string.IsNullOrWhiteSpace(options.Audience))
+    {
+        throw new InvalidOperationException(
+            "Microsoft Entra External ID is enabled but PTDoc.Api is missing one or more required settings: " +
+            "EntraExternalId:Domain, EntraExternalId:TenantId, EntraExternalId:Audience " +
+            "(or provide EntraExternalId:MetadataAddressOverride instead of Domain/TenantId).");
+    }
+}
+
+

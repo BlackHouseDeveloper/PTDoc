@@ -31,13 +31,16 @@
                 @onclick="() => SwitchMode(AuthMode.Login)">
           Login
         </button>
-        <button type="button"
-                role="tab"
-                class="auth-tab @(authMode == AuthMode.SignUp ? "active" : "")"
-                aria-selected="@(authMode == AuthMode.SignUp ? "true" : "false")"
-                @onclick="() => SwitchMode(AuthMode.SignUp)">
-          Sign Up
-        </button>
+        @if (UserService.SupportsSelfServiceRegistration)
+        {
+          <button type="button"
+                  role="tab"
+                  class="auth-tab @(authMode == AuthMode.SignUp ? "active" : "")"
+                  aria-selected="@(authMode == AuthMode.SignUp ? "true" : "false")"
+                  @onclick="() => SwitchMode(AuthMode.SignUp)">
+            Sign Up
+          </button>
+        }
       </div>
     </header>
 
@@ -53,6 +56,17 @@
     {
       <EditForm FormName="LoginForm" Model="loginModel" OnValidSubmit="HandleLogin" class="auth-form" aria-busy="@isLoading">
         <DataAnnotationsValidator />
+
+        @if (supportsExternalIdentityLogin)
+        {
+          <div class="auth-info-alert">
+            <span class="auth-info-icon">ℹ️</span>
+            <div class="auth-info-content">
+              <strong>Single sign-on available</strong>
+              <p>You can sign in with your PT Docs+ credentials or continue with @UserService.IdentityProviderDisplayName.</p>
+            </div>
+          </div>
+        }
 
         <div class="auth-field">
           <label for="username">Username</label>
@@ -90,6 +104,20 @@
             <span>Login</span>
           }
         </button>
+
+        @if (supportsExternalIdentityLogin)
+        {
+          <button type="button" class="auth-primary auth-secondary" disabled="@isLoading" @onclick="HandleExternalLogin">
+            @if (isLoading)
+            {
+              <span>Redirecting...</span>
+            }
+            else
+            {
+              <span>Continue with @UserService.IdentityProviderDisplayName</span>
+            }
+          </button>
+        }
       </EditForm>
     }
     else

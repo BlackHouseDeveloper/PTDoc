@@ -29,6 +29,14 @@ public sealed class MauiUserService : IUserService
 
     public bool IsAuthenticated => currentUser?.Identity?.IsAuthenticated ?? false;
 
+    public bool UsesExternalIdentityProvider => false;
+
+    public string IdentityProviderDisplayName => "PTDoc";
+
+    public bool SupportsExternalIdentityLogin => false;
+
+    public bool SupportsSelfServiceRegistration => true;
+
     public ClaimsPrincipal? CurrentUser => currentUser;
 
     public string? UserEmail => currentUser?.FindFirst(ClaimTypes.Email)?.Value;
@@ -67,6 +75,14 @@ public sealed class MauiUserService : IUserService
             logger.LogError(ex, "Login failed with exception");
             return false;
         }
+    }
+
+    public Task<bool> BeginExternalLoginAsync(
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("External identity login is not available in the current MAUI flow.");
+        return Task.FromResult(false);
     }
 
     public Task<bool> RegisterAsync(
