@@ -73,7 +73,7 @@ public static class AuthorizationPolicies
     /// <summary>Create intake forms for patients — PT, PTA, Admin.</summary>
     public const string IntakeWrite = "IntakeWrite";
 
-    /// <summary>Access sync and compliance evaluation endpoints — PT, PTA, Admin.</summary>
+    /// <summary>Access sync and compliance evaluation endpoints — PT, PTA, Admin, Owner.</summary>
     public const string ClinicalStaff = "ClinicalStaff";
 
     /// <summary>Admin-only access — system settings, diagnostics, configuration — Admin, Owner.</summary>

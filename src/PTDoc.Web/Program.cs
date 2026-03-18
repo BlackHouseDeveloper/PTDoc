@@ -190,7 +190,7 @@ else
         .AddCookie("PTDocAuth", ConfigureCookieOptions);
 }
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services

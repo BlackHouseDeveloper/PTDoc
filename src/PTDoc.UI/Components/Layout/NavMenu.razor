@@ -58,8 +58,8 @@
             </div>
 
             <!-- Admin Section: visible to ClinicalStaff for Export/Reports, Admin/Owner only for Settings -->
-            <AuthorizeView Roles="PT,PTA,Admin,Owner">
-                <Authorized>
+            <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
+                <Authorized Context="staffCtx">
                     <div class="ptdoc-nav-section">
                         <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
 
@@ -77,8 +77,8 @@
                             </div>
                         </NavLink>
 
-                        <AuthorizeView Roles="Admin,Owner">
-                            <Authorized Context="adminCtx">
+                        <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.AdminOnly">
+                            <Authorized>
                                 <NavLink class="ptdoc-nav-item" href="settings">
                                     <div class="ptdoc-nav-content">
                                         <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />

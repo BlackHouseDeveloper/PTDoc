@@ -15,11 +15,21 @@
     /// Comma-separated list of roles that are allowed to see <see cref="ChildContent"/>.
     /// Matches the <c>Roles</c> parameter of <see cref="AuthorizeView"/>.
     /// </summary>
-    [Parameter, EditorRequired] public string? Roles { get; set; }
+    [Parameter, EditorRequired] public string Roles { get; set; } = string.Empty;
 
     /// <summary>Content rendered when the user has one of the required roles.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>Optional fallback content rendered when the user does not have the required role.</summary>
     [Parameter] public RenderFragment? FallbackContent { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(Roles))
+        {
+            throw new InvalidOperationException(
+                $"{nameof(RoleGate)} requires a non-empty '{nameof(Roles)}' parameter. " +
+                "Provide a comma-separated list of role names (e.g., Roles=\"PT,PTA\").");
+        }
+    }
 }
