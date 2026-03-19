@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -57,6 +58,11 @@ public sealed class WebLogoutEndpointIntegrationTests
 
             builder.ConfigureTestServices(services =>
             {
+                // Register TestAuthHandler as the default scheme, plus "Cookies" so the
+                // /auth/logout handler can call SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).
+                // Program.cs reads entraExternalIdOptions before ConfigureAppConfiguration overrides
+                // are applied, so auth schemes are registered as if Entra is disabled (PTDocAuth).
+                // We add "Cookies" here to match what the logout handler expects when Entra is enabled.
                 services.AddAuthentication(options =>
                     {
                         options.DefaultScheme = TestAuthHandler.SchemeName;
@@ -66,7 +72,8 @@ public sealed class WebLogoutEndpointIntegrationTests
                     })
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                         TestAuthHandler.SchemeName,
-                        _ => { });
+                        _ => { })
+                    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
             });
         }
     }
