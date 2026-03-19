@@ -2,13 +2,14 @@ namespace PTDoc.Infrastructure.Services;
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using PTDoc.Application.Auth;
 
 public static class JwtClaimParser
 {
     public static ClaimsPrincipal CreatePrincipal(string token)
     {
         var claims = ParseClaims(token);
-        var identity = new ClaimsIdentity(claims, "Bearer");
+        var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);
         return new ClaimsPrincipal(identity);
     }
 

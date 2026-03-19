@@ -18,13 +18,15 @@ public sealed class OpenAiService : IAiService
     private const string AzureApiVersion = "2024-06-01";
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
     private const string DefaultModel = "gpt-4";
     private const string TemplateVersion = "v1";
 
-    public OpenAiService(IConfiguration configuration, ILogger<OpenAiService> logger)
+    public OpenAiService(IConfiguration configuration, ILogger<OpenAiService> logger, IHttpClientFactory httpClientFactory)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     public async Task<AiResult> GenerateAssessmentAsync(AiAssessmentRequest request, CancellationToken cancellationToken = default)
@@ -253,7 +255,7 @@ public sealed class OpenAiService : IAiService
             return fallbackFactory();
         }
 
-        using var client = new HttpClient();
+        using var client = _httpClientFactory.CreateClient("AzureOpenAI");
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
             $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={AzureApiVersion}");

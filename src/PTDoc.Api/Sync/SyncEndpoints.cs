@@ -176,7 +176,8 @@ public static class SyncEndpoints
     private static async Task<IResult> ReceiveClientPush(
         [FromBody] ClientSyncPushRequest request,
         [FromServices] ISyncEngine syncEngine,
-        [FromServices] ILogger<ISyncEngine> logger)
+        [FromServices] ILogger<ISyncEngine> logger,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -195,7 +196,7 @@ public static class SyncEndpoints
                 }
             }
 
-            var result = await syncEngine.ReceiveClientPushAsync(request);
+            var result = await syncEngine.ReceiveClientPushAsync(request, cancellationToken);
             return Results.Ok(result);
         }
         catch (Exception ex)
@@ -215,7 +216,8 @@ public static class SyncEndpoints
         [FromQuery] DateTime? sinceUtc,
         [FromQuery] string? entityTypes,
         [FromServices] ISyncEngine syncEngine,
-        [FromServices] ILogger<ISyncEngine> logger)
+        [FromServices] ILogger<ISyncEngine> logger,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -231,7 +233,7 @@ public static class SyncEndpoints
                 }
             }
 
-            var result = await syncEngine.GetClientDeltaAsync(sinceUtc, types);
+            var result = await syncEngine.GetClientDeltaAsync(sinceUtc, types, cancellationToken);
             return Results.Ok(result);
         }
         catch (Exception ex)

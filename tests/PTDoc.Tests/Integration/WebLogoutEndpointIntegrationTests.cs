@@ -2,7 +2,6 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -10,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 
 namespace PTDoc.Tests.Integration;
@@ -58,11 +58,10 @@ public sealed class WebLogoutEndpointIntegrationTests
 
             builder.ConfigureTestServices(services =>
             {
-                // Register TestAuthHandler as the default scheme, plus "Cookies" so the
-                // /auth/logout handler can call SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).
-                // Program.cs reads entraExternalIdOptions before ConfigureAppConfiguration overrides
-                // are applied, so auth schemes are registered as if Entra is disabled (PTDocAuth).
-                // We add "Cookies" here to match what the logout handler expects when Entra is enabled.
+                // Register TestAuthHandler as the default scheme for the test, plus PTDocAuthSchemes.Cookie
+                // so the /auth/logout handler can call SignOutAsync(PTDocAuthSchemes.Cookie).
+                // Both the Entra and non-Entra Program.cs paths now register PTDocAuthSchemes.Cookie
+                // ("Cookies") as the cookie scheme, so this registration matches production behaviour.
                 services.AddAuthentication(options =>
                     {
                         options.DefaultScheme = TestAuthHandler.SchemeName;
@@ -73,7 +72,7 @@ public sealed class WebLogoutEndpointIntegrationTests
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                         TestAuthHandler.SchemeName,
                         _ => { })
-                    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
+                    .AddCookie(PTDocAuthSchemes.Cookie);
             });
         }
     }
