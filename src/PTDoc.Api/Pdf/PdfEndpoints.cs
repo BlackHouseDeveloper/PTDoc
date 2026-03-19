@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Pdf;
+using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -16,7 +17,7 @@ public static class PdfEndpoints
     public static void MapPdfEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/notes")
-            .RequireAuthorization()
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
             .WithTags("PDF Export");
 
         group.MapPost("/{noteId}/export/pdf", ExportNoteToPdf)

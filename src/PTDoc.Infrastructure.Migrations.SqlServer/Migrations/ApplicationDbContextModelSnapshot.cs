@@ -284,6 +284,54 @@ namespace PTDoc.Infrastructure.Migrations.SqlServer.Migrations
                     b.ToTable("ClinicalNotes");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.ExternalIdentityMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalSubject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PrincipalType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("TenantId")
+                        .HasFilter("TenantId IS NOT NULL");
+
+                    b.HasIndex("PrincipalType", "InternalEntityId");
+
+                    b.HasIndex("Provider", "ExternalSubject")
+                        .IsUnique();
+
+                    b.ToTable("ExternalIdentityMappings");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ExternalSystemMapping", b =>
                 {
                     b.Property<Guid>("Id")

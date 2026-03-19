@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Services;
 
 namespace PTDoc.Api.AI;
 
@@ -14,7 +15,7 @@ public static class AiEndpoints
     public static void MapAiEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/ai")
-            .RequireAuthorization()
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
             .WithTags("AI Generation");
 
         group.MapPost("/assessment", GenerateAssessment)

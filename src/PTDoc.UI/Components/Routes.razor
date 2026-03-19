@@ -23,7 +23,14 @@
                     <p>Loading...</p>
                 </Authorizing>
                 <NotAuthorized>
-                    <RedirectToLogin />
+                    @if (isAuthenticated)
+                    {
+                        <RedirectToAccessDenied />
+                    }
+                    else
+                    {
+                        <RedirectToLogin />
+                    }
                 </NotAuthorized>
             </AuthorizeRouteView>
         }
