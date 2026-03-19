@@ -279,6 +279,54 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("ClinicalNotes");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.ExternalIdentityMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalSubject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrincipalType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("TenantId")
+                        .HasFilter("TenantId IS NOT NULL");
+
+                    b.HasIndex("PrincipalType", "InternalEntityId");
+
+                    b.HasIndex("Provider", "ExternalSubject")
+                        .IsUnique();
+
+                    b.ToTable("ExternalIdentityMappings");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ExternalSystemMapping", b =>
                 {
                     b.Property<Guid>("Id")
