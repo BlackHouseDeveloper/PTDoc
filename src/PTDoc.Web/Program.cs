@@ -41,6 +41,7 @@ builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransf
 builder.Services.AddScoped<PTDoc.Application.AI.IAiService, PTDoc.AI.Services.OpenAiService>();
 builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
 builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
+builder.Services.AddHttpClient("AzureOpenAI"); // Used by OpenAiService to avoid socket exhaustion
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
@@ -108,12 +109,12 @@ if (entraExternalIdOptions.Enabled)
 
     builder.Services.AddAuthentication(options =>
     {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultScheme = PTDocAuthSchemes.Cookie;
+        options.DefaultAuthenticateScheme = PTDocAuthSchemes.Cookie;
+        options.DefaultChallengeScheme = PTDocAuthSchemes.Cookie;
+        options.DefaultSignInScheme = PTDocAuthSchemes.Cookie;
     })
-    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, ConfigureCookieOptions)
+    .AddCookie(PTDocAuthSchemes.Cookie, ConfigureCookieOptions)
     .AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, options =>
     {
         if (!string.IsNullOrWhiteSpace(entraExternalIdOptions.Authority))
@@ -186,8 +187,8 @@ if (entraExternalIdOptions.Enabled)
 }
 else
 {
-    builder.Services.AddAuthentication("PTDocAuth")
-        .AddCookie("PTDocAuth", ConfigureCookieOptions);
+    builder.Services.AddAuthentication(PTDocAuthSchemes.Cookie)
+        .AddCookie(PTDocAuthSchemes.Cookie, ConfigureCookieOptions);
 }
 
 builder.Services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
@@ -343,7 +344,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
         }
 
         var principal = CreateWebPrincipal(loginResponse);
-        await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        await httpContext.SignInAsync(PTDocAuthSchemes.Cookie, principal);
 
         return Results.Redirect(returnUrlValidation.Value);
     }
@@ -356,7 +357,7 @@ app.MapGet("/auth/logout", async (HttpContext httpContext) =>
         httpContext.User,
         entraExternalIdOptions.Enabled);
 
-    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
 
     if (requiresExternalProviderSignOut)
     {
@@ -443,7 +444,7 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
         claims.Add(new Claim(HttpTenantContextAccessor.ClinicIdClaimType, loginResponse.ClinicId.Value.ToString()));
     }
 
-    return new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+    return new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocAuthSchemes.Cookie));
 }
 
 file sealed class WebPinLoginRequest

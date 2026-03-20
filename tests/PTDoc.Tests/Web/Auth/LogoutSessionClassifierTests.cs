@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Web.Auth;
 
@@ -76,6 +77,6 @@ public sealed class LogoutSessionClassifierTests
 
     private static ClaimsPrincipal CreateAuthenticatedPrincipal(params Claim[] claims)
     {
-        return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "PTDocAuth"));
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: PTDocAuthSchemes.Cookie));
     }
 }

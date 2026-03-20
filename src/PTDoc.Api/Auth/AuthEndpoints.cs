@@ -43,7 +43,7 @@ public static class AuthEndpoints
 
             await refreshTokenStore.RevokeAsync(request.RefreshToken, cancellationToken);
 
-            var identity = new System.Security.Claims.ClaimsIdentity(record.Claims, "Bearer");
+            var identity = new System.Security.Claims.ClaimsIdentity(record.Claims, PTDocAuthSchemes.Bearer);
             var tokens = await issuer.IssueAsync(identity, cancellationToken);
 
             return Results.Ok(tokens);

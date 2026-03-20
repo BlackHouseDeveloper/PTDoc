@@ -2,7 +2,6 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -10,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 
 namespace PTDoc.Tests.Integration;
@@ -58,11 +58,13 @@ public sealed class WebLogoutEndpointIntegrationTests
 
             builder.ConfigureTestServices(services =>
             {
-                // Register TestAuthHandler as the default scheme, plus "Cookies" so the
-                // /auth/logout handler can call SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme).
-                // Program.cs reads entraExternalIdOptions before ConfigureAppConfiguration overrides
-                // are applied, so auth schemes are registered as if Entra is disabled (PTDocAuth).
-                // We add "Cookies" here to match what the logout handler expects when Entra is enabled.
+                // Register TestAuthHandler as the default scheme for the test.
+                // Program.cs reads EntraExternalId config before ConfigureAppConfiguration overrides
+                // are applied, so it always takes the non-Entra path at test startup and registers
+                // PTDocAuthSchemes.Cookie ("Cookies") there. We must NOT register "Cookies" again here
+                // or ASP.NET Core will throw "Scheme already exists: Cookies".
+                // SignOutAsync(PTDocAuthSchemes.Cookie) in /auth/logout will find the already-registered
+                // scheme from Program.cs.
                 services.AddAuthentication(options =>
                     {
                         options.DefaultScheme = TestAuthHandler.SchemeName;
@@ -72,8 +74,7 @@ public sealed class WebLogoutEndpointIntegrationTests
                     })
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                         TestAuthHandler.SchemeName,
-                        _ => { })
-                    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
+                        _ => { });
             });
         }
     }

@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using PTDoc.AI.Services;
 using PTDoc.Application.AI;
+using System.Net.Http;
 using Xunit;
 
 namespace PTDoc.Tests.AI;
@@ -9,6 +11,7 @@ namespace PTDoc.Tests.AI;
 public class AiServiceTests
 {
     private readonly IAiService _aiService;
+    private static readonly IHttpClientFactory _mockHttpClientFactory = new Mock<IHttpClientFactory>().Object;
 
     public AiServiceTests()
     {
@@ -19,7 +22,7 @@ public class AiServiceTests
             })
             .Build();
 
-        _aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+        _aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
     }
 
     [Fact]
@@ -167,7 +170,7 @@ public class AiServiceTests
             })
             .Build();
 
-        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
 
         var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
         {
@@ -189,7 +192,7 @@ public class AiServiceTests
             })
             .Build();
 
-        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
 
         var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
         {
