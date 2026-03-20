@@ -1,5 +1,5 @@
 @page "/reports"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "ClinicalStaff")]
 
 <PageTitle>Reports - PTDoc</PageTitle>
 

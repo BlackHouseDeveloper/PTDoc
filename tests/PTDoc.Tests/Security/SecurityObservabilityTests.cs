@@ -12,19 +12,29 @@ namespace PTDoc.Tests.Security;
 public class SecurityObservabilityTests
 {
     [Fact]
-    public async Task EnvironmentDbKeyProvider_DevelopmentMode_ReturnsDefaultKey()
+    public async Task EnvironmentDbKeyProvider_MissingEnvVar_ThrowsRegardlessOfEnvironment()
     {
-        // Arrange
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+        // Sprint P: the deterministic dev fallback key has been removed.
+        // The provider must now fail-closed in all environments when the key is not set.
+        var previousKey = Environment.GetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY");
+        var previousEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+
         Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", null);
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+
         var provider = new EnvironmentDbKeyProvider();
 
-        // Act
-        var key = await provider.GetKeyAsync();
-
-        // Assert
-        Assert.NotNull(key);
-        Assert.True(key.Length >= 32, "Key must be at least 32 characters for SQLCipher");
+        try
+        {
+            // Act & Assert: must throw — no dev fallback is allowed
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => provider.GetKeyAsync());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", previousKey);
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", previousEnv);
+        }
     }
 
     [Fact]

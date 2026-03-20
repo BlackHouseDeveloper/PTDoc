@@ -1,12 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Api.Compliance;
 
 /// <summary>
 /// API endpoints for compliance and Medicare rules.
 /// Backend-only - no UI dependencies.
+/// Sprint P: RBAC enforcement per FSD §3.
 /// </summary>
 public static class ComplianceEndpoints
 {
@@ -14,7 +19,7 @@ public static class ComplianceEndpoints
     {
         var complianceGroup = app.MapGroup("/api/v1/compliance")
             .WithTags("Compliance")
-            .RequireAuthorization();
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // Rule evaluation endpoints
         complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}",
@@ -50,17 +55,36 @@ public static class ComplianceEndpoints
                 return Results.Ok(result);
             })
             .WithName("EvaluateImmutability");
+
+        // Sprint N: Clinical validation — documentation completeness + Medicare compliance.
+        complianceGroup.MapGet("/validate/clinical/{noteId:guid}",
+            async (Guid noteId, IClinicalRulesEngine clinicalRulesEngine) =>
+            {
+                var violations = await clinicalRulesEngine.RunClinicalValidationAsync(noteId);
+                return Results.Ok(new
+                {
+                    noteId,
+                    violations,
+                    hasBlockingViolations = violations.Any(v => v.Blocking),
+                    canSign = violations.All(v => !v.Blocking)
+                });
+            })
+            .WithName("ValidateClinicalNote");
     }
 
     public static void MapNoteEndpoints(this WebApplication app)
     {
         var notesGroup = app.MapGroup("/api/v1/notes")
-            .WithTags("Notes")
-            .RequireAuthorization();
+            .WithTags("Notes");
 
-        // Signature endpoint
+        // Signature endpoint — requires licensed clinician (PT or PTA).
+        // Domain guard: PTA may only sign Daily notes (not Eval, ProgressNote, or Discharge)
+        // per FSD §3.3 and Medicare documentation rules.
         notesGroup.MapPost("/{noteId:guid}/sign",
-            async (Guid noteId, ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
+            async (Guid noteId, ISignatureService signatureService,
+                   IIdentityContextAccessor identityContext,
+                   ApplicationDbContext db,
+                   HttpContext httpContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
                 if (userId == Guid.Empty)
@@ -68,10 +92,36 @@ public static class ComplianceEndpoints
                     return Results.Unauthorized();
                 }
 
+                // Domain guard: PTA cannot sign Evaluation, Progress Note, or Discharge notes.
+                var isPta = httpContext.User.IsInRole(Roles.PTA);
+                if (isPta)
+                {
+                    var noteType = await db.ClinicalNotes
+                        .AsNoTracking()
+                        .Where(n => n.Id == noteId)
+                        .Select(n => (NoteType?)n.NoteType)
+                        .FirstOrDefaultAsync(httpContext.RequestAborted);
+
+                    if (noteType == null)
+                        return Results.NotFound(new { error = $"Note {noteId} not found." });
+
+                    if (noteType != NoteType.Daily)
+                        return Results.Forbid();
+                }
+
                 var result = await signatureService.SignNoteAsync(noteId, userId);
 
                 if (!result.Success)
                 {
+                    // Sprint N: Surface blocking validation failures with a 422 Unprocessable Entity.
+                    if (result.ValidationFailures is { Count: > 0 })
+                    {
+                        return Results.UnprocessableEntity(new
+                        {
+                            error = result.ErrorMessage,
+                            validationFailures = result.ValidationFailures
+                        });
+                    }
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
 
@@ -82,9 +132,10 @@ public static class ComplianceEndpoints
                     signedUtc = result.SignedUtc
                 });
             })
-            .WithName("SignNote");
+            .WithName("SignNote")
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        // Addendum endpoint
+        // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",
             async (Guid noteId, [FromBody] AddendumRequest request,
                    ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
@@ -108,16 +159,18 @@ public static class ComplianceEndpoints
                     addendumId = result.AddendumId
                 });
             })
-            .WithName("CreateAddendum");
+            .WithName("CreateAddendum")
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        // Verify signature endpoint
+        // Verify signature — readable by all clinical staff (PT, PTA, Admin).
         notesGroup.MapGet("/{noteId:guid}/verify-signature",
             async (Guid noteId, ISignatureService signatureService) =>
             {
                 var isValid = await signatureService.VerifySignatureAsync(noteId);
                 return Results.Ok(new { isValid });
             })
-            .WithName("VerifySignature");
+            .WithName("VerifySignature")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
     }
 }
 

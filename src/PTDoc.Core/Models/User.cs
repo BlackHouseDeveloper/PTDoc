@@ -25,6 +25,13 @@ public class User
     public string? LicenseState { get; set; }
     public DateTime? LicenseExpirationDate { get; set; }
 
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic this user belongs to. Null for system-level users (e.g., background service account).
+    /// All clinical data access is restricted to the user's assigned clinic.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
+
     // Status
     public bool IsActive { get; set; } = true;
 
@@ -34,4 +41,5 @@ public class User
 
     // Navigation properties
     public ICollection<Session> Sessions { get; set; } = new List<Session>();
+    public Clinic? Clinic { get; set; }
 }

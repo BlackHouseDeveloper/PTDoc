@@ -291,6 +291,437 @@ public class SyncEngine : ISyncEngine
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ClientSyncPushResponse> ReceiveClientPushAsync(
+        ClientSyncPushRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        // Guard: treat null or empty items as an empty batch rather than throwing.
+        if (request.Items is not { Count: > 0 })
+        {
+            return new ClientSyncPushResponse();
+        }
+
+        var results = new List<ClientSyncPushItemResult>();
+        int acceptedCount = 0, conflictCount = 0, errorCount = 0;
+
+        foreach (var item in request.Items)
+        {
+            // Normalise entity type to PascalCase so conflict detection is case-insensitive.
+            var entityType = item.EntityType?.Trim() ?? string.Empty;
+            if (entityType.Length > 1)
+                entityType = char.ToUpperInvariant(entityType[0]) + entityType[1..];
+            else if (entityType.Length == 1)
+                entityType = char.ToUpperInvariant(entityType[0]).ToString();
+
+            try
+            {
+                // Resolve the server ID: new records arrive with Guid.Empty
+                var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+
+                // Check for conflict: does a more-recent server version already exist?
+                var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
+                if (existing.HasValue && existing.Value > item.LastModifiedUtc)
+                {
+                    _logger.LogWarning(
+                        "Client push conflict: server version is newer for {EntityType}:{ServerId}",
+                        entityType, serverId);
+
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        EntityType = entityType,
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = "Server version is newer",
+                        ServerModifiedUtc = existing.Value
+                    });
+                    continue;
+                }
+
+                // Check entity-specific immutability rules (signed notes, locked intake)
+                var entityConflictReason = await CheckEntitySpecificConflictAsync(entityType, serverId, cancellationToken);
+                if (entityConflictReason != null)
+                {
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        EntityType = entityType,
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = entityConflictReason,
+                        ServerModifiedUtc = existing
+                    });
+                    continue;
+                }
+
+                // Record receipt in the server queue so the change can be audited and
+                // later applied by downstream processing (Sprint I+).
+                // Sprint H intent: the server acknowledges receipt and stores a completed
+                // SyncQueueItem for audit purposes. Full entity persistence (upsert into
+                // the Patients / Appointments tables) is deferred to Sprint I+ to keep
+                // this sprint focused on the sync protocol and MAUI orchestration layer.
+                // PayloadJson is stored so Sprint I+ can replay the exact payload sent by the client.
+                var queueItem = new SyncQueueItem
+                {
+                    EntityType = entityType,
+                    EntityId = serverId,
+                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
+                    EnqueuedAt = DateTime.UtcNow,
+                    Status = SyncQueueStatus.Completed,
+                    CompletedAt = DateTime.UtcNow,
+                    PayloadJson = item.DataJson
+                };
+                _context.SyncQueueItems.Add(queueItem);
+
+                acceptedCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    EntityType = entityType,
+                    LocalId = item.LocalId,
+                    ServerId = serverId,
+                    Status = "Accepted",
+                    ServerModifiedUtc = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
+                    entityType, item.ServerId);
+                errorCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    EntityType = entityType,
+                    LocalId = item.LocalId,
+                    ServerId = item.ServerId,
+                    Status = "Error",
+                    Error = "Server error processing item"
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return new ClientSyncPushResponse
+        {
+            AcceptedCount = acceptedCount,
+            ConflictCount = conflictCount,
+            ErrorCount = errorCount,
+            Items = results
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ClientSyncPullResponse> GetClientDeltaAsync(
+        DateTime? sinceUtc,
+        string[]? entityTypes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSince = sinceUtc ?? DateTime.MinValue;
+        var effectiveTypes = entityTypes is { Length: > 0 }
+            ? entityTypes
+            : new[] { "Patient", "Appointment", "IntakeForm", "ClinicalNote", "ObjectiveMetric", "AuditLog" };
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = false
+        };
+
+        var items = new List<ClientSyncPullItem>();
+
+        if (effectiveTypes.Contains("Patient", StringComparer.OrdinalIgnoreCase))
+        {
+            var patients = await _context.Patients
+                .AsNoTracking()
+                .Where(p => p.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in patients)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Patient",
+                    ServerId = p.Id,
+                    Operation = p.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        p.Id,
+                        p.FirstName,
+                        p.LastName,
+                        p.DateOfBirth,
+                        p.Email,
+                        p.Phone,
+                        p.MedicalRecordNumber,
+                        p.IsArchived,
+                        p.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = p.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("Appointment", StringComparer.OrdinalIgnoreCase))
+        {
+            var appointments = await _context.Appointments
+                .AsNoTracking()
+                .Where(a => a.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in appointments)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Appointment",
+                    ServerId = a.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id,
+                        a.PatientId,
+                        a.StartTimeUtc,
+                        a.EndTimeUtc,
+                        a.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = a.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("IntakeForm", StringComparer.OrdinalIgnoreCase))
+        {
+            var intakeForms = await _context.IntakeForms
+                .AsNoTracking()
+                .Where(i => i.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var i in intakeForms)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "IntakeForm",
+                    ServerId = i.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        i.Id,
+                        i.PatientId,
+                        i.IsLocked,
+                        i.ResponseJson,
+                        i.PainMapData,
+                        i.Consents,
+                        i.SubmittedAt,
+                        i.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = i.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("ClinicalNote", StringComparer.OrdinalIgnoreCase))
+        {
+            var notes = await _context.ClinicalNotes
+                .AsNoTracking()
+                .Where(n => n.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var n in notes)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = n.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        n.Id,
+                        n.PatientId,
+                        n.NoteType,
+                        n.DateOfService,
+                        n.ContentJson,
+                        n.SignatureHash,
+                        n.SignedUtc,
+                        n.SignedByUserId,
+                        n.CptCodesJson,
+                        n.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = n.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("ObjectiveMetric", StringComparer.OrdinalIgnoreCase))
+        {
+            // ObjectiveMetric has no LastModifiedUtc; sync by parent note's LastModifiedUtc.
+            // Use a join to fetch only the note's timestamp — avoids loading the full ClinicalNote row.
+            var metrics = await _context.ObjectiveMetrics
+                .AsNoTracking()
+                .Join(
+                    _context.ClinicalNotes.Where(n => n.LastModifiedUtc > effectiveSince),
+                    m => m.NoteId,
+                    n => n.Id,
+                    (m, n) => new
+                    {
+                        m.Id,
+                        m.NoteId,
+                        m.BodyPart,
+                        m.MetricType,
+                        m.Value,
+                        m.IsWNL,
+                        NoteLastModifiedUtc = n.LastModifiedUtc
+                    })
+                .ToListAsync(cancellationToken);
+
+            foreach (var m in metrics)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "ObjectiveMetric",
+                    ServerId = m.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        m.Id,
+                        m.NoteId,
+                        m.BodyPart,
+                        m.MetricType,
+                        m.Value,
+                        m.IsWNL
+                    }, jsonOptions),
+                    LastModifiedUtc = m.NoteLastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("AuditLog", StringComparer.OrdinalIgnoreCase))
+        {
+            var auditLogs = await _context.AuditLogs
+                .AsNoTracking()
+                .Where(a => a.TimestampUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in auditLogs)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "AuditLog",
+                    ServerId = a.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id,
+                        a.EventType,
+                        a.Severity,
+                        a.TimestampUtc,
+                        a.UserId,
+                        EntityType = a.EntityType,
+                        a.EntityId,
+                        a.CorrelationId,
+                        a.Success
+                    }, jsonOptions),
+                    LastModifiedUtc = a.TimestampUtc
+                });
+            }
+        }
+
+        _logger.LogInformation(
+            "Client pull returning {Count} item(s) since {SinceUtc}",
+            items.Count, effectiveSince);
+
+        return new ClientSyncPullResponse
+        {
+            Items = items,
+            SyncedAt = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
+    /// or <c>null</c> if the record does not exist on the server.
+    /// Uses case-insensitive comparison to handle varying client casing (e.g. "clinicalnote", "ClinicalNote").
+    /// </summary>
+    private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
+        string entityType,
+        Guid serverId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase))
+            return await _context.Patients.AsNoTracking()
+                .Where(p => p.Id == serverId)
+                .Select(p => (DateTime?)p.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase))
+            return await _context.Appointments.AsNoTracking()
+                .Where(a => a.Id == serverId)
+                .Select(a => (DateTime?)a.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+            return await _context.IntakeForms.AsNoTracking()
+                .Where(i => i.Id == serverId)
+                .Select(i => (DateTime?)i.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+            return await _context.ClinicalNotes.AsNoTracking()
+                .Where(n => n.Id == serverId)
+                .Select(n => (DateTime?)n.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "AuditLog", StringComparison.OrdinalIgnoreCase))
+            return await _context.AuditLogs.AsNoTracking()
+                .Where(a => a.Id == serverId)
+                .Select(a => (DateTime?)a.TimestampUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check entity-specific immutability constraints for a push item.
+    /// Returns a non-PHI conflict reason string if the push must be rejected, or null if the push is permitted.
+    /// </summary>
+    private async Task<string?> CheckEntitySpecificConflictAsync(
+        string entityType,
+        Guid serverId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+        {
+            var signatureHash = await _context.ClinicalNotes.AsNoTracking()
+                .Where(n => n.Id == serverId)
+                .Select(n => n.SignatureHash)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (signatureHash != null)
+            {
+                _logger.LogWarning(
+                    "Client push rejected: signed ClinicalNote {ServerId} is immutable", serverId);
+                return "Signed notes are immutable";
+            }
+        }
+        else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+        {
+            var isLocked = await _context.IntakeForms.AsNoTracking()
+                .Where(i => i.Id == serverId)
+                .Select(i => (bool?)i.IsLocked)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (isLocked == true)
+            {
+                _logger.LogWarning(
+                    "Client push rejected: IntakeForm {ServerId} is locked after evaluation", serverId);
+                return "Intake form is locked after evaluation";
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Archive a conflicting version for later review.
     /// </summary>

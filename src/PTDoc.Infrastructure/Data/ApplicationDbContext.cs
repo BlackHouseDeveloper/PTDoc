@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Infrastructure.Data;
@@ -6,13 +7,25 @@ namespace PTDoc.Infrastructure.Data;
 /// <summary>
 /// Application database context for PTDoc.
 /// Supports both SQLite (local-first) and SQL Server (cloud) via provider configuration.
+/// Sprint J: Tenant-aware query filtering scopes all clinical data to the current clinic.
 /// </summary>
 public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+    private readonly ITenantContextAccessor? _tenantContext;
+
+    /// <summary>
+    /// Primary constructor used at runtime — receives tenant context for per-clinic filtering.
+    /// </summary>
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        ITenantContextAccessor? tenantContext = null)
         : base(options)
     {
+        _tenantContext = tenantContext;
     }
+
+    // Tenant entity (Sprint J)
+    public DbSet<Clinic> Clinics => Set<Clinic>();
 
     // Clinical entities
     public DbSet<Patient> Patients => Set<Patient>();
@@ -22,6 +35,7 @@ public class ApplicationDbContext : DbContext
 
     // User & auth entities
     public DbSet<User> Users => Set<User>();
+    public DbSet<ExternalIdentityMapping> ExternalIdentityMappings => Set<ExternalIdentityMapping>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
 
@@ -31,6 +45,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
     public DbSet<Addendum> Addendums => Set<Addendum>();
+    public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
+
+    // Sprint M: Outcome Measures (TDD §9)
+    public DbSet<OutcomeMeasureResult> OutcomeMeasureResults => Set<OutcomeMeasureResult>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,6 +127,10 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
             entity.Property(e => e.AccessToken).HasMaxLength(256).IsRequired();
+
+            // Sprint O: TDD §5.2 IntakeResponse contract fields
+            entity.Property(e => e.PainMapData).IsRequired();
+            entity.Property(e => e.Consents).IsRequired();
         });
 
         // Configure User
@@ -134,6 +156,19 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+            modelBuilder.Entity<ExternalIdentityMapping>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.Provider, e.ExternalSubject }).IsUnique();
+                entity.HasIndex(e => new { e.PrincipalType, e.InternalEntityId });
+                entity.HasIndex(e => e.TenantId).HasFilter("TenantId IS NOT NULL");
+                entity.HasIndex(e => e.IsActive);
+
+                entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
+                entity.Property(e => e.ExternalSubject).HasMaxLength(255).IsRequired();
+                entity.Property(e => e.PrincipalType).HasMaxLength(50).IsRequired();
+            });
 
         // Configure Session
         modelBuilder.Entity<Session>(entity =>
@@ -239,5 +274,146 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.ClinicalNoteId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        // Configure ObjectiveMetric (Sprint O: TDD §5.4)
+        modelBuilder.Entity<ObjectiveMetric>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NoteId);
+
+            entity.Property(e => e.Value).HasMaxLength(200).IsRequired();
+
+            // Relationship to ClinicalNote
+            entity.HasOne(e => e.Note)
+                .WithMany(n => n.ObjectiveMetrics)
+                .HasForeignKey(e => e.NoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure OutcomeMeasureResult (Sprint M: TDD §9)
+        modelBuilder.Entity<OutcomeMeasureResult>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => new { e.PatientId, e.MeasureType });
+            entity.HasIndex(e => e.DateRecorded);
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+
+            // Relationship to Patient
+            entity.HasOne(e => e.Patient)
+                .WithMany()
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Optional relationship to ClinicalNote
+            entity.HasOne(e => e.Note)
+                .WithMany()
+                .HasForeignKey(e => e.NoteId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Optional relationship to Clinic (tenant)
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Sprint J: Configure Clinic (tenant) entity
+        modelBuilder.Entity<Clinic>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Slug).IsUnique();
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Slug).HasMaxLength(100).IsRequired();
+
+            entity.HasMany(e => e.Users)
+                .WithOne(e => e.Clinic)
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(e => e.Patients)
+                .WithOne(e => e.Clinic)
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Sprint J: Configure ClinicId FK on tenant-scoped entities
+        modelBuilder.Entity<Patient>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        // Appointment, ClinicalNote, and IntakeForm carry ClinicId as a true FK to Clinic.
+        // Denormalized from Patient for efficient per-clinic query filtering.
+        modelBuilder.Entity<Appointment>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ClinicalNote>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<IntakeForm>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
+        // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
+        // Filters are bypassed when no tenant scope is active (system jobs, unauthenticated requests).
+        // Use context.Set<T>().IgnoreQueryFilters() to intentionally bypass for admin operations.
+        // Note: HasQueryFilter references `this` so the clinic ID is resolved per-query at runtime.
+        //
+        // Sprint S: Strict tenant isolation — removed the ClinicId == null pass-through.
+        // Records without a ClinicId are no longer visible to any tenant-scoped context.
+        // System contexts (CurrentClinicId == null) still see all records for admin/background jobs.
+        modelBuilder.Entity<Patient>()
+            .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<Appointment>()
+            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<ClinicalNote>()
+            .HasQueryFilter(n => CurrentClinicId == null || n.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<IntakeForm>()
+            .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == CurrentClinicId);
+
+        // Sprint O: ObjectiveMetric is accessed only through its parent ClinicalNote,
+        // which already has its own query filter. Filter ObjectiveMetric via the note's ClinicId
+        // so that direct queries on db.ObjectiveMetrics are also tenant-scoped.
+        // Sprint S: null ClinicId on parent note is no longer permitted through the tenant filter.
+        modelBuilder.Entity<ObjectiveMetric>()
+            .HasQueryFilter(m => CurrentClinicId == null || m.Note!.ClinicId == CurrentClinicId);
+
+        // Sprint M: OutcomeMeasureResult carries its own ClinicId for efficient tenant filtering.
+        modelBuilder.Entity<OutcomeMeasureResult>()
+            .HasQueryFilter(r => CurrentClinicId == null || r.ClinicId == CurrentClinicId);
     }
+
+    /// <summary>
+    /// Returns the current tenant's clinic ID for use in global query filters.
+    /// Evaluated at query execution time, not at model creation time.
+    /// </summary>
+    private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
 }

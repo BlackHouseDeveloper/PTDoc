@@ -27,6 +27,14 @@ public class SyncQueueItem
     // Error tracking
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// JSON payload of the entity as received from the client.
+    /// Populated for client push receipts (Sprint H+) so the change can be audited
+    /// and re-applied by downstream processing (Sprint I+).
+    /// Contains PHI — access must be restricted via RBAC.
+    /// </summary>
+    public string? PayloadJson { get; set; }
+
     // Status
     public SyncQueueStatus Status { get; set; }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PTDoc.Infrastructure.Data;
 
@@ -10,12 +11,14 @@ using PTDoc.Infrastructure.Data;
 namespace PTDoc.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260314000437_AddClinicTenantScoping")]
+    partial class AddClinicTenantScoping
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.1");
+            modelBuilder.HasAnnotation("ProductVersion", "8.0.4");
 
             modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
                 {
@@ -72,6 +75,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ClinicalId")
                         .HasColumnType("TEXT");
 
@@ -101,6 +107,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -175,6 +184,38 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Clinics");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
                     b.Property<Guid>("Id")
@@ -182,6 +223,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ContentJson")
@@ -223,6 +267,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
 
                     b.HasIndex("DateOfService");
 
@@ -290,6 +337,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
@@ -324,6 +374,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("AccessToken")
                         .IsUnique();
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -393,6 +446,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<string>("City")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("DateOfBirth")
                         .HasColumnType("TEXT");
 
@@ -441,6 +497,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
 
                     b.HasIndex("Email")
                         .HasFilter("Email IS NOT NULL");
@@ -603,6 +662,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("Operation")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("RetryCount")
                         .HasColumnType("INTEGER");
 
@@ -624,6 +686,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
@@ -676,6 +741,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
 
                     b.HasIndex("Email")
                         .IsUnique()
@@ -751,6 +819,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany("Patients")
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Clinic");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
@@ -760,6 +838,23 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.User", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany("Users")
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
+                {
+                    b.Navigation("Patients");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>

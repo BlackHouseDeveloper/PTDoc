@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
-    branches: [ "main", "develop", "phase8-continue" ]
 
 jobs:
   phase8-validation:
@@ -19,6 +18,11 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
     - name: Restore dependencies - Core
       run: dotnet restore src/PTDoc.Core/PTDoc.Core.csproj

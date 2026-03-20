@@ -4,6 +4,13 @@
     <ProjectReference Include="..\PTDoc.Core\PTDoc.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Required for Microsoft.AspNetCore.Authorization (AuthorizationOptions, AuthorizationPolicyBuilder).
+         Using PackageReference instead of FrameworkReference so MAUI (iOS/Android) can reference this
+         project without needing an ASP.NET Core server runtime pack. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authorization" Version="8.0.1" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

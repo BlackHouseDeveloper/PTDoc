@@ -59,7 +59,8 @@ public static class PinAuthEndpoints
             Username = result.Username,
             Token = result.Token,
             ExpiresAt = result.ExpiresAt,
-            Role = result.Role
+            Role = result.Role,
+            ClinicId = result.ClinicId
         });
     }
 
@@ -100,7 +101,8 @@ public static class PinAuthEndpoints
             FirstName = user.FirstName,
             LastName = user.LastName,
             Role = user.Role,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            ClinicId = user.ClinicId
         });
     }
 

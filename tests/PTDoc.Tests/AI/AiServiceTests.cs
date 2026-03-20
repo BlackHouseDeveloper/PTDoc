@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using PTDoc.AI.Services;
 using PTDoc.Application.AI;
+using System.Net.Http;
 using Xunit;
 
 namespace PTDoc.Tests.AI;
@@ -9,6 +11,7 @@ namespace PTDoc.Tests.AI;
 public class AiServiceTests
 {
     private readonly IAiService _aiService;
+    private static readonly IHttpClientFactory _mockHttpClientFactory = new Mock<IHttpClientFactory>().Object;
 
     public AiServiceTests()
     {
@@ -19,7 +22,7 @@ public class AiServiceTests
             })
             .Build();
 
-        _aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance);
+        _aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
     }
 
     [Fact]
@@ -155,5 +158,48 @@ public class AiServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _aiService.GeneratePlanAsync(null!));
+    }
+
+    [Fact]
+    public async Task GenerateAssessment_UsesAzureOpenAIDeployment_WhenAiModelIsNotConfigured()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "AzureOpenAIDeployment", "gpt-4o-medical" }
+            })
+            .Build();
+
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("gpt-4o-medical", result.Metadata.Model);
+    }
+
+    [Fact]
+    public async Task GenerateAssessment_Fails_WhenAiFeatureEnabledAndAzureRuntimeConfigMissing()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "FeatureFlags:EnableAiGeneration", "true" },
+                { "Ai:Model", "gpt-4" }
+            })
+            .Build();
+
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation failed. Please try again or contact support.", result.ErrorMessage);
     }
 }

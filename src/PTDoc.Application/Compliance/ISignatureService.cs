@@ -30,6 +30,13 @@ public class SignatureResult
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Blocking rule violations that prevented signing.
+    /// Non-null only when signing was blocked by clinical validation failures.
+    /// Sprint N: Clinical Decision Support + Rules Engine.
+    /// </summary>
+    public IReadOnlyList<RuleEvaluationResult>? ValidationFailures { get; set; }
 }
 
 public class AddendumResult

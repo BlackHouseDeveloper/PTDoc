@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -23,12 +24,22 @@ public class AuthServiceTests
         return new ApplicationDbContext(options);
     }
 
+    /// <summary>
+    /// Creates a no-op IAuditService mock so AuthService can be constructed in tests
+    /// without needing a real database-backed AuditService.
+    /// </summary>
+    private static IAuditService CreateAuditServiceMock()
+    {
+        var mock = new Mock<IAuditService>();
+        return mock.Object;
+    }
+
     [Fact]
     public async Task AuthenticateAsync_ValidPin_ReturnsAuthResult()
     {
         // Arrange
         var context = CreateInMemoryContext();
-        var authService = new AuthService(context, NullLogger<AuthService>.Instance);
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
 
         var user = new User
         {
@@ -73,7 +84,7 @@ public class AuthServiceTests
     {
         // Arrange
         var context = CreateInMemoryContext();
-        var authService = new AuthService(context, NullLogger<AuthService>.Instance);
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
 
         var user = new User
         {

@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
 using PTDoc.Application.AI;
 using System.Text;
 
@@ -12,15 +15,18 @@ namespace PTDoc.AI.Services;
 /// </summary>
 public sealed class OpenAiService : IAiService
 {
+    private const string AzureApiVersion = "2024-06-01";
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
     private const string DefaultModel = "gpt-4";
     private const string TemplateVersion = "v1";
 
-    public OpenAiService(IConfiguration configuration, ILogger<OpenAiService> logger)
+    public OpenAiService(IConfiguration configuration, ILogger<OpenAiService> logger, IHttpClientFactory httpClientFactory)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     public async Task<AiResult> GenerateAssessmentAsync(AiAssessmentRequest request, CancellationToken cancellationToken = default)
@@ -29,14 +35,14 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["Ai:Model"] ?? DefaultModel;
+            var model = _configuration["AzureOpenAIDeployment"]
+                ?? _configuration["Ai:Model"]
+                ?? DefaultModel;
             var prompt = await BuildAssessmentPromptAsync(request, cancellationToken);
 
             _logger.LogInformation("Generating AI assessment with model {Model}, template version {Version}", model, TemplateVersion);
 
-            // In production, call OpenAI API here
-            // For now, return a mock response that demonstrates the structure
-            var generatedText = GenerateMockAssessment(request);
+            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockAssessment(request), cancellationToken);
 
             return new AiResult
             {
@@ -62,7 +68,9 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["Ai:Model"] ?? DefaultModel,
+                    Model = _configuration["AzureOpenAIDeployment"]
+                        ?? _configuration["Ai:Model"]
+                        ?? DefaultModel,
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -75,14 +83,14 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["Ai:Model"] ?? DefaultModel;
+            var model = _configuration["AzureOpenAIDeployment"]
+                ?? _configuration["Ai:Model"]
+                ?? DefaultModel;
             var prompt = await BuildPlanPromptAsync(request, cancellationToken);
 
             _logger.LogInformation("Generating AI plan with model {Model}, template version {Version}", model, TemplateVersion);
 
-            // In production, call OpenAI API here
-            // For now, return a mock response that demonstrates the structure
-            var generatedText = GenerateMockPlan(request);
+            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockPlan(request), cancellationToken);
 
             return new AiResult
             {
@@ -108,7 +116,9 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["Ai:Model"] ?? DefaultModel,
+                    Model = _configuration["AzureOpenAIDeployment"]
+                        ?? _configuration["Ai:Model"]
+                        ?? DefaultModel,
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -215,5 +225,96 @@ public sealed class OpenAiService : IAiService
     {
         // Rough estimate: ~4 characters per token
         return text.Length / 4;
+    }
+
+    private async Task<string> GenerateTextAsync(
+        string prompt,
+        string model,
+        Func<string> fallbackFactory,
+        CancellationToken cancellationToken)
+    {
+        var endpoint = _configuration["AzureOpenAIEndpoint"];
+        var apiKey = _configuration["AzureOpenAIKey"];
+        var deployment = _configuration["AzureOpenAIDeployment"];
+        var aiFeatureEnabled = bool.TryParse(
+            _configuration["FeatureFlags:EnableAiGeneration"],
+            out var parsedAiFeatureEnabled)
+            && parsedAiFeatureEnabled;
+
+        if (string.IsNullOrWhiteSpace(endpoint) ||
+            string.IsNullOrWhiteSpace(apiKey) ||
+            string.IsNullOrWhiteSpace(deployment))
+        {
+            if (aiFeatureEnabled)
+            {
+                throw new InvalidOperationException(
+                    "Azure OpenAI runtime configuration is incomplete while AI generation is enabled.");
+            }
+
+            _logger.LogWarning("Azure OpenAI runtime configuration is incomplete. Falling back to deterministic mock generation.");
+            return fallbackFactory();
+        }
+
+        using var client = _httpClientFactory.CreateClient("AzureOpenAI");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={AzureApiVersion}");
+        request.Headers.Add("api-key", apiKey);
+        request.Content = JsonContent.Create(new
+        {
+            messages = new object[]
+            {
+                new { role = "system", content = "You are PTDoc clinical documentation assistance. Return concise, professional draft text only." },
+                new { role = "user", content = prompt }
+            },
+            temperature = 0.2,
+            max_tokens = 800
+        });
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
+        var choice = document.RootElement
+            .GetProperty("choices")
+            .EnumerateArray()
+            .FirstOrDefault();
+
+        if (!choice.TryGetProperty("message", out var messageElement))
+        {
+            throw new InvalidOperationException("Azure OpenAI response did not include a message payload.");
+        }
+
+        if (messageElement.TryGetProperty("content", out var contentElement))
+        {
+            if (contentElement.ValueKind == JsonValueKind.String)
+            {
+                var text = contentElement.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text;
+                }
+            }
+
+            if (contentElement.ValueKind == JsonValueKind.Array)
+            {
+                var builder = new StringBuilder();
+                foreach (var part in contentElement.EnumerateArray())
+                {
+                    if (part.TryGetProperty("text", out var textElement) && textElement.ValueKind == JsonValueKind.String)
+                    {
+                        builder.Append(textElement.GetString());
+                    }
+                }
+
+                if (builder.Length > 0)
+                {
+                    return builder.ToString();
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Azure OpenAI response did not contain usable text content.");
     }
 }
