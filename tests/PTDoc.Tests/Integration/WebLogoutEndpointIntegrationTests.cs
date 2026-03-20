@@ -58,10 +58,13 @@ public sealed class WebLogoutEndpointIntegrationTests
 
             builder.ConfigureTestServices(services =>
             {
-                // Register TestAuthHandler as the default scheme for the test, plus PTDocAuthSchemes.Cookie
-                // so the /auth/logout handler can call SignOutAsync(PTDocAuthSchemes.Cookie).
-                // Both the Entra and non-Entra Program.cs paths now register PTDocAuthSchemes.Cookie
-                // ("Cookies") as the cookie scheme, so this registration matches production behaviour.
+                // Register TestAuthHandler as the default scheme for the test.
+                // Program.cs reads EntraExternalId config before ConfigureAppConfiguration overrides
+                // are applied, so it always takes the non-Entra path at test startup and registers
+                // PTDocAuthSchemes.Cookie ("Cookies") there. We must NOT register "Cookies" again here
+                // or ASP.NET Core will throw "Scheme already exists: Cookies".
+                // SignOutAsync(PTDocAuthSchemes.Cookie) in /auth/logout will find the already-registered
+                // scheme from Program.cs.
                 services.AddAuthentication(options =>
                     {
                         options.DefaultScheme = TestAuthHandler.SchemeName;
@@ -71,8 +74,7 @@ public sealed class WebLogoutEndpointIntegrationTests
                     })
                     .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
                         TestAuthHandler.SchemeName,
-                        _ => { })
-                    .AddCookie(PTDocAuthSchemes.Cookie);
+                        _ => { });
             });
         }
     }
