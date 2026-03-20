@@ -76,7 +76,7 @@ public static class ReturnUrlValidator
         var returnUrl = query
             .Select(pair => pair.Split('=', 2))
             .Where(parts => parts.Length == 2 && string.Equals(parts[0], "returnUrl", StringComparison.OrdinalIgnoreCase))
-            .Select(parts => Uri.UnescapeDataString(parts[1]))
+            .Select(parts => parts[1])
             .FirstOrDefault();
 
         return Normalize(returnUrl).Value;
