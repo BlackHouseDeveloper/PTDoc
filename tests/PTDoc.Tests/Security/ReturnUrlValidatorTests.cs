@@ -25,4 +25,11 @@ public class ReturnUrlValidatorTests
         var result = ReturnUrlValidator.ExtractFromUri("https://localhost/login?returnUrl=https%253A%252F%252Fevil.example");
         Assert.Equal("/", result);
     }
+
+    [Fact]
+    public void ExtractFromUri_MalformedPercentEncoding_DoesNotThrow_ReturnsFallback()
+    {
+        var result = ReturnUrlValidator.ExtractFromUri("https://localhost/login?returnUrl=%invalid");
+        Assert.Equal("/", result);
+    }
 }
