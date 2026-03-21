@@ -1,0 +1,136 @@
+@* Recent Activity Panel (Right Column Below Preview)
+    Purpose: Shows most recent exports (audit visibility)
+    Placement: Right column under ExportPreviewPanel
+    Visual: Card with title "Recent Activity", activity list (latest first)
+    Each item includes: Status icon, Title (e.g., "SOAP Notes · PDF"), Metadata (provider name, record count)
+    
+    States:
+    - Populated list
+    - Empty state: Show friendly "No recent exports yet" message
+    
+    TODO: Pull from audit log system (no PHI stored in logs)
+*@
+
+<div class="recent-activity-panel">
+    <div class="recent-activity-panel__header">
+        <span class="recent-activity-panel__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="3" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M6.5 6.5H11.5M6.5 9H11.5M6.5 11.5H9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+        </span>
+        <h3 class="recent-activity-panel__title">Recent Activity</h3>
+    </div>
+    
+    <div class="recent-activity-panel__content">
+        @if (ActivityItems.Count == 0)
+        {
+            <!-- Empty State -->
+            <div class="recent-activity-empty">
+                <div class="empty-state-icon" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 4L13.8 9.2L19 11L13.8 12.8L12 18L10.2 12.8L5 11L10.2 9.2L12 4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <p class="empty-state-text">No recent exports yet</p>
+            </div>
+        }
+        else
+        {
+            <!-- Activity List -->
+            <div class="recent-activity-list">
+                @foreach (var item in ActivityItems)
+                {
+                    <div class="activity-item">
+                        <div class="activity-item__icon" aria-hidden="true">
+                            @if (item.IsSuccess)
+                            {
+                                <span class="activity-success">✓</span>
+                            }
+                            else
+                            {
+                                <span class="activity-error">✕</span>
+                            }
+                        </div>
+                        
+                        <div class="activity-item__content">
+                            <div class="activity-item__title">@item.DisplayTitle</div>
+                            <div class="activity-item__meta">
+                                @item.ProviderName · @item.RecordCount records
+                            </div>
+                        </div>
+                        
+                        <time class="activity-item__time" datetime="@item.ExportedAt.ToString("O")">
+                            @FormatTimeAgo(item.ExportedAt)
+                        </time>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public List<ExportActivityItem> ActivityItems { get; set; } = new();
+
+    // Mock data for demo (TODO: Replace with real data from audit log service)
+    protected override void OnInitialized()
+    {
+        if (ActivityItems.Count == 0)
+        {
+            ActivityItems = new List<ExportActivityItem>
+            {
+                new ExportActivityItem
+                {
+                    Id = 1,
+                    ExportType = ExportTab.SoapNotes,
+                    Format = ExportFormat.PDF,
+                    ProviderName = "Dr. Amanda Foster",
+                    RecordCount = 42,
+                    ExportedAt = DateTime.Now.AddHours(-2),
+                    IsSuccess = true
+                },
+                new ExportActivityItem
+                {
+                    Id = 2,
+                    ExportType = ExportTab.PatientData,
+                    Format = ExportFormat.CSV,
+                    ProviderName = "Dr. Kevin Brooks",
+                    RecordCount = 15,
+                    ExportedAt = DateTime.Now.AddHours(-5),
+                    IsSuccess = true
+                },
+                new ExportActivityItem
+                {
+                    Id = 3,
+                    ExportType = ExportTab.Reports,
+                    Format = ExportFormat.Excel,
+                    ProviderName = "Dr. Amanda Foster",
+                    RecordCount = 8,
+                    ExportedAt = DateTime.Now.AddDays(-1),
+                    IsSuccess = true
+                },
+            };
+        }
+    }
+
+    private static string FormatTimeAgo(DateTime dateTime)
+    {
+        var timeDiff = DateTime.Now.Subtract(dateTime);
+
+        if (timeDiff.TotalMinutes < 1)
+            return "just now";
+
+        if (timeDiff.TotalMinutes < 60)
+            return $"{(int)timeDiff.TotalMinutes}m ago";
+
+        if (timeDiff.TotalHours < 24)
+            return $"{(int)timeDiff.TotalHours}h ago";
+
+        if (timeDiff.TotalDays < 7)
+            return $"{(int)timeDiff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM dd");
+    }
+}

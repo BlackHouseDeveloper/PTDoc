@@ -1,0 +1,172 @@
+@* Filters Panel (Dynamic per SelectedTab)
+    Purpose: Captures export constraints; schema varies per tab
+    Placement: Left column, full width
+    Visual: Card container with header "Filters" + icon
+    Subcomponents: DateRangePicker, PatientsDropdown, ProvidersDropdown, TypesSelectorGrid
+    
+    Filter schemas per tab:
+    - SOAP Notes: Date Range, Patients, Providers, Note Types (grid)
+    - Patient Data: Date Range, Patients, Providers, Data Types (grid)
+    - Appointments: Date Range, Providers, Appointment Status (grid)
+    - Reports: Date Range, Report Type (grid), Providers
+*@
+
+<div class="filters-panel">
+    <div class="filters-panel__header">
+        <span class="filters-panel__icon" aria-hidden="true">🔍</span>
+        <h3 class="filters-panel__title">Filters</h3>
+    </div>
+    
+    <div class="filters-panel__content">
+        <!-- Date Range (all tabs) -->
+        <div class="filters-panel__section">
+            <DateRangePicker
+                @bind-StartDate="State.DateRangeStart"
+                @bind-EndDate="State.DateRangeEnd" />
+        </div>
+
+        <!-- SOAP Notes Schema -->
+        @if (SelectedTab == ExportTab.SoapNotes)
+        {
+            <!-- Patients (SOAP) -->
+            <div class="filters-panel__section">
+                <PatientsDropdown
+                    @bind-SelectedPatientIds="State.SelectedPatientIds" />
+            </div>
+            
+            <!-- Providers (SOAP) -->
+            <div class="filters-panel__section">
+                <ProvidersDropdown
+                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+            </div>
+            
+            <!-- Note Types Grid (SOAP) -->
+            <div class="filters-panel__section">
+                <h4 class="filters-panel__group-label">Note Types</h4>
+                <TypesSelectorGrid
+                    Items="@SoapNoteTypesItems"
+                    @bind-SelectedValues="State.SelectedNoteTypes"
+                    GridLabel="SOAP Note Types" />
+            </div>
+        }
+
+        <!-- Patient Data Schema -->
+        @if (SelectedTab == ExportTab.PatientData)
+        {
+            <!-- Patients (Patient Data) -->
+            <div class="filters-panel__section">
+                <PatientsDropdown
+                    @bind-SelectedPatientIds="State.SelectedPatientIds" />
+            </div>
+            
+            <!-- Providers (Patient Data) -->
+            <div class="filters-panel__section">
+                <ProvidersDropdown
+                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+            </div>
+            
+            <!-- Data Types Grid (Patient Data) -->
+            <div class="filters-panel__section">
+                <h4 class="filters-panel__group-label">Include Data</h4>
+                <TypesSelectorGrid
+                    Items="@PatientDataTypesItems"
+                    @bind-SelectedValues="State.SelectedDataTypes"
+                    GridLabel="Data Types" />
+            </div>
+        }
+
+        <!-- Appointments Schema -->
+        @if (SelectedTab == ExportTab.Appointments)
+        {
+            <!-- Providers (Appointments) -->
+            <div class="filters-panel__section">
+                <ProvidersDropdown
+                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+            </div>
+            
+            <!-- Appointment Status Grid -->
+            <div class="filters-panel__section">
+                <h4 class="filters-panel__group-label">Appointment Status</h4>
+                <TypesSelectorGrid
+                    Items="@ApptStatusItems"
+                    @bind-SelectedValues="State.SelectedApptStatuses"
+                    GridLabel="Appointment Status" />
+            </div>
+        }
+
+        <!-- Reports Schema -->
+        @if (SelectedTab == ExportTab.Reports)
+        {
+            <!-- Report Type Grid -->
+            <div class="filters-panel__section">
+                <h4 class="filters-panel__group-label">Report Type</h4>
+                <TypesSelectorGrid
+                    Items="@ReportTypesItems"
+                    @bind-SelectedValues="State.SelectedReportTypes"
+                    GridLabel="Report Types" />
+            </div>
+            
+            <!-- Providers (Reports) -->
+            <div class="filters-panel__section">
+                <ProvidersDropdown
+                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public ExportTab SelectedTab { get; set; } = ExportTab.SoapNotes;
+
+    [Parameter]
+    [EditorRequired]
+    public ExportDraftState State { get; set; } = new();
+
+    [Parameter]
+    public EventCallback StateChanged { get; set; }
+
+    // SOAP Note Types
+    private List<(string Value, string Label)> SoapNoteTypesItems { get; } = new()
+    {
+        ("initial-eval", "Initial Eval"),
+        ("progress-note", "Progress Note"),
+        ("re-eval", "Re-Eval"),
+        ("discharge-summary", "Discharge Summary"),
+        ("daily-note", "Daily Note"),
+        ("dry-needling", "Dry Needling"),
+    };
+
+    // Patient Data Types
+    private List<(string Value, string Label)> PatientDataTypesItems { get; } = new()
+    {
+        ("demographics", "Demographics"),
+        ("visit-history", "Visit History"),
+        ("documentation", "Documentation"),
+        ("outcome-measures", "Outcome Measures"),
+        ("insurance-info", "Insurance Info"),
+        ("attachments", "Attachments"),
+    };
+
+    // Appointment Status
+    private List<(string Value, string Label)> ApptStatusItems { get; } = new()
+    {
+        ("completed", "Completed"),
+        ("cancelled", "Cancelled"),
+        ("in-progress", "In Progress"),
+        ("scheduled", "Scheduled"),
+        ("no-show", "No-show"),
+    };
+
+    // Report Types
+    private List<(string Value, string Label)> ReportTypesItems { get; } = new()
+    {
+        ("visit-analytics", "Visit Analytics"),
+        ("outcome-measures", "Outcome Measures"),
+        ("revenue-report", "Revenue Report"),
+        ("billing-summary", "Billing Summary"),
+        ("cancellation-report", "Cancellation Report"),
+        ("productivity-report", "Productivity Report"),
+    };
+}

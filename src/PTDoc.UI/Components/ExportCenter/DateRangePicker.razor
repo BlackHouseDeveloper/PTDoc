@@ -1,0 +1,94 @@
+@* Date Range Picker Subcomponent
+    Two inputs: Start Date, End Date with "to" separator.
+    States: empty, partially selected, selected, invalid range (start > end)
+    Interaction: Change updates local UI filter model. Validate Start ≤ End (UI-level); show error if invalid.
+    TODO: Hook to real date constraints.
+*@
+
+<div class="date-range-picker">
+    <label for="@StartDateInputId" class="date-range-picker__label">Date Range</label>
+    
+    <div class="date-range-picker__container">
+        <input
+            id="@StartDateInputId"
+            type="date"
+            class="date-range-picker__input"
+            value="@StartDateValue"
+            @oninput="HandleStartDateInput"
+            max="@MaxDateString"
+            aria-label="Start date" />
+        
+        <span class="date-range-picker__separator">to</span>
+        
+        <input
+            id="@EndDateInputId"
+            type="date"
+            class="date-range-picker__input"
+            value="@EndDateValue"
+            @oninput="HandleEndDateInput"
+            max="@MaxDateString"
+            aria-label="End date" />
+    </div>
+    
+    @if (ShowErrorState)
+    {
+        <div class="date-range-picker__error" role="alert">
+            Start date must be before or equal to end date
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public DateTime? StartDate { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTime?> StartDateChanged { get; set; }
+
+    [Parameter]
+    public DateTime? EndDate { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTime?> EndDateChanged { get; set; }
+
+    private string StartDateInputId { get; } = $"date-start-{Guid.NewGuid()}";
+    private string EndDateInputId { get; } = $"date-end-{Guid.NewGuid()}";
+
+    private bool ShowErrorState => StartDate.HasValue && EndDate.HasValue && StartDate > EndDate;
+
+    private string StartDateValue
+    {
+        get => StartDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+
+    private string EndDateValue
+    {
+        get => EndDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+
+    private string MaxDateString => DateTime.Now.ToString("yyyy-MM-dd");
+
+    private async Task HandleStartDateInput(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        var parsed = DateTime.TryParse(value, out var date) ? (DateTime?)date : null;
+
+        if (StartDate != parsed)
+        {
+            StartDate = parsed;
+            await StartDateChanged.InvokeAsync(parsed);
+        }
+    }
+
+    private async Task HandleEndDateInput(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        var parsed = DateTime.TryParse(value, out var date) ? (DateTime?)date : null;
+
+        if (EndDate != parsed)
+        {
+            EndDate = parsed;
+            await EndDateChanged.InvokeAsync(parsed);
+        }
+    }
+}

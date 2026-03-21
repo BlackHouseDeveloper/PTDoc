@@ -1,0 +1,55 @@
+@* Types Selector Grid
+    Tab-specific grid of selectable cards w/ checkbox
+    Layout: 2-column card grid (per spec)
+    Each item: checkbox + label, entire card clickable (not just checkbox)
+    Selected state: highlight border + background using emerald/success tokens
+    Hover/focus state: subtle highlight; maintain accessibility focus ring via tokens
+*@
+
+<div class="types-selector-grid" role="group" aria-label="@GridLabel">
+    @foreach (var item in Items)
+    {
+        var isChecked = IsSelected(item.Value);
+        <label class="types-selector-grid__card @(isChecked ? "types-selector-grid__card--selected" : "")">
+            <input
+                type="checkbox"
+                class="types-selector-grid__checkbox"
+                checked="@isChecked"
+                @onchange="@((ChangeEventArgs e) => ToggleSelection(item.Value, (bool)e!.Value!))"
+                aria-label="@item.Label" />
+            
+            <span class="types-selector-grid__label">@item.Label</span>
+        </label>
+    }
+</div>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public List<(string Value, string Label)> Items { get; set; } = new();
+
+    [Parameter]
+    public List<string> SelectedValues { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<List<string>> SelectedValuesChanged { get; set; }
+
+    [Parameter]
+    public string GridLabel { get; set; } = "Selection Grid";
+
+    private bool IsSelected(string value) => SelectedValues.Contains(value);
+
+    private async Task ToggleSelection(string value, bool isSelected)
+    {
+        if (isSelected && !SelectedValues.Contains(value))
+        {
+            SelectedValues.Add(value);
+        }
+        else if (!isSelected && SelectedValues.Contains(value))
+        {
+            SelectedValues.Remove(value);
+        }
+
+        await SelectedValuesChanged.InvokeAsync(SelectedValues);
+    }
+}

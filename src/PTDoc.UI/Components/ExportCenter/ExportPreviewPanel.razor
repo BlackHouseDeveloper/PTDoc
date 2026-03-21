@@ -1,0 +1,260 @@
+@* Export Preview Panel (Right Column Top)
+    Purpose: Shows summary of what will be exported and controls Preview + Download flows
+    Placement: Right column at the top (~4 cols)
+    
+    Visual structure (card):
+    - Title row: "Export Preview"
+    - Metadata Summary section: Category, Format, Date Range
+    - Record Count Indicator: Large numeric display
+    - PHI Warning Card: Icon + message (conditional; visible for SOAP + Patient Data)
+    - Actions row: "Generate Preview" (secondary), "Download" (primary)
+    - Compliance footer text
+    
+    States:
+    - Initial / Pre-Preview: record count placeholder ("—"), Download disabled, PHI warning visible
+    - Preview Loading: spinner on Generate Preview button
+    - Preview Ready: record count visible, Download enabled
+    - Download Loading: Download disabled + loading
+    
+    Interaction behavior (UI-only with TODOs):
+    - Generate Preview: Updates record count. Manual trigger only.
+      TODO: Call preview API to compute record count
+    - Download: Disabled until preview generated AND minimum criteria met. If PHI present:
+      TODO: Implement compliant confirmation copy and real export trigger
+      TODO: Trigger export API and audit logging
+*@
+
+<div class="export-preview-panel">
+    <div class="export-preview-panel__header">
+        <span class="export-preview-panel__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 9s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Z" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </span>
+        <h3 class="export-preview-panel__title">Export Preview</h3>
+    </div>
+    
+    <!-- Metadata Summary -->
+    <div class="export-preview-panel__metadata">
+        <div class="metadata-row">
+            <span class="metadata-label">Category</span>
+            <span class="metadata-value">@TabLabel(SelectedTab)</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Format</span>
+            <span class="metadata-value">@FormatLabel(SelectedFormat)</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Date Range</span>
+            <span class="metadata-value">@DateRangeLabel(State)</span>
+        </div>
+    </div>
+    
+    <!-- Record Count Indicator -->
+    <div class="record-count-section">
+        @if (State.IsLoadingPreview)
+        {
+            <div class="record-count-loading">
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Generating preview...</span>
+            </div>
+        }
+        else if (State.HasGeneratedPreview && State.RecordCount.HasValue)
+        {
+            <div class="record-count-display">
+                <div class="record-count-number">@State.RecordCount</div>
+                <div class="record-count-label">records will be exported</div>
+            </div>
+        }
+        else
+        {
+            <div class="record-count-placeholder">—</div>
+        }
+    </div>
+    
+    <!-- PHI Warning (conditional) -->
+    @if (ShouldShowPhiWarning())
+    {
+        <div class="phi-warning-card">
+            <span class="phi-warning-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 2.5 16 14.5H2L9 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    <path d="M9 7V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="9" cy="12.5" r="0.8" fill="currentColor"/>
+                </svg>
+            </span>
+            <div class="phi-warning-content">
+                <div class="phi-warning-title">Contains PHI</div>
+                <div class="phi-warning-text">
+                    This export contains Protected Health Information and is subject to HIPAA regulations. 
+                    A confirmation will be required before download.
+                </div>
+            </div>
+        </div>
+    }
+    
+    <!-- Actions -->
+    <div class="export-preview-panel__actions">
+        <button
+            class="btn btn-secondary"
+            @onclick="HandleGeneratePreview"
+            disabled="@State.IsLoadingPreview"
+            type="button">
+            <span aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 9s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Z" stroke="currentColor" stroke-width="1.5"/>
+                    <circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </span>
+            Generate Preview
+        </button>
+        
+        <button
+            class="btn btn-primary"
+            @onclick="HandleDownload"
+            disabled="@IsDownloadDisabled()"
+            type="button"
+            aria-label="Download @FormatLabel(SelectedFormat)">
+            @if (State.IsDownloading)
+            {
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Downloading...</span>
+            }
+            else
+            {
+                <span aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 3.5V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M6 8.5 9 11.5 12 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3 14.5H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                <span>Download @FormatLabel(SelectedFormat)</span>
+            }
+        </button>
+    </div>
+    
+    <!-- Compliance Footer -->
+    <div class="export-preview-panel__footer">
+        <span class="footer-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="8" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M6.5 8V6.5a2.5 2.5 0 1 1 5 0V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+        </span>
+        <span class="footer-text">All exports are logged for HIPAA compliance</span>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public ExportTab SelectedTab { get; set; } = ExportTab.SoapNotes;
+
+    [Parameter]
+    [EditorRequired]
+    public ExportFormat SelectedFormat { get; set; } = ExportFormat.PDF;
+
+    [Parameter]
+    [EditorRequired]
+    public ExportDraftState State { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnGeneratePreview { get; set; }
+
+    [Parameter]
+    public EventCallback OnDownload { get; set; }
+
+    private bool ShouldShowPhiWarning() =>
+        SelectedTab == ExportTab.SoapNotes || SelectedTab == ExportTab.PatientData;
+
+    private bool IsDownloadDisabled() =>
+        !State.HasGeneratedPreview ||
+        !State.RecordCount.HasValue ||
+        State.IsDownloading;
+
+    private async Task HandleGeneratePreview()
+    {
+        State.IsLoadingPreview = true;
+        
+        // TODO: Call API to get preview record count
+        // Simulate preview generation
+        await Task.Delay(1000);
+        
+        State.RecordCount = 42;  // Hard-coded for UI demo
+        State.HasGeneratedPreview = true;
+        State.IsLoadingPreview = false;
+        
+        await OnGeneratePreview.InvokeAsync();
+    }
+
+    private async Task HandleDownload()
+    {
+        // If PHI present, require confirmation
+        if (ShouldShowPhiWarning())
+        {
+            // TODO: Show PHI confirmation modal before proceeding
+            var confirmed = await JSInterop.ShowPhiConfirmation();
+            if (!confirmed)
+                return;
+        }
+
+        State.IsDownloading = true;
+        
+        try
+        {
+            // TODO: Call API to trigger export and download
+            // Simulate download
+            await Task.Delay(1500);
+        }
+        finally
+        {
+            State.IsDownloading = false;
+        }
+
+        await OnDownload.InvokeAsync();
+    }
+
+    private static string TabLabel(ExportTab tab) => tab switch
+    {
+        ExportTab.SoapNotes => "SOAP Notes",
+        ExportTab.PatientData => "Patient Data",
+        ExportTab.Appointments => "Appointments",
+        ExportTab.Reports => "Reports",
+        _ => "Unknown"
+    };
+
+    private static string FormatLabel(ExportFormat format) => format switch
+    {
+        ExportFormat.PDF => "PDF",
+        ExportFormat.CSV => "CSV",
+        ExportFormat.Excel => "Excel",
+        ExportFormat.JSON => "JSON",
+        _ => "Unknown"
+    };
+
+    private static string DateRangeLabel(ExportDraftState state)
+    {
+        if (!state.DateRangeStart.HasValue && !state.DateRangeEnd.HasValue)
+            return "All time";
+
+        if (state.DateRangeStart.HasValue && state.DateRangeEnd.HasValue)
+            return $"{state.DateRangeStart:MMM dd, yyyy} - {state.DateRangeEnd:MMM dd, yyyy}";
+
+        if (state.DateRangeStart.HasValue)
+            return $"{state.DateRangeStart:MMM dd, yyyy} onwards";
+
+        return $"Until {state.DateRangeEnd:MMM dd, yyyy}";
+    }
+
+    // TODO: Inject JSInterop for PHI confirmation modal
+    private class JSInterop
+    {
+        public static Task<bool> ShowPhiConfirmation()
+        {
+            // TODO: Implement real modal confirmation
+            return Task.FromResult(true);  // Mock: always true for now
+        }
+    }
+}
