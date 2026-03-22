@@ -1,0 +1,99 @@
+@* AuthorizationDetailsPanel — authorization metadata and visit/unit limits *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Authorization Details">
+    <PatientInfoFormGrid>
+
+        <PatientInfoField Label="Authorization Number" ForId="pi-auth-number" Error="@GetError("authNumber")">
+            <PatientInfoTextInput Id="pi-auth-number"
+                                  Value="@Model.AuthorizationNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.AuthorizationNumber = v))"
+                                  HasError="@HasError("authNumber")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Date Authorization Received" ForId="pi-auth-received" Error="@GetError("authReceived")">
+            <PatientInfoTextInput Id="pi-auth-received"
+                                  Value="@Model.DateAuthorizationReceived"
+                                  ValueChanged="@(v => SetField(v, f => f.DateAuthorizationReceived = v))"
+                                  HasError="@HasError("authReceived")" />
+            @* TODO: Replace with date-picker control if required. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Authorization Start Date" ForId="pi-auth-start" Error="@GetError("authStart")">
+            <PatientInfoTextInput Id="pi-auth-start"
+                                  Value="@Model.AuthorizationStartDate"
+                                  ValueChanged="@(v => SetField(v, f => f.AuthorizationStartDate = v))"
+                                  HasError="@HasError("authStart")" />
+            @* TODO: Replace with date-picker control if required. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Authorization End Date" ForId="pi-auth-end" Error="@GetError("authEnd")">
+            <PatientInfoTextInput Id="pi-auth-end"
+                                  Value="@Model.AuthorizationEndDate"
+                                  ValueChanged="@(v => SetField(v, f => f.AuthorizationEndDate = v))"
+                                  HasError="@HasError("authEnd")" />
+        </PatientInfoField>
+
+        @* Left-only row: "Number of Visits or Units Authorized" in left col + spacer in right col *@
+        <PatientInfoField Label="Number of Visits or Units Authorized"
+                          ForId="pi-auth-units"
+                          Error="@GetError("authUnits")">
+            <PatientInfoTextInput Id="pi-auth-units"
+                                  Value="@Model.NumberOfVisitsOrUnitsAuthorized"
+                                  ValueChanged="@(v => SetField(v, f => f.NumberOfVisitsOrUnitsAuthorized = v))"
+                                  HasError="@HasError("authUnits")" />
+            @* TODO: Determine if units vs visits affects labels/validation. *@
+        </PatientInfoField>
+        @* Explicit right-column spacer so "units" field stays left-only on desktop *@
+        <div class="pi-form-grid-spacer" aria-hidden="true"></div>
+
+    </PatientInfoFormGrid>
+
+    @* UI-only validation: start date must be <= end date *@
+    @if (!string.IsNullOrEmpty(DateRangeError))
+    {
+        <p class="pi-auth-date-range-error" role="alert">@DateRangeError</p>
+    }
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public AuthorizationDetailsVm Model { get; set; } = null!;
+    [Parameter] public EventCallback<AuthorizationDetailsVm> ModelChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private string DateRangeError => ValidateDateRange();
+
+    private string GetError(string key) =>
+        FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
+
+    private bool HasError(string key) => FieldErrors.ContainsKey(key);
+
+    private async Task SetField(string value, Action<AuthorizationDetailsVm> setter)
+    {
+        setter(Model);
+        await ModelChanged.InvokeAsync(Model);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+
+    // UI-only validation: show error when both dates are set and start > end.
+    // TODO: Replace UI-only validation with server-side validation when backend model is known.
+    private string ValidateDateRange()
+    {
+        if (string.IsNullOrWhiteSpace(Model.AuthorizationStartDate) ||
+            string.IsNullOrWhiteSpace(Model.AuthorizationEndDate))
+        {
+            return string.Empty;
+        }
+
+        if (DateTime.TryParse(Model.AuthorizationStartDate, out var start) &&
+            DateTime.TryParse(Model.AuthorizationEndDate, out var end) &&
+            start > end)
+        {
+            return "Authorization Start Date must be on or before Authorization End Date.";
+        }
+
+        return string.Empty;
+    }
+}

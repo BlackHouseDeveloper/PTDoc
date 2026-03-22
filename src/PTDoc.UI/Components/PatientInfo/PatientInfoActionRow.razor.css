@@ -1,0 +1,91 @@
+/* PatientInfoActionRow — bottom Save + Back action bar */
+
+.pi-action-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding-top: var(--spacing-6);
+}
+
+/* Save Changes — primary / left */
+.pi-action-row-save {
+    flex: 1 0 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    height: var(--touch-target-tablet); /* 48px */
+    padding: 0 var(--spacing-6);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    cursor: pointer;
+    transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.pi-action-row-save:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 85%, black);
+}
+
+.pi-action-row-save:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.pi-action-row-save:disabled,
+.pi-action-row-save[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Back to Patient Profile — secondary / right */
+.pi-action-row-back {
+    flex: 1 0 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    height: var(--touch-target-tablet); /* 48px */
+    padding: 0 var(--spacing-6);
+    background: var(--background);
+    color: var(--foreground);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pi-action-row-back:hover {
+    background: var(--muted);
+    border-color: var(--foreground);
+}
+
+.pi-action-row-back:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.pi-action-row-back:active {
+    background: var(--accent);
+}
+
+/* Spinner animation for saving state */
+.pi-action-row-spinner-icon {
+    animation: pi-spin 0.8s linear infinite;
+}
+
+@keyframes pi-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* Dark mode: handled automatically by token overrides in tokens.css. */

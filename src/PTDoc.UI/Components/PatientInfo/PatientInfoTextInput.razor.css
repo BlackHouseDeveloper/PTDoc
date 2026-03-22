@@ -1,0 +1,52 @@
+/* PatientInfoTextInput — token-styled input */
+
+.pi-text-input {
+    display: block;
+    width: 100%;
+    height: var(--touch-target-tablet); /* 48px */
+    padding: var(--spacing-1) var(--spacing-3); /* 4px 12px */
+    background: var(--input-background);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.pi-text-input::placeholder {
+    color: var(--muted-foreground);
+}
+
+.pi-text-input:hover:not(:disabled):not([readonly]) {
+    border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.pi-text-input:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.15);
+}
+
+.pi-text-input--invalid {
+    border-color: var(--destructive);
+}
+
+.pi-text-input--invalid:focus-visible {
+    box-shadow: 0 0 0 3px rgba(var(--destructive-rgb), 0.15);
+}
+
+.pi-text-input--disabled,
+.pi-text-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Dark mode: handled automatically by token overrides in tokens.css.
+   In .dark, --border resolves to rgba(34,197,94,0.2) (emerald), so no
+   extra rules are needed here. */

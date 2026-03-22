@@ -1,0 +1,29 @@
+/* PatientInfoFormGrid — two-column form grid */
+
+.pi-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-4);
+}
+
+/* Full-width field spans both columns */
+.pi-form-grid > .pi-field--span-2 {
+    grid-column: span 2;
+}
+
+/* Spacer fills the right column in a left-only row */
+.pi-form-grid > .pi-form-grid-spacer {
+    grid-column: span 1;
+}
+
+/* Responsive: collapse to single column on small screens */
+@media (max-width: 640px) {
+    .pi-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pi-form-grid > .pi-field--span-2,
+    .pi-form-grid > .pi-form-grid-spacer {
+        grid-column: span 1;
+    }
+}

@@ -5,3 +5,11 @@
     min-height: 0;
     overflow: hidden;
 }
+
+@media (max-width: 1199px) {
+    .appointments-right-column {
+        /* In stacked layout, allow scheduler content to expand/scroll instead of clipping. */
+        min-height: 0;
+        overflow: visible;
+    }
+}

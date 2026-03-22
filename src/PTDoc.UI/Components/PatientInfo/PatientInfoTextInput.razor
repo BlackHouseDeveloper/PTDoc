@@ -1,0 +1,29 @@
+@* PatientInfoTextInput — token-styled text/date input *@
+
+<input type="@Type"
+       id="@Id"
+       class="pi-text-input @(HasError ? "pi-text-input--invalid" : "") @(IsDisabled ? "pi-text-input--disabled" : "")"
+       value="@Value"
+       placeholder="@Placeholder"
+       disabled="@IsDisabled"
+       readonly="@IsReadOnly"
+       aria-describedby="@(HasError ? Id + "-error" : null)"
+       aria-invalid="@(HasError ? "true" : null)"
+       @oninput="HandleInput" />
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public string Type { get; set; } = "text";
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool HasError { get; set; }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

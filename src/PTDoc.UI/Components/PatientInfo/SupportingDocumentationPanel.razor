@@ -1,0 +1,57 @@
+@* SupportingDocumentationPanel — case manager contact info and referring physician *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Supporting Documentation">
+    <PatientInfoFormGrid>
+
+        @* Full-width row: case manager textarea *@
+        <PatientInfoField Label="Case Manager / Adjuster Contact Info"
+                          ForId="pi-case-manager"
+                          Error="@GetError("caseManager")"
+                          SpanFull="true">
+            <PatientInfoTextArea Id="pi-case-manager"
+                                 Value="@Model.CaseManagerAdjusterContactInfo"
+                                 ValueChanged="@(v => SetField(v, f => f.CaseManagerAdjusterContactInfo = v))"
+                                 Placeholder="Name, phone, email, and other contact details..."
+                                 Rows="4"
+                                 HasError="@HasError("caseManager")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Referring Physician Name" ForId="pi-referring-physician" Error="@GetError("referringPhysician")">
+            <PatientInfoTextInput Id="pi-referring-physician"
+                                  Value="@Model.ReferringPhysicianName"
+                                  ValueChanged="@(v => SetField(v, f => f.ReferringPhysicianName = v))"
+                                  HasError="@HasError("referringPhysician")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Physician NPI Number" ForId="pi-npi" Error="@GetError("npi")">
+            <PatientInfoTextInput Id="pi-npi"
+                                  Value="@Model.PhysicianNpiNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.PhysicianNpiNumber = v))"
+                                  Placeholder="10-digit NPI"
+                                  HasError="@HasError("npi")" />
+            @* TODO: Validate NPI via server/API if required. *@
+            @* TODO: Add input masking if design system supports it. *@
+        </PatientInfoField>
+
+    </PatientInfoFormGrid>
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public SupportingDocumentationVm Model { get; set; } = null!;
+    [Parameter] public EventCallback<SupportingDocumentationVm> ModelChanged { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private string GetError(string key) =>
+        FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
+
+    private bool HasError(string key) => FieldErrors.ContainsKey(key);
+
+    private async Task SetField(string value, Action<SupportingDocumentationVm> setter)
+    {
+        setter(Model);
+        await ModelChanged.InvokeAsync(Model);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+}

@@ -7,10 +7,12 @@
 
 .appointments-content {
     display: flex;
+    align-items: stretch;
     gap: var(--spacing-8);
     padding: var(--spacing-6);
     flex: 1;
-    overflow: hidden;
+    min-height: 0;
+    overflow: auto;
 }
 
 @media (max-width: 1199px) {

@@ -1,0 +1,38 @@
+@* PatientInfoSelect — token-styled select with chevron icon *@
+
+<div class="pi-select-wrapper @(HasError ? "pi-select-wrapper--invalid" : "") @(IsDisabled ? "pi-select-wrapper--disabled" : "")">
+    <select id="@Id"
+            class="pi-select"
+            value="@Value"
+            disabled="@IsDisabled"
+            aria-describedby="@(HasError ? Id + "-error" : null)"
+            aria-invalid="@(HasError ? "true" : null)"
+            @onchange="HandleChange">
+        <option value="" disabled selected="@(string.IsNullOrEmpty(Value))">@Placeholder</option>
+        @foreach (var opt in Options)
+        {
+            <option value="@opt.Value" selected="@(opt.Value == Value)">@opt.Label</option>
+        }
+    </select>
+    <span class="pi-select-chevron" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </span>
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Select...";
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> Options { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public bool HasError { get; set; }
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

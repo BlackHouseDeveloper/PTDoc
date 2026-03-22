@@ -11,10 +11,12 @@
                         <span class="week-time-label">Time</span>
                     }
                 </div>
-                @foreach (var time in TimeSlots)
-                {
-                    <div class="time-slot">@time</div>
-                }
+                <div class="time-slots-grid" style="@GetSlotGridStyle()">
+                    @foreach (var time in TimeSlots)
+                    {
+                        <div class="time-slot">@time</div>
+                    }
+                </div>
             </div>
             
             @if (View == AppointmentsView.Today)
@@ -33,16 +35,19 @@
                             </div>
                             
                             <div class="appointments-container">
-                                @for (int i = 0; i < GetTimeSlotCount(); i++)
-                                {
-                                    <div class="appointment-slot"></div>
-                                }
+                                <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                                    @for (int i = 0; i < SlotCount; i++)
+                                    {
+                                        <div class="appointment-slot"></div>
+                                    }
+                                </div>
                                 
                                 @* Render appointments for this clinician *@
                                 @foreach (var appt in GetAppointmentsForClinician(clinician.Id))
                                 {
-                                    <div class="appointment-block @GetAppointmentClass(appt)" 
-                                         style="top: @GetAppointmentTop(appt)px; height: @GetAppointmentHeight(appt)px;">
+                                    <div class="appointment-block @GetAppointmentClass(appt) @GetAppointmentDensityClass(appt)"
+                                         title="@($"{appt.Time} - {appt.PatientName}")"
+                                         style="@GetAppointmentStyle(appt)">
                                         <div class="appointment-content">
                                             <div class="appointment-time">
                                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -80,16 +85,19 @@
                         </div>
                         
                         <div class="appointments-container">
-                            @for (int i = 0; i < GetTimeSlotCount(); i++)
-                            {
-                                <div class="appointment-slot"></div>
-                            }
+                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                                @for (int i = 0; i < SlotCount; i++)
+                                {
+                                    <div class="appointment-slot"></div>
+                                }
+                            </div>
                             
                             @* Render appointments for this day *@
                             @foreach (var appt in GetAppointmentsForDay(day.Date))
                             {
-                                <div class="appointment-block @GetAppointmentClass(appt)" 
-                                     style="top: @GetAppointmentTop(appt)px; height: @GetAppointmentHeight(appt)px;">
+                                <div class="appointment-block @GetAppointmentClass(appt) @GetAppointmentDensityClass(appt)"
+                                     title="@($"{appt.Time} - {appt.PatientName}")"
+                                     style="@GetAppointmentStyle(appt)">
                                     <div class="appointment-content">
                                         <div class="appointment-time">
                                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -129,30 +137,53 @@
     [Parameter]
     public AppointmentsFilter? Filter { get; set; }
 
-    // Scheduler configuration constants
-    private const int SlotHeightPx = 96;
-    private const int MinutesPerSlot = 60;
-    private const double PixelsPerMinute = SlotHeightPx / (double)MinutesPerSlot; // 1.6
-    private const int HeaderHeightPx = 56;
-    private const int StartHour = 7; // 7:00 AM
+    // Scheduler configuration. These parameters allow the calendar range to adapt
+    // automatically if scheduling settings change.
+    [Parameter] public int StartHour { get; set; } = 7;
+    [Parameter] public int EndHour { get; set; } = 19;
+    [Parameter] public int SlotMinutes { get; set; } = 60;
     
     // Week start configuration (Sunday is standard for US healthcare scheduling)
     // Change to DayOfWeek.Monday for international users where weeks start on Monday
     private const DayOfWeek WeekStartDay = DayOfWeek.Sunday;
 
-    private List<string> TimeSlots => new()
-    {
-        "7:00 AM", "8:00 AM", "9:00 AM", "10:00 AM", "11:00 AM",
-        "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM",
-        "5:00 PM", "6:00 PM", "7:00 PM"
-    };
+    private int EffectiveStartHour { get; set; }
+    private int EffectiveEndHour { get; set; }
+    private int EffectiveSlotMinutes { get; set; }
 
-    private int GetTimeSlotCount() => 13; // One slot per hour (7AM-7PM)
+    private TimeOnly CalendarStart => new(EffectiveStartHour, 0);
+    private TimeOnly CalendarEnd => new(EffectiveEndHour, 0);
+
+    private int SlotCount { get; set; }
+    private int TotalCalendarMinutes { get; set; }
+    private IReadOnlyList<string> TimeSlots { get; set; } = Array.Empty<string>();
 
     protected override void OnInitialized()
     {
         Clinicians ??= GetMockClinicians();
     }
+
+    protected override void OnParametersSet()
+    {
+        // Reinitialize scheduler geometry whenever date/view/settings change so time slots
+        // remain visible and consistent across navigation.
+        EffectiveStartHour = Math.Clamp(StartHour, 0, 23);
+        EffectiveEndHour = Math.Clamp(EndHour, EffectiveStartHour + 1, 23);
+        EffectiveSlotMinutes = Math.Max(15, SlotMinutes);
+
+        var rangeMinutes = (CalendarEnd.ToTimeSpan() - CalendarStart.ToTimeSpan()).TotalMinutes;
+
+        // SlotCount is the number of intervals in the visible range, not the number of labels.
+        // Example: 7:00 AM -> 7:00 PM is 12 one-hour intervals.
+        SlotCount = Math.Max(1, (int)Math.Ceiling(rangeMinutes / EffectiveSlotMinutes));
+        TotalCalendarMinutes = SlotCount * EffectiveSlotMinutes;
+        TimeSlots = Enumerable
+            .Range(0, SlotCount)
+            .Select(index => CalendarStart.AddMinutes(index * EffectiveSlotMinutes).ToString("h:mm tt"))
+            .ToList();
+    }
+
+    private string GetSlotGridStyle() => $"grid-template-rows: repeat({SlotCount}, minmax(0, 1fr));";
 
     private List<WeekDay> GetWeekDays()
     {
@@ -254,16 +285,41 @@
         };
     }
 
-    private int GetAppointmentTop(AppointmentBlock appt)
+    private string GetAppointmentDensityClass(AppointmentBlock appt)
     {
-        // Calculate position using minute-to-pixel mapping
-        // Formula: headerHeight + (minutes from start × pixels per minute)
-        return (int)(HeaderHeightPx + (appt.StartMinute * PixelsPerMinute));
+        if (appt.DurationMinutes <= 30)
+        {
+            return "appointment-block--compact";
+        }
+
+        if (appt.DurationMinutes <= 45)
+        {
+            return "appointment-block--regular";
+        }
+
+        return "appointment-block--comfortable";
     }
 
-    private int GetAppointmentHeight(AppointmentBlock appt)
+    private string GetAppointmentStyle(AppointmentBlock appt)
     {
-        // Calculate height using minute-to-pixel mapping
-        return (int)(appt.DurationMinutes * PixelsPerMinute);
+        var startMinutes = Math.Clamp(GetAppointmentStartOffsetMinutes(appt), 0, TotalCalendarMinutes);
+        var visibleDurationMinutes = Math.Clamp(appt.DurationMinutes, 0, TotalCalendarMinutes - startMinutes);
+
+        // Use percentages instead of pixels so the calendar scales with the container height.
+        var topPercent = TotalCalendarMinutes == 0 ? 0 : (startMinutes / (double)TotalCalendarMinutes) * 100;
+        var heightPercent = TotalCalendarMinutes == 0 ? 0 : (visibleDurationMinutes / (double)TotalCalendarMinutes) * 100;
+
+        return FormattableString.Invariant($"top: {topPercent:F4}%; height: {heightPercent:F4}%;");
+    }
+
+    private int GetAppointmentStartOffsetMinutes(AppointmentBlock appt)
+    {
+        if (TimeOnly.TryParse(appt.Time, out var parsedTime))
+        {
+            return (int)(parsedTime.ToTimeSpan() - CalendarStart.ToTimeSpan()).TotalMinutes;
+        }
+
+        // Fallback for mock/test data that already stores a relative offset.
+        return appt.StartMinute;
     }
 }

@@ -1,0 +1,272 @@
+@page "/patient/info"
+@page "/patient/{Id}/info"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using PTDoc.UI.Components.PatientInfo
+@using PTDoc.UI.Components.PatientInfo.Models
+@inject NavigationManager Navigation
+
+<PageTitle>Patient &amp; Payer Information - PTDoc</PageTitle>
+
+<div class="pi-page">
+    <div class="pi-page-container">
+
+        <PatientInfoPageHeader Title="Patient &amp; Payer Information"
+                               Subtitle="@Vm.PatientDisplayName"
+                               OnBack="HandleBack" />
+
+        <div class="pi-page-panels">
+
+            <PatientPayerInformationPanel
+                Model="@Vm.PatientPayer"
+                ModelChanged="@(m => { Vm.PatientPayer = m; })"
+                ProviderTypeOptions="@ProviderTypeOptions"
+                InsurancePriorityOptions="@InsurancePriorityOptions"
+                YearTypeOptions="@YearTypeOptions"
+                FieldErrors="@GetPanelErrors("payer")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+            <AuthorizationDetailsPanel
+                Model="@Vm.Authorization"
+                ModelChanged="@(m => { Vm.Authorization = m; })"
+                FieldErrors="@GetPanelErrors("auth")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+            <VisitTrackingUtilizationPanel
+                Model="@Vm.Utilization"
+                ModelChanged="@(m => { Vm.Utilization = m; })"
+                FieldErrors="@GetPanelErrors("utilization")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+            <SupportingDocumentationPanel
+                Model="@Vm.SupportingDocs"
+                ModelChanged="@(m => { Vm.SupportingDocs = m; })"
+                FieldErrors="@GetPanelErrors("supportingDocs")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+            <AdditionalAuthorizationSettingsPanel
+                Model="@Vm.AdditionalSettings"
+                ModelChanged="@(m => { Vm.AdditionalSettings = m; })"
+                AuthorizationStatusOptions="@AuthorizationStatusOptions"
+                AuthorizationTypeOptions="@AuthorizationTypeOptions"
+                FieldErrors="@GetPanelErrors("additionalSettings")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+        </div>
+
+        <PatientInfoActionRow IsDirty="@Vm.IsDirty"
+                              IsSaving="@Vm.IsSaving"
+                              HasValidationErrors="@HasPageErrors"
+                              OnSave="HandleSave"
+                              OnBack="HandleBack" />
+
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private PatientInfoPageVm Vm { get; set; } = new();
+
+    // ── Dropdown option lists ────────────────────────────────────────────────
+    // TODO: fetch real option lists from IPatientService or a lookup service.
+    private IReadOnlyList<PatientInfoSelectOptionVm> ProviderTypeOptions { get; } = new[]
+    {
+        new PatientInfoSelectOptionVm("commercial", "Commercial"),
+        new PatientInfoSelectOptionVm("medicare", "Medicare"),
+        new PatientInfoSelectOptionVm("medicaid", "Medicaid"),
+        new PatientInfoSelectOptionVm("tricare", "TRICARE"),
+        new PatientInfoSelectOptionVm("workers_comp", "Workers' Compensation"),
+        new PatientInfoSelectOptionVm("self_pay", "Self-Pay"),
+    };
+
+    private IReadOnlyList<PatientInfoSelectOptionVm> InsurancePriorityOptions { get; } = new[]
+    {
+        new PatientInfoSelectOptionVm("primary", "Primary Insurance"),
+        new PatientInfoSelectOptionVm("secondary", "Secondary Insurance"),
+    };
+
+    private IReadOnlyList<PatientInfoSelectOptionVm> YearTypeOptions { get; } = new[]
+    {
+        new PatientInfoSelectOptionVm("plan_year", "Plan Year"),
+        new PatientInfoSelectOptionVm("calendar_year", "Calendar Year"),
+    };
+
+    private IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationStatusOptions { get; } = new[]
+    {
+        new PatientInfoSelectOptionVm("active", "Active"),
+        new PatientInfoSelectOptionVm("pending", "Pending"),
+        new PatientInfoSelectOptionVm("expired", "Expired"),
+        new PatientInfoSelectOptionVm("denied", "Denied"),
+    };
+
+    private IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationTypeOptions { get; } = new[]
+    {
+        new PatientInfoSelectOptionVm("initial", "Initial Authorization"),
+        new PatientInfoSelectOptionVm("re_auth", "Re-Authorization"),
+        new PatientInfoSelectOptionVm("continuing", "Continuing Care"),
+    };
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        LoadSampleData();
+    }
+
+    /// <summary>
+    /// Minimal sample data set for local UI preview.
+    /// TODO: fetch existing patient/payer/authorization info from IPatientService by patientId.
+    /// </summary>
+    private void LoadSampleData()
+    {
+        var patientSnapshot = GetPatientSnapshot(Id);
+
+        Vm = new PatientInfoPageVm
+        {
+            PatientDisplayName = patientSnapshot.DisplayName,
+            PatientPayer = new PatientPayerInfoVm
+            {
+                PatientName = patientSnapshot.DisplayName,
+                DateOfBirthText = patientSnapshot.DateOfBirth ?? string.Empty,
+                InsuranceCompanyName = patientSnapshot.InsuranceProvider ?? string.Empty,
+                // All other fields remain empty by default if we do not have that data yet.
+            },
+            Authorization = new AuthorizationDetailsVm
+            {
+                AuthorizationNumber = patientSnapshot.AuthorizationNumber ?? string.Empty,
+            },
+            Utilization = new UtilizationVm(),
+            SupportingDocs = new SupportingDocumentationVm
+            {
+                ReferringPhysicianName = patientSnapshot.ReferringPhysician ?? string.Empty,
+            },
+            AdditionalSettings = new AdditionalAuthorizationSettingsVm(),
+            IsDirty = false,
+            IsSaving = false,
+        };
+    }
+
+    // ── Event handlers ───────────────────────────────────────────────────────
+
+    private void HandleFieldChanged()
+    {
+        Vm.IsDirty = true;
+        RunUiValidation();
+        StateHasChanged();
+    }
+
+    private async Task HandleSave()
+    {
+        if (!Vm.IsDirty || HasPageErrors || Vm.IsSaving)
+        {
+            return;
+        }
+
+        Vm.IsSaving = true;
+        StateHasChanged();
+
+        // TODO: persist changes via IPatientService.UpdatePatientInfo(...)
+        await Task.Delay(500); // Stub: simulate async save
+
+        Vm.IsSaving = false;
+        Vm.IsDirty = false;
+        // TODO: Show non-blocking success toast using the existing toast system.
+        StateHasChanged();
+    }
+
+    private void HandleBack()
+    {
+        // TODO: Implement unsaved-changes guard (confirm navigation) if IsDirty == true.
+        if (!string.IsNullOrWhiteSpace(Id))
+        {
+            Navigation.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}");
+            return;
+        }
+
+        Navigation.NavigateTo("/patients");
+    }
+
+    private static PatientInfoPatientSnapshot GetPatientSnapshot(string? id)
+    {
+        // TODO: fetch existing patient/payer/authorization info from IPatientService by patientId.
+        // UI-only fallback: hydrate from known patient sample data when available.
+        return id switch
+        {
+            null or "" => PatientInfoPatientSnapshot.Default,
+            _ => new PatientInfoPatientSnapshot
+            {
+                Id = id,
+                DisplayName = "Sarah Johnson",
+                DateOfBirth = "3/14/1985",
+                ReferringPhysician = "Dr. Smith",
+                InsuranceProvider = "Blue Cross",
+                AuthorizationNumber = "AUTH-2024-001"
+            }
+        };
+    }
+
+    private sealed class PatientInfoPatientSnapshot
+    {
+        public static readonly PatientInfoPatientSnapshot Default = new()
+        {
+            Id = string.Empty,
+            DisplayName = "Sarah Johnson",
+            DateOfBirth = string.Empty,
+            ReferringPhysician = "Dr. John Smith",
+            InsuranceProvider = string.Empty,
+            AuthorizationNumber = string.Empty
+        };
+
+        public string Id { get; init; } = string.Empty;
+        public string DisplayName { get; init; } = string.Empty;
+        public string? DateOfBirth { get; init; }
+        public string? ReferringPhysician { get; init; }
+        public string? InsuranceProvider { get; init; }
+        public string? AuthorizationNumber { get; init; }
+    }
+
+    // ── Validation ───────────────────────────────────────────────────────────
+    // UI-only stubs. TODO: Replace with shared validation rules or FluentValidation
+    // when backend model is known.
+
+    private bool HasPageErrors => Vm.FieldErrors.Count > 0;
+
+    private Dictionary<string, string> GetPanelErrors(string panel)
+    {
+        // Return a subset of FieldErrors keyed for that panel, filtering by prefix.
+        // For now all errors live in the shared FieldErrors dictionary.
+        return Vm.FieldErrors;
+    }
+
+    private void RunUiValidation()
+    {
+        Vm.FieldErrors.Clear();
+        ValidateNumericField("visitsUsed", Vm.Utilization.VisitsUsed);
+        ValidateNumericField("visitsRemaining", Vm.Utilization.VisitsRemaining);
+        ValidateNumericField("authUnits", Vm.Authorization.NumberOfVisitsOrUnitsAuthorized);
+        ValidateNumericField("alertThreshold", Vm.AdditionalSettings.VisitAlertThreshold);
+        ValidateNpi("npi", Vm.SupportingDocs.PhysicianNpiNumber);
+        // TODO: Map server-side validation errors to FieldErrors.
+    }
+
+    private void ValidateNumericField(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (!decimal.TryParse(value, out var n) || n < 0)
+        {
+            Vm.FieldErrors[key] = "Must be a non-negative number.";
+        }
+    }
+
+    private void ValidateNpi(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        // Basic UI-only check: 10 digits only.
+        if (value.Trim().Length != 10 || !value.Trim().All(char.IsDigit))
+        {
+            Vm.FieldErrors[key] = "NPI must be exactly 10 digits.";
+        }
+        // TODO: Validate NPI via server/API if required.
+    }
+}

@@ -86,12 +86,14 @@
 
         <div class="patient-demographics-divider"></div>
 
-        <button type="button" class="patient-demographics-insurance-btn" @onclick="HandleInsuranceClick">
+        <a class="patient-demographics-insurance-btn"
+           href="@InsuranceAuthorizationHref"
+           aria-label="Open Insurance and Authorization page">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M10 6H14L8 14V8H4L10 2V6Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span>Insurance & Authorization</span>
-        </button>
+        </a>
     </div>
 </div>
 
@@ -128,9 +130,17 @@
         isEditing = false;
     }
 
-    private void HandleInsuranceClick()
+    private string InsuranceAuthorizationHref
     {
-        // TODO: Navigate to insurance/authorization page or modal
-        Console.WriteLine("Insurance & Authorization clicked");
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Patient.Id))
+            {
+                return "/patient/info";
+            }
+
+            return $"/patient/{Uri.EscapeDataString(Patient.Id)}/info";
+        }
     }
+
 }
