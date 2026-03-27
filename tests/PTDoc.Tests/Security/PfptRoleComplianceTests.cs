@@ -92,10 +92,13 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
     private ApplicationDbContext CreateInMemoryContext()
     {
+        var tenantMock = new Mock<ITenantContextAccessor>();
+        tenantMock.Setup(x => x.GetCurrentClinicId()).Returns((Guid?)null);
+
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        return new ApplicationDbContext(options);
+        return new ApplicationDbContext(options, tenantMock.Object);
     }
 
     // ─── U-C1: Auth + RBAC ──────────────────────────────────────────────────
@@ -273,9 +276,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var ptaPrincipal = new ClaimsPrincipal(ptaIdentity);
 
         var isPta = ptaPrincipal.IsInRole(Roles.PTA);
-        var isDailyNote = NoteType.Daily == NoteType.Daily;
+        var requestedNoteType = NoteType.Daily;
 
-        var shouldForbid = isPta && !isDailyNote;
+        // Domain guard: forbid only if PTA AND non-Daily
+        var shouldForbid = isPta && requestedNoteType != NoteType.Daily;
         Assert.False(shouldForbid, "PTA should be allowed to create Daily notes");
     }
 

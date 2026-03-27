@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -426,10 +427,10 @@ public class SyncEngine : ISyncEngine
         // Aide and FrontDesk roles must not receive clinical data.
         // Patient role receives demographics and intake only (not full SOAP/ClinicalNote content).
         var isRestrictedRole = userRoles is { Length: > 0 } &&
-            userRoles.Any(r => string.Equals(r, PTDoc.Application.Services.Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(r, PTDoc.Application.Services.Roles.FrontDesk, StringComparison.OrdinalIgnoreCase));
+            userRoles.Any(r => string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(r, Roles.FrontDesk, StringComparison.OrdinalIgnoreCase));
         var isPatientRole = userRoles is { Length: > 0 } &&
-            userRoles.Any(r => string.Equals(r, PTDoc.Application.Services.Roles.Patient, StringComparison.OrdinalIgnoreCase));
+            userRoles.Any(r => string.Equals(r, Roles.Patient, StringComparison.OrdinalIgnoreCase));
 
         // Clinical entity types excluded from restricted roles
         var clinicalEntityTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

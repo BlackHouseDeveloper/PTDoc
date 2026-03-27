@@ -45,12 +45,6 @@ public static class NoteEndpoints
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        // Sprint UC3: PTA domain guard — PTA clinicians may only create Daily notes.
-        // Evaluation, ProgressNote, and Discharge notes require PT or higher authority.
-        if (httpContext.User.IsInRole(Roles.PTA) && request.NoteType != NoteType.Daily)
-        {
-            return Results.Forbid();
-        }
         if (request.PatientId == Guid.Empty)
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -62,6 +56,14 @@ public static class NoteEndpoints
             {
                 { nameof(request.DateOfService), ["DateOfService is required."] }
             });
+
+        // Sprint UC3: PTA domain guard — PTA clinicians may only create Daily notes.
+        // Evaluation, ProgressNote, and Discharge notes require PT or higher authority.
+        // Checked after basic field validation so invalid requests are rejected first.
+        if (httpContext.User.IsInRole(Roles.PTA) && request.NoteType != NoteType.Daily)
+        {
+            return Results.Forbid();
+        }
 
         // Verify the patient exists and is accessible in this tenant
         var patientExists = await db.Patients
