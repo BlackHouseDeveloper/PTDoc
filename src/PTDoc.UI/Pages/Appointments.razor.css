@@ -1,7 +1,6 @@
 .appointments-page {
     display: flex;
     flex-direction: column;
-    height: 100vh;
     background: var(--background);
 }
 
@@ -11,14 +10,11 @@
     gap: var(--spacing-8);
     padding: var(--spacing-6);
     flex: 1;
-    min-height: 0;
-    overflow: auto;
 }
 
 @media (max-width: 1199px) {
     .appointments-content {
         flex-direction: column;
-        overflow-y: auto;
     }
 }
 

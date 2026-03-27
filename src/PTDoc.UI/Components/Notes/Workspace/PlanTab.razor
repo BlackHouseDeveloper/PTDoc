@@ -1,0 +1,382 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.UI.Components.Notes.Models
+@using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry
+
+@* PlanTab: CPT codes, treatment plan, additional planning, clinical summary.
+   Per Blueprint: CPT favorites grid, frequency/duration required fields, AI-assisted
+   discharge planning, follow-up instructions, and final clinical summary.
+*@
+
+<div class="plan-tab" data-testid="plan-tab">
+
+    <!-- 1. CPT Codes -->
+    <div class="pt-card" data-testid="cpt-codes-card">
+        <div class="pt-card__header">
+            <div>
+                <h3 class="pt-card__title">CPT Procedure Codes</h3>
+                <p class="pt-card__subtitle">Select billable procedure codes for this session</p>
+            </div>
+            @if (!IsReadOnly)
+            {
+                <button type="button" class="pt-card__secondary-btn"
+                        data-testid="customize-cpt-btn"
+                        @onclick="() => { /* TODO: open CPT customization modal */ }">
+                    Customize
+                </button>
+            }
+        </div>
+
+        <!-- Favorites grid (6 pre-loaded) -->
+        <p class="pt-card__field-label">Favorite CPT Codes</p>
+        <div class="pt-card__cpt-grid">
+            @foreach (var fav in _favoriteCptCodes)
+            {
+                var alreadySelected = Vm.SelectedCptCodes.Any(c => c.Code == fav.Code);
+                <button type="button"
+                        class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
+                        disabled="@(IsReadOnly || (alreadySelected ? false : false))"
+                        aria-pressed="@alreadySelected.ToString().ToLower()"
+                        @onclick="() => ToggleCptFavorite(fav)">
+                    <span class="pt-card__cpt-code">@fav.Code</span>
+                    <span class="pt-card__cpt-name">@fav.ShortName</span>
+                    <span class="pt-card__cpt-unit">@fav.DefaultUnits min</span>
+                </button>
+            }
+        </div>
+
+        <!-- Selected codes list -->
+        @if (Vm.SelectedCptCodes.Count == 0)
+        {
+            <div class="pt-card__cpt-empty">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                    <rect x="4" y="4" width="20" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M9 10h10M9 14h10M9 18h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <p>No CPT codes selected — click a favorite above to add.</p>
+            </div>
+        }
+        else
+        {
+            <div class="pt-card__cpt-selected-header">
+                <span class="pt-card__field-label">Selected Codes</span>
+                <span class="pt-card__badge">@Vm.SelectedCptCodes.Count selected</span>
+            </div>
+            <ul class="pt-card__cpt-list">
+                @foreach (var entry in Vm.SelectedCptCodes)
+                {
+                    <li class="pt-card__cpt-row">
+                        <span class="pt-card__cpt-code">@entry.Code</span>
+                        <span class="pt-card__cpt-desc">@entry.Description</span>
+                        <div class="pt-card__cpt-units-row">
+                            <button type="button" class="pt-card__stepper"
+                                    aria-label="Decrease units for @entry.Code"
+                                    disabled="@(IsReadOnly || entry.Units <= 1)"
+                                    @onclick="() => ChangeUnits(entry, -1)">−</button>
+                            <span class="pt-card__unit-value">@entry.Units</span>
+                            <button type="button" class="pt-card__stepper"
+                                    aria-label="Increase units for @entry.Code"
+                                    disabled="@IsReadOnly"
+                                    @onclick="() => ChangeUnits(entry, 1)">+</button>
+                            <span class="pt-card__unit-label">units</span>
+                        </div>
+                        @if (!IsReadOnly)
+                        {
+                            <button type="button" class="pt-card__remove-btn"
+                                    aria-label="Remove @entry.Code"
+                                    @onclick="() => RemoveCptCode(entry)">✕</button>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <!-- 2. Treatment Plan -->
+    <div class="pt-card" data-testid="treatment-plan-card">
+        <div class="pt-card__header">
+            <div class="pt-card__title-row">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M5 8h6M8 5v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <h3 class="pt-card__title">Treatment Plan</h3>
+            </div>
+        </div>
+
+        <div class="pt-card__row-2col">
+            <div class="pt-card__field">
+                <label class="pt-card__field-label" for="treatment-frequency">
+                    Treatment Frequency *
+                </label>
+                <select id="treatment-frequency" class="pt-card__select"
+                        disabled="@IsReadOnly"
+                        value="@Vm.TreatmentFrequency"
+                        @onchange="e => SetAndNotify(vm => vm.TreatmentFrequency = e.Value?.ToString())">
+                    <option value="">Select frequency ↓</option>
+                    @foreach (var f in _frequencyOptions)
+                    {
+                        <option value="@f" selected="@(Vm.TreatmentFrequency == f)">@f</option>
+                    }
+                </select>
+            </div>
+
+            <div class="pt-card__field">
+                <label class="pt-card__field-label" for="treatment-duration">
+                    Treatment Duration *
+                </label>
+                <select id="treatment-duration" class="pt-card__select"
+                        disabled="@IsReadOnly"
+                        value="@Vm.TreatmentDuration"
+                        @onchange="e => SetAndNotify(vm => vm.TreatmentDuration = e.Value?.ToString())">
+                    <option value="">Select duration ↓</option>
+                    @foreach (var d in _durationOptions)
+                    {
+                        <option value="@d" selected="@(Vm.TreatmentDuration == d)">@d</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Vm.TreatmentFrequency) && !string.IsNullOrWhiteSpace(Vm.TreatmentDuration))
+        {
+            <div class="pt-card__poc-hint" role="status" aria-live="polite">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/>
+                    <path d="M7 4.5v3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                    <circle cx="7" cy="10" r="0.65" fill="currentColor"/>
+                </svg>
+                Plan of Care: <strong>@Vm.TreatmentFrequency</strong> for <strong>@Vm.TreatmentDuration</strong>
+            </div>
+        }
+        else
+        {
+            <p class="pt-card__poc-placeholder">
+                Select treatment frequency and duration to calculate Plan of Care dates.
+            </p>
+        }
+    </div>
+
+    <!-- 3. Additional Planning -->
+    <div class="pt-card" data-testid="additional-planning-card">
+        <div class="pt-card__header">
+            <h3 class="pt-card__title">Additional Planning</h3>
+        </div>
+
+        <!-- Home Exercise Program -->
+        <div class="pt-card__field">
+            <label class="pt-card__field-label" for="hep-notes">Home Exercise Program (HEP)</label>
+            <textarea id="hep-notes" class="pt-card__textarea" rows="3"
+                      placeholder="Describe home exercises, frequency, precautions, and patient education..."
+                      disabled="@IsReadOnly"
+                      value="@Vm.HomeExerciseProgramNotes"
+                      @onchange="e => SetAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
+        </div>
+
+        <!-- Discharge Planning -->
+        <div class="pt-card__field">
+            <div class="pt-card__field-header">
+                <p class="pt-card__field-label">Discharge Planning</p>
+                @if (!IsReadOnly)
+                {
+                    <AiGenerateButton ButtonLabel="AI Suggest"
+                                      IsGenerating="@_isGeneratingDischarge"
+                                      OnGenerate="HandleAiSuggestDischargeAsync"
+                                      TestId="ai-suggest-discharge-btn" />
+                }
+            </div>
+            <EditableNarrativeBox @ref="_dischargePlanningBox"
+                                  Label=""
+                                  Placeholder="Long-term maintenance plan, self-management strategies, return-to-care criteria..."
+                                  Value="@(Vm.DischargePlanningNotes ?? string.Empty)"
+                                  ValueChanged="@(v => SetAndNotify(vm => vm.DischargePlanningNotes = v))"
+                                  OnAccepted="@(v => SetAndNotify(vm => vm.DischargePlanningNotes = v))"
+                                  OnDiscarded="() => SetAndNotify(vm => vm.DischargePlanningNotes = string.Empty)"
+                                  IsReadOnly="@IsReadOnly"
+                                  Rows="3"
+                                  TestId="discharge-planning-box" />
+        </div>
+
+        <!-- Follow-up Instructions -->
+        <div class="pt-card__field">
+            <div class="pt-card__field-header">
+                <p class="pt-card__field-label">Follow-up Instructions</p>
+                @if (!IsReadOnly)
+                {
+                    <AiGenerateButton ButtonLabel="AI Suggest"
+                                      IsGenerating="@_isGeneratingFollowUp"
+                                      OnGenerate="HandleAiSuggestFollowUpAsync"
+                                      TestId="ai-suggest-followup-btn" />
+                }
+            </div>
+            <EditableNarrativeBox @ref="_followUpBox"
+                                  Label=""
+                                  Placeholder="Next appointment recommendations, referrals, precautions after discharge..."
+                                  Value="@(Vm.FollowUpInstructions ?? string.Empty)"
+                                  ValueChanged="@(v => SetAndNotify(vm => vm.FollowUpInstructions = v))"
+                                  OnAccepted="@(v => SetAndNotify(vm => vm.FollowUpInstructions = v))"
+                                  OnDiscarded="() => SetAndNotify(vm => vm.FollowUpInstructions = string.Empty)"
+                                  IsReadOnly="@IsReadOnly"
+                                  Rows="3"
+                                  TestId="followup-instructions-box" />
+        </div>
+    </div>
+
+    <!-- 4. Clinical Summary (SOAP) -->
+    <div class="pt-card" data-testid="clinical-summary-card">
+        <div class="pt-card__header">
+            <div>
+                <h3 class="pt-card__title">Clinical Summary (SOAP)</h3>
+                <p class="pt-card__subtitle">AI-generated comprehensive summary of all SOAP sections</p>
+            </div>
+            @if (!IsReadOnly)
+            {
+                <AiGenerateButton ButtonLabel="Generate Summary"
+                                  IsGenerating="@_isGeneratingSummary"
+                                  OnGenerate="HandleGenerateSummaryAsync"
+                                  TestId="generate-summary-btn" />
+            }
+        </div>
+
+        <EditableNarrativeBox @ref="_clinicalSummaryBox"
+                              Label=""
+                              Placeholder="Click 'Generate Summary' to create a comprehensive SOAP note summary, or type manually..."
+                              Value="@(Vm.ClinicalSummary ?? string.Empty)"
+                              ValueChanged="@(v => SetAndNotify(vm => vm.ClinicalSummary = v))"
+                              OnAccepted="@(v => SetAndNotify(vm => vm.ClinicalSummary = v))"
+                              OnDiscarded="() => SetAndNotify(vm => vm.ClinicalSummary = string.Empty)"
+                              IsReadOnly="@IsReadOnly"
+                              Rows="6"
+                              TestId="clinical-summary-box" />
+    </div>
+
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public Guid NoteId { get; set; }
+
+    private bool _isGeneratingDischarge;
+    private bool _isGeneratingFollowUp;
+    private bool _isGeneratingSummary;
+    private EditableNarrativeBox? _dischargePlanningBox;
+    private EditableNarrativeBox? _followUpBox;
+    private EditableNarrativeBox? _clinicalSummaryBox;
+
+    // ── Static: Favorite CPT codes ─────────────────────────────────
+
+    private record FavoriteCptCode(string Code, string ShortName, int DefaultUnits);
+
+    private static readonly FavoriteCptCode[] _favoriteCptCodes =
+    [
+        new("97140", "Manual Therapy",           2),
+        new("97110", "Therapeutic Exercise",      2),
+        new("97112", "Neuromuscular Re-ed",       2),
+        new("97530", "Therapeutic Activities",    2),
+        new("97116", "Gait Training",             2),
+        new("97535", "Self-care/ADL Training",    2),
+    ];
+
+    private static readonly string[] _frequencyOptions =
+    [
+        "1x/week",  "2x/week",   "3x/week",   "4x/week",   "5x/week",
+        "1x/month", "2x/month",  "PRN",        "Daily (home HEP only)"
+    ];
+
+    private static readonly string[] _durationOptions =
+    [
+        "2 weeks",  "4 weeks",  "6 weeks",  "8 weeks", "10 weeks",
+        "12 weeks", "16 weeks", "20 weeks", "24 weeks", "Ongoing"
+    ];
+
+    // ── Helpers ────────────────────────────────────────────────────
+
+    private Task SetAndNotify(Action<PlanVm> update)
+    {
+        update(Vm);
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private void ToggleCptFavorite(FavoriteCptCode fav)
+    {
+        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == fav.Code);
+        if (existing is not null)
+            Vm.SelectedCptCodes.Remove(existing);
+        else
+            Vm.SelectedCptCodes.Add(new UiCptCodeEntry
+            {
+                Code        = fav.Code,
+                Description = fav.ShortName,
+                Units       = fav.DefaultUnits
+            });
+        VmChanged.InvokeAsync(Vm);
+    }
+
+    private void ChangeUnits(UiCptCodeEntry entry, int delta)
+    {
+        entry.Units = Math.Max(1, entry.Units + delta);
+        VmChanged.InvokeAsync(Vm);
+    }
+
+    private void RemoveCptCode(UiCptCodeEntry entry)
+    {
+        Vm.SelectedCptCodes.Remove(entry);
+        VmChanged.InvokeAsync(Vm);
+    }
+
+    private async Task HandleAiSuggestDischargeAsync()
+    {
+        if (IsReadOnly) return;
+        _isGeneratingDischarge = true;
+        StateHasChanged();
+        try
+        {
+            // TODO: call IAiClinicalGenerationService.GeneratePlanOfCareAsync
+            // Safety: result placed as pending — clinician must Accept before persisting
+            await Task.Delay(100); // stub
+            var suggestion = "Suggested discharge plan: transition to independent HEP 5x/week, reinforce symptom self-monitoring, and schedule PRN follow-up if regression occurs.";
+            if (_dischargePlanningBox is not null)
+            {
+                await _dischargePlanningBox.LoadAiSuggestionAsync(suggestion);
+            }
+        }
+        finally { _isGeneratingDischarge = false; }
+    }
+
+    private async Task HandleAiSuggestFollowUpAsync()
+    {
+        if (IsReadOnly) return;
+        _isGeneratingFollowUp = true;
+        StateHasChanged();
+        try
+        {
+            await Task.Delay(100); // stub
+            var suggestion = "Follow-up in 1-2 weeks to reassess pain, gait quality, and goal progression; update HEP based on response and tolerance.";
+            if (_followUpBox is not null)
+            {
+                await _followUpBox.LoadAiSuggestionAsync(suggestion);
+            }
+        }
+        finally { _isGeneratingFollowUp = false; }
+    }
+
+    private async Task HandleGenerateSummaryAsync()
+    {
+        if (IsReadOnly) return;
+        _isGeneratingSummary = true;
+        StateHasChanged();
+        try
+        {
+            // TODO: call IAiClinicalGenerationService — aggregates all SOAP sections
+            // Safety: result placed as pending — clinician must Accept before persisting
+            await Task.Delay(100); // stub
+            var suggestion = "SOAP Summary: Patient presents with persistent functional limitations and objective gait deviations. Assessment indicates deficits in strength and motor control impacting ADLs. Plan is skilled PT at selected frequency/duration with progressive therapeutic exercise, manual techniques as indicated, HEP compliance monitoring, and reassessment toward SMART goals.";
+            if (_clinicalSummaryBox is not null)
+            {
+                await _clinicalSummaryBox.LoadAiSuggestionAsync(suggestion);
+            }
+        }
+        finally { _isGeneratingSummary = false; }
+    }
+}

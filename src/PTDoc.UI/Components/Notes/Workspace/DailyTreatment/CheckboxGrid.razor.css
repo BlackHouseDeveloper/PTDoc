@@ -1,0 +1,31 @@
+::deep .checkbox-grid {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .checkbox-grid--1 { grid-template-columns: 1fr; }
+::deep .checkbox-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+::deep .checkbox-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+::deep .checkbox-grid__item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-3) var(--spacing-3);
+    background: var(--card);
+    font-size: var(--text-sm);
+}
+
+::deep .checkbox-grid__item--checked {
+    border-color: var(--primary);
+    background: var(--success-box-bg);
+}
+
+@media (max-width: 768px) {
+    ::deep .checkbox-grid--2,
+    ::deep .checkbox-grid--3 {
+        grid-template-columns: 1fr;
+    }
+}

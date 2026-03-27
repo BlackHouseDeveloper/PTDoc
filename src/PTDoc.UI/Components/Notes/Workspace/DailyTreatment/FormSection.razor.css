@@ -1,0 +1,29 @@
+::deep .form-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: var(--spacing-4);
+}
+
+::deep .form-section--dark {
+    border-color: var(--border);
+    background: var(--card);
+}
+
+::deep .form-section__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-3);
+}
+
+::deep .form-section__title {
+    margin: 0;
+    font-size: var(--text-base);
+}
+
+::deep .form-section__subtitle {
+    margin: var(--spacing-1) 0 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+}

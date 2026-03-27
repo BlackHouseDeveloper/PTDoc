@@ -1,0 +1,70 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
+    <div class="daily-grid">
+        <div class="daily-col-12">
+            <FormSection Title="Plan for Today's Session">
+                <EditableTextArea Label="Treatment Plan *"
+                                  Value="@_treatmentPlan"
+                                  ValueChanged="v => _treatmentPlan = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document today's treatment plan (modalities, therapeutic exercises, manual therapy, patient education, etc.)..."
+                                  Rows="6"
+                                  IsRequired="true"
+                                  ShowValidation="@string.IsNullOrWhiteSpace(_treatmentPlan)" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Follow-Up &amp; Next Appointments">
+                <EditableTextArea Label="Next Visit Schedule"
+                                  Value="@_nextVisitSchedule"
+                                  ValueChanged="v => _nextVisitSchedule = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Next PT visit scheduled for [date], next Progress Note due [date], next MD follow-up [date]..."
+                                  Rows="4" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Clinical Summary (S.O.A.P)" Subtitle="AI-generated comprehensive summary of all SOAP sections">
+                <div class="daily-plan__summary-header">
+                    <button type="button" disabled="@IsReadOnly" @onclick="GenerateSummary">Generate Summary</button>
+                </div>
+
+                <EditableTextArea Value="@(_vm.ClinicalSummary ?? string.Empty)"
+                                  ValueChanged="UpdateClinicalSummary"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Click 'Generate Summary' to create an AI-powered comprehensive clinical summary..."
+                                  Rows="5" />
+            </FormSection>
+        </div>
+    </div>
+</section>
+
+@code {
+    private PlanVm _vm = new();
+    private string _treatmentPlan = string.Empty;
+    private string _nextVisitSchedule = string.Empty;
+
+    [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    protected override void OnParametersSet() => _vm = Vm;
+
+    private Task UpdateClinicalSummary(string value)
+    {
+        _vm.ClinicalSummary = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task GenerateSummary()
+    {
+        // TODO: Generate AI clinical summary from Subjective, Objective, and Assessment content.
+        _vm.ClinicalSummary ??= "AI-generated SOAP summary placeholder.";
+        return VmChanged.InvokeAsync(_vm);
+    }
+}

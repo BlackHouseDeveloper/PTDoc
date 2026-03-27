@@ -1,0 +1,35 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<article class="goal-card goal-card--@Status.ToLowerInvariant()">
+    <header class="goal-card__header">
+        <span class="goal-card__badge">@Type</span>
+        <span class="goal-card__status">@Status</span>
+    </header>
+
+    <h4 class="goal-card__title">@Title</h4>
+
+    @if (!string.IsNullOrWhiteSpace(Measure))
+    {
+        <p class="goal-card__meta">Measurable: @Measure</p>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Timeline))
+    {
+        <p class="goal-card__meta">Timeline: @Timeline</p>
+    }
+
+    <label class="goal-card__progress-label" for="@_progressId">Progress</label>
+    <progress id="@_progressId" max="100" value="@ProgressPercent"></progress>
+    <p class="goal-card__progress-text">@ProgressPercent%</p>
+</article>
+
+@code {
+    private readonly string _progressId = $"goal-progress-{Guid.NewGuid():N}";
+
+    [Parameter] public string Type { get; set; } = "Goal";
+    [Parameter] public string Status { get; set; } = "Ongoing";
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Measure { get; set; }
+    [Parameter] public string? Timeline { get; set; }
+    [Parameter] public int ProgressPercent { get; set; }
+}

@@ -1,0 +1,49 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
+
+<section class="discharge-summary-card" data-testid="final-outcomes-summary-card" aria-label="Final outcomes summary">
+    <header class="discharge-summary-card__header">
+        <div>
+            <h3 class="discharge-summary-card__title">Final Outcomes Summary</h3>
+            <p class="discharge-summary-card__subtitle">Patient status at discharge (@_dischargeDate)</p>
+        </div>
+        <span class="discharge-summary-card__badge">100% Improved</span>
+    </header>
+
+    <div class="discharge-summary-card__list">
+        @foreach (var item in _outcomes)
+        {
+            <article class="discharge-summary-card__item">
+                <div class="discharge-summary-card__item-head">
+                    <h4 class="discharge-summary-card__item-title">@item.Measure</h4>
+                    <span class="discharge-summary-card__item-change">@item.Change</span>
+                </div>
+                <div class="discharge-summary-card__values">
+                    <span>Initial: @item.InitialValue</span>
+                    <span aria-hidden="true">→</span>
+                    <span>Final: @item.FinalValue</span>
+                </div>
+                <p class="discharge-summary-card__note">@item.Note</p>
+            </article>
+        }
+    </div>
+
+    <div class="discharge-summary-card__footer" role="status" aria-live="polite">
+        <strong>Excellent functional progress achieved.</strong>
+        <p>Patient demonstrated significant improvement across 5 of 5 key outcome measures. Patient is well-prepared for independent management and community reintegration.</p>
+    </div>
+</section>
+
+@code {
+    private readonly string _dischargeDate = DateTime.Now.ToString("M/d/yyyy");
+
+    private readonly IReadOnlyList<OutcomeRow> _outcomes =
+    [
+        new("Knee Flexion ROM", "100°", "135°", "Improved 35°", "Exceeds functional goal of 120°"),
+        new("Quadriceps Strength (MMT)", "4/5", "5/5", "Full strength restored", "Normal grade achieved"),
+        new("Oswestry Disability Index", "40%", "12%", "Reduced 28%", "Minimal disability category"),
+        new("Pain Level (at worst)", "7/10", "5/10", "Reduced 2 points", "Minimal pain during ADLs"),
+        new("Functional Gait Distance", "100 ft", "0.5 miles", "Significant improvement", "Community ambulation restored")
+    ];
+
+    private sealed record OutcomeRow(string Measure, string InitialValue, string FinalValue, string Change, string Note);
+}

@@ -1,0 +1,13 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DryNeedling
+
+@if (IsVisible)
+{
+    <section class="dry-required" data-testid="dry-required-fields-missing" role="alert" aria-live="polite">
+        <h3 class="dry-required__title">Required fields missing</h3>
+        <p class="dry-required__message">Please complete Date, Location, and Type of Needling to save this note.</p>
+    </section>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+}

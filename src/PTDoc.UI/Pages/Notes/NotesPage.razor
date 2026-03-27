@@ -284,8 +284,22 @@
 
     private void HandleOpenNote(NoteListItemVm note)
     {
-        // TODO: Confirm canonical route between /notes/{id} and /soap/{id} when note editor route is finalized.
-        NavigationManager.NavigateTo($"/notes/{note.Id}");
+        if (string.IsNullOrWhiteSpace(note.PatientId))
+        {
+            // TODO: Resolve patient context from note payload/API when missing.
+            return;
+        }
+
+        // Existing note context: go to note workspace with patient + note identifiers.
+        if (!string.IsNullOrWhiteSpace(note.Id))
+        {
+            NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/note/{Uri.EscapeDataString(note.Id)}");
+            return;
+        }
+
+        // No note id available: route to patient-scoped new-note flow.
+        // TODO: Confirm if this branch should auto-create a draft server-side before navigation.
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/new-note");
     }
 
     private void HandleViewNote(NoteListItemVm note)

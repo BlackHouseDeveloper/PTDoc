@@ -1,0 +1,43 @@
+::deep .data-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+::deep .data-table th,
+::deep .data-table td {
+    border-bottom: 1px solid var(--border);
+    padding: var(--spacing-2);
+    text-align: left;
+    font-size: var(--text-sm);
+}
+
+::deep .data-table th {
+    color: var(--muted-foreground);
+    font-weight: var(--font-weight-semibold);
+}
+
+::deep .data-table td input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-2);
+    background: var(--card);
+    color: var(--foreground);
+}
+
+::deep .data-table__btn-add,
+::deep .data-table__btn-danger {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: var(--text-xs);
+}
+
+::deep .data-table__btn-add {
+    margin-top: var(--spacing-3);
+}
+
+::deep .data-table__empty {
+    color: var(--muted-foreground);
+}

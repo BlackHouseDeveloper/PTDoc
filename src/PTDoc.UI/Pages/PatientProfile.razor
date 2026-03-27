@@ -1,6 +1,7 @@
 @page "/patient/{id}"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@inject NavigationManager NavigationManager
 
 <PageTitle>Patient Profile - PTDoc</PageTitle>
 
@@ -56,6 +57,38 @@
 
     private void HandleStartNote()
     {
-        _ = Id;
+        if (string.IsNullOrWhiteSpace(Id))
+        {
+            return;
+        }
+
+        var existingNoteId = ResolveExistingNoteIdForPatient(Id);
+        if (!string.IsNullOrWhiteSpace(existingNoteId))
+        {
+            // Existing note context: open note workspace in edit/view mode.
+            NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/note/{Uri.EscapeDataString(existingNoteId)}");
+            return;
+        }
+
+        // No existing note context: route to patient-scoped new-note flow.
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note");
+    }
+
+    private string? ResolveExistingNoteIdForPatient(string patientId)
+    {
+        // TODO: Fetch notes for patient from API and pick target note using business rule:
+        // - if exactly one active draft exists, open it
+        // - if multiple notes exist, select most recently modified draft (or prompt user)
+        // - if none exist, return null to start a new note
+
+        // Mock: sample mapping for local navigation behavior testing only.
+        var mockLatestNotesByPatient = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PT001"] = "1",
+            ["PT002"] = "2",
+            ["PT003"] = "3"
+        };
+
+        return mockLatestNotesByPatient.TryGetValue(patientId, out var noteId) ? noteId : null;
     }
 }

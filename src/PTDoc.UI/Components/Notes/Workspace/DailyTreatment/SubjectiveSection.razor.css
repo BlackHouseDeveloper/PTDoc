@@ -1,0 +1,97 @@
+::deep .daily-subjective {
+    width: 100%;
+}
+
+::deep .daily-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .daily-col-12 {
+    grid-column: span 12;
+}
+
+::deep .daily-subjective__progress-note {
+    border: 1px solid var(--success-box-border);
+    background: var(--success-box-bg);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-3) var(--spacing-4);
+}
+
+::deep .daily-subjective__progress-note p {
+    margin: var(--spacing-1) 0 0;
+    color: var(--muted-foreground);
+}
+
+::deep .daily-subjective__comparison {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-3);
+}
+
+::deep .daily-subjective__comparison-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-3);
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+::deep .daily-subjective__comparison-card strong {
+    font-size: var(--text-3xl);
+    line-height: 1;
+}
+
+::deep .daily-subjective__comparison-card--current {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+::deep .daily-subjective__label {
+    display: block;
+    margin-bottom: var(--spacing-2);
+}
+
+::deep .daily-subjective__range {
+    width: 100%;
+}
+
+::deep .daily-subjective__range-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .daily-subjective__field {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-subjective__field input,
+::deep .daily-subjective__field select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-3) var(--spacing-3);
+    background: var(--card);
+    color: var(--foreground);
+}
+
+::deep .daily-subjective__validation {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--destructive);
+}
+
+::deep .daily-subjective--dark {
+    color: var(--foreground);
+}
+
+@media (max-width: 768px) {
+    ::deep .daily-subjective__comparison {
+        grid-template-columns: 1fr;
+    }
+}

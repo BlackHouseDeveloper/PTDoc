@@ -1,0 +1,47 @@
+::deep .goal-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-3);
+    background: var(--card);
+}
+
+::deep .goal-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-2);
+}
+
+::deep .goal-card__badge {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: var(--text-xs);
+}
+
+::deep .goal-card__status {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .goal-card__title {
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+::deep .goal-card__meta {
+    margin: var(--spacing-1) 0;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .goal-card progress {
+    width: 100%;
+    height: var(--spacing-2);
+}
+
+::deep .goal-card__progress-text {
+    margin: var(--spacing-1) 0 0;
+    font-size: var(--text-xs);
+    text-align: right;
+}

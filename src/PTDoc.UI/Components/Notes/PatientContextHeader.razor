@@ -1,0 +1,23 @@
+@namespace PTDoc.UI.Components.Notes
+
+<div class="patient-context-header" data-testid="patient-context-header">
+    <svg class="patient-context-header__icon" width="20" height="20" viewBox="0 0 20 20"
+         fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M10 10C12.2091 10 14 8.20914 14 6C14 3.79086 12.2091 2 10 2C7.79086 2 6 3.79086 6 6C6 8.20914 7.79086 10 10 10Z"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3 18C3 15.2386 6.13401 13 10 13C13.866 13 17 15.2386 17 18"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="patient-context-header__info">
+        <span class="patient-context-header__name">@PatientName</span>
+        @if (!string.IsNullOrWhiteSpace(PatientDob))
+        {
+            <span class="patient-context-header__dob">DOB: @PatientDob</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string PatientName { get; set; } = string.Empty;
+    [Parameter] public string? PatientDob { get; set; }
+}

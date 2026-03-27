@@ -1,13 +1,10 @@
 .clinician-scheduler {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    overflow: hidden;
 }
 
 .scheduler-viewport {
     flex: 1;
-    overflow: auto;
     min-height: 0;
 }
 
@@ -165,7 +162,6 @@
     gap: var(--spacing-1);
     padding: 0;
     height: 100%;
-    overflow: hidden;
     min-width: 0;
 }
 

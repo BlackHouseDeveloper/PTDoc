@@ -1,0 +1,121 @@
+::deep .daily-assessment .daily-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .daily-assessment .daily-col-12 {
+    grid-column: span 12;
+}
+
+::deep .daily-assessment__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--spacing-3);
+}
+
+::deep .daily-assessment__actions button {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--success-box-bg);
+    color: var(--primary);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-assessment__chips span {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: var(--text-xs);
+}
+
+::deep .daily-assessment__goal-status-legend {
+    display: flex;
+    gap: var(--spacing-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-3);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__goal-status-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-2);
+    margin-bottom: var(--spacing-2);
+}
+
+::deep .daily-assessment__status-options {
+    margin-top: var(--spacing-2);
+    display: flex;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__field {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-assessment__field input,
+::deep .daily-assessment__field select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: var(--card);
+    color: var(--foreground);
+}
+
+::deep .daily-assessment__field button {
+    justify-self: start;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    padding: var(--spacing-1) var(--spacing-2);
+}
+
+::deep .daily-assessment__placeholder {
+    color: var(--muted-foreground);
+}
+
+::deep .daily-assessment__code-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-assessment__code-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-2);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__subheading {
+    margin: var(--spacing-3) 0 var(--spacing-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+::deep .daily-assessment__considerations {
+    margin: 0;
+    padding-left: var(--spacing-4);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__considerations li {
+    margin: var(--spacing-1) 0;
+}

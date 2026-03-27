@@ -1,0 +1,32 @@
+.patient-context-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-4);
+    background: var(--muted);
+    border-bottom: 1px solid var(--border);
+}
+
+.patient-context-header__icon {
+    color: var(--muted-foreground);
+    flex-shrink: 0;
+}
+
+.patient-context-header__info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.patient-context-header__name {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    line-height: var(--line-height-tight);
+}
+
+.patient-context-header__dob {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    line-height: var(--line-height-tight);
+}

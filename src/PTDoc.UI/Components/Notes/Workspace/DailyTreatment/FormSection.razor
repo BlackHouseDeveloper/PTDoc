@@ -1,0 +1,33 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<section class="form-section @(IsDarkMode ? "form-section--dark" : string.Empty)" data-testid="@TestId">
+    <header class="form-section__header">
+        <div>
+            <h3 class="form-section__title">@Title</h3>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p class="form-section__subtitle">@Subtitle</p>
+            }
+        </div>
+
+        @if (HeaderContent is not null)
+        {
+            <div class="form-section__header-content">
+                @HeaderContent
+            </div>
+        }
+    </header>
+
+    <div class="form-section__body">
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+    [Parameter] public string? TestId { get; set; }
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,77 @@
+::deep .dry-treatment {
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+::deep .dry-treatment__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-3);
+}
+
+::deep .dry-treatment__field {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .dry-treatment__field label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--muted-foreground);
+}
+
+::deep .dry-treatment__field input,
+::deep .dry-treatment__field select,
+::deep .dry-treatment__field textarea {
+    width: 100%;
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+::deep .dry-treatment__field textarea {
+    resize: vertical;
+    min-height: calc(var(--spacing-10) * 2);
+}
+
+::deep .dry-treatment__section-title {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+::deep .dry-treatment__scale {
+    display: grid;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    gap: var(--spacing-1);
+}
+
+::deep .dry-treatment__scale-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-1);
+    min-height: var(--touch-target-desktop);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+    font-size: var(--text-xs);
+    color: var(--foreground);
+}
+
+::deep .dry-treatment__scale-cell input {
+    margin: 0;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    accent-color: var(--primary);
+}

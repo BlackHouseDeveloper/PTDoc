@@ -1,0 +1,93 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DryNeedling
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="dry-note" data-testid="dry-needling-note-view" aria-label="Dry needling note">
+    <header class="dry-note__header">
+        <h2 class="dry-note__title">Dry Needling Note</h2>
+        <p class="dry-note__subtitle">Document dry needling procedure details and patient response</p>
+    </header>
+
+    <DryNeedlingRequiredFieldsMissing IsVisible="@HasRequiredFieldsMissing" />
+
+    <DryNeedlingTreatmentDetails IsReadOnly="@IsReadOnly"
+                                 DateOfTreatment="@Vm.DateOfTreatment"
+                                 DateOfTreatmentChanged="HandleDateChanged"
+                                 Location="@Vm.Location"
+                                 LocationChanged="HandleLocationChanged"
+                                 NeedlingType="@Vm.NeedlingType"
+                                 NeedlingTypeChanged="HandleNeedlingTypeChanged"
+                                 PainBefore="@Vm.PainBefore"
+                                 PainBeforeChanged="HandlePainBeforeChanged"
+                                 PainAfter="@Vm.PainAfter"
+                                 PainAfterChanged="HandlePainAfterChanged"
+                                 ResponseDescription="@Vm.ResponseDescription"
+                                 ResponseDescriptionChanged="HandleResponseChanged"
+                                 AdditionalNotes="@Vm.AdditionalNotes"
+                                 AdditionalNotesChanged="HandleAdditionalNotesChanged"
+                                 OnChanged="HandleChanged" />
+
+    <footer class="dry-note__actions">
+        <button type="button" class="dry-note__save-btn" disabled="@IsReadOnly" @onclick="OnSave">Save Dry Needling Note</button>
+        <button type="button" class="dry-note__submit-btn" disabled="@(IsReadOnly || HasRequiredFieldsMissing)" @onclick="OnSubmit">Submit Dry Needling Note</button>
+    </footer>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public DryNeedlingVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<DryNeedlingVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+
+    private bool HasRequiredFieldsMissing =>
+        Vm.DateOfTreatment is null ||
+        string.IsNullOrWhiteSpace(Vm.Location) ||
+        string.IsNullOrWhiteSpace(Vm.NeedlingType);
+
+    private Task HandleChanged()
+    {
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task HandleDateChanged(DateTime? value)
+    {
+        Vm.DateOfTreatment = value;
+        return HandleChanged();
+    }
+
+    private Task HandleLocationChanged(string value)
+    {
+        Vm.Location = value;
+        return HandleChanged();
+    }
+
+    private Task HandleNeedlingTypeChanged(string value)
+    {
+        Vm.NeedlingType = value;
+        return HandleChanged();
+    }
+
+    private Task HandlePainBeforeChanged(int? value)
+    {
+        Vm.PainBefore = value;
+        return HandleChanged();
+    }
+
+    private Task HandlePainAfterChanged(int? value)
+    {
+        Vm.PainAfter = value;
+        return HandleChanged();
+    }
+
+    private Task HandleResponseChanged(string value)
+    {
+        Vm.ResponseDescription = value;
+        return HandleChanged();
+    }
+
+    private Task HandleAdditionalNotesChanged(string value)
+    {
+        Vm.AdditionalNotes = value;
+        return HandleChanged();
+    }
+}

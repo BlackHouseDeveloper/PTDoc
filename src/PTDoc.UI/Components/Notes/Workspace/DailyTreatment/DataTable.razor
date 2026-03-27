@@ -1,0 +1,101 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<div class="data-table" data-testid="@TestId">
+    <table>
+        <thead>
+            <tr>
+                @foreach (var col in Columns)
+                {
+                    <th>@col</th>
+                }
+                @if (!IsReadOnly && ShowActions)
+                {
+                    <th class="data-table__actions-col">Actions</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (Rows.Count == 0)
+            {
+                <tr>
+                    <td colspan="@(Columns.Count + (ShowActions && !IsReadOnly ? 1 : 0))" class="data-table__empty">
+                        @EmptyMessage
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @for (var i = 0; i < Rows.Count; i++)
+                {
+                    var row = Rows[i];
+                    <tr>
+                        @foreach (var col in Columns)
+                        {
+                            <td>
+                                <input type="text"
+                                       value="@GetCell(row, col)"
+                                       disabled="@IsReadOnly"
+                                       @oninput="e => SetCell(i, col, e.Value?.ToString())" />
+                            </td>
+                        }
+                        @if (!IsReadOnly && ShowActions)
+                        {
+                            <td class="data-table__actions-col">
+                                <button type="button" class="data-table__btn-danger" @onclick="() => RemoveRow(i)">Remove</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    @if (!IsReadOnly)
+    {
+        <button type="button" class="data-table__btn-add" @onclick="AddRow" disabled="@AddDisabled">@AddLabel</button>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Columns { get; set; } = Array.Empty<string>();
+    [Parameter] public List<Dictionary<string, string>> Rows { get; set; } = new();
+    [Parameter] public EventCallback<List<Dictionary<string, string>>> RowsChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool ShowActions { get; set; } = true;
+    [Parameter] public bool AddDisabled { get; set; }
+    [Parameter] public string AddLabel { get; set; } = "+ Add Row";
+    [Parameter] public string EmptyMessage { get; set; } = "No rows added.";
+    [Parameter] public string? TestId { get; set; }
+
+    private string GetCell(Dictionary<string, string> row, string column)
+        => row.TryGetValue(column, out var value) ? value : string.Empty;
+
+    private async Task SetCell(int rowIndex, string column, string? value)
+    {
+        Rows[rowIndex][column] = value ?? string.Empty;
+        await RowsChanged.InvokeAsync(Rows);
+    }
+
+    private async Task AddRow()
+    {
+        var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var col in Columns)
+        {
+            row[col] = string.Empty;
+        }
+
+        Rows.Add(row);
+        await RowsChanged.InvokeAsync(Rows);
+    }
+
+    private async Task RemoveRow(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= Rows.Count)
+        {
+            return;
+        }
+
+        Rows.RemoveAt(rowIndex);
+        await RowsChanged.InvokeAsync(Rows);
+    }
+}

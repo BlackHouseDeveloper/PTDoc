@@ -1,0 +1,28 @@
+@namespace PTDoc.UI.Components.Notes
+@using PTDoc.UI.Components.Notes.Models
+
+<nav class="soap-tab-nav" role="tablist" aria-label="SOAP note sections" data-testid="soap-tab-nav">
+    @foreach (var soapSection in _sections)
+    {
+        var isActive = soapSection == ActiveSection;
+        <button type="button"
+                role="tab"
+                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : "")"
+                aria-selected="@isActive"
+                aria-controls="soap-tab-panel"
+                data-testid="@($"soap-tab-{soapSection.ToString().ToLower()}")"
+                @onclick="() => HandleTabClickAsync(soapSection)">
+            @soapSection.ToString()
+        </button>
+    }
+</nav>
+
+@code {
+    private static readonly SoapSection[] _sections = Enum.GetValues<SoapSection>();
+
+    [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
+    [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
+
+    private Task HandleTabClickAsync(SoapSection section) =>
+        ActiveSectionChanged.InvokeAsync(section);
+}

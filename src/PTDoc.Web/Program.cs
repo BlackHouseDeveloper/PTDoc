@@ -32,6 +32,7 @@ builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));

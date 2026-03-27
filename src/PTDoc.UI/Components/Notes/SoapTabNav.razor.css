@@ -1,0 +1,38 @@
+.soap-tab-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: var(--spacing-2) var(--spacing-4);
+    gap: var(--spacing-2);
+}
+
+.soap-tab-nav__tab {
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-2) var(--spacing-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    min-height: var(--touch-target-desktop);
+    text-align: center;
+}
+
+.soap-tab-nav__tab:hover:not(.soap-tab-nav__tab--active) {
+    background: var(--muted);
+    color: var(--foreground);
+}
+
+.soap-tab-nav__tab--active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-weight: var(--font-weight-semibold);
+}
+
+.soap-tab-nav__tab:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}

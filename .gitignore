@@ -526,3 +526,6 @@ reference/memory.db
 build-output-*
 # PTDoc project-specific
 docs/_archive/        # Superseded documentation (archived for reference but not tracked)
+
+*.db-shm
+*.db-wal

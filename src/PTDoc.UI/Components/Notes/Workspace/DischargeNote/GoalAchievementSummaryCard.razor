@@ -1,0 +1,50 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
+
+<section class="goal-achievement-card" data-testid="goal-achievement-summary-card" aria-label="Goal achievement summary">
+    <header class="goal-achievement-card__header">
+        <div>
+            <h3 class="goal-achievement-card__title">Goal Achievement Summary</h3>
+            <p class="goal-achievement-card__subtitle">Final status of all treatment goals established during initial evaluation</p>
+        </div>
+        <div class="goal-achievement-card__metrics">
+            <span class="goal-achievement-card__achievement">0% Achieved</span>
+            <div class="goal-achievement-card__counts">
+                <span>Met: 0</span>
+                <span>Not Met: 3</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="goal-achievement-card__list">
+        @foreach (var goal in _goalRows)
+        {
+            <article class="goal-achievement-card__item">
+                <div class="goal-achievement-card__item-head">
+                    <div>
+                        <h4 class="goal-achievement-card__item-title">@goal.Title</h4>
+                        <div class="goal-achievement-card__chips">
+                            <span class="goal-achievement-card__chip">@goal.Category</span>
+                            <span class="goal-achievement-card__chip">@goal.Timeline</span>
+                        </div>
+                    </div>
+                    <span class="goal-achievement-card__status">Not Met</span>
+                </div>
+
+                <p class="goal-achievement-card__goal-text">✗ @goal.Description</p>
+                <p class="goal-achievement-card__measure">Measurable: @goal.Measurable</p>
+                <p class="goal-achievement-card__note">Goal not fully met - Patient discharged prior to completion</p>
+            </article>
+        }
+    </div>
+</section>
+
+@code {
+    private readonly IReadOnlyList<GoalRow> _goalRows =
+    [
+        new("Goal 1", "ROM", "Short-term", "Increase knee flexion ROM to 120° to improve stair climbing ability", "From current 100° to 120° active knee flexion"),
+        new("Goal 2", "Strength", "Long-term", "Improve quadriceps strength to 5/5 MMT for functional transfers", "From current 4/5 to 5/5 MMT grade for quadriceps"),
+        new("Goal 3", "Pain", "Short-term", "Reduce pain level to <=2/10 during daily activities", "From current 7/10 to <=2/10 on pain scale during ADLs")
+    ];
+
+    private sealed record GoalRow(string Title, string Category, string Timeline, string Description, string Measurable);
+}

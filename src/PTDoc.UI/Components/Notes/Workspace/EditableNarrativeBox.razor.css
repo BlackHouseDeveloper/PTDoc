@@ -122,6 +122,6 @@
 
 .editable-narrative-box__accepted-note {
     font-size: var(--text-xs);
-    color: var(--success, #16a34a);
+    color: var(--success);
     margin: 0;
 }

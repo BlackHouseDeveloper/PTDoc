@@ -1,0 +1,115 @@
+::deep .goal-achievement-card {
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+::deep .goal-achievement-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+::deep .goal-achievement-card__title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+::deep .goal-achievement-card__subtitle {
+    margin: var(--spacing-1) 0 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+::deep .goal-achievement-card__metrics {
+    display: grid;
+    gap: var(--spacing-1);
+    justify-items: end;
+}
+
+::deep .goal-achievement-card__achievement {
+    font-size: var(--text-sm);
+    color: var(--destructive);
+    font-weight: var(--font-weight-semibold);
+}
+
+::deep .goal-achievement-card__counts {
+    display: flex;
+    gap: var(--spacing-2);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+::deep .goal-achievement-card__list {
+    display: grid;
+    gap: var(--spacing-3);
+}
+
+::deep .goal-achievement-card__item {
+    display: grid;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+}
+
+::deep .goal-achievement-card__item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+}
+
+::deep .goal-achievement-card__item-title {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    font-weight: var(--font-weight-semibold);
+}
+
+::deep .goal-achievement-card__chips {
+    margin-top: var(--spacing-1);
+    display: flex;
+    gap: var(--spacing-1);
+    flex-wrap: wrap;
+}
+
+::deep .goal-achievement-card__chip {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    background: var(--card);
+}
+
+::deep .goal-achievement-card__status {
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--destructive);
+}
+
+::deep .goal-achievement-card__goal-text,
+::deep .goal-achievement-card__measure,
+::deep .goal-achievement-card__note {
+    margin: 0;
+    font-size: var(--text-xs);
+}
+
+::deep .goal-achievement-card__goal-text {
+    color: var(--foreground);
+}
+
+::deep .goal-achievement-card__measure,
+::deep .goal-achievement-card__note {
+    color: var(--muted-foreground);
+}

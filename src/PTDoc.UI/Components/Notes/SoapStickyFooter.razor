@@ -1,0 +1,146 @@
+@namespace PTDoc.UI.Components.Notes
+@using PTDoc.UI.Components.Notes.Models
+
+<footer class="soap-sticky-footer" data-testid="soap-sticky-footer" role="contentinfo">
+    <!-- Left: Back -->
+    <button type="button"
+            class="soap-sticky-footer__back"
+            @onclick="() => OnBack.InvokeAsync()"
+            aria-label="Back to patient"
+            data-testid="footer-back">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Back
+    </button>
+
+    <!-- Center: navigation + state label -->
+    <div class="soap-sticky-footer__center">
+        <button type="button"
+                class="soap-sticky-footer__nav-btn"
+                disabled="@IsFirstSection"
+                @onclick="() => OnPrevSection.InvokeAsync()"
+                aria-label="Previous section"
+                data-testid="footer-prev">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+        <button type="button"
+                class="soap-sticky-footer__action-btn"
+                @onclick="() => OnGoalsClick.InvokeAsync()"
+                aria-label="View patient goals"
+                data-testid="footer-goals">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M7 1.16667L8.75583 4.72917L12.8333 5.32417L9.91667 8.16417L10.5117 12.25L7 10.395L3.48833 12.25L4.08333 8.16417L1.16667 5.32417L5.24417 4.72917L7 1.16667Z"
+                      stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+                      stroke-linejoin="round" fill="none"/>
+            </svg>
+            Goals
+        </button>
+
+        <button type="button"
+                class="soap-sticky-footer__action-btn"
+                @onclick="() => OnReviewClick.InvokeAsync()"
+                aria-label="Review note"
+                data-testid="footer-review">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M1.16667 7L12.8333 7M12.8333 7L8.16667 2.33333M12.8333 7L8.16667 11.6667"
+                      stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+                      stroke-linejoin="round"/>
+            </svg>
+            Review
+        </button>
+
+        <button type="button"
+                class="soap-sticky-footer__nav-btn"
+                disabled="@IsLastSection"
+                @onclick="() => OnNextSection.InvokeAsync()"
+                aria-label="Next section"
+                data-testid="footer-next">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+        <span class="soap-sticky-footer__state-label" data-testid="footer-state-label">
+            @NoteType • @ActiveSection • @GetSaveStateLabel()
+        </span>
+    </div>
+
+    <!-- Right: Save + Submit -->
+    <div class="soap-sticky-footer__actions">
+        <button type="button"
+                class="soap-sticky-footer__save-btn @(SaveState == NoteSaveState.Saving ? "soap-sticky-footer__save-btn--saving" : "")"
+                disabled="@(SaveState == NoteSaveState.Saving)"
+                @onclick="() => OnSave.InvokeAsync()"
+                aria-label="Save draft"
+                data-testid="footer-save">
+            @if (SaveState == NoteSaveState.Saving)
+            {
+                <span class="soap-sticky-footer__spinner" aria-hidden="true"></span>
+            }
+            else
+            {
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M11.6667 12.8333H2.33333C1.96667 12.8333 1.61533 12.6878 1.3653 12.4348C1.1153 12.1818 0.975 11.8333 0.975 11.4667V2.53333C0.975 2.16667 1.1153 1.81818 1.3653 1.56515C1.61533 1.31212 1.96667 1.16667 2.33333 1.16667H9.91667L13.0253 4.275V11.4667C13.0253 11.8333 12.885 12.1818 12.635 12.4348C12.385 12.6878 12.033 12.8333 11.6667 12.8333Z"
+                          stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9.91667 12.8333V7.58333H4.08333V12.8333" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4.08333 1.16667V4.66667H8.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            }
+            Save
+        </button>
+
+        <button type="button"
+                class="soap-sticky-footer__submit-btn"
+                @onclick="() => OnSubmit.InvokeAsync()"
+                data-testid="footer-submit">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7"
+                      stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Submit
+        </button>
+    </div>
+</footer>
+
+@code {
+    private static readonly SoapSection[] _sections = Enum.GetValues<SoapSection>();
+
+    [Parameter, EditorRequired] public string NoteType { get; set; } = "Evaluation Note";
+    [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
+    [Parameter, EditorRequired] public NoteSaveState SaveState { get; set; }
+
+    [Parameter, EditorRequired] public EventCallback OnBack { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnPrevSection { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnNextSection { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnGoalsClick { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnReviewClick { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnSave { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
+
+    private bool IsFirstSection => ActiveSection == _sections[0];
+    private bool IsLastSection  => ActiveSection == _sections[^1];
+
+    private string GetSaveStateLabel() => SaveState switch
+    {
+        NoteSaveState.Unsaved => "Unsaved",
+        NoteSaveState.Saving  => "Saving…",
+        NoteSaveState.Saved   => "Saved",
+        NoteSaveState.Error   => "Error",
+        _                     => string.Empty
+    };
+}

@@ -1,0 +1,254 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="objective-tab" data-testid="objective-tab" role="tabpanel" aria-label="Objective section">
+    <div class="objective-tab__layout">
+        <!-- Main content column -->
+        <div class="objective-tab__main">
+            <h2 class="objective-tab__title">Objective</h2>
+
+            <!-- Body-part-dependent sections (locked until body part selected in Subjective) -->
+            @foreach (var sectionName in _bodyPartSections)
+            {
+                <div class="objective-tab__locked-section">
+                    <h3 class="objective-tab__section-heading">@sectionName</h3>
+                    <div class="objective-tab__locked-placeholder">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+                            <path d="M8 5.5V8M8 10.5H8.01" stroke="currentColor" stroke-width="1.5"
+                                  stroke-linecap="round"/>
+                        </svg>
+                        <span>Select a body part in the Chief Complaint section to see @sectionName measurements.</span>
+                    </div>
+                </div>
+            }
+
+            <!-- Gait Analysis -->
+            <div class="objective-tab__section" data-testid="gait-analysis-section">
+                <h3 class="objective-tab__section-heading">Gait Analysis</h3>
+
+                <p class="objective-tab__sub-heading">Primary Gait Pattern:</p>
+                <div class="objective-tab__radio-list">
+                    @foreach (var pattern in _gaitPatterns)
+                    {
+                        <label class="objective-tab__radio-item">
+                            <input type="radio"
+                                   name="gait-pattern"
+                                   value="@pattern.Value"
+                                   checked="@(_vm.PrimaryGaitPattern == pattern.Value)"
+                                   disabled="@IsReadOnly"
+                                   @onchange="_ => SetAndNotify(v => v.PrimaryGaitPattern = pattern.Value)" />
+                            <span class="objective-tab__radio-label">
+                                <strong>@pattern.Label</strong>
+                                <span class="objective-tab__radio-desc">@pattern.Description</span>
+                            </span>
+                        </label>
+                    }
+                </div>
+
+                <p class="objective-tab__sub-heading">Specific Gait Deviations (Optional):</p>
+                <div class="objective-tab__deviation-grid">
+                    @foreach (var deviation in _gaitDeviations)
+                    {
+                        <label class="objective-tab__checkbox-chip">
+                            <input type="checkbox"
+                                   name="gait-deviations"
+                                   checked="@_vm.GaitDeviations.Contains(deviation)"
+                                   disabled="@IsReadOnly"
+                                   @onchange="e => ToggleDeviation(deviation, (bool)e.Value!)" />
+                            @deviation
+                        </label>
+                    }
+                </div>
+
+                <p class="objective-tab__sub-heading">Additional Gait Observations:</p>
+                <textarea id="additional-gait-observations"
+                          name="additional-gait-observations"
+                          class="objective-tab__textarea"
+                          rows="3"
+                          placeholder="Add details about walking distance, endurance, specific deviations..."
+                          disabled="@IsReadOnly"
+                          value="@_vm.AdditionalGaitObservations"
+                          @onchange="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
+            </div>
+
+            <!-- Therapeutic Exercises -->
+            <div class="objective-tab__section" data-testid="therapeutic-exercises-section">
+                <div class="objective-tab__section-header">
+                    <div class="objective-tab__section-title-row">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M2 8H14M5 4L8 8L5 12M11 4L8 8L11 12"
+                                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                  stroke-linejoin="round"/>
+                        </svg>
+                        <h3 class="objective-tab__section-heading objective-tab__section-heading--inline">Therapeutic Exercises</h3>
+                        <span class="objective-tab__count-badge">@_vm.TherapeuticExercises.Count exercises</span>
+                    </div>
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" class="objective-tab__add-btn"
+                                @onclick="HandleAddExercise"
+                                data-testid="add-exercise-btn">
+                            + Add Exercise
+                        </button>
+                    }
+                </div>
+
+                @if (_vm.TherapeuticExercises.Count == 0)
+                {
+                    <p class="objective-tab__empty-hint">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+                            <path d="M7 4.5V7M7 9.5H7.01" stroke="currentColor" stroke-width="1.2"
+                                  stroke-linecap="round"/>
+                        </svg>
+                        No exercises added yet. Click "Add Exercise" to get started.
+                    </p>
+                }
+                else
+                {
+                    <ul class="objective-tab__item-list">
+                        @foreach (var ex in _vm.TherapeuticExercises)
+                        {
+                            <li>@ex</li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <!-- Manual Work Techniques -->
+            <div class="objective-tab__section" data-testid="manual-techniques-section">
+                <div class="objective-tab__section-header">
+                    <div class="objective-tab__section-title-row">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M8 2L10 6H14L11 8.5L12 13L8 10.5L4 13L5 8.5L2 6H6L8 2Z"
+                                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                  stroke-linejoin="round"/>
+                        </svg>
+                        <h3 class="objective-tab__section-heading objective-tab__section-heading--inline">Manual Work Techniques</h3>
+                        <span class="objective-tab__count-badge">@_vm.ManualTechniques.Count techniques</span>
+                    </div>
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" class="objective-tab__add-btn"
+                                @onclick="HandleAddTechnique"
+                                data-testid="add-technique-btn">
+                            + Add Technique
+                        </button>
+                    }
+                </div>
+
+                @if (_vm.ManualTechniques.Count == 0)
+                {
+                    <p class="objective-tab__empty-hint">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+                            <path d="M7 4.5V7M7 9.5H7.01" stroke="currentColor" stroke-width="1.2"
+                                  stroke-linecap="round"/>
+                        </svg>
+                        No manual techniques added yet. Click "Add Technique" to get started.
+                    </p>
+                }
+                else
+                {
+                    <ul class="objective-tab__item-list">
+                        @foreach (var t in _vm.ManualTechniques)
+                        {
+                            <li>@t</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="objective-tab__sidebar">
+            <PatientGoalsSidebar PatientId="@PatientId"
+                                 ActiveGoalCount="@GoalCount"
+                                 OverallProgressPercent="@GoalProgressPercent"
+                                 ShortTermGoalCount="@ShortTermGoalCount"
+                                 LongTermGoalCount="@LongTermGoalCount"
+                                 GoalItems="@GoalItems"
+                                 HintItems="@GoalHints" />
+        </div>
+    </div>
+</section>
+
+@code {
+    private ObjectiveVm _vm = new();
+
+    [Parameter, EditorRequired] public ObjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<ObjectiveVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public string PatientId { get; set; } = string.Empty;
+
+    // Goal sidebar data — passed from parent (TODO: wire to IPatientGoalService)
+    [Parameter] public int GoalCount { get; set; }
+    [Parameter] public int GoalProgressPercent { get; set; }
+    [Parameter] public int ShortTermGoalCount { get; set; }
+    [Parameter] public int LongTermGoalCount { get; set; }
+    [Parameter] public IReadOnlyList<PatientGoalItem> GoalItems { get; set; } = Array.Empty<PatientGoalItem>();
+    [Parameter] public IReadOnlyList<string> GoalHints { get; set; } = Array.Empty<string>();
+
+    protected override void OnParametersSet() => _vm = Vm;
+
+    private static readonly string[] _bodyPartSections =
+    [
+        "Range of Motion (ROM)",
+        "Manual Muscle Testing (MMT)",
+        "Standardized Outcome Measures",
+        "Special Tests",
+        "Clinical Observations",
+        "Measurements",
+        "Postural Assessment"
+    ];
+
+    private record GaitPatternOption(string Value, string Label, string Description);
+
+    private static readonly GaitPatternOption[] _gaitPatterns =
+    [
+        new("normal",        "Normal gait",        "No deviations observed"),
+        new("antalgic",      "Antalgic gait",      "Pain-avoiding pattern"),
+        new("trendelenburg", "Trendelenburg gait",  "Hip abductor weakness"),
+        new("steppage",      "Steppage gait",       "Foot drop pattern"),
+        new("circumduction", "Circumduction gait",  "Swinging leg outward"),
+        new("festinating",   "Festinating gait",    "Short, shuffling steps"),
+    ];
+
+    private static readonly string[] _gaitDeviations =
+    [
+        "Decreased stride length", "Decreased walking speed",
+        "Decreased arm swing",     "Trunk lean",
+        "Hip hiking",              "Foot drop",
+        "Toe walking",             "Absent heel strike",
+        "Knee hyperextension",     "Excessive knee flexion",
+        "Limping",                 "Patient uses assistive device"
+    ];
+
+    private Task ToggleDeviation(string item, bool add)
+    {
+        if (add) _vm.GaitDeviations.Add(item); else _vm.GaitDeviations.Remove(item);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task SetAndNotify(Action<ObjectiveVm> update)
+    {
+        update(_vm);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private void HandleAddExercise()
+    {
+        // TODO: open exercise picker modal; for now stub an entry
+        _vm.TherapeuticExercises.Add($"Exercise {_vm.TherapeuticExercises.Count + 1} (stub)");
+        VmChanged.InvokeAsync(_vm);
+    }
+
+    private void HandleAddTechnique()
+    {
+        // TODO: open technique picker modal; for now stub an entry
+        _vm.ManualTechniques.Add($"Technique {_vm.ManualTechniques.Count + 1} (stub)");
+        VmChanged.InvokeAsync(_vm);
+    }
+}

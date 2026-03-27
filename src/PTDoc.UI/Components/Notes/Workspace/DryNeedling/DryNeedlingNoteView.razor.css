@@ -1,0 +1,57 @@
+::deep .dry-note {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+::deep .dry-note__header {
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+::deep .dry-note__title {
+    margin: 0;
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+::deep .dry-note__subtitle {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+::deep .dry-note__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-2);
+}
+
+::deep .dry-note__save-btn,
+::deep .dry-note__submit-btn {
+    min-height: var(--touch-target-desktop);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+}
+
+::deep .dry-note__save-btn {
+    background: transparent;
+    color: var(--foreground);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+}
+
+::deep .dry-note__submit-btn {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: calc(var(--spacing-1) / 4) solid var(--primary);
+}
+
+::deep .dry-note__save-btn:disabled,
+::deep .dry-note__submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

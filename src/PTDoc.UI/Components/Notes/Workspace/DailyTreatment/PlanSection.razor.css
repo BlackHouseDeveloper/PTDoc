@@ -1,0 +1,24 @@
+::deep .daily-plan .daily-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .daily-plan .daily-col-12 {
+    grid-column: span 12;
+}
+
+::deep .daily-plan__summary-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--spacing-3);
+}
+
+::deep .daily-plan__summary-header button {
+    border: 1px solid var(--info-box-border);
+    border-radius: var(--radius-md);
+    background: var(--info-box-bg);
+    color: var(--info);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+}
