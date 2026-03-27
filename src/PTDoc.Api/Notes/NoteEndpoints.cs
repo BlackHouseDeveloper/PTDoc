@@ -42,8 +42,15 @@ public static class NoteEndpoints
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IRulesEngine rulesEngine,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        // Sprint UC3: PTA domain guard — PTA clinicians may only create Daily notes.
+        // Evaluation, ProgressNote, and Discharge notes require PT or higher authority.
+        if (httpContext.User.IsInRole(Roles.PTA) && request.NoteType != NoteType.Daily)
+        {
+            return Results.Forbid();
+        }
         if (request.PatientId == Guid.Empty)
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {

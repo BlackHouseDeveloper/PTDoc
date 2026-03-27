@@ -47,8 +47,9 @@ public interface ISyncEngine
     /// <summary>
     /// Return entity changes that occurred on the server since <paramref name="sinceUtc"/>.
     /// Optionally filtered to <paramref name="entityTypes"/> (e.g. "Patient", "Appointment").
+    /// Role-based scoping: Aide and FrontDesk roles receive no clinical data (ClinicalNote, ObjectiveMetric, AuditLog).
     /// </summary>
-    Task<ClientSyncPullResponse> GetClientDeltaAsync(DateTime? sinceUtc, string[]? entityTypes = null, CancellationToken cancellationToken = default);
+    Task<ClientSyncPullResponse> GetClientDeltaAsync(DateTime? sinceUtc, string[]? entityTypes = null, string[]? userRoles = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
