@@ -35,10 +35,15 @@ public static class IntakeEndpoints
 
         // Sprint UC2: Lock (submit) intake after patient completion — prevents further editing.
         // Patient can submit their own form; Front Desk and clinical staff can lock on behalf.
+        // Uses IntakeRead (which includes Patient) rather than IntakeWrite so patients can
+        // submit/lock their own intake forms without requiring full write permissions.
+        // Note: IntakeRead still requires authentication; ownership/tenancy is enforced
+        // inside the handler via tenant context — only intake forms visible to the caller
+        // can be submitted.
         group.MapPost("/{id:guid}/submit", SubmitIntake)
             .WithName("SubmitIntake")
             .WithSummary("Lock an intake form after submission — prevents further editing")
-            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
     }
 
     // POST /api/v1/intake
@@ -115,7 +120,8 @@ public static class IntakeEndpoints
 
     // POST /api/v1/intake/{id}/submit
     // Sprint UC2: Lock the intake form to prevent further editing after patient submission.
-    private static async Task<IResult> SubmitIntake(
+    // Internal visibility allows direct handler tests in PTDoc.Tests.
+    internal static async Task<IResult> SubmitIntake(
         Guid id,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,

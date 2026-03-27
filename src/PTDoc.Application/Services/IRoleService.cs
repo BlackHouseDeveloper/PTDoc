@@ -136,11 +136,11 @@ public static class AuthorizationPolicies
         options.AddPolicy(AdminOnly,
             p => p.RequireRole(Roles.Admin, Roles.Owner));
 
-        // BillingAccess: charge review, CPT/ICD edits, ERA/EOB — Billing role only
+        // BillingAccess: charge review, CPT/ICD edits, ERA/EOB — Billing, Admin, and Owner roles
         options.AddPolicy(BillingAccess,
             p => p.RequireRole(Roles.Billing, Roles.Admin, Roles.Owner));
 
-        // SchedulingAccess: scheduling management — clinical staff, front desk, practice manager
+        // SchedulingAccess: scheduling management — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
         options.AddPolicy(SchedulingAccess,
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin,
                                Roles.Owner, Roles.PracticeManager));

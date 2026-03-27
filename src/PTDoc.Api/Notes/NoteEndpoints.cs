@@ -60,7 +60,7 @@ public static class NoteEndpoints
         // Sprint UC3: PTA domain guard — PTA clinicians may only create Daily notes.
         // Evaluation, ProgressNote, and Discharge notes require PT or higher authority.
         // Checked after basic field validation so invalid requests are rejected first.
-        if (httpContext.User.IsInRole(Roles.PTA) && request.NoteType != NoteType.Daily)
+        if (PtaIsBlockedFromNoteType(httpContext.User, request.NoteType))
         {
             return Results.Forbid();
         }
@@ -312,4 +312,16 @@ public static class NoteEndpoints
             IsWNL = m.IsWNL
         }).ToList()
     };
+
+    /// <summary>
+    /// Sprint UC3: PTA domain guard — determines whether a PTA user is blocked from creating
+    /// a given note type. PTAs may only create Daily notes; all other note types are blocked.
+    /// Extracted as an internal helper so the guard logic can be tested directly without
+    /// invoking the full endpoint stack.
+    /// </summary>
+    /// <param name="user">The authenticated ClaimsPrincipal.</param>
+    /// <param name="noteType">The note type being created.</param>
+    /// <returns>True if the request should be rejected with 403 Forbidden.</returns>
+    internal static bool PtaIsBlockedFromNoteType(System.Security.Claims.ClaimsPrincipal user, NoteType noteType)
+        => user.IsInRole(Roles.PTA) && noteType != NoteType.Daily;
 }

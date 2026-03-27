@@ -139,7 +139,7 @@ public class SignatureService : ISignatureService
         await _context.SaveChangesAsync(ct);
 
         await _auditService.LogNoteSignedAsync(
-            AuditEvent.NoteSigned(noteId, $"CoSign:{note.NoteType}", "co-sign", ptUserId), ct);
+            AuditEvent.NoteSigned(noteId, $"CoSign:{note.NoteType}", note.SignatureHash!, ptUserId), ct);
 
         return new CoSignResult { Success = true, CoSignedUtc = note.CoSignedUtc };
     }

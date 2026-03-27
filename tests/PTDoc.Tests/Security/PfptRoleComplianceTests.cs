@@ -4,11 +4,16 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using PTDoc.Api.Intake;
+using PTDoc.Api.Notes;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -25,27 +30,23 @@ namespace PTDoc.Tests.Security;
 /// PFPT U-C1 through U-C5 required test coverage.
 ///
 /// Sprint U-C1: Auth + RBAC
-///   - PTA cannot create eval
-///   - Billing cannot edit notes
-///   - Owner is read-only (cannot write notes)
-///   - Patient cannot access SOAP (NoteRead denied)
-///   - FrontDesk cannot edit notes
+///   - PTA cannot create eval (tested via real PtaIsBlockedFromNoteType helper)
+///   - Billing/Owner/FrontDesk/Patient/Aide blocked from NoteWrite
 ///   - Role-based endpoint denial works
 ///
 /// Sprint U-C2: Intake Workflow
-///   - Intake locks after submit
+///   - Intake locks after submit (tests invoke real SubmitIntake handler)
+///   - Double-lock returns 409
 ///
 /// Sprint U-C3: SOAP + AI
-///   - AI not persisted before acceptance (AuditService logs generation, not direct DB write)
-///   - PTA domain guard at create level
+///   - AI not persisted before acceptance
 ///
 /// Sprint U-C4: Compliance + Signatures
 ///   - PTA requires co-sign
-///   - Signed note immutable (co-sign only on PTA-signed notes)
+///   - Co-sign tests run against migrated SQLite to cover schema regressions
 ///
 /// Sprint U-C5: Offline + Sync
-///   - Role-based data scoping (Aide/FrontDesk do not receive clinical data)
-///   - Patient gets limited dataset
+///   - Role-based data scoping (Aide/FrontDesk/Patient excluded from clinical entities)
 /// </summary>
 [Trait("Category", "RBAC")]
 public class PfptRoleComplianceTests : IAsyncDisposable
@@ -90,94 +91,80 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         return result.Succeeded;
     }
 
-    private ApplicationDbContext CreateInMemoryContext()
-    {
-        var tenantMock = new Mock<ITenantContextAccessor>();
-        tenantMock.Setup(x => x.GetCurrentClinicId()).Returns((Guid?)null);
-
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-        return new ApplicationDbContext(options, tenantMock.Object);
-    }
-
     // ─── U-C1: Auth + RBAC ──────────────────────────────────────────────────
 
     [Fact]
     public async Task UC1_Billing_CannotEditNotes_NoteWriteBlocked()
     {
         // Billing role: "clinical notes VIEW ONLY" per canonical role matrix.
-        // Billing must NOT have NoteWrite permission.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.Billing));
     }
 
     [Fact]
     public async Task UC1_Billing_CanReadNotes_NoteReadAllowed()
     {
-        // Billing needs to read notes for charge review per canonical role matrix.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.Billing));
     }
 
     [Fact]
     public async Task UC1_Owner_IsReadOnly_NoteWriteBlocked()
     {
-        // Owner: "Clinical READ ONLY" per canonical role matrix. Cannot write notes.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.Owner));
     }
 
     [Fact]
     public async Task UC1_Owner_CanReadNotes_NoteReadAllowed()
     {
-        // Owner has clinical READ access.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.Owner));
     }
 
     [Fact]
     public async Task UC1_FrontDesk_CannotEditNotes_NoteWriteBlocked()
     {
-        // Front Desk: "NO clinical editing" per canonical role matrix.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.FrontDesk));
     }
 
     [Fact]
     public async Task UC1_FrontDesk_CannotReadNotes_NoteReadBlocked()
     {
-        // Front Desk has no clinical note access.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.FrontDesk));
     }
 
     [Fact]
     public async Task UC1_FrontDesk_CanReadIntake_IntakeReadAllowed()
     {
-        // Front Desk can manage intake/consents per canonical role matrix.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeRead, Roles.FrontDesk));
     }
 
     [Fact]
     public async Task UC1_FrontDesk_CanWriteIntake_IntakeWriteAllowed()
     {
-        // Front Desk can create intake forms per canonical role matrix.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeWrite, Roles.FrontDesk));
     }
 
     [Fact]
     public async Task UC1_Patient_CannotAccessSOAP_NoteReadBlocked()
     {
-        // Patient role must NOT have access to clinical notes (SOAP).
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.Patient));
     }
 
     [Fact]
     public async Task UC1_Patient_CannotWriteNotes_NoteWriteBlocked()
     {
-        // Patient must not be able to create or modify clinical notes.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.Patient));
+    }
+
+    [Fact]
+    public async Task UC1_Patient_CanSubmitIntake_IntakeReadAllowed()
+    {
+        // Patient needs IntakeRead (includes Patient) to submit their own intake form.
+        // The /submit endpoint uses IntakeRead policy so patients can lock their own forms.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeRead, Roles.Patient));
     }
 
     [Fact]
     public async Task UC1_Aide_CannotReadNotes_NoteReadBlocked()
     {
-        // Therapy Aide: "NO documentation" per canonical role matrix.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.Aide));
     }
 
@@ -190,7 +177,6 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC1_PTA_CanWriteNotes_NoteWriteAllowed()
     {
-        // PTA can create Daily notes (full NoteWrite policy; CREATE type restriction is a domain guard).
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.PTA));
     }
 
@@ -203,7 +189,6 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC1_PracticeManager_CannotWriteNotes_NoteWriteBlocked()
     {
-        // Practice Manager: no clinical editing per canonical role matrix.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.PracticeManager));
     }
 
@@ -216,28 +201,24 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC1_NoteCoSign_PT_IsAuthorized()
     {
-        // Only PT can co-sign PTA-authored notes.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, Roles.PT));
     }
 
     [Fact]
     public async Task UC1_NoteCoSign_PTA_IsNotAuthorized()
     {
-        // PTA cannot co-sign their own notes.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, Roles.PTA));
     }
 
     [Fact]
     public async Task UC1_SchedulingAccess_FrontDesk_IsAuthorized()
     {
-        // Front Desk has full scheduling access per canonical role matrix.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.SchedulingAccess, Roles.FrontDesk));
     }
 
     [Fact]
     public async Task UC1_BillingAccess_Billing_IsAuthorized()
     {
-        // Billing role has access to billing functions.
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.BillingAccess, Roles.Billing));
     }
 
@@ -248,6 +229,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     // ─── U-C1: PTA domain guard at CREATE level ──────────────────────────────
+    // Tests call the real NoteEndpoints.PtaIsBlockedFromNoteType helper, which is
+    // the same function invoked by the CreateNote endpoint. If the guard is removed
+    // from CreateNote, these tests will fail (non-tautological).
 
     [Theory]
     [InlineData(NoteType.Evaluation)]
@@ -255,32 +239,24 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [InlineData(NoteType.Discharge)]
     public void UC1_PTA_CannotCreateNonDailyNote_DomainGuardBlocks(NoteType noteType)
     {
-        // Simulate the domain guard in the CreateNote endpoint.
-        // PTA attempting to create a non-Daily note should be rejected (403 Forbidden).
+        // Build a real PTA ClaimsPrincipal and call the actual guard helper.
         var ptaIdentity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, Roles.PTA) }, "Test");
         var ptaPrincipal = new ClaimsPrincipal(ptaIdentity);
 
-        var isPta = ptaPrincipal.IsInRole(Roles.PTA);
-        var isNonDailyNote = noteType != NoteType.Daily;
-
-        // The domain guard: if isPta AND isNonDailyNote → Forbid()
-        var shouldForbid = isPta && isNonDailyNote;
-        Assert.True(shouldForbid, $"PTA should be forbidden from creating {noteType} notes");
+        // Assert: the real guard function blocks PTA for non-Daily note types.
+        var isBlocked = NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, noteType);
+        Assert.True(isBlocked, $"NoteEndpoints.PtaIsBlockedFromNoteType should block PTA from creating {noteType}");
     }
 
     [Fact]
     public void UC1_PTA_CanCreateDailyNote_DomainGuardAllows()
     {
-        // PTA is allowed to create Daily notes.
         var ptaIdentity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, Roles.PTA) }, "Test");
         var ptaPrincipal = new ClaimsPrincipal(ptaIdentity);
 
-        var isPta = ptaPrincipal.IsInRole(Roles.PTA);
-        var requestedNoteType = NoteType.Daily;
-
-        // Domain guard: forbid only if PTA AND non-Daily
-        var shouldForbid = isPta && requestedNoteType != NoteType.Daily;
-        Assert.False(shouldForbid, "PTA should be allowed to create Daily notes");
+        // Assert: the real guard allows PTA to create Daily notes.
+        var isBlocked = NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, NoteType.Daily);
+        Assert.False(isBlocked, "NoteEndpoints.PtaIsBlockedFromNoteType should allow PTA to create Daily notes");
     }
 
     [Theory]
@@ -290,19 +266,20 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [InlineData(NoteType.Daily)]
     public void UC1_PT_CanCreateAllNoteTypes_DomainGuardDoesNotApply(NoteType noteType)
     {
-        // PT is not subject to the PTA domain guard.
+        // PT users are not subject to the PTA domain guard.
         var ptIdentity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, Roles.PT) }, "Test");
         var ptPrincipal = new ClaimsPrincipal(ptIdentity);
 
-        var isPta = ptPrincipal.IsInRole(Roles.PTA);
-        // PT is NOT PTA, so domain guard does not fire
-        Assert.False(isPta, "PT principal should not satisfy PTA role check");
+        var isBlocked = NoteEndpoints.PtaIsBlockedFromNoteType(ptPrincipal, noteType);
+        Assert.False(isBlocked, $"PT should not be blocked from creating {noteType} notes");
     }
 
     // ─── U-C2: Intake locks after submit ────────────────────────────────────
+    // Tests call the real IntakeEndpoints.SubmitIntake handler so that removing
+    // or breaking the submit/lock logic will cause test failures (non-tautological).
 
     [Fact]
-    public async Task UC2_IntakeForm_LocksAfterSubmit()
+    public async Task UC2_IntakeForm_LocksAfterSubmit_ViaRealHandler()
     {
         // Arrange: create an unlocked intake form
         var patient = CreateTestPatient();
@@ -322,24 +299,28 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.IntakeForms.Add(intake);
         await _db.SaveChangesAsync();
 
-        // Verify not locked yet
         Assert.False(intake.IsLocked);
         Assert.Null(intake.SubmittedAt);
 
-        // Act: simulate submit (lock)
-        intake.IsLocked = true;
-        intake.SubmittedAt = DateTime.UtcNow;
-        intake.LastModifiedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        var submittingUserId = Guid.NewGuid();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(submittingUserId);
 
-        // Assert: intake is now locked
+        // Act: call the real SubmitIntake handler (not direct entity mutation)
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, CancellationToken.None);
+
+        // Assert: returned 200 OK
+        Assert.IsType<Ok<IntakeResponse>>(result);
+
+        // Assert: intake is persisted as locked with SubmittedAt stamped
         var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
         Assert.True(updated.IsLocked);
         Assert.NotNull(updated.SubmittedAt);
+        Assert.Equal(submittingUserId, updated.ModifiedByUserId);
     }
 
     [Fact]
-    public async Task UC2_LockedIntakeForm_CannotBeSubmittedAgain()
+    public async Task UC2_LockedIntakeForm_CannotBeSubmittedAgain_Returns409()
     {
         // Arrange: already locked intake form
         var patient = CreateTestPatient();
@@ -359,17 +340,34 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.IntakeForms.Add(intake);
         await _db.SaveChangesAsync();
 
-        // Simulate the submit endpoint logic: if already locked, return conflict
-        var savedIntake = await _db.IntakeForms.FirstAsync(f => f.Id == intake.Id);
-        var shouldConflict = savedIntake.IsLocked;
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
 
-        Assert.True(shouldConflict, "Already-locked intake should produce a conflict response");
+        // Act: call the real SubmitIntake handler on an already-locked form
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, CancellationToken.None);
+
+        // Assert: the real handler returns 409 Conflict (not BadRequest or OK)
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(409, statusResult.StatusCode);
     }
 
     [Fact]
-    public async Task UC2_Patient_CanReadIntakeForm_IntakeReadAllowed()
+    public async Task UC2_SubmitIntake_NotFound_Returns404()
     {
-        // Patient role must be able to read their own intake form.
+        // Submit with a non-existent ID should return 404.
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+
+        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(404, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task UC2_Patient_CanSubmitIntakePolicy_IntakeReadAllowed()
+    {
+        // The /submit endpoint uses IntakeRead (includes Patient).
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeRead, Roles.Patient));
     }
 
@@ -381,58 +379,39 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         // Verify that AI generation audit events are logged but no ClinicalNote is created.
         // The IAuditService logs generation attempts; notes are only created via the notes endpoint
         // when the clinician explicitly accepts and submits the AI content.
-        var context = CreateInMemoryContext();
-        var auditService = new AuditService(context);
-
+        var auditService = new AuditService(_db);
         var noteId = Guid.NewGuid();
         var userId = Guid.NewGuid();
 
-        // Simulate AI generation audit logging (generation attempt)
         await auditService.LogAiGenerationAttemptAsync(
             AuditEvent.AiGenerationAttempt(noteId, "Assessment", "gpt-4", userId));
 
-        // Assert: audit log was created (proving attempt was logged)
-        var auditLog = await context.AuditLogs.FirstOrDefaultAsync(
-            a => a.EventType == "AiGenerationAttempt");
+        var auditLog = await _db.AuditLogs.FirstOrDefaultAsync(a => a.EventType == "AiGenerationAttempt");
         Assert.NotNull(auditLog);
 
-        // Assert: NO ClinicalNote was created by the AI generation process
-        var noteCount = await context.ClinicalNotes.CountAsync();
+        var noteCount = await _db.ClinicalNotes.CountAsync();
         Assert.Equal(0, noteCount);
     }
 
     [Fact]
     public async Task UC3_AiGeneration_OnlyPersistedAfterExplicitAcceptance()
     {
-        // Verify that a note is only persisted when clinician explicitly creates it.
-        // AI generation + audit log alone do not create a note in the database.
-        var context = CreateInMemoryContext();
-        var auditService = new AuditService(context);
-
+        var auditService = new AuditService(_db);
         var noteId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var patientId = Guid.NewGuid();
 
-        // Step 1: AI generates content (no DB write of the note)
+        // Step 1: AI generates content — audit log only, no note written
         await auditService.LogAiGenerationAttemptAsync(
             AuditEvent.AiGenerationAttempt(noteId, "Assessment", "gpt-4", userId));
 
-        var countAfterGeneration = await context.ClinicalNotes.CountAsync();
-        Assert.Equal(0, countAfterGeneration);
+        Assert.Equal(0, await _db.ClinicalNotes.CountAsync());
 
         // Step 2: Clinician accepts → explicit note creation (simulates POST /api/v1/notes)
-        var patient = new Patient
-        {
-            Id = patientId,
-            FirstName = "Test", LastName = "Patient",
-            DateOfBirth = DateTime.UtcNow.AddYears(-30),
-            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId
-        };
-        context.Patients.Add(patient);
-
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
-            PatientId = patientId,
+            PatientId = patient.Id,
             NoteType = NoteType.Evaluation,
             ContentJson = "{\"assessment\":\"AI-generated content accepted by clinician\"}",
             DateOfService = DateTime.UtcNow,
@@ -440,46 +419,39 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = userId,
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         // Step 3: Log acceptance
         await auditService.LogAiGenerationAcceptedAsync(
             AuditEvent.AiGenerationAccepted(note.Id, "Assessment", userId));
 
-        var countAfterAcceptance = await context.ClinicalNotes.CountAsync();
-        Assert.Equal(1, countAfterAcceptance);
+        Assert.Equal(1, await _db.ClinicalNotes.CountAsync());
 
-        // Verify audit trail shows both attempt and acceptance
-        var attemptLog = await context.AuditLogs.FirstOrDefaultAsync(a => a.EventType == "AiGenerationAttempt");
-        var acceptanceLog = await context.AuditLogs.FirstOrDefaultAsync(a => a.EventType == "AiGenerationAccepted");
+        var attemptLog = await _db.AuditLogs.FirstOrDefaultAsync(a => a.EventType == "AiGenerationAttempt");
+        var acceptanceLog = await _db.AuditLogs.FirstOrDefaultAsync(a => a.EventType == "AiGenerationAccepted");
         Assert.NotNull(attemptLog);
         Assert.NotNull(acceptanceLog);
     }
 
-    // ─── U-C4: PTA requires co-sign ─────────────────────────────────────────
+    // ─── U-C4: PTA requires co-sign (tests run against migrated SQLite) ──────
+    // Using the class-level _db (migrated SQLite) ensures schema/migration regressions
+    // for RequiresCoSign/CoSignedByUserId/CoSignedUtc columns are caught.
 
     [Fact]
     public async Task UC4_PTASignedNote_RequiresCoSign_IsSetTrue()
     {
-        // When PTA signs a note, RequiresCoSign must be set to true.
-        var context = CreateInMemoryContext();
-        var auditService = new AuditService(context);
+        var auditService = new AuditService(_db);
         var identityMock = new Mock<IIdentityContextAccessor>();
         var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
         clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
-        var signatureService = new SignatureService(context, auditService, identityMock.Object, clinicalRulesMock.Object);
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
 
         var ptaUserId = Guid.NewGuid();
-        var patient = new Patient
-        {
-            FirstName = "Test", LastName = "Patient",
-            DateOfBirth = DateTime.UtcNow.AddYears(-50),
-            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = ptaUserId
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
 
         var note = new ClinicalNote
         {
@@ -491,17 +463,16 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = ptaUserId,
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
-        // Act: PTA signs the note (signerIsPta = true)
+        // PTA signs (signerIsPta = true)
         var result = await signatureService.SignNoteAsync(note.Id, ptaUserId, signerIsPta: true);
 
-        // Assert: RequiresCoSign is set
         Assert.True(result.Success);
         Assert.True(result.RequiresCoSign, "PTA-signed note must require PT co-sign");
 
-        var savedNote = await context.ClinicalNotes.FindAsync(note.Id);
+        var savedNote = await _db.ClinicalNotes.FindAsync(note.Id);
         Assert.True(savedNote!.RequiresCoSign);
         Assert.Null(savedNote.CoSignedByUserId);
     }
@@ -509,26 +480,19 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC4_PTASignedNote_PT_CanCoSign()
     {
-        // After PTA signs a note, a PT can co-sign it.
-        var context = CreateInMemoryContext();
-        var auditService = new AuditService(context);
+        var auditService = new AuditService(_db);
         var identityMock = new Mock<IIdentityContextAccessor>();
         var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
         clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
-        var signatureService = new SignatureService(context, auditService, identityMock.Object, clinicalRulesMock.Object);
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
 
         var ptaUserId = Guid.NewGuid();
         var ptUserId = Guid.NewGuid();
 
-        var patient = new Patient
-        {
-            FirstName = "Test", LastName = "Patient",
-            DateOfBirth = DateTime.UtcNow.AddYears(-50),
-            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = ptaUserId
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
 
         var note = new ClinicalNote
         {
@@ -540,8 +504,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = ptaUserId,
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         // PTA signs first
         var signResult = await signatureService.SignNoteAsync(note.Id, ptaUserId, signerIsPta: true);
@@ -554,7 +518,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         Assert.True(coSignResult.Success, $"PT co-sign failed: {coSignResult.ErrorMessage}");
         Assert.NotNull(coSignResult.CoSignedUtc);
 
-        var savedNote = await context.ClinicalNotes.FindAsync(note.Id);
+        var savedNote = await _db.ClinicalNotes.FindAsync(note.Id);
         Assert.Equal(ptUserId, savedNote!.CoSignedByUserId);
         Assert.NotNull(savedNote.CoSignedUtc);
     }
@@ -562,24 +526,17 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC4_NoteNotSignedByPTA_CoSignFails_NotRequiresCoSign()
     {
-        // A note signed by PT (not PTA) should NOT have RequiresCoSign = true.
-        var context = CreateInMemoryContext();
-        var auditService = new AuditService(context);
+        var auditService = new AuditService(_db);
         var identityMock = new Mock<IIdentityContextAccessor>();
         var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
         clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
-        var signatureService = new SignatureService(context, auditService, identityMock.Object, clinicalRulesMock.Object);
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
 
         var ptUserId = Guid.NewGuid();
-        var patient = new Patient
-        {
-            FirstName = "Test", LastName = "Patient",
-            DateOfBirth = DateTime.UtcNow.AddYears(-50),
-            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = ptUserId
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
 
         var note = new ClinicalNote
         {
@@ -591,15 +548,15 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = ptUserId,
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
-        // PT signs (signerIsPta = false, default)
+        // PT signs (signerIsPta = false)
         var signResult = await signatureService.SignNoteAsync(note.Id, ptUserId, signerIsPta: false);
         Assert.True(signResult.Success);
         Assert.False(signResult.RequiresCoSign, "PT-signed note should NOT require co-sign");
 
-        // Attempt to co-sign a PT-signed note should fail
+        // Co-sign attempt on a note that doesn't require co-sign should fail
         var coSignResult = await signatureService.CoSignNoteAsync(note.Id, ptUserId);
         Assert.False(coSignResult.Success);
         Assert.Contains("does not require a co-sign", coSignResult.ErrorMessage);
@@ -608,7 +565,6 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC4_NoteCoSign_Policy_PTOnly()
     {
-        // NoteCoSign policy must be PT-only
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, Roles.PT));
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, Roles.PTA));
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, Roles.Admin));
@@ -621,19 +577,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC5_AideRole_DoesNotReceiveClinicalNotes_SyncDelta()
     {
-        // Aide role must not receive ClinicalNote entities via sync pull.
-        var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(_db, NullLogger<SyncEngine>.Instance);
 
-        // Add a patient and a clinical note
-        var patient = new Patient
-        {
-            FirstName = "Test", LastName = "Patient",
-            DateOfBirth = DateTime.UtcNow.AddYears(-40),
-            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
-            ModifiedByUserId = Guid.NewGuid()
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -644,38 +591,23 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         var since = DateTime.UtcNow.AddMinutes(-2);
+        var aideResult = await syncEngine.GetClientDeltaAsync(since, null, userRoles: new[] { Roles.Aide });
 
-        // Act: Aide role should NOT get clinical notes
-        var aideResult = await syncEngine.GetClientDeltaAsync(since, null,
-            userRoles: new[] { Roles.Aide });
-
-        var clinicalNoteItems = aideResult.Items.Where(i => i.EntityType == "ClinicalNote").ToList();
-        Assert.Empty(clinicalNoteItems);
-
-        // Aide should still get Patient data (demographics)
-        var patientItems = aideResult.Items.Where(i => i.EntityType == "Patient").ToList();
-        Assert.NotEmpty(patientItems);
+        Assert.Empty(aideResult.Items.Where(i => i.EntityType == "ClinicalNote"));
+        Assert.NotEmpty(aideResult.Items.Where(i => i.EntityType == "Patient"));
     }
 
     [Fact]
     public async Task UC5_FrontDeskRole_DoesNotReceiveClinicalNotes_SyncDelta()
     {
-        // FrontDesk role must not receive ClinicalNote entities via sync pull.
-        var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(_db, NullLogger<SyncEngine>.Instance);
 
-        var patient = new Patient
-        {
-            FirstName = "Front", LastName = "Desk",
-            DateOfBirth = DateTime.UtcNow.AddYears(-35),
-            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
-            ModifiedByUserId = Guid.NewGuid()
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -686,33 +618,22 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         var since = DateTime.UtcNow.AddMinutes(-2);
+        var result = await syncEngine.GetClientDeltaAsync(since, null, userRoles: new[] { Roles.FrontDesk });
 
-        var frontDeskResult = await syncEngine.GetClientDeltaAsync(since, null,
-            userRoles: new[] { Roles.FrontDesk });
-
-        var clinicalNoteItems = frontDeskResult.Items.Where(i => i.EntityType == "ClinicalNote").ToList();
-        Assert.Empty(clinicalNoteItems);
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
     }
 
     [Fact]
     public async Task UC5_PatientRole_DoesNotReceiveClinicalNotes_SyncDelta()
     {
-        // Patient role must not receive ClinicalNote entities via sync pull.
-        var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(_db, NullLogger<SyncEngine>.Instance);
 
-        var patient = new Patient
-        {
-            FirstName = "Patient", LastName = "User",
-            DateOfBirth = DateTime.UtcNow.AddYears(-25),
-            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
-            ModifiedByUserId = Guid.NewGuid()
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -723,34 +644,22 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         var since = DateTime.UtcNow.AddMinutes(-2);
+        var result = await syncEngine.GetClientDeltaAsync(since, null, userRoles: new[] { Roles.Patient });
 
-        var patientResult = await syncEngine.GetClientDeltaAsync(since, null,
-            userRoles: new[] { Roles.Patient });
-
-        // Patient should NOT see clinical notes
-        var clinicalNoteItems = patientResult.Items.Where(i => i.EntityType == "ClinicalNote").ToList();
-        Assert.Empty(clinicalNoteItems);
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
     }
 
     [Fact]
     public async Task UC5_ClinicalStaff_ReceiveClinicalNotes_SyncDelta()
     {
-        // PT role must receive all clinical entities in the sync delta.
-        var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(_db, NullLogger<SyncEngine>.Instance);
 
-        var patient = new Patient
-        {
-            FirstName = "Clinical", LastName = "Staff",
-            DateOfBirth = DateTime.UtcNow.AddYears(-30),
-            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
-            ModifiedByUserId = Guid.NewGuid()
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -761,34 +670,22 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         var since = DateTime.UtcNow.AddMinutes(-2);
+        var result = await syncEngine.GetClientDeltaAsync(since, null, userRoles: new[] { Roles.PT });
 
-        // PT role should receive clinical notes
-        var ptResult = await syncEngine.GetClientDeltaAsync(since, null,
-            userRoles: new[] { Roles.PT });
-
-        var clinicalNoteItems = ptResult.Items.Where(i => i.EntityType == "ClinicalNote").ToList();
-        Assert.NotEmpty(clinicalNoteItems);
+        Assert.NotEmpty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
     }
 
     [Fact]
     public async Task UC5_NoRoles_ReceivesAllEntities_DefaultBehavior()
     {
-        // When no user roles are specified, all entities are returned (backward compatibility).
-        var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(_db, NullLogger<SyncEngine>.Instance);
 
-        var patient = new Patient
-        {
-            FirstName = "All", LastName = "Entities",
-            DateOfBirth = DateTime.UtcNow.AddYears(-30),
-            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
-            ModifiedByUserId = Guid.NewGuid()
-        };
-        context.Patients.Add(patient);
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
@@ -799,15 +696,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.ClinicalNotes.Add(note);
-        await context.SaveChangesAsync();
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
 
         var since = DateTime.UtcNow.AddMinutes(-2);
-
-        // No roles → all entities returned
         var result = await syncEngine.GetClientDeltaAsync(since, null, userRoles: null);
-        var clinicalNoteItems = result.Items.Where(i => i.EntityType == "ClinicalNote").ToList();
-        Assert.NotEmpty(clinicalNoteItems);
+        Assert.NotEmpty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
