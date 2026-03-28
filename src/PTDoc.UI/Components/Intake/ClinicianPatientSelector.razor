@@ -1,0 +1,119 @@
+@using System.Net.Http.Json
+
+@inject HttpClient HttpClient
+
+<div class="intake-patient-selector" data-testid="clinician-patient-selector">
+    <label for="intake-patient-search" class="intake-patient-selector__label">Patient</label>
+
+    <input
+        id="intake-patient-search"
+        type="search"
+        class="intake-patient-selector__search"
+        placeholder="Search by name, MRN, or email"
+        @bind="_searchText"
+        @bind:event="oninput"
+        disabled="@Disabled" />
+
+    @if (_isLoading)
+    {
+        <p class="intake-patient-selector__status">Loading patients...</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <p class="intake-patient-selector__error" role="alert">@_loadError</p>
+    }
+    else
+    {
+        <select
+            id="intake-patient-select"
+            class="intake-patient-selector__select"
+            value="@SelectedPatientIdString"
+            @onchange="HandleSelectionChangedAsync"
+            disabled="@Disabled">
+            <option value="">Select a patient</option>
+            @foreach (var patient in FilteredPatients)
+            {
+                <option value="@patient.Id">@FormatPatientOption(patient)</option>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? SelectedPatientId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedPatientIdChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private readonly List<PatientListItem> _patients = new();
+    private string _searchText = string.Empty;
+    private bool _isLoading = true;
+    private string? _loadError;
+
+    private string SelectedPatientIdString => SelectedPatientId?.ToString() ?? string.Empty;
+
+    private IEnumerable<PatientListItem> FilteredPatients =>
+        string.IsNullOrWhiteSpace(_searchText)
+            ? _patients
+            : _patients.Where(MatchesSearch);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await HttpClient.GetFromJsonAsync<List<PatientListItem>>("/api/v1/patients?take=250");
+            if (result is not null)
+            {
+                _patients.Clear();
+                _patients.AddRange(result);
+            }
+        }
+        catch
+        {
+            _loadError = "Unable to load patient list.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSelectionChangedAsync(ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            await SelectedPatientIdChanged.InvokeAsync(null);
+            return;
+        }
+
+        if (Guid.TryParse(raw, out var patientId))
+        {
+            await SelectedPatientIdChanged.InvokeAsync(patientId);
+        }
+    }
+
+    private bool MatchesSearch(PatientListItem patient)
+    {
+        var search = _searchText.Trim();
+        return patient.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(patient.MedicalRecordNumber) &&
+                patient.MedicalRecordNumber.Contains(search, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatPatientOption(PatientListItem patient)
+    {
+        if (string.IsNullOrWhiteSpace(patient.MedicalRecordNumber))
+        {
+            return patient.DisplayName;
+        }
+
+        return $"{patient.DisplayName} ({patient.MedicalRecordNumber})";
+    }
+
+    private sealed class PatientListItem
+    {
+        public Guid Id { get; set; }
+        public string DisplayName { get; set; } = string.Empty;
+        public string? MedicalRecordNumber { get; set; }
+    }
+}

@@ -2,7 +2,9 @@
 @page "/intake/{PatientId:guid}"
 @rendermode InteractiveServer
 
+@using System.Net
 @using PTDoc.Application.Services
+@using PTDoc.UI.Components.Auth
 @using PTDoc.UI.Components.Intake
 @using PTDoc.UI.Components.Intake.Models
 @using PTDoc.UI.Components.Intake.Steps
@@ -31,6 +33,20 @@
             }
             else
             {
+                @if (ShowClinicianPatientSelector)
+                {
+                    <RoleGate Roles="@ClinicianSelectorRoles">
+                        <ClinicianPatientSelector SelectedPatientId="@State.PatientId" SelectedPatientIdChanged="HandleClinicianPatientSelectedAsync" Disabled="@State.IsLocked" />
+                    </RoleGate>
+                }
+
+                @if (State.IsLocked)
+                {
+                    <section class="intake-page__notice" role="status">
+                        <p>This intake has been submitted and locked. Editing is disabled.</p>
+                    </section>
+                }
+
                 @switch (State.CurrentStep)
                 {
                     case IntakeStep.Demographics:
@@ -61,13 +77,23 @@
     private IntakeWizardState State { get; set; } = new();
     private Guid? _loadedPatientId;
     private bool _draftNotFound;
+    private bool _canSelectPatient;
     private string? _validationMessage;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+    private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner}";
+    private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
 
     protected override async Task OnParametersSetAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        var user = authState.User;
+        var isAuthenticated = user.Identity?.IsAuthenticated == true;
+
+        _canSelectPatient = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.Owner));
 
         State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || !isAuthenticated;
 
@@ -126,6 +152,12 @@
 
     private async Task HandleDemographicsContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         _validationMessage = null;
         _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -148,34 +180,57 @@
 
         if (!State.PatientId.HasValue)
         {
-            var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
-            State.PatientId = patientId;
-            _loadedPatientId = patientId;
+            try
+            {
+                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
+                State.PatientId = patientId;
+                _loadedPatientId = patientId;
 
-            // TODO: Persist draft locally first (SQLite) and then sync via service.
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+                await IntakeService.SaveDraftAsync(ToDraft(State));
 
-            NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
+                NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
+            }
+            catch (HttpRequestException ex)
+            {
+                _validationMessage = ToUserFacingApiError(ex);
+            }
+
             return;
         }
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
-        await IntakeService.SaveDraftAsync(ToDraft(State));
+        try
+        {
+            await IntakeService.SaveDraftAsync(ToDraft(State));
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
     }
 
     private async Task HandlePainAssessmentContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         State.CurrentStep = IntakeStep.PainDetails;
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
         await SaveDraftIfPossibleAsync();
     }
 
     private async Task HandlePainDetailsContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         State.CurrentStep = IntakeStep.Review;
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
         await SaveDraftIfPossibleAsync();
     }
 
@@ -196,6 +251,12 @@
     {
         _validationMessage = null;
 
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         if (!State.HipaaAcknowledged)
         {
             _validationMessage = "You must acknowledge the HIPAA Privacy Notice before submitting.";
@@ -212,11 +273,15 @@
 
         try
         {
-            // TODO: Add full validation for all required fields before final submit.
             await IntakeService.SubmitAsync(ToDraft(State));
             State.IsDirty = false;
-
-            // TODO: lock intake after final submission and show confirmation screen.
+            State.IsSubmitted = true;
+            State.IsLocked = true;
+            _validationMessage = "Intake submitted successfully. This form is now locked.";
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
         }
         finally
         {
@@ -226,16 +291,58 @@
 
     private Task HandleStateChangedAsync()
     {
+        if (State.IsLocked)
+        {
+            return Task.CompletedTask;
+        }
+
         State.IsDirty = true;
         return Task.CompletedTask;
     }
 
     private async Task SaveDraftIfPossibleAsync()
     {
-        if (State.PatientId.HasValue)
+        if (State.PatientId.HasValue && !State.IsLocked)
         {
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            try
+            {
+                await IntakeService.SaveDraftAsync(ToDraft(State));
+            }
+            catch (HttpRequestException ex)
+            {
+                _validationMessage = ToUserFacingApiError(ex);
+            }
         }
+    }
+
+    private static string ToUserFacingApiError(HttpRequestException ex)
+    {
+        return ex.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => "Your session has expired or is missing API authorization. Please sign in again.",
+            HttpStatusCode.Forbidden => "You do not have permission to modify this intake.",
+            _ => "We could not save your intake right now. Please try again."
+        };
+    }
+
+    private Task HandleClinicianPatientSelectedAsync(Guid? selectedPatientId)
+    {
+        if (!selectedPatientId.HasValue)
+        {
+            State = new IntakeWizardState
+            {
+                CurrentStep = IntakeStep.Demographics,
+                IsPatientMode = State.IsPatientMode
+            };
+            _loadedPatientId = null;
+            _draftNotFound = false;
+            _validationMessage = null;
+            _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+            return Task.CompletedTask;
+        }
+
+        NavigationManager.NavigateTo($"/intake/{selectedPatientId.Value}");
+        return Task.CompletedTask;
     }
 
     private string GetModeQuery()
@@ -273,7 +380,9 @@
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
             SelectedBodyRegion = SerializeSelectedRegions(state),
-            PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            IsSubmitted = state.IsSubmitted,
+            IsLocked = state.IsLocked
         };
     }
 
@@ -310,7 +419,9 @@
             MedicalHistoryNotes = draft.MedicalHistoryNotes,
             SelectedBodyRegion = draft.SelectedBodyRegion,
             SelectedBodyRegions = DeserializeSelectedRegions(draft.SelectedBodyRegion),
-            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            IsSubmitted = draft.IsSubmitted,
+            IsLocked = draft.IsLocked
         };
     }
 

@@ -26,6 +26,11 @@ public static class PatientEndpoints
             .WithSummary("Create a new patient")
             .RequireAuthorization(AuthorizationPolicies.PatientWrite);
 
+        group.MapGet("/", ListPatients)
+            .WithName("ListPatients")
+            .WithSummary("List patients for clinician workflows")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
         group.MapGet("/{id:guid}", GetPatient)
             .WithName("GetPatient")
             .WithSummary("Get a patient by ID")
@@ -40,6 +45,44 @@ public static class PatientEndpoints
             .WithName("GetPatientNotes")
             .WithSummary("Get clinical notes for a patient")
             .RequireAuthorization(AuthorizationPolicies.NoteRead);
+    }
+
+    // GET /api/patients
+    private static async Task<IResult> ListPatients(
+        [FromQuery] string? query,
+        [FromQuery] int take,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 250);
+        var normalizedQuery = query?.Trim();
+
+        var patientQuery = db.Patients
+            .AsNoTracking()
+            .Where(p => !p.IsArchived);
+
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            patientQuery = patientQuery.Where(p =>
+                (p.FirstName + " " + p.LastName).Contains(normalizedQuery) ||
+                (p.MedicalRecordNumber != null && p.MedicalRecordNumber.Contains(normalizedQuery)) ||
+                (p.Email != null && p.Email.Contains(normalizedQuery)));
+        }
+
+        var patients = await patientQuery
+            .OrderBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .Take(normalizedTake)
+            .Select(p => new PatientListItemResponse
+            {
+                Id = p.Id,
+                DisplayName = p.FirstName + " " + p.LastName,
+                MedicalRecordNumber = p.MedicalRecordNumber,
+                DateOfBirth = p.DateOfBirth
+            })
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(patients);
     }
 
     // POST /api/patients

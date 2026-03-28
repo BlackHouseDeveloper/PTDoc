@@ -24,6 +24,23 @@ public sealed class CreateIntakeRequest
     public string TemplateVersion { get; set; } = "1.0";
 }
 
+/// <summary>Request DTO for updating an existing intake draft.</summary>
+public sealed class UpdateIntakeRequest
+{
+    /// <summary>Body-region pain map data as a JSON string.</summary>
+    public string PainMapData { get; set; } = "{}";
+
+    /// <summary>Patient consents as a JSON string.</summary>
+    public string Consents { get; set; } = "{}";
+
+    /// <summary>Optional full response payload as JSON.</summary>
+    public string ResponseJson { get; set; } = "{}";
+
+    /// <summary>Template version identifier.</summary>
+    [MaxLength(50)]
+    public string TemplateVersion { get; set; } = "1.0";
+}
+
 // ─── Intake Response DTOs ─────────────────────────────────────────────────────
 
 /// <summary>Response DTO for an intake form (aligned with TDD IntakeResponse contract).</summary>

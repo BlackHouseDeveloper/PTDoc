@@ -10,6 +10,8 @@ public sealed class IntakeWizardState
     public bool HipaaAcknowledged { get; set; }
     public bool IsSubmitting { get; set; }
     public bool IsDirty { get; set; }
+    public bool IsSubmitted { get; set; }
+    public bool IsLocked { get; set; }
 
     public string? FullName { get; set; }
     public DateTime? DateOfBirth { get; set; }

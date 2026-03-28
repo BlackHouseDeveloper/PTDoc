@@ -35,4 +35,5 @@ public sealed class IntakeResponseDraft
     public Dictionary<string, object> PainDetailDrafts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsSubmitted { get; set; }
+    public bool IsLocked { get; set; }
 }

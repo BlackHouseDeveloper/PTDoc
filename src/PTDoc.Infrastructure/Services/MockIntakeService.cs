@@ -30,6 +30,11 @@ public sealed class MockIntakeService : IIntakeService
             return Task.CompletedTask;
         }
 
+        if (_drafts.TryGetValue(state.PatientId.Value, out var existingDraft) && existingDraft.IsLocked)
+        {
+            return Task.CompletedTask;
+        }
+
         _drafts[state.PatientId.Value] = Clone(state);
         return Task.CompletedTask;
     }
@@ -43,6 +48,7 @@ public sealed class MockIntakeService : IIntakeService
 
         var draft = Clone(state);
         draft.IsSubmitted = true;
+        draft.IsLocked = true;
         _drafts[state.PatientId.Value] = draft;
 
         return Task.CompletedTask;
@@ -79,7 +85,8 @@ public sealed class MockIntakeService : IIntakeService
             MedicalHistoryNotes = state.MedicalHistoryNotes,
             SelectedBodyRegion = state.SelectedBodyRegion,
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
-            IsSubmitted = state.IsSubmitted
+            IsSubmitted = state.IsSubmitted,
+            IsLocked = state.IsLocked
         };
     }
 }

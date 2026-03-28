@@ -32,6 +32,26 @@ public static class IntakeEndpoints
             .WithName("GetIntake")
             .WithSummary("Get an intake response by ID")
             .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
+        group.MapGet("/patient/{patientId:guid}/draft", GetDraftByPatient)
+            .WithName("GetPatientDraftIntake")
+            .WithSummary("Get most recent intake draft for a patient")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
+        group.MapPut("/{id:guid}", UpdateIntake)
+            .WithName("UpdateIntake")
+            .WithSummary("Update an existing intake draft")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
+        group.MapPost("/{id:guid}/submit", SubmitIntake)
+            .WithName("SubmitIntake")
+            .WithSummary("Submit and lock an intake response")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
+        group.MapPost("/{id:guid}/lock", LockIntake)
+            .WithName("LockIntake")
+            .WithSummary("Lock an intake response")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
     }
 
     // POST /api/v1/intake
@@ -103,6 +123,112 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
 
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // GET /api/v1/intake/patient/{patientId}/draft
+    private static async Task<IResult> GetDraftByPatient(
+        Guid patientId,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .Where(f => f.PatientId == patientId)
+            .OrderBy(f => f.IsLocked)
+            .ThenByDescending(f => f.LastModifiedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
+
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // PUT /api/v1/intake/{id}
+    private static async Task<IResult> UpdateIntake(
+        Guid id,
+        [FromBody] UpdateIntakeRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (intake.IsLocked)
+            return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
+
+        intake.PainMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
+        intake.Consents = string.IsNullOrWhiteSpace(request.Consents) ? "{}" : request.Consents;
+        intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+        intake.TemplateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? "1.0" : request.TemplateVersion;
+        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // POST /api/v1/intake/{id}/submit
+    private static async Task<IResult> SubmitIntake(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (intake.IsLocked)
+            return Results.Conflict(new { error = "Intake is already locked." });
+
+        if (string.IsNullOrWhiteSpace(intake.Consents) || intake.Consents == "{}")
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(IntakeForm.Consents), ["Consents must be completed before submission."] }
+            });
+
+        var nowUtc = DateTime.UtcNow;
+        intake.SubmittedAt = intake.SubmittedAt ?? nowUtc;
+        intake.IsLocked = true;
+        intake.LastModifiedUtc = nowUtc;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // POST /api/v1/intake/{id}/lock
+    private static async Task<IResult> LockIntake(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (intake.IsLocked)
+            return Results.Ok(ToResponse(intake));
+
+        intake.IsLocked = true;
+        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
         return Results.Ok(ToResponse(intake));
     }
 

@@ -31,7 +31,7 @@ builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
-builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
@@ -88,18 +88,16 @@ builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", client =>
 {
     client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
 });
 builder.Services.AddHttpClient("ServerAPI", client =>
 {
-    client.BaseAddress = new Uri(
-        builder.Environment.IsDevelopment()
-            ? "http://localhost:5145"
-            : "https://your-production-domain.com"
-    );
-});
+    client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
+})
+    .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
 
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("ServerAPI"));
@@ -439,6 +437,11 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
         new(ClaimTypes.Role, loginResponse.Role),
         new(PTDocClaimTypes.AuthenticationType, "web_cookie")
     };
+
+    if (!string.IsNullOrWhiteSpace(loginResponse.Token))
+    {
+        claims.Add(new Claim(PTDocClaimTypes.ApiAccessToken, loginResponse.Token));
+    }
 
     if (loginResponse.ClinicId.HasValue)
     {

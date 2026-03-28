@@ -111,3 +111,12 @@ public sealed class PatientResponse
     public Guid? ClinicId { get; set; }
     public DateTime LastModifiedUtc { get; set; }
 }
+
+/// <summary>Lightweight patient projection for clinician selection UIs.</summary>
+public sealed class PatientListItemResponse
+{
+    public Guid Id { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string? MedicalRecordNumber { get; set; }
+    public DateTime DateOfBirth { get; set; }
+}
