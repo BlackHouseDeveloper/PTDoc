@@ -183,7 +183,7 @@ public static class IntakeEndpoints
     }
 
     // POST /api/v1/intake/{id}/submit
-    private static async Task<IResult> SubmitIntake(
+    internal static async Task<IResult> SubmitIntake(
         Guid id,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
