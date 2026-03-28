@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 
+using Microsoft.AspNetCore.Authentication;
 using PTDoc.Application.Identity;
 
 namespace PTDoc.Web.Services;
@@ -21,9 +22,23 @@ public sealed class ApiAccessTokenForwardingHandler(
         return await base.SendAsync(request, cancellationToken);
     }
 
-    private Task<string?> GetAccessTokenAsync()
+    private async Task<string?> GetAccessTokenAsync()
     {
-        var tokenFromHttpContext = httpContextAccessor.HttpContext?.User.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
-        return Task.FromResult(string.IsNullOrWhiteSpace(tokenFromHttpContext) ? null : tokenFromHttpContext);
+        var httpContext = httpContextAccessor.HttpContext;
+        if (httpContext is null)
+        {
+            return null;
+        }
+
+        // Prefer the API access token claim added during local sign-in
+        var tokenFromClaim = httpContext.User.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
+        if (!string.IsNullOrWhiteSpace(tokenFromClaim))
+        {
+            return tokenFromClaim;
+        }
+
+        // Fall back to the OIDC access_token saved by SaveTokens = true (Entra External ID flow)
+        var oidcToken = await httpContext.GetTokenAsync("access_token");
+        return string.IsNullOrWhiteSpace(oidcToken) ? null : oidcToken;
     }
 }

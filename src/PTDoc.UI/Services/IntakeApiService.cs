@@ -38,11 +38,16 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
     {
         var (firstName, lastName) = SplitName(state.FullName);
 
+        if (state.DateOfBirth is null)
+        {
+            throw new ArgumentException("Date of birth is required to create a temporary patient.", nameof(state));
+        }
+
         var createPatientRequest = new CreatePatientRequest
         {
             FirstName = firstName,
             LastName = lastName,
-            DateOfBirth = state.DateOfBirth ?? new DateTime(1970, 1, 1),
+            DateOfBirth = state.DateOfBirth.Value,
             Email = state.EmailAddress,
             Phone = state.PhoneNumber,
             AddressLine1 = state.AddressLine1,
@@ -82,12 +87,12 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
             return;
         }
 
-        var updateRequest = new
+        var updateRequest = new UpdateIntakeRequest
         {
-            painMapData = BuildPainMapJson(state),
-            consents = BuildConsentJson(state),
-            responseJson = JsonSerializer.Serialize(state, SerializerOptions),
-            templateVersion = "1.0"
+            PainMapData = BuildPainMapJson(state),
+            Consents = BuildConsentJson(state),
+            ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
+            TemplateVersion = "1.0"
         };
 
         var response = await httpClient.PutAsJsonAsync($"/api/v1/intake/{existing.Id}", updateRequest, cancellationToken);
@@ -98,15 +103,20 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
     {
         if (!state.PatientId.HasValue)
         {
-            return;
+            throw new InvalidOperationException("Cannot submit intake because PatientId is missing.");
         }
 
         await SaveDraftAsync(state, cancellationToken);
 
         var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
-        if (existing is null || existing.Locked)
+        if (existing is null)
         {
-            return;
+            throw new InvalidOperationException($"Cannot submit intake; no draft intake found for patient {state.PatientId.Value}.");
+        }
+
+        if (existing.Locked)
+        {
+            throw new InvalidOperationException($"Cannot submit intake; intake {existing.Id} is already locked.");
         }
 
         var response = await httpClient.PostAsync($"/api/v1/intake/{existing.Id}/submit", content: null, cancellationToken);
@@ -162,6 +172,7 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
 
         draft.PatientId = response.PatientId;
         draft.IsSubmitted = response.SubmittedAt.HasValue;
+        draft.IsLocked = response.Locked;
         return draft;
     }
 

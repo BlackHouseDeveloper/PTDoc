@@ -1,6 +1,8 @@
 @using System.Net.Http.Json
+@using System.Timers
 
 @inject HttpClient HttpClient
+@implements IDisposable
 
 <div class="intake-patient-selector" data-testid="clinician-patient-selector">
     <label for="intake-patient-search" class="intake-patient-selector__label">Patient</label>
@@ -9,9 +11,9 @@
         id="intake-patient-search"
         type="search"
         class="intake-patient-selector__search"
-        placeholder="Search by name, MRN, or email"
-        @bind="_searchText"
-        @bind:event="oninput"
+        placeholder="Search by name or MRN"
+        value="@_searchText"
+        @oninput="HandleSearchInputAsync"
         disabled="@Disabled" />
 
     @if (_isLoading)
@@ -26,12 +28,13 @@
     {
         <select
             id="intake-patient-select"
+            aria-label="Select patient"
             class="intake-patient-selector__select"
             value="@SelectedPatientIdString"
             @onchange="HandleSelectionChangedAsync"
             disabled="@Disabled">
             <option value="">Select a patient</option>
-            @foreach (var patient in FilteredPatients)
+            @foreach (var patient in _patients)
             {
                 <option value="@patient.Id">@FormatPatientOption(patient)</option>
             }
@@ -46,21 +49,65 @@
 
     private readonly List<PatientListItem> _patients = new();
     private string _searchText = string.Empty;
-    private bool _isLoading = true;
+    private bool _isLoading = false;
     private string? _loadError;
+    private Timer? _debounceTimer;
+    private const int DebounceMs = 300;
 
     private string SelectedPatientIdString => SelectedPatientId?.ToString() ?? string.Empty;
 
-    private IEnumerable<PatientListItem> FilteredPatients =>
-        string.IsNullOrWhiteSpace(_searchText)
-            ? _patients
-            : _patients.Where(MatchesSearch);
-
     protected override async Task OnInitializedAsync()
     {
+        await LoadPatientsAsync(string.Empty);
+    }
+
+    private void HandleSearchInputAsync(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+
+        _debounceTimer?.Stop();
+        if (_debounceTimer is null)
+        {
+            _debounceTimer = new Timer(DebounceMs);
+            _debounceTimer.AutoReset = false;
+            _debounceTimer.Elapsed += OnDebounceElapsed;
+        }
+        else
+        {
+            _debounceTimer.Interval = DebounceMs;
+        }
+        _debounceTimer.Start();
+    }
+
+    private void OnDebounceElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await LoadPatientsAsync(_searchText);
+            }
+            catch
+            {
+                _loadError = "Unable to load patient list.";
+                _isLoading = false;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadPatientsAsync(string query)
+    {
+        _isLoading = true;
+        _loadError = null;
+
         try
         {
-            var result = await HttpClient.GetFromJsonAsync<List<PatientListItem>>("/api/v1/patients?take=250");
+            var url = string.IsNullOrWhiteSpace(query)
+                ? "/api/v1/patients?take=100"
+                : $"/api/v1/patients?query={Uri.EscapeDataString(query.Trim())}&take=50";
+
+            var result = await HttpClient.GetFromJsonAsync<List<PatientListItem>>(url);
             if (result is not null)
             {
                 _patients.Clear();
@@ -92,14 +139,6 @@
         }
     }
 
-    private bool MatchesSearch(PatientListItem patient)
-    {
-        var search = _searchText.Trim();
-        return patient.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || (!string.IsNullOrWhiteSpace(patient.MedicalRecordNumber) &&
-                patient.MedicalRecordNumber.Contains(search, StringComparison.OrdinalIgnoreCase));
-    }
-
     private static string FormatPatientOption(PatientListItem patient)
     {
         if (string.IsNullOrWhiteSpace(patient.MedicalRecordNumber))
@@ -108,6 +147,11 @@
         }
 
         return $"{patient.DisplayName} ({patient.MedicalRecordNumber})";
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
     }
 
     private sealed class PatientListItem

@@ -7,6 +7,7 @@ using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace PTDoc.Api.Intake;
 
@@ -134,9 +135,8 @@ public static class IntakeEndpoints
     {
         var intake = await db.IntakeForms
             .AsNoTracking()
-            .Where(f => f.PatientId == patientId)
-            .OrderBy(f => f.IsLocked)
-            .ThenByDescending(f => f.LastModifiedUtc)
+            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (intake is null)
@@ -165,7 +165,15 @@ public static class IntakeEndpoints
         intake.PainMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
         intake.Consents = string.IsNullOrWhiteSpace(request.Consents) ? "{}" : request.Consents;
         intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
-        intake.TemplateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? "1.0" : request.TemplateVersion;
+
+        var templateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? "1.0" : request.TemplateVersion;
+        if (templateVersion.Length > 50)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.TemplateVersion), ["TemplateVersion must not exceed 50 characters."] }
+            });
+
+        intake.TemplateVersion = templateVersion;
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
@@ -195,6 +203,27 @@ public static class IntakeEndpoints
             {
                 { nameof(IntakeForm.Consents), ["Consents must be completed before submission."] }
             });
+
+        // Enforce server-side HIPAA acknowledgement requirement
+        try
+        {
+            using var consentDoc = JsonDocument.Parse(intake.Consents);
+            if (!consentDoc.RootElement.TryGetProperty("hipaaAcknowledged", out var hipaaElement)
+                || hipaaElement.ValueKind != JsonValueKind.True)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { "hipaaAcknowledged", ["HIPAA acknowledgement is required before submission."] }
+                });
+            }
+        }
+        catch (JsonException)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(IntakeForm.Consents), ["Consents data is not valid JSON."] }
+            });
+        }
 
         var nowUtc = DateTime.UtcNow;
         intake.SubmittedAt = intake.SubmittedAt ?? nowUtc;

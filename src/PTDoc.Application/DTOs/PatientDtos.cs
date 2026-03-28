@@ -118,5 +118,4 @@ public sealed class PatientListItemResponse
     public Guid Id { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public string? MedicalRecordNumber { get; set; }
-    public DateTime DateOfBirth { get; set; }
 }
