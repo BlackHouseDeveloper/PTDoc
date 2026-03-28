@@ -193,7 +193,11 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     [Fact]
+<<<<<<< HEAD
     public void UC1_PracticeManager_RoleConstant_Defined()
+=======
+    public async Task UC1_PracticeManager_RoleConstant_Defined()
+>>>>>>> 04e21fa1937cba0df95eeb3057e2bf1d7445cbc1
     {
         Assert.Equal("PracticeManager", Roles.PracticeManager);
     }

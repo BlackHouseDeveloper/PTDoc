@@ -13,6 +13,7 @@ namespace PTDoc.Infrastructure.Compliance;
 /// Service for managing clinical note signatures and addendums.
 /// Uses SHA-256 for deterministic signature hashing.
 /// Sprint N: Pre-sign clinical validation integrated via IClinicalRulesEngine.
+/// Sprint UC4: PTA co-sign requirement — PTA-signed Daily notes require PT countersignature.
 /// </summary>
 public class SignatureService : ISignatureService
 {
@@ -36,8 +37,9 @@ public class SignatureService : ISignatureService
     /// <summary>
     /// Signs a clinical note with SHA-256 hash of canonical content.
     /// Sprint N: Runs pre-sign clinical validation; blocking violations prevent signing.
+    /// Sprint UC4: When signerIsPta = true, sets RequiresCoSign = true on the note.
     /// </summary>
-    public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default)
+    public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, bool signerIsPta = false, CancellationToken ct = default)
     {
         var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
 
@@ -82,6 +84,12 @@ public class SignatureService : ISignatureService
         note.SignedUtc = DateTime.UtcNow;
         note.SignedByUserId = userId;
 
+        // Sprint UC4: PTA-signed notes require PT co-signature per Medicare rules.
+        if (signerIsPta)
+        {
+            note.RequiresCoSign = true;
+        }
+
         await _context.SaveChangesAsync(ct);
 
         // Audit the signature event
@@ -92,8 +100,48 @@ public class SignatureService : ISignatureService
         {
             Success = true,
             SignatureHash = signatureHash,
-            SignedUtc = note.SignedUtc
+            SignedUtc = note.SignedUtc,
+            RequiresCoSign = note.RequiresCoSign
         };
+    }
+
+    /// <summary>
+    /// PT countersigns a PTA-authored note (co-sign requirement per Medicare rules).
+    /// The note must already be signed by PTA (RequiresCoSign = true) and not yet co-signed.
+    /// </summary>
+    public async Task<CoSignResult> CoSignNoteAsync(Guid noteId, Guid ptUserId, CancellationToken ct = default)
+    {
+        var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
+
+        if (note == null)
+        {
+            return new CoSignResult { Success = false, ErrorMessage = "Note not found" };
+        }
+
+        if (string.IsNullOrEmpty(note.SignatureHash))
+        {
+            return new CoSignResult { Success = false, ErrorMessage = "Note has not been signed yet" };
+        }
+
+        if (!note.RequiresCoSign)
+        {
+            return new CoSignResult { Success = false, ErrorMessage = "Note does not require a co-sign" };
+        }
+
+        if (note.CoSignedByUserId.HasValue)
+        {
+            return new CoSignResult { Success = false, ErrorMessage = "Note has already been co-signed" };
+        }
+
+        note.CoSignedByUserId = ptUserId;
+        note.CoSignedUtc = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(ct);
+
+        await _auditService.LogNoteSignedAsync(
+            AuditEvent.NoteSigned(noteId, $"CoSign:{note.NoteType}", note.SignatureHash!, ptUserId), ct);
+
+        return new CoSignResult { Success = true, CoSignedUtc = note.CoSignedUtc };
     }
 
     /// <summary>
@@ -179,7 +227,6 @@ public class SignatureService : ISignatureService
     /// </summary>
     private static string GenerateCanonicalContent(ClinicalNote note)
     {
-        // Create deterministic representation of note content
         var canonical = new
         {
             note.PatientId,
@@ -189,11 +236,10 @@ public class SignatureService : ISignatureService
             note.CptCodesJson
         };
 
-        // Use stable JSON serialization (sorted keys, consistent formatting)
         var options = new JsonSerializerOptions
         {
             WriteIndented = false,
-            PropertyNamingPolicy = null // Use exact property names
+            PropertyNamingPolicy = null
         };
 
         return JsonSerializer.Serialize(canonical, options);
