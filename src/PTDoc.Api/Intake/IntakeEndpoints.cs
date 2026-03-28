@@ -32,18 +32,6 @@ public static class IntakeEndpoints
             .WithName("GetIntake")
             .WithSummary("Get an intake response by ID")
             .RequireAuthorization(AuthorizationPolicies.IntakeRead);
-
-        // Sprint UC2: Lock (submit) intake after patient completion — prevents further editing.
-        // Patient can submit their own form; Front Desk and clinical staff can lock on behalf.
-        // Uses IntakeRead (which includes Patient) rather than IntakeWrite so patients can
-        // submit/lock their own intake forms without requiring full write permissions.
-        // Note: IntakeRead still requires authentication; ownership/tenancy is enforced
-        // inside the handler via tenant context — only intake forms visible to the caller
-        // can be submitted.
-        group.MapPost("/{id:guid}/submit", SubmitIntake)
-            .WithName("SubmitIntake")
-            .WithSummary("Lock an intake form after submission — prevents further editing")
-            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
     }
 
     // POST /api/v1/intake
@@ -114,37 +102,6 @@ public static class IntakeEndpoints
 
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
-
-        return Results.Ok(ToResponse(intake));
-    }
-
-    // POST /api/v1/intake/{id}/submit
-    // Sprint UC2: Lock the intake form to prevent further editing after patient submission.
-    // Internal visibility allows direct handler tests in PTDoc.Tests.
-    internal static async Task<IResult> SubmitIntake(
-        Guid id,
-        [FromServices] ApplicationDbContext db,
-        [FromServices] IIdentityContextAccessor identityContext,
-        CancellationToken cancellationToken)
-    {
-        var intake = await db.IntakeForms
-            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
-
-        if (intake is null)
-            return Results.NotFound(new { error = $"Intake {id} not found." });
-
-        if (intake.IsLocked)
-            return Results.Conflict(new { error = "Intake form is already locked." });
-
-        var userId = identityContext.GetCurrentUserId();
-
-        intake.IsLocked = true;
-        intake.SubmittedAt = DateTime.UtcNow;
-        intake.LastModifiedUtc = DateTime.UtcNow;
-        intake.ModifiedByUserId = userId;
-        intake.SyncState = SyncState.Pending;
-
-        await db.SaveChangesAsync(cancellationToken);
 
         return Results.Ok(ToResponse(intake));
     }

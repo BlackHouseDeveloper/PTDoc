@@ -263,15 +263,6 @@ namespace PTDoc.Infrastructure.Migrations.SqlServer.Migrations
                     b.Property<DateTime?>("SignedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("RequiresCoSign")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid?>("CoSignedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CoSignedUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<int>("SyncState")
                         .HasColumnType("int");
 

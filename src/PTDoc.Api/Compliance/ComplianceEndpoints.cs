@@ -109,7 +109,7 @@ public static class ComplianceEndpoints
                         return Results.Forbid();
                 }
 
-                var result = await signatureService.SignNoteAsync(noteId, userId, signerIsPta: isPta);
+                var result = await signatureService.SignNoteAsync(noteId, userId);
 
                 if (!result.Success)
                 {
@@ -129,52 +129,11 @@ public static class ComplianceEndpoints
                 {
                     success = true,
                     signatureHash = result.SignatureHash,
-                    signedUtc = result.SignedUtc,
-                    // Sprint UC4: Notify caller that PT co-sign is required for PTA-authored notes
-                    requiresCoSign = result.RequiresCoSign
+                    signedUtc = result.SignedUtc
                 });
             })
             .WithName("SignNote")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
-
-        // Co-sign endpoint — PT-only, countersigns a PTA-authored note per Medicare rules.
-        notesGroup.MapPost("/{noteId:guid}/co-sign",
-            async (Guid noteId, ISignatureService signatureService,
-                   IIdentityContextAccessor identityContext) =>
-            {
-                var userId = identityContext.GetCurrentUserId();
-                if (userId == Guid.Empty)
-                {
-                    return Results.Unauthorized();
-                }
-
-                var result = await signatureService.CoSignNoteAsync(noteId, userId);
-
-                if (!result.Success)
-                {
-                    var errorMessage = result.ErrorMessage ?? string.Empty;
-
-                    // 404: Note not found
-                    if (errorMessage.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                        return Results.NotFound(new { error = result.ErrorMessage });
-
-                    // 409: Note exists but is ineligible for co-sign (already co-signed, wrong state)
-                    if (errorMessage.Contains("already been co-signed", StringComparison.OrdinalIgnoreCase) ||
-                        errorMessage.Contains("does not require a co-sign", StringComparison.OrdinalIgnoreCase) ||
-                        errorMessage.Contains("not been signed yet", StringComparison.OrdinalIgnoreCase))
-                        return Results.Conflict(new { error = result.ErrorMessage });
-
-                    return Results.BadRequest(new { error = result.ErrorMessage });
-                }
-
-                return Results.Ok(new
-                {
-                    success = true,
-                    coSignedUtc = result.CoSignedUtc
-                });
-            })
-            .WithName("CoSignNote")
-            .RequireAuthorization(AuthorizationPolicies.NoteCoSign);
 
         // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",

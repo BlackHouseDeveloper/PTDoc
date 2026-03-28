@@ -258,15 +258,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("SignedUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("RequiresCoSign")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid?>("CoSignedByUserId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("CoSignedUtc")
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("SyncState")
                         .HasColumnType("INTEGER");
 

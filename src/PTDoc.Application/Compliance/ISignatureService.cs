@@ -8,17 +8,9 @@ public interface ISignatureService
 {
     /// <summary>
     /// Signs a clinical note with SHA-256 hash of canonical content.
-    /// Makes the note immutable. When signed by a PTA, marks it as requiring PT co-sign.
+    /// Makes the note immutable.
     /// </summary>
-    Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, bool signerIsPta = false, CancellationToken ct = default);
-
-    /// <summary>
-    /// PT co-signs (countersigns) a PTA-authored note that has RequiresCoSign = true.
-    /// Returns an error if the note does not require co-sign.
-    /// PT role enforcement is handled at the API layer via AuthorizationPolicies.NoteCoSign;
-    /// this method assumes the caller has already been authorized as a PT.
-    /// </summary>
-    Task<CoSignResult> CoSignNoteAsync(Guid noteId, Guid ptUserId, CancellationToken ct = default);
+    Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default);
 
     /// <summary>
     /// Creates an addendum to a signed note.
@@ -39,22 +31,12 @@ public class SignatureResult
     public DateTime? SignedUtc { get; set; }
     public string? ErrorMessage { get; set; }
 
-    /// <summary>True when the note was signed by a PTA and now requires PT co-sign.</summary>
-    public bool RequiresCoSign { get; set; }
-
     /// <summary>
     /// Blocking rule violations that prevented signing.
     /// Non-null only when signing was blocked by clinical validation failures.
     /// Sprint N: Clinical Decision Support + Rules Engine.
     /// </summary>
     public IReadOnlyList<RuleEvaluationResult>? ValidationFailures { get; set; }
-}
-
-public class CoSignResult
-{
-    public bool Success { get; set; }
-    public DateTime? CoSignedUtc { get; set; }
-    public string? ErrorMessage { get; set; }
 }
 
 public class AddendumResult

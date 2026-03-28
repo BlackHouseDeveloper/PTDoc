@@ -217,7 +217,6 @@ public static class SyncEndpoints
         [FromQuery] string? entityTypes,
         [FromServices] ISyncEngine syncEngine,
         [FromServices] ILogger<ISyncEngine> logger,
-        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         try
@@ -234,14 +233,7 @@ public static class SyncEndpoints
                 }
             }
 
-            // Sprint UC5: Extract caller's roles for server-side data scoping.
-            // Aide and FrontDesk roles will not receive clinical entities.
-            var userRoles = httpContext.User.Claims
-                .Where(c => c.Type == System.Security.Claims.ClaimTypes.Role)
-                .Select(c => c.Value)
-                .ToArray();
-
-            var result = await syncEngine.GetClientDeltaAsync(sinceUtc, types, userRoles, cancellationToken);
+            var result = await syncEngine.GetClientDeltaAsync(sinceUtc, types, cancellationToken);
             return Results.Ok(result);
         }
         catch (Exception ex)

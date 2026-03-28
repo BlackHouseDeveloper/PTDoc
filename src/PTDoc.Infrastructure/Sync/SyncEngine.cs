@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -418,35 +417,12 @@ public class SyncEngine : ISyncEngine
     public async Task<ClientSyncPullResponse> GetClientDeltaAsync(
         DateTime? sinceUtc,
         string[]? entityTypes = null,
-        string[]? userRoles = null,
         CancellationToken cancellationToken = default)
     {
         var effectiveSince = sinceUtc ?? DateTime.MinValue;
-
-        // Sprint UC5: Role-based data scoping.
-        // Aide and FrontDesk roles must not receive clinical data.
-        // Patient role receives demographics and intake only (not full SOAP/ClinicalNote content).
-        var isRestrictedRole = userRoles is { Length: > 0 } &&
-            userRoles.Any(r => string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(r, Roles.FrontDesk, StringComparison.OrdinalIgnoreCase));
-        var isPatientRole = userRoles is { Length: > 0 } &&
-            userRoles.Any(r => string.Equals(r, Roles.Patient, StringComparison.OrdinalIgnoreCase));
-
-        // Clinical entity types excluded from restricted roles
-        var clinicalEntityTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "ClinicalNote", "ObjectiveMetric", "AuditLog" };
-
         var effectiveTypes = entityTypes is { Length: > 0 }
             ? entityTypes
             : new[] { "Patient", "Appointment", "IntakeForm", "ClinicalNote", "ObjectiveMetric", "AuditLog" };
-
-        // Filter out clinical types for Aide/FrontDesk and Patient roles
-        if (isRestrictedRole || isPatientRole)
-        {
-            effectiveTypes = effectiveTypes
-                .Where(t => !clinicalEntityTypes.Contains(t))
-                .ToArray();
-        }
 
         var jsonOptions = new JsonSerializerOptions
         {
