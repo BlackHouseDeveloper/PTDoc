@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Text.Json;
@@ -78,6 +79,7 @@ public static class NoteEndpoints
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -198,6 +200,7 @@ public static class NoteEndpoints
 
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, cancellationToken);
 
         return Results.Created($"/api/v1/notes/{note.Id}", new NoteOperationResponse
         {
@@ -214,6 +217,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -297,6 +301,7 @@ public static class NoteEndpoints
         note.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, cancellationToken);
 
         // Sprint S: Audit logging — record every successful note edit.
         await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), cancellationToken);
@@ -316,6 +321,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -384,6 +390,7 @@ public static class NoteEndpoints
         note.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, cancellationToken);
 
         // Audit: log the explicit clinician acceptance of AI-generated content.
         // NO PHI — only generation type and note identity.

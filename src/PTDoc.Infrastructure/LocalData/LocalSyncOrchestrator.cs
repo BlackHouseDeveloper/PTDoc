@@ -77,11 +77,13 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     }
 
     /// <inheritdoc/>
+    /// <inheritdoc/>
     public async Task<LocalPushResult> PushPendingAsync(CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
         int pushedCount = 0, successCount = 0, failedCount = 0, conflictCount = 0;
-        bool patientHadAccepted = false, appointmentHadAccepted = false;
+        bool patientHadAccepted = false, appointmentHadAccepted = false,
+             intakeHadAccepted = false, noteHadAccepted = false;
 
         // ── Collect pending patients ─────────────────────────────────────────────
         var pendingPatients = await _localContext.PatientSummaries
@@ -91,6 +93,16 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         // ── Collect pending appointments ─────────────────────────────────────────
         var pendingAppointments = await _localContext.AppointmentSummaries
             .Where(a => a.SyncState == SyncState.Pending)
+            .ToListAsync(cancellationToken);
+
+        // ── Collect pending intake form drafts ───────────────────────────────────
+        var pendingIntakes = await _localContext.IntakeFormDrafts
+            .Where(i => i.SyncState == SyncState.Pending)
+            .ToListAsync(cancellationToken);
+
+        // ── Collect pending clinical note drafts (unsigned only) ─────────────────
+        var pendingNotes = await _localContext.ClinicalNoteDrafts
+            .Where(n => n.SyncState == SyncState.Pending && n.SignatureHash == null)
             .ToListAsync(cancellationToken);
 
         var pushItems = new List<ClientSyncPushItem>();
@@ -139,6 +151,50 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                     a.LastModifiedUtc
                 }, _jsonOptions),
                 LastModifiedUtc = a.LastModifiedUtc
+            });
+        }
+
+        foreach (var i in pendingIntakes)
+        {
+            pushItems.Add(new ClientSyncPushItem
+            {
+                EntityType = "IntakeForm",
+                ServerId = i.ServerId,
+                LocalId = i.LocalId,
+                Operation = i.ServerId == Guid.Empty ? "Create" : "Update",
+                DataJson = JsonSerializer.Serialize(new
+                {
+                    i.ServerId,
+                    patientId = i.PatientServerId,
+                    i.ResponseJson,
+                    i.PainMapData,
+                    i.Consents,
+                    i.TemplateVersion,
+                    i.LastModifiedUtc
+                }, _jsonOptions),
+                LastModifiedUtc = i.LastModifiedUtc
+            });
+        }
+
+        foreach (var n in pendingNotes)
+        {
+            pushItems.Add(new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote",
+                ServerId = n.ServerId,
+                LocalId = n.LocalId,
+                Operation = n.ServerId == Guid.Empty ? "Create" : "Update",
+                DataJson = JsonSerializer.Serialize(new
+                {
+                    n.ServerId,
+                    patientId = n.PatientServerId,
+                    n.NoteType,
+                    n.DateOfService,
+                    n.ContentJson,
+                    n.CptCodesJson,
+                    n.LastModifiedUtc
+                }, _jsonOptions),
+                LastModifiedUtc = n.LastModifiedUtc
             });
         }
 
@@ -202,12 +258,16 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         // Build lookup maps keyed by (EntityType, LocalId) to avoid cross-type LocalId collisions.
         var patientByLocalId = pendingPatients.ToDictionary(p => p.LocalId);
         var appointmentByLocalId = pendingAppointments.ToDictionary(a => a.LocalId);
+        var intakeByLocalId = pendingIntakes.ToDictionary(i => i.LocalId);
+        var noteByLocalId = pendingNotes.ToDictionary(n => n.LocalId);
         var now = DateTime.UtcNow;
 
         foreach (var itemResult in serverResponse.Items)
         {
             var isPatient = string.Equals(itemResult.EntityType, "Patient", StringComparison.OrdinalIgnoreCase);
             var isAppointment = string.Equals(itemResult.EntityType, "Appointment", StringComparison.OrdinalIgnoreCase);
+            var isIntake = string.Equals(itemResult.EntityType, "IntakeForm", StringComparison.OrdinalIgnoreCase);
+            var isNote = string.Equals(itemResult.EntityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase);
 
             if (isPatient && patientByLocalId.TryGetValue(itemResult.LocalId, out var localPatient))
             {
@@ -265,6 +325,60 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         break;
                 }
             }
+            else if (isIntake && intakeByLocalId.TryGetValue(itemResult.LocalId, out var localIntake))
+            {
+                switch (itemResult.Status)
+                {
+                    case "Accepted":
+                        localIntake.SyncState = SyncState.Synced;
+                        localIntake.LastSyncedUtc = now;
+                        if (localIntake.ServerId == Guid.Empty)
+                            localIntake.ServerId = itemResult.ServerId;
+                        successCount++;
+                        intakeHadAccepted = true;
+                        break;
+
+                    case "Conflict":
+                        localIntake.SyncState = SyncState.Conflict;
+                        conflictCount++;
+                        _logger.LogWarning(
+                            "Push conflict for IntakeForm LocalId={LocalId}: {Error}",
+                            itemResult.LocalId, itemResult.Error);
+                        break;
+
+                    default:
+                        failedCount++;
+                        errors.Add($"IntakeForm LocalId={itemResult.LocalId}: {itemResult.Error}");
+                        break;
+                }
+            }
+            else if (isNote && noteByLocalId.TryGetValue(itemResult.LocalId, out var localNote))
+            {
+                switch (itemResult.Status)
+                {
+                    case "Accepted":
+                        localNote.SyncState = SyncState.Synced;
+                        localNote.LastSyncedUtc = now;
+                        if (localNote.ServerId == Guid.Empty)
+                            localNote.ServerId = itemResult.ServerId;
+                        successCount++;
+                        noteHadAccepted = true;
+                        break;
+
+                    case "Conflict":
+                        localNote.SyncState = SyncState.Conflict;
+                        conflictCount++;
+                        _logger.LogWarning(
+                            "Push conflict for ClinicalNote LocalId={LocalId}: {Error}",
+                            itemResult.LocalId, itemResult.Error);
+                        break;
+
+                    default:
+                        failedCount++;
+                        errors.Add($"ClinicalNote LocalId={itemResult.LocalId}: {itemResult.Error}");
+                        break;
+                }
+            }
         }
 
         await _localContext.SaveChangesAsync(cancellationToken);
@@ -274,6 +388,10 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             await UpdateSyncMetadataAsync("Patient", lastPushedAt: now, cancellationToken: cancellationToken);
         if (appointmentHadAccepted)
             await UpdateSyncMetadataAsync("Appointment", lastPushedAt: now, cancellationToken: cancellationToken);
+        if (intakeHadAccepted)
+            await UpdateSyncMetadataAsync("IntakeForm", lastPushedAt: now, cancellationToken: cancellationToken);
+        if (noteHadAccepted)
+            await UpdateSyncMetadataAsync("ClinicalNote", lastPushedAt: now, cancellationToken: cancellationToken);
 
         return new LocalPushResult
         {
@@ -294,12 +412,11 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         // ── Determine pull watermarks ────────────────────────────────────────────
         var patientMeta = await GetOrCreateSyncMetadataAsync("Patient", cancellationToken);
         var appointmentMeta = await GetOrCreateSyncMetadataAsync("Appointment", cancellationToken);
+        var intakeMeta = await GetOrCreateSyncMetadataAsync("IntakeForm", cancellationToken);
+        var noteMeta = await GetOrCreateSyncMetadataAsync("ClinicalNote", cancellationToken);
 
-        // Use the oldest watermark so we never miss changes
-        // Example: Patient last pulled at 10:00, Appointment at 09:00 → sinceUtc = 09:00,
-        // which ensures the server returns both patient and appointment changes since 09:00.
-        // Using Max would skip appointment changes between 09:00 and 10:00.
-        var sinceUtc = new[] { patientMeta.LastPulledAt, appointmentMeta.LastPulledAt }
+        // Use the oldest watermark so we never miss changes across any entity type.
+        var sinceUtc = new[] { patientMeta.LastPulledAt, appointmentMeta.LastPulledAt, intakeMeta.LastPulledAt, noteMeta.LastPulledAt }
             .Where(t => t.HasValue)
             .Select(t => t!.Value)
             .DefaultIfEmpty(DateTime.MinValue)
@@ -311,9 +428,10 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         ClientSyncPullResponse pullResponse;
         try
         {
+            const string entityTypeList = "Patient,Appointment,IntakeForm,ClinicalNote";
             var url = sinceUtc == DateTime.MinValue
-                ? "/api/v1/sync/client/pull?entityTypes=Patient,Appointment"
-                : $"/api/v1/sync/client/pull?sinceUtc={Uri.EscapeDataString(sinceUtc.ToString("o"))}&entityTypes=Patient,Appointment";
+                ? $"/api/v1/sync/client/pull?entityTypes={entityTypeList}"
+                : $"/api/v1/sync/client/pull?sinceUtc={Uri.EscapeDataString(sinceUtc.ToString("o"))}&entityTypes={entityTypeList}";
 
             var httpResponse = await _httpClient.GetAsync(url, cancellationToken);
 
@@ -359,6 +477,18 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         else if (apptApplied == ApplyResult.Conflict) conflictCount++;
                         break;
 
+                    case "IntakeForm":
+                        var intakeApplied = await ApplyPulledIntakeFormAsync(item, cancellationToken);
+                        if (intakeApplied == ApplyResult.Applied) appliedCount++;
+                        else if (intakeApplied == ApplyResult.Conflict) conflictCount++;
+                        break;
+
+                    case "ClinicalNote":
+                        var noteApplied = await ApplyPulledClinicalNoteAsync(item, cancellationToken);
+                        if (noteApplied == ApplyResult.Applied) appliedCount++;
+                        else if (noteApplied == ApplyResult.Conflict) conflictCount++;
+                        break;
+
                     default:
                         _logger.LogDebug("Ignoring unknown entity type from pull: {EntityType}", item.EntityType);
                         break;
@@ -378,13 +508,13 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         // ── Update pull watermarks ───────────────────────────────────────────────
         // Only advance the watermark when all items were applied without errors.
-        // If any item failed, we keep the old watermark so the next pull re-fetches
-        // the failed changes and nothing is silently lost.
         if (errors.Count == 0)
         {
             var pullTime = pullResponse.SyncedAt;
             await UpdateSyncMetadataAsync("Patient", lastPulledAt: pullTime, cancellationToken: cancellationToken);
             await UpdateSyncMetadataAsync("Appointment", lastPulledAt: pullTime, cancellationToken: cancellationToken);
+            await UpdateSyncMetadataAsync("IntakeForm", lastPulledAt: pullTime, cancellationToken: cancellationToken);
+            await UpdateSyncMetadataAsync("ClinicalNote", lastPulledAt: pullTime, cancellationToken: cancellationToken);
         }
         else
         {
@@ -410,7 +540,11 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             .CountAsync(p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken);
         var appointmentCount = await _localContext.AppointmentSummaries
             .CountAsync(a => a.SyncState == SyncState.Pending || a.SyncState == SyncState.Conflict, cancellationToken);
-        return patientCount + appointmentCount;
+        var intakeCount = await _localContext.IntakeFormDrafts
+            .CountAsync(i => i.SyncState == SyncState.Pending || i.SyncState == SyncState.Conflict, cancellationToken);
+        var noteCount = await _localContext.ClinicalNoteDrafts
+            .CountAsync(n => n.SyncState == SyncState.Pending || n.SyncState == SyncState.Conflict, cancellationToken);
+        return patientCount + appointmentCount + intakeCount + noteCount;
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────────
@@ -582,13 +716,145 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         if (lastPulledAt.HasValue) meta.LastPulledAt = lastPulledAt;
 
         // Refresh unsynced count: both Pending and Conflict entities require attention
-        meta.PendingCount = entityType == "Patient"
-            ? await _localContext.PatientSummaries.CountAsync(
-                p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken)
-            : await _localContext.AppointmentSummaries.CountAsync(
-                a => a.SyncState == SyncState.Pending || a.SyncState == SyncState.Conflict, cancellationToken);
+        meta.PendingCount = entityType switch
+        {
+            "Patient" => await _localContext.PatientSummaries.CountAsync(
+                p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken),
+            "Appointment" => await _localContext.AppointmentSummaries.CountAsync(
+                a => a.SyncState == SyncState.Pending || a.SyncState == SyncState.Conflict, cancellationToken),
+            "IntakeForm" => await _localContext.IntakeFormDrafts.CountAsync(
+                i => i.SyncState == SyncState.Pending || i.SyncState == SyncState.Conflict, cancellationToken),
+            "ClinicalNote" => await _localContext.ClinicalNoteDrafts.CountAsync(
+                n => n.SyncState == SyncState.Pending || n.SyncState == SyncState.Conflict, cancellationToken),
+            _ => 0
+        };
 
         await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<ApplyResult> ApplyPulledIntakeFormAsync(
+        ClientSyncPullItem item,
+        CancellationToken cancellationToken)
+    {
+        var local = await _localContext.IntakeFormDrafts
+            .FirstOrDefaultAsync(i => i.ServerId == item.ServerId, cancellationToken);
+
+        using var doc = JsonDocument.Parse(item.DataJson);
+        var root = doc.RootElement;
+
+        if (local is null)
+        {
+            var newForm = new LocalIntakeFormDraft
+            {
+                ServerId = item.ServerId,
+                PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
+                ResponseJson = GetStringCaseInsensitive(root, "ResponseJson") ?? "{}",
+                PainMapData = GetStringCaseInsensitive(root, "PainMapData") ?? "{}",
+                Consents = GetStringCaseInsensitive(root, "Consents") ?? "{}",
+                TemplateVersion = GetStringCaseInsensitive(root, "TemplateVersion") ?? "1.0",
+                IsLocked = root.TryGetProperty("isLocked", out var il) || root.TryGetProperty("IsLocked", out il)
+                    ? il.ValueKind == JsonValueKind.True
+                    : false,
+                SubmittedAt = GetDateTimeCaseInsensitive(root, "SubmittedAt"),
+                LastModifiedUtc = item.LastModifiedUtc,
+                SyncState = SyncState.Synced,
+                LastSyncedUtc = DateTime.UtcNow
+            };
+            _localContext.IntakeFormDrafts.Add(newForm);
+            return ApplyResult.Applied;
+        }
+
+        // If local draft is pending and we have a conflict, preserve local work
+        if (local.SyncState == SyncState.Pending && item.LastModifiedUtc <= local.LastModifiedUtc)
+        {
+            local.SyncState = SyncState.Conflict;
+            _logger.LogWarning(
+                "Pull conflict for IntakeForm ServerId={ServerId}: local is Pending with equal/newer timestamp",
+                item.ServerId);
+            return ApplyResult.Conflict;
+        }
+
+        // Apply server version (only safe fields; IsLocked from server is authoritative)
+        if (!local.IsLocked) // do not overwrite locked local forms with server draft data
+        {
+            local.ResponseJson = GetStringCaseInsensitive(root, "ResponseJson") ?? local.ResponseJson;
+            local.PainMapData = GetStringCaseInsensitive(root, "PainMapData") ?? local.PainMapData;
+            local.Consents = GetStringCaseInsensitive(root, "Consents") ?? local.Consents;
+        }
+        local.IsLocked = root.TryGetProperty("isLocked", out var ilLock) || root.TryGetProperty("IsLocked", out ilLock)
+            ? ilLock.ValueKind == JsonValueKind.True
+            : local.IsLocked;
+        local.SubmittedAt = GetDateTimeCaseInsensitive(root, "SubmittedAt") ?? local.SubmittedAt;
+        local.LastModifiedUtc = item.LastModifiedUtc;
+        local.SyncState = SyncState.Synced;
+        local.LastSyncedUtc = DateTime.UtcNow;
+        return ApplyResult.Applied;
+    }
+
+    private async Task<ApplyResult> ApplyPulledClinicalNoteAsync(
+        ClientSyncPullItem item,
+        CancellationToken cancellationToken)
+    {
+        var local = await _localContext.ClinicalNoteDrafts
+            .FirstOrDefaultAsync(n => n.ServerId == item.ServerId, cancellationToken);
+
+        using var doc = JsonDocument.Parse(item.DataJson);
+        var root = doc.RootElement;
+
+        var serverSignatureHash = GetStringCaseInsensitive(root, "SignatureHash");
+
+        if (local is null)
+        {
+            var newNote = new LocalClinicalNoteDraft
+            {
+                ServerId = item.ServerId,
+                PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
+                NoteType = GetStringCaseInsensitive(root, "NoteType") ?? string.Empty,
+                DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc,
+                ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? "{}",
+                CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? "[]",
+                SignatureHash = serverSignatureHash,
+                SignedUtc = GetDateTimeCaseInsensitive(root, "SignedUtc"),
+                LastModifiedUtc = item.LastModifiedUtc,
+                SyncState = SyncState.Synced,
+                LastSyncedUtc = DateTime.UtcNow
+            };
+            _localContext.ClinicalNoteDrafts.Add(newNote);
+            return ApplyResult.Applied;
+        }
+
+        // If local is pending and note is now signed on server, mark as conflict
+        // to alert the clinician that their local edits cannot be applied.
+        if (local.SyncState == SyncState.Pending && serverSignatureHash != null)
+        {
+            local.SyncState = SyncState.Conflict;
+            local.SignatureHash = serverSignatureHash;
+            _logger.LogWarning(
+                "Pull conflict for ClinicalNote ServerId={ServerId}: server note is signed, local edits are pending",
+                item.ServerId);
+            return ApplyResult.Conflict;
+        }
+
+        // Standard LWW conflict for unsigned notes
+        if (local.SyncState == SyncState.Pending && item.LastModifiedUtc <= local.LastModifiedUtc)
+        {
+            local.SyncState = SyncState.Conflict;
+            _logger.LogWarning(
+                "Pull conflict for ClinicalNote ServerId={ServerId}: local is Pending with equal/newer timestamp",
+                item.ServerId);
+            return ApplyResult.Conflict;
+        }
+
+        // Apply server version — signed notes are immutable so always take server signature state
+        local.ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson;
+        local.CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? local.CptCodesJson;
+        local.DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService;
+        local.SignatureHash = serverSignatureHash ?? local.SignatureHash;
+        local.SignedUtc = GetDateTimeCaseInsensitive(root, "SignedUtc") ?? local.SignedUtc;
+        local.LastModifiedUtc = item.LastModifiedUtc;
+        local.SyncState = SyncState.Synced;
+        local.LastSyncedUtc = DateTime.UtcNow;
+        return ApplyResult.Applied;
     }
 
     // ── JSON helpers ─────────────────────────────────────────────────────────────
