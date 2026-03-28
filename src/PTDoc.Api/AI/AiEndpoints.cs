@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
@@ -159,6 +160,7 @@ public static class AiEndpoints
         [FromServices] IAiClinicalGenerationService clinicalService,
         [FromServices] IAuditService auditService,
         [FromServices] IConfiguration configuration,
+        [FromServices] PTDoc.Infrastructure.Data.ApplicationDbContext db,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -185,8 +187,24 @@ public static class AiEndpoints
             return Results.BadRequest(new { error = "A valid NoteId is required" });
         }
 
+        // Sprint UC-Gamma AI guardrail: verify the note's actual signing state from the DB.
+        // The IsNoteSigned flag in the request cannot be trusted from the client; we derive
+        // it server-side to ensure ClinicalGenerationService rejects signed notes correctly.
+        var note = await db.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(n => n.Id == request.NoteId, cancellationToken);
+
+        if (note is null)
+        {
+            return Results.NotFound(new { error = $"Note {request.NoteId} not found." });
+        }
+
+        // Rebuild the request with the server-authoritative IsNoteSigned value.
+        // This prevents the client from bypassing the signed-note guardrail by omitting the flag.
+        var guardedRequest = request with { IsNoteSigned = note.SignatureHash != null };
+
         // Generate AI content
-        var result = await clinicalService.GenerateGoalNarrativesAsync(request, cancellationToken);
+        var result = await clinicalService.GenerateGoalNarrativesAsync(guardedRequest, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
         var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;

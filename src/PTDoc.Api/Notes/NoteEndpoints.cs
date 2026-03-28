@@ -17,32 +17,58 @@ namespace PTDoc.Api.Notes;
 /// Sprint P: RBAC enforcement — NoteWrite requires PT or PTA role.
 /// Sprint S: Compliance rule integration — PN frequency hard stop, 8-minute rule validation,
 ///           audit logging for note edits.
+/// Sprint UC-Gamma: PTA domain guard on create and update; carry-forward read endpoint;
+///                  AI acceptance gate with section validation.
 /// </summary>
 public static class NoteEndpoints
 {
+    /// <summary>
+    /// SOAP section names that are valid targets for AI-generated content acceptance.
+    /// Sprint UC-Gamma: rejects any section name outside this canonical set.
+    /// </summary>
+    internal static readonly HashSet<string> ValidSoapSections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "subjective", "objective", "assessment", "plan", "goals", "billing"
+    };
+
     public static void MapNoteCrudEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/notes")
+        var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        group.MapPost("/", CreateNote)
+        writeGroup.MapPost("/", CreateNote)
             .WithName("CreateNote")
             .WithSummary("Create a new clinical note");
 
-        group.MapPut("/{id:guid}", UpdateNote)
+        writeGroup.MapPut("/{id:guid}", UpdateNote)
             .WithName("UpdateNote")
             .WithSummary("Update a draft clinical note");
 
         // Sprint UC-Gamma: AI output acceptance gate.
         // AI-generated content is NEVER persisted automatically — a clinician must
         // explicitly call this endpoint to write generated text into a draft note.
-        group.MapPost("/{noteId:guid}/accept-ai-suggestion", AcceptAiSuggestion)
+        writeGroup.MapPost("/{noteId:guid}/accept-ai-suggestion", AcceptAiSuggestion)
             .WithName("AcceptAiSuggestion")
             .WithSummary("Accept AI-generated content into a specific section of a draft note")
             .WithDescription(
                 "Explicit clinician acceptance gate. AI output is not persisted until " +
                 "a clinician (PT or PTA) calls this endpoint. Blocked on signed notes.");
+
+        // Sprint UC-Gamma: carry-forward read endpoint.
+        // Returns the most recent signed note eligible as a carry-forward source for the
+        // given patient and target note type. NoteRead policy — accessible to clinical staff
+        // and billing; NoteWrite not required since this is a read operation.
+        var readGroup = app.MapGroup("/api/v1/notes")
+            .WithTags("Notes")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
+        readGroup.MapGet("/carry-forward", GetCarryForward)
+            .WithName("GetCarryForward")
+            .WithSummary("Get carry-forward data from the most recent signed note for a patient")
+            .WithDescription(
+                "Returns read-only content from the most recently signed note eligible as a " +
+                "carry-forward source. Returns 404 when no eligible signed note exists.");
     }
 
     // POST /api/notes
@@ -184,6 +210,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var note = await db.ClinicalNotes
@@ -192,6 +219,14 @@ public static class NoteEndpoints
 
         if (note is null)
             return Results.NotFound(new { error = $"Note {id} not found." });
+
+        // Sprint UC-Gamma: PTA domain guard on update.
+        // PTAs may only author Daily notes. Editing an Evaluation, ProgressNote, or Discharge
+        // note is outside the PTA scope of practice, even when the note was created by a PT.
+        if (PtaIsBlockedFromNoteType(httpContext.User, note.NoteType))
+        {
+            return Results.Forbid();
+        }
 
         // Sprint S: Signature locking — enforce note immutability via the rules engine.
         // Signed notes cannot be modified; clinicians must create an addendum instead.
@@ -287,6 +322,15 @@ public static class NoteEndpoints
                 { nameof(request.Section), ["Section is required."] }
             });
 
+        // Sprint UC-Gamma: reject unknown SOAP section names to prevent drift
+        // from the spec and to guard against unsanitized free-text payloads
+        // being written to arbitrary keys in ContentJson.
+        if (!ValidSoapSections.Contains(request.Section))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.Section), [$"'{request.Section}' is not a valid SOAP section. Valid values: {string.Join(", ", ValidSoapSections.OrderBy(s => s))}."] }
+            });
+
         if (string.IsNullOrWhiteSpace(request.GenerationType))
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -329,6 +373,38 @@ public static class NoteEndpoints
             cancellationToken);
 
         return Results.Ok(new { note = ToResponse(note) });
+    }
+
+    // GET /api/notes/carry-forward?patientId={id}&noteType={type}
+    private static async Task<IResult> GetCarryForward(
+        [FromQuery] Guid patientId,
+        [FromQuery] NoteType noteType,
+        [FromServices] ICarryForwardService carryForwardService,
+        CancellationToken cancellationToken)
+    {
+        if (patientId == Guid.Empty)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(patientId), ["patientId is required."] }
+            });
+
+        var data = await carryForwardService.GetCarryForwardDataAsync(patientId, noteType, cancellationToken);
+
+        if (data is null)
+            return Results.NotFound(new
+            {
+                error = "No eligible signed note found for carry-forward.",
+                patientId,
+                noteType = noteType.ToString()
+            });
+
+        return Results.Ok(new
+        {
+            sourceNoteId = data.SourceNoteId,
+            sourceNoteType = data.SourceNoteType.ToString(),
+            sourceNoteDateOfService = data.SourceNoteDateOfService,
+            contentJson = data.ContentJson
+        });
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

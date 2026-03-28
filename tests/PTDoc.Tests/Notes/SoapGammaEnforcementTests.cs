@@ -450,6 +450,153 @@ public class SoapGammaEnforcementTests : IDisposable
         Assert.DoesNotContain(results, r => r.RuleId == "SOAP_SUBJECTIVE");
     }
 
+    // ── 7. UpdateNote PTA domain guard ────────────────────────────────────────
+
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    public void PTA_IsBlocked_FromUpdating_NonDailyNoteType(NoteType blockedType)
+    {
+        // PtaIsBlockedFromNoteType is also used for UpdateNote.
+        // A PTA should not be able to edit Evaluation/PN/Discharge notes even if NoteWrite
+        // policy is satisfied, because those note types are outside PTA scope of practice.
+        var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
+
+        var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, blockedType);
+
+        Assert.True(isBlocked,
+            $"PTA should be blocked from updating {blockedType} notes via the UpdateNote endpoint.");
+    }
+
+    [Fact]
+    public void PTA_IsAllowed_UpdateDailyNote()
+    {
+        // PTA must be allowed to update their own Daily notes.
+        var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
+
+        var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, NoteType.Daily);
+
+        Assert.False(isBlocked, "PTA should be allowed to update Daily notes.");
+    }
+
+    // ── 8. Carry-forward endpoint NoteRead authorization ─────────────────────
+
+    [Theory]
+    [InlineData(Roles.PT)]
+    [InlineData(Roles.PTA)]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Billing)]
+    public async Task CarryForwardEndpoint_IsAccessible_ByClinicalAndBillingRoles(string role)
+    {
+        // NoteRead includes PT, PTA, Admin, Owner, Billing.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, role),
+            $"Role '{role}' must have NoteRead access (carry-forward endpoint).");
+    }
+
+    [Theory]
+    [InlineData(Roles.Patient)]
+    [InlineData(Roles.Aide)]
+    [InlineData(Roles.FrontDesk)]
+    public async Task CarryForwardEndpoint_IsDenied_ByNonClinicalRoles(string role)
+    {
+        // FrontDesk, Aide, and Patient do not have NoteRead access.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, role),
+            $"Role '{role}' must NOT have NoteRead access (carry-forward endpoint).");
+    }
+
+    // ── 9. SOAP section validation in accept-ai-suggestion ───────────────────
+
+    [Theory]
+    [InlineData("subjective")]
+    [InlineData("objective")]
+    [InlineData("assessment")]
+    [InlineData("plan")]
+    [InlineData("goals")]
+    [InlineData("billing")]
+    [InlineData("Subjective")]   // case-insensitive
+    [InlineData("ASSESSMENT")]   // case-insensitive
+    public void ValidSoapSections_ContainsAllCanonicalNames(string section)
+    {
+        Assert.Contains(section, PTDoc.Api.Notes.NoteEndpoints.ValidSoapSections,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("note")]
+    [InlineData("content")]
+    [InlineData("freeText")]
+    [InlineData("__proto__")]
+    [InlineData("contentJson")]
+    public void ValidSoapSections_RejectsInvalidNames(string invalidSection)
+    {
+        Assert.DoesNotContain(invalidSection, PTDoc.Api.Notes.NoteEndpoints.ValidSoapSections,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    // ── 10. AI goals signed-note enforcement (server-authoritative IsNoteSigned) ─
+
+    [Fact]
+    public async Task AiGoals_SignedNote_IsDetectedAsSignedInDb()
+    {
+        // When the client submits IsNoteSigned=false for a note that IS signed in the DB,
+        // the server must look up the actual signing state and override the client-supplied flag.
+        // This test verifies that the note lookup correctly detects the signed state.
+        var signedNote = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = "real-signature-hash",
+            SignedUtc = DateTime.UtcNow.AddMinutes(-10),
+            SignedByUserId = Guid.NewGuid()
+        };
+        _context.ClinicalNotes.Add(signedNote);
+        await _context.SaveChangesAsync();
+
+        // Simulate what AiEndpoints.GenerateGoals does: look up the note and set IsNoteSigned.
+        var noteFromDb = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(n => n.Id == signedNote.Id);
+
+        Assert.NotNull(noteFromDb);
+        var serverDerivedIsNoteSigned = noteFromDb.SignatureHash != null;
+
+        Assert.True(serverDerivedIsNoteSigned,
+            "Server-derived IsNoteSigned must be true for a signed note, regardless of what the client sent.");
+    }
+
+    [Fact]
+    public async Task AiGoals_UnsignedNote_IsDetectedAsDraftInDb()
+    {
+        // Unsigned (draft) notes should have IsNoteSigned=false, allowing AI generation.
+        var draftNote = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = null // unsigned
+        };
+        _context.ClinicalNotes.Add(draftNote);
+        await _context.SaveChangesAsync();
+
+        var noteFromDb = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(n => n.Id == draftNote.Id);
+
+        Assert.NotNull(noteFromDb);
+        var serverDerivedIsNoteSigned = noteFromDb.SignatureHash != null;
+
+        Assert.False(serverDerivedIsNoteSigned,
+            "Server-derived IsNoteSigned must be false for a draft note (AI generation allowed).");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static async Task<bool> EvaluatePolicyAsync(string policyName, string role)
