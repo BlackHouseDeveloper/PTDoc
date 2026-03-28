@@ -117,7 +117,7 @@ public sealed class WebUserService : IUserService
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Sign up request failed for {Email}", email);
+            logger.LogError(ex, "Sign up request failed");
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Unable to submit registration right now.");
         }
     }
