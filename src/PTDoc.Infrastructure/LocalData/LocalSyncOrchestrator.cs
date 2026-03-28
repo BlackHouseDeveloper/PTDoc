@@ -763,7 +763,21 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             return ApplyResult.Applied;
         }
 
-        // If local draft is pending and we have a conflict, preserve local work
+        // If local draft is pending and server has transitioned to locked (immutable state),
+        // surface this as a Conflict so the clinician can review the discarded local edits.
+        var serverIsLocked = root.TryGetProperty("isLocked", out var ilPending) || root.TryGetProperty("IsLocked", out ilPending)
+            ? ilPending.ValueKind == JsonValueKind.True
+            : false;
+        if (local.SyncState == SyncState.Pending && serverIsLocked && !local.IsLocked)
+        {
+            local.SyncState = SyncState.Conflict;
+            _logger.LogWarning(
+                "Pull conflict for IntakeForm ServerId={ServerId}: server form is locked, local edits are pending",
+                item.ServerId);
+            return ApplyResult.Conflict;
+        }
+
+        // If local draft is pending and we have a timestamp conflict, preserve local work
         if (local.SyncState == SyncState.Pending && item.LastModifiedUtc <= local.LastModifiedUtc)
         {
             local.SyncState = SyncState.Conflict;
@@ -808,7 +822,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             {
                 ServerId = item.ServerId,
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
-                NoteType = GetStringCaseInsensitive(root, "NoteType") ?? string.Empty,
+                NoteType = GetNoteTypeString(root),
                 DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc,
                 ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? "{}",
                 CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? "[]",
@@ -848,8 +862,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         local.ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson;
         local.CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? local.CptCodesJson;
         local.DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService;
-        local.SignatureHash = serverSignatureHash ?? local.SignatureHash;
-        local.SignedUtc = GetDateTimeCaseInsensitive(root, "SignedUtc") ?? local.SignedUtc;
+        // Server signature state is authoritative — assign directly (including null to clear a stale local value)
+        local.SignatureHash = serverSignatureHash;
+        local.SignedUtc = GetDateTimeCaseInsensitive(root, "SignedUtc");
         local.LastModifiedUtc = item.LastModifiedUtc;
         local.SyncState = SyncState.Synced;
         local.LastSyncedUtc = DateTime.UtcNow;
@@ -891,4 +906,28 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
     private static DateTime? GetDateTime(JsonElement root, string propertyName) =>
         root.TryGetProperty(propertyName, out var el) && el.TryGetDateTime(out var dt) ? dt : null;
+
+    /// <summary>
+    /// Reads NoteType from the payload handling both numeric (System.Text.Json default) and string forms.
+    /// Returns the string name of the enum value (e.g. "Daily"), or empty string if not present.
+    /// </summary>
+    private static string GetNoteTypeString(JsonElement root)
+    {
+        // Try camelCase first, then PascalCase
+        foreach (var key in new[] { "noteType", "NoteType" })
+        {
+            if (!root.TryGetProperty(key, out var el)) continue;
+
+            // Numeric: enum serialised as integer (System.Text.Json default)
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n))
+                return Enum.IsDefined(typeof(Core.Models.NoteType), n)
+                    ? ((Core.Models.NoteType)n).ToString()
+                    : string.Empty;
+
+            // String: enum serialised as name (JsonStringEnumConverter or client-side)
+            if (el.ValueKind == JsonValueKind.String)
+                return el.GetString() ?? string.Empty;
+        }
+        return string.Empty;
+    }
 }

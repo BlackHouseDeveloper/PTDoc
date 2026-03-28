@@ -222,35 +222,59 @@ public class SyncEngine : ISyncEngine
             case "Patient":
                 var patient = await _context.Patients
                     .FirstOrDefaultAsync(p => p.Id == item.EntityId, cancellationToken);
-                if (patient != null)
-                    patient.SyncState = SyncState.Synced;
+                if (patient == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                patient.SyncState = SyncState.Synced;
                 break;
 
             case "Appointment":
                 var appointment = await _context.Appointments
                     .FirstOrDefaultAsync(a => a.Id == item.EntityId, cancellationToken);
-                if (appointment != null)
-                    appointment.SyncState = SyncState.Synced;
+                if (appointment == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                appointment.SyncState = SyncState.Synced;
                 break;
 
             case "IntakeForm":
                 var intakeForm = await _context.IntakeForms
                     .FirstOrDefaultAsync(i => i.Id == item.EntityId, cancellationToken);
-                if (intakeForm != null)
-                    intakeForm.SyncState = SyncState.Synced;
+                if (intakeForm == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                intakeForm.SyncState = SyncState.Synced;
                 break;
 
             case "ClinicalNote":
                 var clinicalNote = await _context.ClinicalNotes
                     .FirstOrDefaultAsync(n => n.Id == item.EntityId, cancellationToken);
-                if (clinicalNote != null)
-                    clinicalNote.SyncState = SyncState.Synced;
+                if (clinicalNote == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                clinicalNote.SyncState = SyncState.Synced;
                 break;
 
             default:
-                _logger.LogDebug("Unknown entity type in sync queue: {EntityType}:{EntityId}",
+                _logger.LogWarning("Unknown entity type in sync queue: {EntityType}:{EntityId}",
                     item.EntityType, item.EntityId);
-                break;
+                return false;
         }
 
         return true;
@@ -573,6 +597,7 @@ public class SyncEngine : ISyncEngine
                         i.ResponseJson,
                         i.PainMapData,
                         i.Consents,
+                        i.TemplateVersion,
                         i.SubmittedAt,
                         i.LastModifiedUtc
                     }, jsonOptions),
@@ -794,11 +819,19 @@ public class SyncEngine : ISyncEngine
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(item.DataJson) || item.DataJson == "{}")
-            return;
+        {
+            _logger.LogWarning(
+                "Client push rejected: empty or blank DataJson payload for {EntityType} with ServerId {ServerId}",
+                entityType, serverId);
+            throw new InvalidOperationException("Client sync item has an empty DataJson payload.");
+        }
 
         // Preserve the original author's identity for audit trail.
-        // Falls back to Guid.Empty when running without an authenticated context (e.g. tests).
-        var actingUserId = _identityContext?.GetCurrentUserId() ?? Guid.Empty;
+        // Falls back to IIdentityContextAccessor.SystemUserId for background/unauthenticated contexts,
+        // and then Guid.Empty when no identity context is configured (e.g. some tests).
+        var actingUserId = _identityContext?.GetCurrentUserId()
+                           ?? _identityContext?.TryGetCurrentUserId()
+                           ?? IIdentityContextAccessor.SystemUserId;
 
         using var doc = JsonDocument.Parse(item.DataJson);
         var root = doc.RootElement;
@@ -838,6 +871,7 @@ public class SyncEngine : ISyncEngine
                 existing.Phone = TryGetString(root, "phone") ?? TryGetString(root, "Phone") ?? existing.Phone;
                 existing.MedicalRecordNumber = TryGetString(root, "medicalRecordNumber") ?? TryGetString(root, "MedicalRecordNumber") ?? existing.MedicalRecordNumber;
                 existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
                 existing.SyncState = SyncState.Synced;
             }
         }
@@ -849,10 +883,21 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientServerId = TryGetGuid(root, "patientServerId") ?? TryGetGuid(root, "PatientServerId") ?? TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var clinicalId = TryGetGuid(root, "clinicalId") ?? TryGetGuid(root, "ClinicalId") ?? Guid.Empty;
+                var apptTypeRaw = TryGetInt(root, "appointmentType") ?? TryGetInt(root, "AppointmentType") ?? 0;
+                var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status") ?? 0;
+
                 var appt = new Appointment
                 {
                     Id = serverId,
                     PatientId = patientServerId,
+                    ClinicalId = clinicalId,
+                    AppointmentType = Enum.IsDefined(typeof(AppointmentType), apptTypeRaw)
+                        ? (AppointmentType)apptTypeRaw
+                        : AppointmentType.FollowUp,
+                    Status = Enum.IsDefined(typeof(AppointmentStatus), statusRaw)
+                        ? (AppointmentStatus)statusRaw
+                        : AppointmentStatus.Scheduled,
                     StartTimeUtc = TryGetDateTime(root, "startTimeUtc") ?? TryGetDateTime(root, "StartTimeUtc") ?? DateTime.MinValue,
                     EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? DateTime.MinValue,
                     Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes"),
@@ -867,7 +912,11 @@ public class SyncEngine : ISyncEngine
                 existing.StartTimeUtc = TryGetDateTime(root, "startTimeUtc") ?? TryGetDateTime(root, "StartTimeUtc") ?? existing.StartTimeUtc;
                 existing.EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? existing.EndTimeUtc;
                 existing.Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes") ?? existing.Notes;
+                var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status");
+                if (statusRaw.HasValue && Enum.IsDefined(typeof(AppointmentStatus), statusRaw.Value))
+                    existing.Status = (AppointmentStatus)statusRaw.Value;
                 existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
                 existing.SyncState = SyncState.Synced;
             }
         }
@@ -888,7 +937,8 @@ public class SyncEngine : ISyncEngine
                     PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? "{}",
                     Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? "{}",
                     TemplateVersion = TryGetString(root, "templateVersion") ?? TryGetString(root, "TemplateVersion") ?? "1.0",
-                    AccessToken = string.Empty,
+                    // AccessToken is required and unique — generate a server-side token for client-pushed intake forms
+                    AccessToken = Guid.NewGuid().ToString("N"),
                     IsLocked = false, // Never trust IsLocked from client push
                     LastModifiedUtc = item.LastModifiedUtc,
                     ModifiedByUserId = actingUserId,
@@ -905,6 +955,7 @@ public class SyncEngine : ISyncEngine
                     existing.PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? existing.PainMapData;
                     existing.Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
                     existing.LastModifiedUtc = item.LastModifiedUtc;
+                    existing.ModifiedByUserId = actingUserId;
                     existing.SyncState = SyncState.Synced;
                 }
             }
@@ -919,10 +970,14 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var noteTypeRaw = TryGetInt(root, "noteType") ?? TryGetInt(root, "NoteType") ?? 0;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
+                    NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
+                        ? (NoteType)noteTypeRaw
+                        : NoteType.Daily,
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
@@ -942,6 +997,7 @@ public class SyncEngine : ISyncEngine
                     existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
                     existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
                     existing.LastModifiedUtc = item.LastModifiedUtc;
+                    existing.ModifiedByUserId = actingUserId;
                     existing.SyncState = SyncState.Synced;
                 }
             }
@@ -978,6 +1034,19 @@ public class SyncEngine : ISyncEngine
             if (el.ValueKind == JsonValueKind.String && Guid.TryParse(el.GetString(), out var g))
                 return g;
         }
+        return null;
+    }
+
+    /// <summary>
+    /// Reads an integer property, supporting both numeric JSON values and string-encoded integers.
+    /// Used for enum fields (NoteType, AppointmentType, AppointmentStatus) which are serialised
+    /// as their underlying integer by default in System.Text.Json.
+    /// </summary>
+    private static int? TryGetInt(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n)) return n;
+        if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
         return null;
     }
     private async Task ArchiveConflictVersionAsync<TEntity>(
