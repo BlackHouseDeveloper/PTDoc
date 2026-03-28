@@ -107,7 +107,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Pending registration created for user {UserId} ({Email})", user.Id, normalizedEmail);
+        logger.LogInformation("Pending registration created for user {UserId}", user.Id);
 
         return new RegistrationResult(RegistrationStatus.PendingApproval, user.Id, null);
     }
