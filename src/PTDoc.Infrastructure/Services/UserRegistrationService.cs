@@ -13,9 +13,15 @@ public sealed class UserRegistrationService : IUserRegistrationService
     [
         new("PT", "Physical Therapist"),
         new("PTA", "Physical Therapist Assistant"),
-        new("Aide", "Front Desk"),
-        new("Admin", "Owner")
+        new("FrontDesk", "Front Desk"),
+        new("Owner", "Owner")
     ];
+
+    private static readonly IReadOnlySet<string> AllowedRoleKeys =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PT", "PTA", "FrontDesk", "Owner"
+        };
 
     private readonly ApplicationDbContext dbContext;
     private readonly ILogger<UserRegistrationService> logger;
@@ -48,7 +54,12 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ClinicNotFound, null, "Selected clinic was not found.");
         }
 
-        var normalizedRole = request.RoleKey.Trim();
+        var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
+        if (!AllowedRoleKeys.Contains(normalizedRole))
+        {
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "The selected role is not valid for registration.");
+        }
+
         var requiresLicense = string.Equals(normalizedRole, "PT", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalizedRole, "PTA", StringComparison.OrdinalIgnoreCase);
 
@@ -139,6 +150,11 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
         }
 
+        if (user.IsActive)
+        {
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "User is already active and cannot be approved again.");
+        }
+
         user.IsActive = true;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -152,6 +168,11 @@ public sealed class UserRegistrationService : IUserRegistrationService
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
+        }
+
+        if (user.IsActive)
+        {
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "Cannot reject an already-active user account.");
         }
 
         dbContext.Users.Remove(user);

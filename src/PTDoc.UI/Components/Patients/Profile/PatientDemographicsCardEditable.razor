@@ -128,9 +128,9 @@
         }
     }
 
-    private void HandleSave()
+    private async Task HandleSave()
     {
-        _ = SaveAsync();
+        await SaveAsync();
     }
 
     private async Task SaveAsync()

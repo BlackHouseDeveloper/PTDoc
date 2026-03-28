@@ -61,14 +61,19 @@
         await LoadPatientsAsync();
     }
 
-    private async Task LoadPatientsAsync(string? query = null)
+    private async Task LoadPatientsAsync(string? query = null, CancellationToken cancellationToken = default)
     {
         isLoading = true;
         StateHasChanged();
         try
         {
-            var results = await PatientService.SearchAsync(query: query, take: 200);
+            var results = await PatientService.SearchAsync(query: query, take: 200, cancellationToken: cancellationToken);
             patients = results.Select(ToVm).ToList();
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer search — ignore stale results.
+            return;
         }
         catch (Exception ex)
         {
@@ -94,7 +99,7 @@
         try
         {
             await Task.Delay(300, token);
-            await LoadPatientsAsync(string.IsNullOrWhiteSpace(value) ? null : value);
+            await LoadPatientsAsync(string.IsNullOrWhiteSpace(value) ? null : value, token);
         }
         catch (TaskCanceledException)
         {

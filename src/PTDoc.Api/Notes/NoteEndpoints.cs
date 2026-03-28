@@ -22,20 +22,25 @@ public static class NoteEndpoints
 {
     public static void MapNoteCrudEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/notes")
+        // Read-only endpoints — NoteRead policy (includes Billing role)
+        var readGroup = app.MapGroup("/api/v1/notes")
+            .WithTags("Notes")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
+        readGroup.MapGet("/", ListNotes)
+            .WithName("ListNotes")
+            .WithSummary("List clinical notes with optional filtering");
+
+        // Write endpoints — NoteWrite policy (PT and PTA only)
+        var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
-        group.MapGet("/", ListNotes)
-            .WithName("ListNotes")
-            .WithSummary("List clinical notes with optional filtering")
-            .RequireAuthorization(AuthorizationPolicies.NoteRead);
-
-        group.MapPost("/", CreateNote)
+        writeGroup.MapPost("/", CreateNote)
             .WithName("CreateNote")
             .WithSummary("Create a new clinical note");
 
-        group.MapPut("/{id:guid}", UpdateNote)
+        writeGroup.MapPut("/{id:guid}", UpdateNote)
             .WithName("UpdateNote")
             .WithSummary("Update a draft clinical note");
     }
@@ -53,8 +58,6 @@ public static class NoteEndpoints
 
         var query = db.ClinicalNotes
             .AsNoTracking()
-            .Include(n => n.Patient)
-            .Include(n => n.ObjectiveMetrics)
             .AsQueryable();
 
         if (patientId.HasValue)
