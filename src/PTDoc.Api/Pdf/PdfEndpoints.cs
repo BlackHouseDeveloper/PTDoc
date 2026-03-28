@@ -17,10 +17,10 @@ public static class PdfEndpoints
     public static void MapPdfEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/notes")
-            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
+            .RequireAuthorization(AuthorizationPolicies.NoteExport)
             .WithTags("PDF Export");
 
-        group.MapPost("/{noteId}/export/pdf", ExportNoteToPdf)
+        group.MapPost("/{noteId:guid}/export/pdf", ExportNoteToPdf)
             .WithName("ExportNoteToPdf");
     }
 
@@ -41,6 +41,17 @@ public static class PdfEndpoints
             if (note == null)
             {
                 return Results.NotFound(new { error = "Clinical note not found" });
+            }
+
+            // Enforce finalized-only export: unsigned notes must not be exported per Medicare rules.
+            // Exporting a draft note could expose incomplete or uncertified clinical content.
+            if (note.SignatureHash is null)
+            {
+                return Results.UnprocessableEntity(new
+                {
+                    error = "Only finalized (signed) notes can be exported as PDF. Sign the note before exporting.",
+                    noteId
+                });
             }
 
             // Map to DTO (Clean Architecture: endpoint loads data, renderer receives DTO)

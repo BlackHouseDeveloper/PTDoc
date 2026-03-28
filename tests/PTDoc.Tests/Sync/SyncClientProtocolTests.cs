@@ -642,9 +642,18 @@ public class SyncClientProtocolTests
         var context = CreateInMemoryContext();
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
 
+        // Create entities in the DB so ProcessQueueItemAsync can find them
+        var userId = Guid.NewGuid();
+        var patient = new Patient { FirstName = "Reconnect", LastName = "User", DateOfBirth = new DateTime(1990, 1, 1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Daily, DateOfService = DateTime.UtcNow, ContentJson = "{}", LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
         // Enqueue offline changes (simulating work done while offline)
-        await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Create);
-        await syncEngine.EnqueueAsync("ClinicalNote", Guid.NewGuid(), SyncOperation.Update);
+        await syncEngine.EnqueueAsync("Patient", patient.Id, SyncOperation.Create);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update);
 
         // Verify offline queue has items
         var statusBefore = await syncEngine.GetQueueStatusAsync();

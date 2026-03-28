@@ -90,6 +90,9 @@ public static class AuthorizationPolicies
     /// <summary>Co-sign clinical notes — PT role only (countersigns PTA-authored notes).</summary>
     public const string NoteCoSign = "NoteCoSign";
 
+    /// <summary>Export clinical notes as PDF — PT, PTA, Admin only. Owner and Billing are read-only per role matrix.</summary>
+    public const string NoteExport = "NoteExport";
+
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
     /// Call this from both <c>PTDoc.Api/Program.cs</c> and authorization tests to ensure
@@ -150,5 +153,10 @@ public static class AuthorizationPolicies
         // NoteCoSign: PT-only endpoint for countersigning PTA-authored notes
         options.AddPolicy(NoteCoSign,
             p => p.RequireRole(Roles.PT));
+
+        // NoteExport: PDF export — clinical staff (PT, PTA) + Admin only.
+        // Owner and Billing are read-only for clinical notes and may not trigger PDF export.
+        options.AddPolicy(NoteExport,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
     }
 }

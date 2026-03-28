@@ -18,6 +18,8 @@ public class LocalDbContext : DbContext
     public DbSet<LocalUserProfile> UserProfiles => Set<LocalUserProfile>();
     public DbSet<LocalPatientSummary> PatientSummaries => Set<LocalPatientSummary>();
     public DbSet<LocalAppointmentSummary> AppointmentSummaries => Set<LocalAppointmentSummary>();
+    public DbSet<LocalIntakeFormDraft> IntakeFormDrafts => Set<LocalIntakeFormDraft>();
+    public DbSet<LocalClinicalNoteDraft> ClinicalNoteDrafts => Set<LocalClinicalNoteDraft>();
     public DbSet<LocalSyncMetadata> SyncMetadata => Set<LocalSyncMetadata>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -69,6 +71,33 @@ public class LocalDbContext : DbContext
             entity.Property(e => e.PatientLastName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.Notes).HasMaxLength(1000);
+        });
+
+        // LocalIntakeFormDraft
+        modelBuilder.Entity<LocalIntakeFormDraft>(entity =>
+        {
+            entity.HasKey(e => e.LocalId);
+            entity.Property(e => e.LocalId).ValueGeneratedOnAdd();
+            entity.HasIndex(e => e.ServerId);
+            entity.HasIndex(e => e.PatientServerId);
+            entity.HasIndex(e => e.SyncState);
+            entity.HasIndex(e => e.IsLocked);
+
+            entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
+        });
+
+        // LocalClinicalNoteDraft
+        modelBuilder.Entity<LocalClinicalNoteDraft>(entity =>
+        {
+            entity.HasKey(e => e.LocalId);
+            entity.Property(e => e.LocalId).ValueGeneratedOnAdd();
+            entity.HasIndex(e => e.ServerId);
+            entity.HasIndex(e => e.PatientServerId);
+            entity.HasIndex(e => e.SyncState);
+            entity.HasIndex(e => e.DateOfService);
+
+            entity.Property(e => e.NoteType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SignatureHash).HasMaxLength(500);
         });
 
         // LocalSyncMetadata
