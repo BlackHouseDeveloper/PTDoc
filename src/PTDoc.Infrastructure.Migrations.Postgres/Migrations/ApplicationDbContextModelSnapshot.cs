@@ -263,6 +263,15 @@ namespace PTDoc.Infrastructure.Migrations.Postgres.Migrations
                     b.Property<DateTime?>("SignedUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("RequiresCoSign")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("CoSignedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CoSignedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("SyncState")
                         .HasColumnType("integer");
 
