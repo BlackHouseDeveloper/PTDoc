@@ -371,9 +371,15 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// </summary>
     private static bool HasNonEmptyContent(JsonElement element, params string[] propertyNames)
     {
+        // Build a case-insensitive lookup of all properties in the element.
+        // JsonElement.TryGetProperty is case-sensitive; we need to support notes serialized
+        // with PascalCase keys (e.g., "Subjective", "ChiefComplaint") as well as camelCase.
+        var allProperties = element.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value, StringComparer.OrdinalIgnoreCase);
+
         foreach (var name in propertyNames)
         {
-            if (!element.TryGetProperty(name, out var prop)) continue;
+            if (!allProperties.TryGetValue(name, out var prop)) continue;
             switch (prop.ValueKind)
             {
                 case JsonValueKind.String:

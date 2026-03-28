@@ -188,20 +188,22 @@ public static class AiEndpoints
         }
 
         // Sprint UC-Gamma AI guardrail: verify the note's actual signing state from the DB.
-        // The IsNoteSigned flag in the request cannot be trusted from the client; we derive
-        // it server-side to ensure ClinicalGenerationService rejects signed notes correctly.
-        var note = await db.ClinicalNotes
+        // Project only Id + SignatureHash to avoid pulling PHI-bearing fields (ContentJson etc.)
+        // into memory when all we need is the signing state.
+        var noteSigning = await db.ClinicalNotes
             .AsNoTracking()
-            .FirstOrDefaultAsync(n => n.Id == request.NoteId, cancellationToken);
+            .Where(n => n.Id == request.NoteId)
+            .Select(n => new { n.Id, n.SignatureHash })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (note is null)
+        if (noteSigning is null)
         {
             return Results.NotFound(new { error = $"Note {request.NoteId} not found." });
         }
 
         // Rebuild the request with the server-authoritative IsNoteSigned value.
         // This prevents the client from bypassing the signed-note guardrail by omitting the flag.
-        var guardedRequest = request with { IsNoteSigned = note.SignatureHash != null };
+        var guardedRequest = request with { IsNoteSigned = noteSigning.SignatureHash != null };
 
         // Generate AI content
         var result = await clinicalService.GenerateGoalNarrativesAsync(guardedRequest, cancellationToken);

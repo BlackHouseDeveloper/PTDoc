@@ -308,6 +308,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.GeneratedText))
@@ -326,9 +327,12 @@ public static class NoteEndpoints
         // from the spec and to guard against unsanitized free-text payloads
         // being written to arbitrary keys in ContentJson.
         if (!ValidSoapSections.Contains(request.Section))
-            return Results.ValidationProblem(new Dictionary<string, string[]>
+            return Results.UnprocessableEntity(new
             {
-                { nameof(request.Section), [$"'{request.Section}' is not a valid SOAP section. Valid values: {string.Join(", ", ValidSoapSections.OrderBy(s => s))}."] }
+                errors = new Dictionary<string, string[]>
+                {
+                    { nameof(request.Section), [$"'{request.Section}' is not a valid SOAP section. Valid values: {string.Join(", ", ValidSoapSections.OrderBy(s => s))}."] }
+                }
             });
 
         if (string.IsNullOrWhiteSpace(request.GenerationType))
@@ -343,6 +347,13 @@ public static class NoteEndpoints
 
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
+
+        // Sprint UC-Gamma: PTA domain guard mirrors UpdateNote.
+        // PTAs cannot modify Eval/PN/Discharge notes even via AI suggestion acceptance.
+        if (PtaIsBlockedFromNoteType(httpContext.User, note.NoteType))
+        {
+            return Results.Forbid();
+        }
 
         // Sprint UC-Gamma AI guardrail: AI content CANNOT be written to a signed note.
         // A signed note is immutable; the clinician must create an addendum instead.
@@ -372,7 +383,10 @@ public static class NoteEndpoints
             AuditEvent.AiGenerationAccepted(note.Id, request.GenerationType, userId),
             cancellationToken);
 
-        return Results.Ok(new { note = ToResponse(note) });
+        return Results.Ok(new NoteOperationResponse
+        {
+            Note = ToResponse(note)
+        });
     }
 
     // GET /api/notes/carry-forward?patientId={id}&noteType={type}
@@ -464,8 +478,16 @@ public static class NoteEndpoints
         }
 
         content ??= new Dictionary<string, object>();
-        content[section.ToLowerInvariant()] = generatedText;
-        return JsonSerializer.Serialize(content);
+
+        // Normalize all existing keys to lower-case to prevent duplicate entries that differ
+        // only in casing (e.g., "Assessment" and "assessment" both present).
+        var normalized = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var kvp in content)
+            normalized[kvp.Key?.ToLowerInvariant() ?? string.Empty] = kvp.Value;
+
+        // Always store the target section key in lower-case, overwriting any prior value.
+        normalized[section.ToLowerInvariant()] = generatedText;
+        return JsonSerializer.Serialize(normalized);
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

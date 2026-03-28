@@ -167,6 +167,53 @@ public class SoapGammaEnforcementTests : IDisposable
     }
 
     [Fact]
+    public void MergeAiContentIntoSection_NormalizesExistingMixedCaseKeys()
+    {
+        // If ContentJson was saved with PascalCase keys (e.g. from an older serializer),
+        // the merge must normalize them to lower-case and avoid creating duplicate keys.
+        const string initial = """{"Assessment":"existing AI text","Subjective":"chief complaint"}""";
+        var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
+            initial, "plan", "new plan text");
+
+        var doc = JsonDocument.Parse(result);
+
+        // Original PascalCase keys must be gone
+        Assert.False(doc.RootElement.TryGetProperty("Assessment", out _),
+            "PascalCase key 'Assessment' must be normalized away.");
+        Assert.False(doc.RootElement.TryGetProperty("Subjective", out _),
+            "PascalCase key 'Subjective' must be normalized away.");
+
+        // Normalized lower-case keys must be present
+        Assert.True(doc.RootElement.TryGetProperty("assessment", out var a));
+        Assert.Equal("existing AI text", a.GetString());
+        Assert.True(doc.RootElement.TryGetProperty("subjective", out var s));
+        Assert.Equal("chief complaint", s.GetString());
+        Assert.True(doc.RootElement.TryGetProperty("plan", out var p));
+        Assert.Equal("new plan text", p.GetString());
+
+        // Total key count must be exactly 3 (no duplicates)
+        Assert.Equal(3, doc.RootElement.EnumerateObject().Count());
+    }
+
+    [Fact]
+    public void MergeAiContentIntoSection_OverwritesMixedCaseDuplicate()
+    {
+        // If ContentJson has both "Assessment" and "assessment", the merge must keep only one
+        // normalized key with the merged value.
+        const string initial = """{"Assessment":"old value","assessment":"also old"}""";
+        var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
+            initial, "assessment", "new AI text");
+
+        var doc = JsonDocument.Parse(result);
+
+        // Only one assessment key must remain
+        var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Single(keys.Where(k => string.Equals(k, "assessment", StringComparison.OrdinalIgnoreCase)));
+        Assert.True(doc.RootElement.TryGetProperty("assessment", out var a));
+        Assert.Equal("new AI text", a.GetString());
+    }
+
+    [Fact]
     public async Task AcceptAiSuggestion_IsBlocked_OnSignedNote()
     {
         // Arrange: a signed note — AI content must NOT be written to it.
@@ -595,6 +642,66 @@ public class SoapGammaEnforcementTests : IDisposable
 
         Assert.False(serverDerivedIsNoteSigned,
             "Server-derived IsNoteSigned must be false for a draft note (AI generation allowed).");
+    }
+
+    // ── 11. AcceptAiSuggestion PTA domain guard ───────────────────────────────
+
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    public void PTA_IsBlocked_FromAcceptingAiSuggestion_OnNonDailyNotes(NoteType blockedType)
+    {
+        // The PTA guard applied in AcceptAiSuggestion uses the same PtaIsBlockedFromNoteType
+        // helper. PTAs must not be able to modify Eval/PN/Discharge notes via AI acceptance.
+        var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
+
+        var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, blockedType);
+
+        Assert.True(isBlocked,
+            $"PTA should be blocked from accepting AI suggestions on {blockedType} notes.");
+    }
+
+    [Fact]
+    public void PTA_IsAllowed_AcceptingAiSuggestion_OnDailyNote()
+    {
+        var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
+
+        var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, NoteType.Daily);
+
+        Assert.False(isBlocked, "PTA should be allowed to accept AI suggestions on Daily notes.");
+    }
+
+    // ── 12. HasNonEmptyContent case-insensitivity ─────────────────────────────
+
+    [Theory]
+    [InlineData("""{"Subjective":"chief complaint value"}""", "subjective")]
+    [InlineData("""{"SUBJECTIVE":"chief complaint value"}""", "subjective")]
+    [InlineData("""{"ChiefComplaint":"chief complaint value"}""", "chiefComplaint")]
+    [InlineData("""{"CHIEFCOMPLAINT":"chief complaint value"}""", "chiefComplaint")]
+    public async Task SoapSubjective_PascalCaseFieldName_DoesNotFireRule(string contentJson, string fieldName)
+    {
+        // ClinicalRulesEngine.HasNonEmptyContent must match field names case-insensitively.
+        // A note saved with PascalCase JSON keys should satisfy the SOAP_SUBJECTIVE rule.
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ContentJson = contentJson
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var results = await _clinicalRulesEngine.RunClinicalValidationAsync(note.Id);
+
+        var hasSoapSubjectiveViolation = results.Any(r => r.RuleId == "SOAP_SUBJECTIVE");
+        Assert.False(hasSoapSubjectiveViolation,
+            $"Field '{fieldName}' (via case-insensitive lookup) must satisfy the SOAP_SUBJECTIVE rule.");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
