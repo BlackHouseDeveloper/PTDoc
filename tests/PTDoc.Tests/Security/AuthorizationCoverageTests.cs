@@ -181,8 +181,9 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/patient/{patientId:guid}/draft",              AuthorizationPolicies.IntakeRead),
         new("PUT",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeWrite),
-        new("POST", "/api/v1/intake/{id:guid}/submit",                            AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/{id:guid}/submit",                            AuthorizationPolicies.IntakeRead),
         new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/{id:guid}/review",                            AuthorizationPolicies.ClinicalStaff),
 
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
