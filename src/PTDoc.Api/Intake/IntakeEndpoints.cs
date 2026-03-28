@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -47,12 +48,17 @@ public static class IntakeEndpoints
         group.MapPost("/{id:guid}/submit", SubmitIntake)
             .WithName("SubmitIntake")
             .WithSummary("Submit and lock an intake response")
-            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
 
         group.MapPost("/{id:guid}/lock", LockIntake)
             .WithName("LockIntake")
             .WithSummary("Lock an intake response")
             .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
+        group.MapPost("/{id:guid}/review", ReviewIntake)
+            .WithName("ReviewIntake")
+            .WithSummary("Mark a submitted intake as reviewed by a clinician")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
     }
 
     // POST /api/v1/intake
@@ -187,6 +193,7 @@ public static class IntakeEndpoints
         Guid id,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -233,6 +240,10 @@ public static class IntakeEndpoints
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await auditService.LogIntakeEventAsync(
+            AuditEvent.IntakeSubmitted(intake.Id, intake.ModifiedByUserId), cancellationToken);
+
         return Results.Ok(ToResponse(intake));
     }
 
@@ -241,6 +252,7 @@ public static class IntakeEndpoints
         Guid id,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -258,6 +270,36 @@ public static class IntakeEndpoints
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await auditService.LogIntakeEventAsync(
+            AuditEvent.IntakeLocked(intake.Id, intake.ModifiedByUserId), cancellationToken);
+
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // POST /api/v1/intake/{id}/review
+    internal static async Task<IResult> ReviewIntake(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (!intake.IsLocked)
+            return Results.Conflict(new { error = "Intake must be submitted and locked before it can be reviewed." });
+
+        var reviewerId = identityContext.GetCurrentUserId();
+
+        await auditService.LogIntakeEventAsync(
+            AuditEvent.IntakeReviewed(intake.Id, reviewerId), cancellationToken);
+
         return Results.Ok(ToResponse(intake));
     }
 

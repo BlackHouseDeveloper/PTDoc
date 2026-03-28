@@ -307,8 +307,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var submittingUserId = Guid.NewGuid();
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(submittingUserId);
 
+        var auditMock = new Mock<IAuditService>();
+
         // Act: call the real SubmitIntake handler (not direct entity mutation)
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
 
         // Assert: returned 200 OK
         Assert.IsType<Ok<IntakeResponse>>(result);
@@ -344,8 +346,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var identityMock = new Mock<IIdentityContextAccessor>();
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
 
+        var auditMock = new Mock<IAuditService>();
+
         // Act: call the real SubmitIntake handler on an already-locked form
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
 
         // Assert: the real handler returns 409 Conflict (not BadRequest or OK)
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
@@ -359,7 +363,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var identityMock = new Mock<IIdentityContextAccessor>();
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
 
-        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, CancellationToken.None);
+        var auditMock = new Mock<IAuditService>();
+        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, auditMock.Object, CancellationToken.None);
 
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(404, statusResult.StatusCode);
@@ -370,6 +375,166 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     {
         // The /submit endpoint uses IntakeRead (includes Patient).
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeRead, Roles.Patient));
+    }
+
+    // ─── U-C Beta: Intake workflow completion and role boundaries ─────────────
+
+    [Fact]
+    public async Task UCBeta_Patient_CannotAccessClinicalNotes_NoteReadDenied()
+    {
+        // Sprint UC-Beta: Patient must not access clinical SOAP data.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteRead, Roles.Patient));
+    }
+
+    [Fact]
+    public async Task UCBeta_Patient_CannotWriteClinicalNotes_NoteWriteDenied()
+    {
+        // Sprint UC-Beta: Patient cannot create or edit clinical note content.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.Patient));
+    }
+
+    [Fact]
+    public async Task UCBeta_FrontDesk_CanManageIntake_IntakeWriteAllowed()
+    {
+        // Sprint UC-Beta: Front Desk manages the intake workflow.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeWrite, Roles.FrontDesk));
+    }
+
+    [Fact]
+    public async Task UCBeta_FrontDesk_CannotWriteClinicalSOAP_NoteWriteDenied()
+    {
+        // Sprint UC-Beta: Front Desk must not edit clinical SOAP content.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.FrontDesk));
+    }
+
+    [Fact]
+    public async Task UCBeta_Clinician_CanReviewIntake_ClinicalStaffAllowed()
+    {
+        // Sprint UC-Beta: Clinicians can review submitted intakes (ClinicalStaff policy).
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.ClinicalStaff, Roles.PT));
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.ClinicalStaff, Roles.PTA));
+    }
+
+    [Fact]
+    public async Task UCBeta_Patient_CannotReviewIntake_ClinicalStaffDenied()
+    {
+        // Sprint UC-Beta: Patient cannot invoke clinician review of intake.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.ClinicalStaff, Roles.Patient));
+    }
+
+    [Fact]
+    public async Task UCBeta_FrontDesk_CannotReviewIntake_ClinicalStaffDenied()
+    {
+        // Sprint UC-Beta: Front Desk manages workflow but does not perform clinical review.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.ClinicalStaff, Roles.FrontDesk));
+    }
+
+    [Fact]
+    public async Task UCBeta_ReviewIntake_RequiresLockedForm_Returns409WhenUnlocked()
+    {
+        // Sprint UC-Beta: Clinician can only review a submitted (locked) intake.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = false,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(409, statusResult.StatusCode);
+        auditMock.Verify(a => a.LogIntakeEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UCBeta_ReviewIntake_LogsAuditEvent_WhenIntakeIsLocked()
+    {
+        // Sprint UC-Beta: Clinician review of a submitted intake logs an audit event.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var reviewerId = Guid.NewGuid();
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(reviewerId);
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+
+        Assert.IsType<Ok<IntakeResponse>>(result);
+        auditMock.Verify(
+            a => a.LogIntakeEventAsync(
+                It.Is<AuditEvent>(e => e.EventType == "IntakeReviewed" && e.UserId == reviewerId && e.EntityId == intake.Id),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UCBeta_SubmitIntake_LogsAuditEvent()
+    {
+        // Sprint UC-Beta: Intake submission logs an audit event.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = false,
+            ResponseJson = "{}",
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var submitterId = Guid.NewGuid();
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(submitterId);
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+
+        Assert.IsType<Ok<IntakeResponse>>(result);
+        auditMock.Verify(
+            a => a.LogIntakeEventAsync(
+                It.Is<AuditEvent>(e => e.EventType == "IntakeSubmitted" && e.UserId == submitterId),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     // ─── U-C3: AI not persisted before acceptance ────────────────────────────
