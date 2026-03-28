@@ -140,6 +140,9 @@ public sealed class NoteListItemApiResponse
     public DateTime DateOfService { get; set; }
     public DateTime LastModifiedUtc { get; set; }
     public string CptCodesJson { get; set; } = "[]";
+}
+
+/// <summary>
 /// Request DTO for accepting AI-generated content into a specific section of a draft note.
 ///
 /// This is the explicit clinician acceptance gate required by Sprint UC-Gamma:

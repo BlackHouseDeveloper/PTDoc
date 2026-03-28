@@ -70,10 +70,6 @@ public static class NoteEndpoints
         // Returns the most recent signed note eligible as a carry-forward source for the
         // given patient and target note type. NoteRead policy — accessible to clinical staff
         // and billing; NoteWrite not required since this is a read operation.
-        var readGroup = app.MapGroup("/api/v1/notes")
-            .WithTags("Notes")
-            .RequireAuthorization(AuthorizationPolicies.NoteRead);
-
         readGroup.MapGet("/carry-forward", GetCarryForward)
             .WithName("GetCarryForward")
             .WithSummary("Get carry-forward data from the most recent signed note for a patient")
