@@ -456,6 +456,10 @@ public static class NoteEndpoints
         }
         catch (JsonException)
         {
+            // Treat malformed ContentJson as an empty document rather than propagating an
+            // error. This intentionally recovers gracefully: the accepted AI text is still
+            // written into the section, and the note's content can be corrected on the next
+            // full save. Surfacing a 500 here would silently discard clinician acceptance work.
             content = null;
         }
 
