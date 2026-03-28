@@ -7,6 +7,7 @@ using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace PTDoc.Api.Intake;
 
@@ -33,17 +34,25 @@ public static class IntakeEndpoints
             .WithSummary("Get an intake response by ID")
             .RequireAuthorization(AuthorizationPolicies.IntakeRead);
 
-        // Sprint UC2: Lock (submit) intake after patient completion — prevents further editing.
-        // Patient can submit their own form; Front Desk and clinical staff can lock on behalf.
-        // Uses IntakeRead (which includes Patient) rather than IntakeWrite so patients can
-        // submit/lock their own intake forms without requiring full write permissions.
-        // Note: IntakeRead still requires authentication; ownership/tenancy is enforced
-        // inside the handler via tenant context — only intake forms visible to the caller
-        // can be submitted.
+        group.MapGet("/patient/{patientId:guid}/draft", GetDraftByPatient)
+            .WithName("GetPatientDraftIntake")
+            .WithSummary("Get most recent intake draft for a patient")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
+        group.MapPut("/{id:guid}", UpdateIntake)
+            .WithName("UpdateIntake")
+            .WithSummary("Update an existing intake draft")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
         group.MapPost("/{id:guid}/submit", SubmitIntake)
             .WithName("SubmitIntake")
-            .WithSummary("Lock an intake form after submission — prevents further editing")
-            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+            .WithSummary("Submit and lock an intake response")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
+        group.MapPost("/{id:guid}/lock", LockIntake)
+            .WithName("LockIntake")
+            .WithSummary("Lock an intake response")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
     }
 
     // POST /api/v1/intake
@@ -118,9 +127,62 @@ public static class IntakeEndpoints
         return Results.Ok(ToResponse(intake));
     }
 
+    // GET /api/v1/intake/patient/{patientId}/draft
+    private static async Task<IResult> GetDraftByPatient(
+        Guid patientId,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .OrderByDescending(f => f.LastModifiedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
+
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // PUT /api/v1/intake/{id}
+    private static async Task<IResult> UpdateIntake(
+        Guid id,
+        [FromBody] UpdateIntakeRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (intake.IsLocked)
+            return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
+
+        intake.PainMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
+        intake.Consents = string.IsNullOrWhiteSpace(request.Consents) ? "{}" : request.Consents;
+        intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+
+        var templateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? "1.0" : request.TemplateVersion;
+        if (templateVersion.Length > 50)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.TemplateVersion), ["TemplateVersion must not exceed 50 characters."] }
+            });
+
+        intake.TemplateVersion = templateVersion;
+        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(ToResponse(intake));
+    }
+
     // POST /api/v1/intake/{id}/submit
-    // Sprint UC2: Lock the intake form to prevent further editing after patient submission.
-    // Internal visibility allows direct handler tests in PTDoc.Tests.
     internal static async Task<IResult> SubmitIntake(
         Guid id,
         [FromServices] ApplicationDbContext db,
@@ -134,18 +196,68 @@ public static class IntakeEndpoints
             return Results.NotFound(new { error = $"Intake {id} not found." });
 
         if (intake.IsLocked)
-            return Results.Conflict(new { error = "Intake form is already locked." });
+            return Results.Conflict(new { error = "Intake is already locked." });
 
-        var userId = identityContext.GetCurrentUserId();
+        if (string.IsNullOrWhiteSpace(intake.Consents) || intake.Consents == "{}")
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(IntakeForm.Consents), ["Consents must be completed before submission."] }
+            });
 
+        // Enforce server-side HIPAA acknowledgement requirement
+        try
+        {
+            using var consentDoc = JsonDocument.Parse(intake.Consents);
+            if (!consentDoc.RootElement.TryGetProperty("hipaaAcknowledged", out var hipaaElement)
+                || hipaaElement.ValueKind != JsonValueKind.True)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { "hipaaAcknowledged", ["HIPAA acknowledgement is required before submission."] }
+                });
+            }
+        }
+        catch (JsonException)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(IntakeForm.Consents), ["Consents data is not valid JSON."] }
+            });
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        intake.SubmittedAt = intake.SubmittedAt ?? nowUtc;
         intake.IsLocked = true;
-        intake.SubmittedAt = DateTime.UtcNow;
-        intake.LastModifiedUtc = DateTime.UtcNow;
-        intake.ModifiedByUserId = userId;
+        intake.LastModifiedUtc = nowUtc;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(ToResponse(intake));
+    }
 
+    // POST /api/v1/intake/{id}/lock
+    private static async Task<IResult> LockIntake(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        if (intake.IsLocked)
+            return Results.Ok(ToResponse(intake));
+
+        intake.IsLocked = true;
+        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.ModifiedByUserId = identityContext.GetCurrentUserId();
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
         return Results.Ok(ToResponse(intake));
     }
 
