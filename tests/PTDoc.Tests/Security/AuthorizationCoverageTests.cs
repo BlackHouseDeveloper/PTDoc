@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Services;
 using Xunit;
 
@@ -28,29 +30,20 @@ namespace PTDoc.Tests.Security;
 public class AuthorizationCoverageTests
 {
     /// <summary>
-    /// Verifies that every route in the inventory references a known, registered policy name
-    /// (or is explicitly flagged as intentionally anonymous).
-    /// A typo in a policy name or an unregistered policy will cause this test to fail,
-    /// preventing a misconfigured authorization decorator from silently becoming a no-op.
+    /// Verifies that every route in the inventory references a policy that is actually
+    /// registered via <see cref="AuthorizationPolicies.AddPTDocAuthorizationPolicies"/>.
+    /// Catching a typo or an unregistered policy prevents a misconfigured authorization
+    /// decorator from silently becoming a no-op at runtime.
     /// </summary>
     [Fact]
     public void AllInventoryEntries_ReferenceKnownPolicies()
     {
-        var knownPolicies = new HashSet<string>
-        {
-            AuthorizationPolicies.PatientRead,
-            AuthorizationPolicies.PatientWrite,
-            AuthorizationPolicies.NoteRead,
-            AuthorizationPolicies.NoteWrite,
-            AuthorizationPolicies.NoteCoSign,
-            AuthorizationPolicies.IntakeRead,
-            AuthorizationPolicies.IntakeWrite,
-            AuthorizationPolicies.ClinicalStaff,
-            AuthorizationPolicies.AdminOnly,
-            AuthorizationPolicies.BillingAccess,
-            AuthorizationPolicies.SchedulingAccess,
-            AuthorizationPolicies.PatientHepAccess,
-        };
+        // Build the live authorization options using the same registration as Program.cs.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        var sp = services.BuildServiceProvider();
+        var authOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
 
         var inventory = BuildInventory();
         Assert.NotEmpty(inventory);
@@ -67,9 +60,11 @@ public class AuthorizationCoverageTests
                 $"Route [{entry.Method}] {entry.Route} is not marked anonymous but has no RequiredPolicy. " +
                 "Add an authorization policy or mark it IsIntentionallyAnonymous.");
 
-            Assert.True(knownPolicies.Contains(entry.RequiredPolicy!),
-                $"Route [{entry.Method}] {entry.Route} references unknown policy '{entry.RequiredPolicy}'. " +
-                "Add it to knownPolicies or correct the policy name in the inventory.");
+            var policy = authOptions.GetPolicy(entry.RequiredPolicy!);
+            Assert.True(policy is not null,
+                $"Route [{entry.Method}] {entry.Route} references policy '{entry.RequiredPolicy}' " +
+                "which is not registered by AddPTDocAuthorizationPolicies(). " +
+                "Correct the policy name or add it to the registration.");
         }
     }
 
@@ -92,15 +87,15 @@ public class AuthorizationCoverageTests
         // Intake
         Assert.Contains(routes, r => r.StartsWith("/api/v1/intake"));
         // Notes (draft CRUD)
-        Assert.Contains(routes, r => r == "/api/v1/notes" || r == "/api/v1/notes/{id}");
+        Assert.Contains(routes, r => r == "/api/v1/notes" || r == "/api/v1/notes/{id:guid}");
         // Compliance / signatures
-        Assert.Contains(routes, r => r == "/api/v1/notes/{noteId}/sign" || r == "/api/v1/notes/{noteId}/co-sign" || r == "/api/v1/notes/{noteId}/addendum");
+        Assert.Contains(routes, r => r == "/api/v1/notes/{noteId:guid}/sign" || r == "/api/v1/notes/{noteId:guid}/co-sign" || r == "/api/v1/notes/{noteId:guid}/addendum");
         // Sync
         Assert.Contains(routes, r => r.StartsWith("/api/v1/sync"));
         // AI generation
         Assert.Contains(routes, r => r.StartsWith("/api/v1/ai"));
         // PDF export
-        Assert.Contains(routes, r => r == "/api/v1/notes/{noteId}/export/pdf");
+        Assert.Contains(routes, r => r == "/api/v1/notes/{noteId:guid}/export/pdf");
         // Diagnostics
         Assert.Contains(routes, r => r.StartsWith("/diagnostics"));
         // Auth (intentionally anonymous)
@@ -175,36 +170,36 @@ public class AuthorizationCoverageTests
         new("GET", "/health/ready", null, IsIntentionallyAnonymous: true),
 
         // ── Patients (Patients/PatientEndpoints.cs) ──────────────────────────
-        new("POST", "/api/v1/patients",              AuthorizationPolicies.PatientWrite),
-        new("GET",  "/api/v1/patients",              AuthorizationPolicies.IntakeWrite),
-        new("GET",  "/api/v1/patients/{id}",         AuthorizationPolicies.PatientRead),
-        new("PUT",  "/api/v1/patients/{id}",         AuthorizationPolicies.PatientWrite),
-        new("GET",  "/api/v1/patients/{id}/notes",   AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v1/patients",                    AuthorizationPolicies.PatientWrite),
+        new("GET",  "/api/v1/patients",                    AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientRead),
+        new("PUT",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientWrite),
+        new("GET",  "/api/v1/patients/{id:guid}/notes",    AuthorizationPolicies.NoteRead),
 
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
-        new("POST", "/api/v1/intake",                              AuthorizationPolicies.IntakeWrite),
-        new("GET",  "/api/v1/intake/{id}",                         AuthorizationPolicies.IntakeRead),
-        new("GET",  "/api/v1/intake/patient/{patientId}/draft",    AuthorizationPolicies.IntakeRead),
-        new("PUT",  "/api/v1/intake/{id}",                         AuthorizationPolicies.IntakeWrite),
-        new("POST", "/api/v1/intake/{id}/submit",                  AuthorizationPolicies.IntakeWrite),
-        new("POST", "/api/v1/intake/{id}/lock",                    AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/intake/patient/{patientId:guid}/draft",              AuthorizationPolicies.IntakeRead),
+        new("PUT",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/{id:guid}/submit",                            AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
 
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
-        new("POST", "/api/v1/notes",       AuthorizationPolicies.NoteWrite),
-        new("PUT",  "/api/v1/notes/{id}",  AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
+        new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),
 
         // ── Compliance rule evaluation (Compliance/ComplianceEndpoints.cs) ────
-        new("POST", "/api/v1/compliance/evaluate/pn-frequency/{patientId}",  AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/compliance/evaluate/8-minute-rule",              AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/compliance/evaluate/signature-eligible/{noteId}", AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/compliance/evaluate/immutability/{noteId}",       AuthorizationPolicies.ClinicalStaff),
-        new("GET",  "/api/v1/compliance/validate/clinical/{noteId}",           AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/compliance/evaluate/pn-frequency/{patientId:guid}",    AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/compliance/evaluate/8-minute-rule",                    AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/compliance/evaluate/signature-eligible/{noteId:guid}", AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/compliance/evaluate/immutability/{noteId:guid}",       AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/compliance/validate/clinical/{noteId:guid}",           AuthorizationPolicies.ClinicalStaff),
 
         // ── Note signatures and addendums (Compliance/ComplianceEndpoints.cs) ─
-        new("POST", "/api/v1/notes/{noteId}/sign",             AuthorizationPolicies.NoteWrite),
-        new("POST", "/api/v1/notes/{noteId}/co-sign",          AuthorizationPolicies.NoteCoSign),
-        new("POST", "/api/v1/notes/{noteId}/addendum",         AuthorizationPolicies.NoteWrite),
-        new("GET",  "/api/v1/notes/{noteId}/verify-signature", AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v1/notes/{noteId:guid}/sign",             AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/notes/{noteId:guid}/co-sign",          AuthorizationPolicies.NoteCoSign),
+        new("POST", "/api/v1/notes/{noteId:guid}/addendum",         AuthorizationPolicies.NoteWrite),
+        new("GET",  "/api/v1/notes/{noteId:guid}/verify-signature", AuthorizationPolicies.NoteRead),
 
         // ── Sync (Sync/SyncEndpoints.cs) ──────────────────────────────────────
         new("POST", "/api/v1/sync/run",          AuthorizationPolicies.ClinicalStaff),
@@ -220,20 +215,20 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/ai/goals",       AuthorizationPolicies.ClinicalStaff),
 
         // ── PDF export (Pdf/PdfEndpoints.cs) ─────────────────────────────────
-        new("POST", "/api/v1/notes/{noteId}/export/pdf", AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.ClinicalStaff),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
 
         // ── Integrations (Integrations/IntegrationEndpoints.cs) ───────────────
-        new("POST", "/api/v1/integrations/payment/process",                 AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/integrations/fax/send",                        AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/integrations/hep/assign",                      AuthorizationPolicies.ClinicalStaff),
-        new("GET",  "/api/v1/integrations/hep/patient-launch",              AuthorizationPolicies.PatientHepAccess),
+        new("POST", "/api/v1/integrations/payment/process",                         AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/integrations/fax/send",                                AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/integrations/hep/assign",                              AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/integrations/hep/patient-launch",                      AuthorizationPolicies.PatientHepAccess),
         // Launch callback uses a URL-embedded token; AllowAnonymous is intentional.
-        new("GET",  "/api/v1/integrations/hep/patient-launch/{launchToken}", null, IsIntentionallyAnonymous: true),
-        new("POST", "/api/v1/integrations/mappings/{patientId}",            AuthorizationPolicies.ClinicalStaff),
-        new("GET",  "/api/v1/integrations/mappings/patient/{patientId}",    AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/integrations/hep/patient-launch/{launchToken}",        null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/integrations/mappings/{patientId:guid}",               AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/integrations/mappings/patient/{patientId:guid}",       AuthorizationPolicies.ClinicalStaff),
     ];
 
     // ─────────────────────────────────────────────────────────────────────────

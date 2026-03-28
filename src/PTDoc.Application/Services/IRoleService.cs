@@ -57,7 +57,7 @@ public static class AuthorizationPolicies
     /// <summary>Patient-only access to the Wibbi launch broker.</summary>
     public const string PatientHepAccess = "PatientHepAccess";
 
-    /// <summary>Read patient demographics — PT, PTA, Admin, Aide, FrontDesk, Billing.</summary>
+    /// <summary>Read patient demographics — PT, PTA, Admin, Owner, Aide, FrontDesk, Billing.</summary>
     public const string PatientRead = "PatientRead";
 
     /// <summary>Create/update patient records — PT, PTA, Admin (Owner is read-only per Role→Capability matrix).</summary>
@@ -69,7 +69,7 @@ public static class AuthorizationPolicies
     /// <summary>Create/update draft notes — PT, PTA only (no Admin, Owner, Billing, FrontDesk, Aide, Patient).</summary>
     public const string NoteWrite = "NoteWrite";
 
-    /// <summary>Read or submit intake forms — PT, PTA, Admin, Patient, FrontDesk.</summary>
+    /// <summary>Read or submit intake forms — PT, PTA, Admin, Owner, Patient, FrontDesk.</summary>
     public const string IntakeRead = "IntakeRead";
 
     /// <summary>Create/manage intake forms — PT, PTA, Admin, FrontDesk (Owner is read-only per Role→Capability matrix).</summary>
