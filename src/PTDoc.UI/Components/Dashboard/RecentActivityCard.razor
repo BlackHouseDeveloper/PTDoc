@@ -1,4 +1,5 @@
 @using PTDoc.Application.Dashboard
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
 @* Recent Activity Card - Shows recent system activities and updates *@
 
@@ -78,8 +79,7 @@
     
     private void HandleViewAll()
     {
-        // TODO: Navigate to activity log page
-        Console.WriteLine("Navigate to activity log");
+        Navigation.NavigateTo("/notes");
     }
     
     private string GetActivityColor(ActivityType type)

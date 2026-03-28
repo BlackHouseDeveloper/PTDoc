@@ -5,6 +5,9 @@
 @inject IDashboardService DashboardService
 @inject IThemeService ThemeService
 @inject NavigationManager Navigation
+@inject IPatientService PatientService
+@inject IIntakeService IntakeService
+@inject IToastService ToastService
 @rendermode InteractiveServer
 @implements IDisposable
 
@@ -89,20 +92,31 @@
     private bool isSendIntakeModalOpen = false;
     private System.Timers.Timer? _autoRefreshTimer;
     
-    // Mock patient data for dropdown (to be replaced with actual API call)
-    private List<SendIntakeModal.PatientOption> availablePatients = new()
-    {
-        new SendIntakeModal.PatientOption { Id = "1", Name = "John Smith" },
-        new SendIntakeModal.PatientOption { Id = "2", Name = "Sarah Johnson" },
-        new SendIntakeModal.PatientOption { Id = "3", Name = "Michael Brown" },
-        new SendIntakeModal.PatientOption { Id = "4", Name = "Emily Davis" },
-        new SendIntakeModal.PatientOption { Id = "5", Name = "David Wilson" }
-    };
+    private List<SendIntakeModal.PatientOption> availablePatients = new();
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDashboardData();
+        await Task.WhenAll(LoadDashboardData(), LoadAvailablePatientsAsync());
         SetupAutoRefresh();
+    }
+
+    private async Task LoadAvailablePatientsAsync()
+    {
+        try
+        {
+            var patients = await PatientService.SearchAsync(query: null, take: 200);
+            availablePatients = patients
+                .Select(p => new SendIntakeModal.PatientOption
+                {
+                    Id = p.Id.ToString(),
+                    Name = $"{p.FirstName} {p.LastName}"
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dashboard] Error loading patient list: {ex.Message}");
+        }
     }
 
     private async Task LoadDashboardData()
@@ -173,34 +187,53 @@
         isSendIntakeModalOpen = true;
     }
 
-    private void HandlePatientSubmit(AddPatientModal.PatientFormData formData)
+    private async Task HandlePatientSubmit(AddPatientModal.PatientFormData formData)
     {
-        // TODO: Implement actual patient creation via API
-        Console.WriteLine($"Creating patient: {formData.FirstName} {formData.LastName}");
-        Console.WriteLine($"Email: {formData.Email}");
-        
-        // In a real app, you would call a service here:
-        // await PatientService.CreatePatientAsync(formData);
-        
-        // Show success notification (to be implemented)
-        // TODO: Add toast notification or success message
-        
-        // Refresh dashboard to show new patient
-        _ = LoadDashboardData();
+        try
+        {
+            var request = new PTDoc.Application.DTOs.CreatePatientRequest
+            {
+                FirstName = formData.FirstName,
+                LastName = formData.LastName,
+                DateOfBirth = formData.DateOfBirth ?? DateTime.Today,
+                Email = formData.Email,
+                Phone = formData.PhoneNumber
+            };
+            var created = await PatientService.CreateAsync(request);
+            ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
+            await Task.WhenAll(LoadDashboardData(), LoadAvailablePatientsAsync());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dashboard] Error creating patient: {ex.Message}");
+            ToastService.ShowError("Failed to create patient. Please try again.");
+        }
     }
 
-    private void HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
+    private async Task HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
     {
-        // TODO: Implement actual intake form sending via API
-        Console.WriteLine($"Sending intake form to patient ID: {formData.PatientId}");
-        Console.WriteLine($"Email: {formData.Email}");
-        Console.WriteLine($"Phone: {formData.PhoneNumber}");
-        
-        // In a real app, you would call a service here:
-        // await IntakeService.SendIntakeFormAsync(formData);
-        
-        // Show success notification (to be implemented)
-        // TODO: Add toast notification or success message
+        if (!Guid.TryParse(formData.PatientId, out var patientGuid))
+        {
+            ToastService.ShowError("Invalid patient selected.");
+            return;
+        }
+
+        try
+        {
+            var draft = new PTDoc.Application.Services.IntakeResponseDraft
+            {
+                PatientId = patientGuid,
+                EmailAddress = formData.Email,
+                PhoneNumber = formData.PhoneNumber
+            };
+            await IntakeService.SaveDraftAsync(draft);
+            ToastService.ShowSuccess("Intake form created. Share the intake link with the patient to complete.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Dashboard] Error creating intake draft: {ex.Message}");
+            ToastService.ShowError("Failed to create intake form. Please try again.");
+        }
     }
 
     public void Dispose()

@@ -28,11 +28,15 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<IUserService, WebUserService>();
+builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+builder.Services.AddScoped<IPatientService, PatientApiService>();
+builder.Services.AddScoped<INoteService, NoteListApiService>();
+builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
@@ -324,6 +328,17 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
     using (authResponse)
     {
+        if (authResponse.StatusCode == HttpStatusCode.Forbidden)
+        {
+            var errorResponse = await authResponse.Content.ReadFromJsonAsync<WebAuthErrorResponse>(cancellationToken: httpContext.RequestAborted);
+            if (string.Equals(errorResponse?.Status, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Redirect("/login?pending_approval=1");
+            }
+
+            return Results.Redirect("/login?error=1");
+        }
+
         if (authResponse.StatusCode == HttpStatusCode.Unauthorized)
         {
             return Results.Redirect("/login?error=1");
@@ -460,6 +475,8 @@ file sealed class WebPinLoginRequest
 
 file sealed class WebPinLoginResponse
 {
+    public required string Status { get; init; }
+
     public required Guid UserId { get; init; }
 
     public required string Username { get; init; }
@@ -471,4 +488,11 @@ file sealed class WebPinLoginResponse
     public required string Role { get; init; }
 
     public Guid? ClinicId { get; init; }
+}
+
+file sealed class WebAuthErrorResponse
+{
+    public string? Status { get; init; }
+
+    public string? Error { get; init; }
 }

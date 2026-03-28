@@ -7,7 +7,7 @@ namespace PTDoc.UI.Components.Notes.Models;
 /// </summary>
 public class ObjectiveVm
 {
-    // TODO: wire to body-part selection from Subjective chief complaint
+    // Set from the subjective section when a chief-complaint body part is selected.
     public string? SelectedBodyPart { get; set; }
 
     // Gait Analysis

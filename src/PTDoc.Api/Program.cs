@@ -71,6 +71,7 @@ builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>(); // Sprint J: clinic/tenant scoping
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 
 // Register sync services
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
@@ -425,8 +426,10 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
-builder.Services.AddSingleton<JwtTokenIssuer>();
+// Replaced InMemoryRefreshTokenStore with database-backed store for production durability.
+// JwtTokenIssuer is Scoped (not Singleton) because it depends on the Scoped IRefreshTokenStore.
+builder.Services.AddScoped<IRefreshTokenStore, DbRefreshTokenStore>();
+builder.Services.AddScoped<JwtTokenIssuer>();
 builder.Services.AddScoped<ICredentialValidator, LegacyApiCredentialValidator>();
 
 var app = builder.Build();
@@ -661,6 +664,8 @@ if (legacyApiAuthEnabled)
     app.MapAuthEndpoints();
 }
 app.MapPinAuthEndpoints(); // New PIN-based auth
+app.MapRegistrationEndpoints(); // Self-service registration lookups and create
+app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)

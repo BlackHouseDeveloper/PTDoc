@@ -127,6 +127,22 @@ public sealed class NoteOperationResponse
 }
 
 /// <summary>
+/// Lightweight list-item projection returned by GET /api/v1/notes.
+/// Omits ContentJson and full ObjectiveMetrics to keep list responses small.
+/// </summary>
+public sealed class NoteListItemApiResponse
+{
+    public Guid Id { get; set; }
+    public Guid PatientId { get; set; }
+    public string PatientName { get; set; } = string.Empty;
+    public string NoteType { get; set; } = string.Empty;
+    public bool IsSigned { get; set; }
+    public DateTime DateOfService { get; set; }
+    public DateTime LastModifiedUtc { get; set; }
+    public string CptCodesJson { get; set; } = "[]";
+}
+
+/// <summary>
 /// Request DTO for accepting AI-generated content into a specific section of a draft note.
 ///
 /// This is the explicit clinician acceptance gate required by Sprint UC-Gamma:

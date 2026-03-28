@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Text.Json;
@@ -33,6 +34,16 @@ public static class NoteEndpoints
 
     public static void MapNoteCrudEndpoints(this IEndpointRouteBuilder app)
     {
+        // Read-only endpoints — NoteRead policy (includes Billing role)
+        var readGroup = app.MapGroup("/api/v1/notes")
+            .WithTags("Notes")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
+        readGroup.MapGet("/", ListNotes)
+            .WithName("ListNotes")
+            .WithSummary("List clinical notes with optional filtering");
+
+        // Write endpoints — NoteWrite policy (PT and PTA only)
         var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
@@ -59,10 +70,6 @@ public static class NoteEndpoints
         // Returns the most recent signed note eligible as a carry-forward source for the
         // given patient and target note type. NoteRead policy — accessible to clinical staff
         // and billing; NoteWrite not required since this is a read operation.
-        var readGroup = app.MapGroup("/api/v1/notes")
-            .WithTags("Notes")
-            .RequireAuthorization(AuthorizationPolicies.NoteRead);
-
         readGroup.MapGet("/carry-forward", GetCarryForward)
             .WithName("GetCarryForward")
             .WithSummary("Get carry-forward data from the most recent signed note for a patient")
@@ -71,13 +78,63 @@ public static class NoteEndpoints
                 "carry-forward source. Returns 404 when no eligible signed note exists.");
     }
 
-    // POST /api/notes
+    // GET /api/v1/notes
+    private static async Task<IResult> ListNotes(
+        [FromQuery] Guid? patientId,
+        [FromQuery] string? noteType,
+        [FromQuery] string? status,
+        [FromQuery] int take,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 500);
+
+        var query = db.ClinicalNotes
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (patientId.HasValue)
+            query = query.Where(n => n.PatientId == patientId.Value);
+
+        if (!string.IsNullOrWhiteSpace(noteType) &&
+            Enum.TryParse<NoteType>(noteType, ignoreCase: true, out var parsedType))
+            query = query.Where(n => n.NoteType == parsedType);
+
+        // Status filter: "signed" means has SignatureHash; "unsigned" means no SignatureHash
+        if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(n => n.SignatureHash != null);
+        else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(n => n.SignatureHash == null);
+
+        var notes = await query
+            .OrderByDescending(n => n.DateOfService)
+            .Take(normalizedTake)
+            .Select(n => new NoteListItemApiResponse
+            {
+                Id = n.Id,
+                PatientId = n.PatientId,
+                PatientName = n.Patient != null
+                    ? n.Patient.FirstName + " " + n.Patient.LastName
+                    : string.Empty,
+                NoteType = n.NoteType.ToString(),
+                IsSigned = n.SignatureHash != null,
+                DateOfService = n.DateOfService,
+                LastModifiedUtc = n.LastModifiedUtc,
+                CptCodesJson = n.CptCodesJson
+            })
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(notes);
+    }
+
+    // POST /api/v1/notes
     private static async Task<IResult> CreateNote(
         [FromBody] CreateNoteRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -198,6 +255,7 @@ public static class NoteEndpoints
 
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, cancellationToken);
 
         return Results.Created($"/api/v1/notes/{note.Id}", new NoteOperationResponse
         {
@@ -214,6 +272,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -297,6 +356,7 @@ public static class NoteEndpoints
         note.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, cancellationToken);
 
         // Sprint S: Audit logging — record every successful note edit.
         await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), cancellationToken);
@@ -316,6 +376,7 @@ public static class NoteEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] ISyncEngine syncEngine,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -384,6 +445,7 @@ public static class NoteEndpoints
         note.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, cancellationToken);
 
         // Audit: log the explicit clinician acceptance of AI-generated content.
         // NO PHI — only generation type and note identity.

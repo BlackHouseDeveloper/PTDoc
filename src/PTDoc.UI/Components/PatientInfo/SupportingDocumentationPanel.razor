@@ -30,8 +30,7 @@
                                   ValueChanged="@(v => SetField(v, f => f.PhysicianNpiNumber = v))"
                                   Placeholder="10-digit NPI"
                                   HasError="@HasError("npi")" />
-            @* TODO: Validate NPI via server/API if required. *@
-            @* TODO: Add input masking if design system supports it. *@
+            @* NPI format validation is performed in PatientInfoPage before save. *@
         </PatientInfoField>
 
     </PatientInfoFormGrid>

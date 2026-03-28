@@ -311,7 +311,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var patientContextMock = new Mock<IPatientContextAccessor>();
 
         // Act: call the real SubmitIntake handler (not direct entity mutation)
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         // Assert: returned 200 OK
         Assert.IsType<Ok<IntakeResponse>>(result);
@@ -351,7 +351,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var patientContextMock = new Mock<IPatientContextAccessor>();
 
         // Act: call the real SubmitIntake handler on an already-locked form
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         // Assert: the real handler returns 409 Conflict (not BadRequest or OK)
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
@@ -367,7 +367,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
         var patientContextMock = new Mock<IPatientContextAccessor>();
-        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(404, statusResult.StatusCode);
@@ -530,7 +530,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
 
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(result);
     }
@@ -567,7 +567,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
 
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         Assert.IsType<Ok<IntakeResponse>>(result);
         var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
@@ -642,7 +642,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var auditMock = new Mock<IAuditService>();
         var patientContextMock = new Mock<IPatientContextAccessor>();
 
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         Assert.IsType<Ok<IntakeResponse>>(result);
         auditMock.Verify(

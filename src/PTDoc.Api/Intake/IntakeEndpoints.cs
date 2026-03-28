@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
@@ -67,6 +68,7 @@ public static class IntakeEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         if (request.PatientId == Guid.Empty)
@@ -113,6 +115,7 @@ public static class IntakeEndpoints
 
         db.IntakeForms.Add(intake);
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Create, cancellationToken);
 
         return Results.Created($"/api/v1/intake/{intake.Id}", ToResponse(intake));
     }
@@ -157,6 +160,7 @@ public static class IntakeEndpoints
         [FromBody] UpdateIntakeRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -185,6 +189,7 @@ public static class IntakeEndpoints
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(ToResponse(intake));
     }
 
@@ -195,6 +200,7 @@ public static class IntakeEndpoints
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IPatientContextAccessor patientContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -250,6 +256,7 @@ public static class IntakeEndpoints
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(
             AuditEvent.IntakeSubmitted(intake.Id, intake.ModifiedByUserId), cancellationToken);
@@ -263,6 +270,7 @@ public static class IntakeEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -280,6 +288,7 @@ public static class IntakeEndpoints
         intake.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(
             AuditEvent.IntakeLocked(intake.Id, intake.ModifiedByUserId), cancellationToken);

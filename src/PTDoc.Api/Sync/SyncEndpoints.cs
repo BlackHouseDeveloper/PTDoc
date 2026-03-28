@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 
 namespace PTDoc.Api.Sync;
 
@@ -177,6 +178,7 @@ public static class SyncEndpoints
         [FromBody] ClientSyncPushRequest request,
         [FromServices] ISyncEngine syncEngine,
         [FromServices] ILogger<ISyncEngine> logger,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         try
@@ -194,6 +196,28 @@ public static class SyncEndpoints
                 {
                     return Results.BadRequest(new { error = $"Unknown entity type(s): {string.Join(", ", unknown)}" });
                 }
+
+                // Defense-in-depth: enforce that restricted roles cannot push clinical entities
+                // even though the ClinicalStaff policy on this endpoint group already blocks them.
+                var hasClinicalItems = request.Items.Any(i => _clinicalEntityTypes.Contains(i.EntityType ?? string.Empty));
+                if (hasClinicalItems)
+                {
+                    var userRoles = httpContext.User.Claims
+                        .Where(c => c.Type == ClaimTypes.Role)
+                        .Select(c => c.Value)
+                        .ToArray();
+
+                    var isRestrictedRole = userRoles.Any(r =>
+                        string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(r, Roles.FrontDesk, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(r, Roles.Patient, StringComparison.OrdinalIgnoreCase));
+
+                    if (isRestrictedRole)
+                    {
+                        logger.LogWarning("Blocked clinical entity push from restricted role");
+                        return Results.Forbid();
+                    }
+                }
             }
 
             var result = await syncEngine.ReceiveClientPushAsync(request, cancellationToken);
@@ -210,7 +234,15 @@ public static class SyncEndpoints
     }
 
     private static readonly HashSet<string> _knownEntityTypes =
-        new(StringComparer.OrdinalIgnoreCase) { "Patient", "Appointment" };
+        new(StringComparer.OrdinalIgnoreCase) { "Patient", "Appointment", "IntakeForm", "ClinicalNote" };
+
+    /// <summary>
+    /// Clinical entity types that only clinical staff (PT, PTA, Admin, Owner) may push.
+    /// Aide, FrontDesk, and Patient roles are blocked from pushing these types as a
+    /// defense-in-depth measure in addition to the ClinicalStaff authorization policy.
+    /// </summary>
+    private static readonly HashSet<string> _clinicalEntityTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "ClinicalNote", "IntakeForm" };
 
     private static async Task<IResult> ServeClientPull(
         [FromQuery] DateTime? sinceUtc,

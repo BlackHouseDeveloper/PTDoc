@@ -2,7 +2,7 @@
     Label "Providers"
     Multi-select dropdown
     Same display rules as Patients dropdown
-    TODO: Populate options from service
+    Current version uses a local sample list to support UX development.
 *@
 
 <div class="providers-dropdown">
@@ -102,7 +102,7 @@
 
     private IEnumerable<(int, string)> GetFilteredProviders()
     {
-        // TODO: Fetch from service (mock data for now)
+        // Local sample list for UI behavior until export filters are connected to services.
         var allProviders = new List<(int, string)>
         {
             (1, "Dr. Sarah Anderson"),
@@ -120,7 +120,7 @@
 
     private string GetProviderLabel(int providerId)
     {
-        // TODO: Fetch from service
+        // Mirrors the local sample list above.
         return providerId switch
         {
             1 => "Dr. Sarah Anderson",

@@ -20,10 +20,8 @@ public class PatientInfoPageVm
     public bool IsSaving { get; set; }
 
     /// <summary>
-    /// UI-only validation messages keyed by field id.
-    /// TODO: Replace UI-only validation with shared validation rules or FluentValidation
-    ///       when backend model is known.
-    /// TODO: Map server-side validation errors to FieldErrors.
+    /// UI-side validation messages keyed by field id.
+    /// Server-side validation failures are surfaced by save handlers and can be mapped here.
     /// </summary>
     public Dictionary<string, string> FieldErrors { get; set; } = new();
 }

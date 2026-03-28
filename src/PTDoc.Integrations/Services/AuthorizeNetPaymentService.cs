@@ -46,10 +46,9 @@ public class AuthorizeNetPaymentService : IPaymentService
             };
         }
 
-        // TODO: Implement actual Authorize.Net API integration
-        // This is a mock implementation for now
-        // Production would call Authorize.Net createTransactionRequest endpoint
-        // with the opaque data token from Accept.js
+        // Current implementation runs in deterministic stub mode.
+        // A production implementation should call Authorize.Net createTransactionRequest
+        // using the Accept.js opaque payment token.
 
         // Mock successful payment for development
         await Task.Delay(100, cancellationToken); // Simulate API call
@@ -77,7 +76,7 @@ public class AuthorizeNetPaymentService : IPaymentService
             };
         }
 
-        // TODO: Implement actual refund logic
+        // Stub refund path for environments without live payment gateway wiring.
         await Task.Delay(100, cancellationToken);
 
         return new PaymentResult
@@ -102,7 +101,7 @@ public class AuthorizeNetPaymentService : IPaymentService
             };
         }
 
-        // TODO: Implement actual transaction details retrieval
+        // Stub lookup path for environments without live payment gateway wiring.
         await Task.Delay(50, cancellationToken);
 
         return new PaymentResult
