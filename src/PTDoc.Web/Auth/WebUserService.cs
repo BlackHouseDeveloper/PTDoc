@@ -16,16 +16,19 @@ public sealed class WebUserService : IUserService
     private readonly ILogger<WebUserService> logger;
     private readonly NavigationManager navigationManager;
     private readonly EntraExternalIdOptions entraExternalIdOptions;
+    private readonly SignupApiClient signupApiClient;
 
     public WebUserService(
         IJSRuntime jsRuntime,
         ILogger<WebUserService> logger,
         NavigationManager navigationManager,
+        SignupApiClient signupApiClient,
         IOptions<EntraExternalIdOptions> entraExternalIdOptions)
     {
         this.jsRuntime = jsRuntime;
         this.logger = logger;
         this.navigationManager = navigationManager;
+        this.signupApiClient = signupApiClient;
         this.entraExternalIdOptions = entraExternalIdOptions.Value;
     }
 
@@ -86,20 +89,63 @@ public sealed class WebUserService : IUserService
         return Task.FromResult(true);
     }
 
-    public Task<bool> RegisterAsync(
+    public async Task<RegistrationResult> RegisterAsync(
         string fullName,
         string email,
         DateTime dateOfBirth,
+        string roleKey,
+        Guid? clinicId,
+        string pin,
         string licenseType,
         string licenseNumber,
         string licenseState,
         CancellationToken cancellationToken = default)
     {
-        logger.LogInformation(
-            "Registration attempted: {FullName} ({Email}), License: {LicenseType} {LicenseNumber} ({LicenseState})",
-            fullName, email, licenseType, licenseNumber, licenseState);
+        try
+        {
+            return await signupApiClient.RegisterAsync(
+                fullName,
+                email,
+                dateOfBirth,
+                roleKey,
+                clinicId,
+                pin,
+                licenseType,
+                licenseNumber,
+                licenseState,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Sign up request failed for {Email}", email);
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "Unable to submit registration right now.");
+        }
+    }
 
-        return Task.FromResult(true);
+    public async Task<IReadOnlyList<ClinicSummary>> GetClinicsForSignupAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await signupApiClient.GetClinicsAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not load clinic list for signup");
+            return [];
+        }
+    }
+
+    public async Task<IReadOnlyList<RoleSummary>> GetRolesForSignupAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await signupApiClient.GetRolesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not load role list for signup");
+            return [];
+        }
     }
 
     public Task LogoutAsync(CancellationToken cancellationToken = default)

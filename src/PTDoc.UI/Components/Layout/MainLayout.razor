@@ -1,4 +1,5 @@
 ﻿@namespace PTDoc.UI.Components.Layout
+@using PTDoc.UI.Components
 
 @inherits LayoutComponentBase
 
@@ -18,6 +19,8 @@
         </main>
     </div>
 </div>
+
+<ToastContainer />
 
 @code {
     private bool isMenuOpen = true; // Default to open on desktop

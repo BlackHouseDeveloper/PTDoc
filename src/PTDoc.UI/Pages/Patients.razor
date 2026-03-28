@@ -1,7 +1,13 @@
 @page "/patients"
 @attribute [Authorize]
+@using PTDoc.Application.Services
+@using PTDoc.Application.DTOs
+@using PTDoc.UI.Components.Patients.Models
 @inject NavigationManager NavigationManager
+@inject IPatientService PatientService
+@inject IToastService ToastService
 @rendermode InteractiveServer
+@implements IDisposable
 
 <PageTitle>Patients - PTDoc</PageTitle>
 
@@ -11,7 +17,8 @@
     <div class="patients-page-body">
         <div class="patients-page-search">
             <PatientSearchInput 
-                @bind-Value="searchQuery" 
+                Value="@searchQuery"
+                ValueChanged="@HandleSearchChanged"
                 Placeholder="Search by name or DOB" 
             />
         </div>
@@ -20,8 +27,10 @@
             @if (isLoading)
             {
                 <div class="patients-page-loading">
-                    <p>Loading patients...</p>
-                    @* TODO: Replace with LoadingSkeleton component *@
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                    }
                 </div>
             }
             else
@@ -45,102 +54,101 @@
     private bool isAddPatientModalOpen = false;
     private string searchQuery = string.Empty;
     private List<PatientListItemVm> patients = new();
+    private CancellationTokenSource? _searchCts;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        // TODO: Replace with actual service call to fetch patients
-        LoadSampleData();
+        await LoadPatientsAsync();
     }
 
-    private void LoadSampleData()
+    private async Task LoadPatientsAsync(string? query = null)
     {
-        patients = new List<PatientListItemVm>
+        isLoading = true;
+        StateHasChanged();
+        try
         {
-            new()
-            {
-                Id = "1",
-                DisplayName = "Sarah Johnson",
-                DateOfBirth = "Mar 14, 1985",
-                LastVisit = "Sep 30, 2024",
-                StatusLabel = "Active",
-                StatusVariant = BadgeVariant.Success
-            },
-            new()
-            {
-                Id = "2",
-                DisplayName = "Michael Chen",
-                DateOfBirth = "Jul 21, 1992",
-                LastVisit = "Sep 27, 2024",
-                StatusLabel = "Active",
-                StatusVariant = BadgeVariant.Success
-            },
-            new()
-            {
-                Id = "3",
-                DisplayName = "Emily Rodriguez",
-                DateOfBirth = "Nov 7, 1978",
-                LastVisit = "Sep 14, 2024",
-                StatusLabel = "Pending",
-                StatusVariant = BadgeVariant.Warning
-            },
-            new()
-            {
-                Id = "4",
-                DisplayName = "James Williams",
-                DateOfBirth = "Feb 3, 1990",
-                LastVisit = "Sep 5, 2024",
-                StatusLabel = "Active",
-                StatusVariant = BadgeVariant.Success
-            },
-            new()
-            {
-                Id = "5",
-                DisplayName = "Lisa Anderson",
-                DateOfBirth = "May 18, 1982",
-                LastVisit = "Aug 22, 2024",
-                StatusLabel = "Active",
-                StatusVariant = BadgeVariant.Success
-            },
-            new()
-            {
-                Id = "6",
-                DisplayName = "Robert Martinez",
-                DateOfBirth = "Dec 9, 1975",
-                LastVisit = "Aug 10, 2024",
-                StatusLabel = "Inactive",
-                StatusVariant = BadgeVariant.Default
-            }
-        };
-    }
-
-    private IReadOnlyList<PatientListItemVm> GetFilteredPatients()
-    {
-        if (string.IsNullOrWhiteSpace(searchQuery))
-        {
-            return patients;
+            var results = await PatientService.SearchAsync(query: query, take: 200);
+            patients = results.Select(ToVm).ToList();
         }
-
-        // TODO: Implement proper search logic with service integration
-        var query = searchQuery.ToLowerInvariant();
-        var filtered = patients.Where(p => 
-            p.DisplayName.ToLowerInvariant().Contains(query) ||
-            (p.DateOfBirth?.ToLowerInvariant().Contains(query) ?? false)
-        ).ToList();
-        return filtered;
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Patients] Error loading patients: {ex.Message}");
+            ToastService.ShowError("Failed to load patients.");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
     }
+
+    private async Task HandleSearchChanged(string value)
+    {
+        searchQuery = value;
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            await LoadPatientsAsync(string.IsNullOrWhiteSpace(value) ? null : value);
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer keystroke — ignore.
+        }
+    }
+
+    private IReadOnlyList<PatientListItemVm> GetFilteredPatients() => patients;
 
     private void OpenAddPatientModal()
     {
         isAddPatientModalOpen = true;
     }
 
-    private void HandleAddPatient(AddPatientModal.PatientFormData formData)
+    private async Task HandleAddPatient(AddPatientModal.PatientFormData formData)
     {
-        _ = formData;
+        try
+        {
+            var request = new PTDoc.Application.DTOs.CreatePatientRequest
+            {
+                FirstName = formData.FirstName,
+                LastName = formData.LastName,
+                DateOfBirth = formData.DateOfBirth ?? DateTime.Today,
+                Email = formData.Email,
+                Phone = formData.PhoneNumber
+            };
+            await PatientService.CreateAsync(request);
+            ToastService.ShowSuccess($"{formData.FirstName} {formData.LastName} added.");
+            await LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Patients] Error creating patient: {ex.Message}");
+            ToastService.ShowError("Failed to add patient. Please try again.");
+        }
     }
 
     private void HandlePatientClick(PatientListItemVm patient)
     {
         NavigationManager.NavigateTo($"/patient/{patient.Id}");
+    }
+
+    private static PatientListItemVm ToVm(PatientListItemResponse p) => new()
+    {
+        Id = p.Id.ToString(),
+        DisplayName = p.DisplayName,
+        DateOfBirth = p.DateOfBirth == default ? null : p.DateOfBirth.ToString("MMM d, yyyy"),
+        StatusLabel = p.IsArchived ? "Inactive" : "Active",
+        StatusVariant = p.IsArchived ? BadgeVariant.Default : BadgeVariant.Success
+    };
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
     }
 }

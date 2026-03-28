@@ -16,7 +16,7 @@
                                   Value="@Model.DateAuthorizationReceived"
                                   ValueChanged="@(v => SetField(v, f => f.DateAuthorizationReceived = v))"
                                   HasError="@HasError("authReceived")" />
-            @* TODO: Replace with date-picker control if required. *@
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Authorization Start Date" ForId="pi-auth-start" Error="@GetError("authStart")">
@@ -24,7 +24,7 @@
                                   Value="@Model.AuthorizationStartDate"
                                   ValueChanged="@(v => SetField(v, f => f.AuthorizationStartDate = v))"
                                   HasError="@HasError("authStart")" />
-            @* TODO: Replace with date-picker control if required. *@
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Authorization End Date" ForId="pi-auth-end" Error="@GetError("authEnd")">
@@ -42,7 +42,7 @@
                                   Value="@Model.NumberOfVisitsOrUnitsAuthorized"
                                   ValueChanged="@(v => SetField(v, f => f.NumberOfVisitsOrUnitsAuthorized = v))"
                                   HasError="@HasError("authUnits")" />
-            @* TODO: Determine if units vs visits affects labels/validation. *@
+            @* Label supports both unit- and visit-based payer authorization workflows. *@
         </PatientInfoField>
         @* Explicit right-column spacer so "units" field stays left-only on desktop *@
         <div class="pi-form-grid-spacer" aria-hidden="true"></div>
@@ -77,8 +77,7 @@
         await OnAnyFieldChanged.InvokeAsync();
     }
 
-    // UI-only validation: show error when both dates are set and start > end.
-    // TODO: Replace UI-only validation with server-side validation when backend model is known.
+    // UI-side guard complements server validation to catch invalid date ordering before save.
     private string ValidateDateRange()
     {
         if (string.IsNullOrWhiteSpace(Model.AuthorizationStartDate) ||

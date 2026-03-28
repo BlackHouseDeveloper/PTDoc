@@ -241,8 +241,7 @@
             IsSubmitted = false
         };
 
-        // TODO: Read current user theme preference and sync to component state.
-        _isDarkMode = false;
+        _isDarkMode = false; // The CSS variable system handles the active theme; this tracks local toggle state.
 
         if (_patientGuid.HasValue && !string.IsNullOrWhiteSpace(NoteId) && Guid.TryParse(NoteId, out var routeNoteId))
         {

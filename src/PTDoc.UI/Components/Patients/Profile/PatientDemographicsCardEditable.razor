@@ -1,4 +1,8 @@
 @* Patient Demographics Card - Editable patient information *@
+@using PTDoc.Application.Services
+@using PTDoc.Application.DTOs
+@inject IPatientService PatientService
+@inject IToastService ToastService
 
 <div class="patient-demographics-card" data-testid="patient-demographics-card">
     <div class="patient-demographics-card-header">
@@ -66,8 +70,8 @@
             </div>
 
             <div class="patient-demographics-edit-actions">
-                <button type="button" class="patient-demographics-save-btn" @onclick="HandleSave">
-                    Save Changes
+                <button type="button" class="patient-demographics-save-btn" @onclick="HandleSave" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save Changes")
                 </button>
             </div>
         }
@@ -99,8 +103,10 @@
 
 @code {
     [Parameter, EditorRequired] public PatientProfileVm Patient { get; set; } = null!;
+    [Parameter] public EventCallback OnPatientUpdated { get; set; }
 
     private bool isEditing = false;
+    private bool isSaving = false;
     private string editName = string.Empty;
     private string editDateOfBirth = string.Empty;
     private string editEmail = string.Empty;
@@ -124,10 +130,63 @@
 
     private void HandleSave()
     {
-        // TODO: Validation rules
-        // TODO: Save via IPatientService.UpdateDemographics(...)
-        Console.WriteLine($"Saving demographics: {editName}, {editDateOfBirth}, {editEmail}");
-        isEditing = false;
+        _ = SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Guid.TryParse(Patient.Id, out var patientId))
+        {
+            ToastService.ShowError("Invalid patient ID.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editName))
+        {
+            ToastService.ShowError("Patient name is required.");
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var nameParts = editName.Trim().Split(' ', 2);
+            var firstName = nameParts[0];
+            var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
+
+            DateTime? dob = DateTime.TryParse(editDateOfBirth, out var parsedDob) ? parsedDob : null;
+
+            var request = new UpdatePatientRequest
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                DateOfBirth = dob,
+                Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail
+            };
+
+            var updated = await PatientService.UpdateAsync(patientId, request);
+            if (updated is not null)
+            {
+                isEditing = false;
+                ToastService.ShowSuccess("Patient information saved.");
+                if (OnPatientUpdated.HasDelegate)
+                {
+                    await OnPatientUpdated.InvokeAsync();
+                }
+            }
+            else
+            {
+                ToastService.ShowError("Patient not found. Please refresh and try again.");
+            }
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Failed to save patient information. Please try again.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
     }
 
     private string InsuranceAuthorizationHref

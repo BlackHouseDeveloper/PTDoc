@@ -1,5 +1,13 @@
 namespace PTDoc.Application.Identity;
 
+public enum AuthStatus
+{
+    Success,
+    InvalidCredentials,
+    PendingApproval,
+    AccountLocked
+}
+
 /// <summary>
 /// Service for authentication operations.
 /// Handles PIN-based login, session management, and audit logging.
@@ -56,6 +64,7 @@ public interface IAuthService
 /// </summary>
 public class AuthResult
 {
+    public AuthStatus Status { get; init; } = AuthStatus.Success;
     public required Guid UserId { get; init; }
     public required string Username { get; init; }
     public required string Token { get; init; }

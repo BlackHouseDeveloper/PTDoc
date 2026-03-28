@@ -7,6 +7,7 @@ namespace PTDoc.Application.Auth
     using System.Security.Claims;
     using System.Threading;
     using System.Threading.Tasks;
+  using PTDoc.Application.Identity;
 
     /// <summary>
     /// Service interface for user authentication and management.
@@ -87,15 +88,31 @@ namespace PTDoc.Application.Auth
         /// <param name="licenseNumber">The user's license number.</param>
         /// <param name="licenseState">The state where the license was issued.</param>
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
-        /// <returns>True if registration was successful, false otherwise.</returns>
-        Task<bool> RegisterAsync(
+        /// <param name="roleKey">The staff role key (PT, PTA, Aide, Admin).</param>
+        /// <param name="clinicId">The clinic to associate with the user.</param>
+        /// <param name="pin">The user's 4-digit PIN.</param>
+        /// <returns>A status-aware registration result.</returns>
+        Task<RegistrationResult> RegisterAsync(
           string fullName,
           string email,
           DateTime dateOfBirth,
+          string roleKey,
+          Guid? clinicId,
+          string pin,
           string licenseType,
           string licenseNumber,
           string licenseState,
           CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets active clinics that users can choose during signup.
+        /// </summary>
+        Task<IReadOnlyList<ClinicSummary>> GetClinicsForSignupAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets registerable staff roles for signup.
+        /// </summary>
+        Task<IReadOnlyList<RoleSummary>> GetRolesForSignupAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Logs out the current user.

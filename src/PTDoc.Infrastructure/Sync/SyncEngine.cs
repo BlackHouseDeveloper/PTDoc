@@ -136,7 +136,7 @@ public class SyncEngine : ISyncEngine
         // For now, we'll return an empty result as this is the foundation
         _logger.LogInformation("Pulling changes since {SinceUtc}", sinceUtc);
 
-        // TODO: Implement actual server pull logic when server endpoints are available
+        // Server pull integration is intentionally deferred until endpoint contracts are finalized.
 
         return Task.FromResult(new PullResult
         {

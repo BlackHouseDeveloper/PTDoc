@@ -67,7 +67,17 @@ public class AuthService : IAuthService
                 await _context.SaveChangesAsync(cancellationToken);
                 await _auditService.LogAuthEventAsync(
                     AuditEvent.LoginFailed(ipAddress, "AccountInactive"), cancellationToken);
-                return null;
+
+                return new AuthResult
+                {
+                    Status = AuthStatus.PendingApproval,
+                    UserId = user.Id,
+                    Username = user.Username,
+                    Token = string.Empty,
+                    ExpiresAt = DateTime.UtcNow,
+                    Role = user.Role,
+                    ClinicId = user.ClinicId
+                };
             }
 
             // Verify PIN using BCrypt
@@ -120,6 +130,7 @@ public class AuthService : IAuthService
 
             return new AuthResult
             {
+                Status = AuthStatus.Success,
                 UserId = user.Id,
                 Username = user.Username,
                 Token = token,

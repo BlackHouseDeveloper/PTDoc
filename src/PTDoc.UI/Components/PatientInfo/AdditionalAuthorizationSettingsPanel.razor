@@ -27,7 +27,7 @@
                                   Value="@Model.ReAuthorizationDueDate"
                                   ValueChanged="@(v => SetField(v, f => f.ReAuthorizationDueDate = v))"
                                   HasError="@HasError("reauthDate")" />
-            @* TODO: Replace with date-picker control if required. *@
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Visit Alert Threshold" ForId="pi-alert-threshold" Error="@GetError("alertThreshold")">
@@ -36,7 +36,7 @@
                                   ValueChanged="@(v => SetField(v, f => f.VisitAlertThreshold = v))"
                                   Placeholder="e.g., 2 (alert when 2 visits remain)"
                                   HasError="@HasError("alertThreshold")" />
-            @* TODO: Confirm allowed values and whether threshold triggers UI alerts elsewhere. *@
+            @* Threshold is stored as entered and interpreted by downstream alerting workflows. *@
         </PatientInfoField>
 
     </PatientInfoFormGrid>

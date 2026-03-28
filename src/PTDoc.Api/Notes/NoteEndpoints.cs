@@ -26,6 +26,11 @@ public static class NoteEndpoints
             .WithTags("Notes")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
+        group.MapGet("/", ListNotes)
+            .WithName("ListNotes")
+            .WithSummary("List clinical notes with optional filtering")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
         group.MapPost("/", CreateNote)
             .WithName("CreateNote")
             .WithSummary("Create a new clinical note");
@@ -35,7 +40,58 @@ public static class NoteEndpoints
             .WithSummary("Update a draft clinical note");
     }
 
-    // POST /api/notes
+    // GET /api/v1/notes
+    private static async Task<IResult> ListNotes(
+        [FromQuery] Guid? patientId,
+        [FromQuery] string? noteType,
+        [FromQuery] string? status,
+        [FromQuery] int take,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 500);
+
+        var query = db.ClinicalNotes
+            .AsNoTracking()
+            .Include(n => n.Patient)
+            .Include(n => n.ObjectiveMetrics)
+            .AsQueryable();
+
+        if (patientId.HasValue)
+            query = query.Where(n => n.PatientId == patientId.Value);
+
+        if (!string.IsNullOrWhiteSpace(noteType) &&
+            Enum.TryParse<NoteType>(noteType, ignoreCase: true, out var parsedType))
+            query = query.Where(n => n.NoteType == parsedType);
+
+        // Status filter: "signed" means has SignatureHash; "unsigned" means no SignatureHash
+        if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(n => n.SignatureHash != null);
+        else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
+            query = query.Where(n => n.SignatureHash == null);
+
+        var notes = await query
+            .OrderByDescending(n => n.DateOfService)
+            .Take(normalizedTake)
+            .Select(n => new NoteListItemApiResponse
+            {
+                Id = n.Id,
+                PatientId = n.PatientId,
+                PatientName = n.Patient != null
+                    ? n.Patient.FirstName + " " + n.Patient.LastName
+                    : string.Empty,
+                NoteType = n.NoteType.ToString(),
+                IsSigned = n.SignatureHash != null,
+                DateOfService = n.DateOfService,
+                LastModifiedUtc = n.LastModifiedUtc,
+                CptCodesJson = n.CptCodesJson
+            })
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(notes);
+    }
+
+    // POST /api/v1/notes
     private static async Task<IResult> CreateNote(
         [FromBody] CreateNoteRequest request,
         [FromServices] ApplicationDbContext db,

@@ -50,6 +50,9 @@ public class ApplicationDbContext : DbContext
     // Sprint M: Outcome Measures (TDD §9)
     public DbSet<OutcomeMeasureResult> OutcomeMeasureResults => Set<OutcomeMeasureResult>();
 
+    // Auth: Persisted refresh tokens (hashed; production replacement for InMemoryRefreshTokenStore)
+    public DbSet<StoredRefreshToken> StoredRefreshTokens => Set<StoredRefreshToken>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -288,6 +291,19 @@ public class ApplicationDbContext : DbContext
                 .WithMany(n => n.ObjectiveMetrics)
                 .HasForeignKey(e => e.NoteId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Auth: StoredRefreshToken — token hash is the unique lookup key
+        modelBuilder.Entity<StoredRefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => e.Subject);
+            entity.HasIndex(e => e.ExpiresAtUtc);
+            entity.HasIndex(e => e.IsRevoked);
+
+            entity.Property(e => e.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Subject).HasMaxLength(255).IsRequired();
         });
 
         // Configure OutcomeMeasureResult (Sprint M: TDD §9)

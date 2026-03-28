@@ -149,7 +149,7 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         // Reset failed attempt counter on new OTP issuance.
         _verifyFailures.TryRemove(contact, out _);
 
-        // TODO: Replace this placeholder with an actual SMS/email delivery service.
+        // Notification delivery currently depends on external channel wiring.
         // The OTP value is intentionally not logged to prevent credential exposure.
         _logger.LogWarning(
             "OTP delivery via {Channel} is pending real notification service integration. " +

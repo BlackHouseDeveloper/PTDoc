@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
+using Moq;
 using PTDoc.Application.Identity;
 using PTDoc.Web.Auth;
 
@@ -71,10 +72,13 @@ public sealed class WebUserServiceTests
         NavigationManager navigationManager,
         bool externalIdentityEnabled)
     {
+        var signupApiClient = new SignupApiClient(new Mock<System.Net.Http.IHttpClientFactory>().Object);
+
         return new WebUserService(
             jsRuntime,
             NullLogger<WebUserService>.Instance,
             navigationManager,
+            signupApiClient,
             Options.Create(new EntraExternalIdOptions
             {
                 Enabled = externalIdentityEnabled,
