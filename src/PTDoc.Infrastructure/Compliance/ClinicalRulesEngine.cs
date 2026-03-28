@@ -120,6 +120,12 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// SOAP_SUBJECTIVE: The subjective section must be present and non-empty before signing.
     /// Blocking for Evaluation and ProgressNote; advisory (Warning) for Daily and Discharge.
     /// Sprint UC-Gamma: enforces SOAP structure constraints at the service layer.
+    ///
+    /// Recognized field names (case-insensitive):
+    ///   "subjective"         — primary SOAP Subjective section
+    ///   "chiefComplaint"     — chief complaint from Evaluation intake carry-forward
+    ///   "patientComplaint"   — legacy alias used by older note templates
+    ///   "subjectiveSection"  — explicit section wrapper used in some UI serializers
     /// </summary>
     private static void EvaluateSubjectiveSection(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
     {

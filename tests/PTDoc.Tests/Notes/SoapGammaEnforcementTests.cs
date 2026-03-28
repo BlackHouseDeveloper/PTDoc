@@ -56,7 +56,7 @@ public class SoapGammaEnforcementTests : IDisposable
         // The domain guard in NoteEndpoints blocks PTA from creating Eval/PN/Discharge.
         // PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType is internal and callable from tests.
         var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Role, Roles.PTA)], "Test"));
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
 
         var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, blockedType);
 
@@ -67,7 +67,7 @@ public class SoapGammaEnforcementTests : IDisposable
     public void PTA_IsAllowed_DailyNoteType()
     {
         var ptaPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Role, Roles.PTA)], "Test"));
+            [new Claim(ClaimTypes.Role, Roles.PTA)], authenticationType: "Test"));
 
         var isBlocked = PTDoc.Api.Notes.NoteEndpoints.PtaIsBlockedFromNoteType(ptaPrincipal, NoteType.Daily);
 
@@ -78,7 +78,7 @@ public class SoapGammaEnforcementTests : IDisposable
     public void PT_IsNeverBlocked_FromAnyNoteType()
     {
         var ptPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Role, Roles.PT)], "Test"));
+            [new Claim(ClaimTypes.Role, Roles.PT)], authenticationType: "Test"));
 
         foreach (var noteType in Enum.GetValues<NoteType>())
         {
