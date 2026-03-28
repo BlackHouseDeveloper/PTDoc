@@ -140,10 +140,19 @@ public class BackgroundJobTests
     {
         var context = CreateInMemoryContext();
 
+        // Create the Appointment entity so ProcessQueueItemAsync can find it
+        var userId = Guid.NewGuid();
+        var patient = new Patient { FirstName = "Retry", LastName = "Test", DateOfBirth = new DateTime(1980, 1, 1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+        var appt = new Appointment { PatientId = patient.Id, StartTimeUtc = DateTime.UtcNow, EndTimeUtc = DateTime.UtcNow.AddHours(1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.Appointments.Add(appt);
+        await context.SaveChangesAsync();
+
         var eligible = new SyncQueueItem
         {
             EntityType = "Appointment",
-            EntityId = Guid.NewGuid(),
+            EntityId = appt.Id,
             Status = SyncQueueStatus.Failed,
             RetryCount = 1,
             MaxRetries = 3,
