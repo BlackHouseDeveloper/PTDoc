@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -16,12 +17,17 @@ public class SyncEngine : ISyncEngine
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
+    private readonly IIdentityContextAccessor? _identityContext;
     private DateTime? _lastSyncAt;
 
-    public SyncEngine(ApplicationDbContext context, ILogger<SyncEngine> logger)
+    public SyncEngine(
+        ApplicationDbContext context,
+        ILogger<SyncEngine> logger,
+        IIdentityContextAccessor? identityContext = null)
     {
         _context = context;
         _logger = logger;
+        _identityContext = identityContext;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
@@ -790,6 +796,10 @@ public class SyncEngine : ISyncEngine
         if (string.IsNullOrWhiteSpace(item.DataJson) || item.DataJson == "{}")
             return;
 
+        // Preserve the original author's identity for audit trail.
+        // Falls back to Guid.Empty when running without an authenticated context (e.g. tests).
+        var actingUserId = _identityContext?.GetCurrentUserId() ?? Guid.Empty;
+
         using var doc = JsonDocument.Parse(item.DataJson);
         var root = doc.RootElement;
 
@@ -812,7 +822,7 @@ public class SyncEngine : ISyncEngine
                     Phone = TryGetString(root, "phone") ?? TryGetString(root, "Phone"),
                     MedicalRecordNumber = TryGetString(root, "medicalRecordNumber") ?? TryGetString(root, "MedicalRecordNumber"),
                     LastModifiedUtc = item.LastModifiedUtc,
-                    ModifiedByUserId = Guid.Empty,
+                    ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
                 _context.Patients.Add(patient);
@@ -847,7 +857,7 @@ public class SyncEngine : ISyncEngine
                     EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? DateTime.MinValue,
                     Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes"),
                     LastModifiedUtc = item.LastModifiedUtc,
-                    ModifiedByUserId = Guid.Empty,
+                    ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
                 _context.Appointments.Add(appt);
@@ -881,7 +891,7 @@ public class SyncEngine : ISyncEngine
                     AccessToken = string.Empty,
                     IsLocked = false, // Never trust IsLocked from client push
                     LastModifiedUtc = item.LastModifiedUtc,
-                    ModifiedByUserId = Guid.Empty,
+                    ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
                 _context.IntakeForms.Add(form);
@@ -918,7 +928,7 @@ public class SyncEngine : ISyncEngine
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
                     // SignatureHash, SignedUtc, SignedByUserId intentionally NOT set from client push
                     LastModifiedUtc = item.LastModifiedUtc,
-                    ModifiedByUserId = Guid.Empty,
+                    ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
                 _context.ClinicalNotes.Add(note);

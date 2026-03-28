@@ -77,7 +77,6 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     }
 
     /// <inheritdoc/>
-    /// <inheritdoc/>
     public async Task<LocalPushResult> PushPendingAsync(CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
