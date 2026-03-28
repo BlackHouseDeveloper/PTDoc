@@ -80,6 +80,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         EvaluateObjectiveMeasures(note, results);
         EvaluateGoals(contentDoc, note.NoteType, results);
         EvaluatePlan(contentDoc, note.NoteType, results);
+        EvaluateSubjectiveSection(contentDoc, note.NoteType, results);
 
         // ── Compliance Rules ──────────────────────────────────────────────────
         EvaluateCertificationPeriod(contentDoc, note.NoteType, results);
@@ -113,6 +114,38 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
             Message = "No objective measures recorded. Clinical assessments require at least one objective measure.",
             Blocking = blocking
         });
+    }
+
+    /// <summary>
+    /// SOAP_SUBJECTIVE: The subjective section must be present and non-empty before signing.
+    /// Blocking for Evaluation and ProgressNote; advisory (Warning) for Daily and Discharge.
+    /// Sprint UC-Gamma: enforces SOAP structure constraints at the service layer.
+    ///
+    /// Recognized field names (case-insensitive):
+    ///   "subjective"         — primary SOAP Subjective section
+    ///   "chiefComplaint"     — chief complaint from Evaluation intake carry-forward
+    ///   "patientComplaint"   — legacy alias used by older note templates
+    ///   "subjectiveSection"  — explicit section wrapper used in some UI serializers
+    /// </summary>
+    private static void EvaluateSubjectiveSection(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    {
+        if (contentDoc == null) return;
+
+        bool hasSubjective = HasNonEmptyContent(contentDoc.RootElement,
+            "subjective", "chiefComplaint", "patientComplaint", "subjectiveSection");
+
+        if (!hasSubjective)
+        {
+            bool blocking = noteType is NoteType.Evaluation or NoteType.ProgressNote;
+            results.Add(new RuleEvaluationResult
+            {
+                RuleId = "SOAP_SUBJECTIVE",
+                Category = RuleCategory.DocCompleteness,
+                Severity = blocking ? ValidationSeverity.Error : ValidationSeverity.Warning,
+                Message = "Subjective section is required before signing. Document the patient's chief complaint and reported symptoms.",
+                Blocking = blocking
+            });
+        }
     }
 
     /// <summary>
@@ -338,9 +371,15 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// </summary>
     private static bool HasNonEmptyContent(JsonElement element, params string[] propertyNames)
     {
+        // Build a case-insensitive lookup of all properties in the element.
+        // JsonElement.TryGetProperty is case-sensitive; we need to support notes serialized
+        // with PascalCase keys (e.g., "Subjective", "ChiefComplaint") as well as camelCase.
+        var allProperties = element.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value, StringComparer.OrdinalIgnoreCase);
+
         foreach (var name in propertyNames)
         {
-            if (!element.TryGetProperty(name, out var prop)) continue;
+            if (!allProperties.TryGetValue(name, out var prop)) continue;
             switch (prop.ValueKind)
             {
                 case JsonValueKind.String:

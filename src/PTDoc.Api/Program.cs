@@ -88,6 +88,7 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infr
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();

@@ -30,4 +30,11 @@
     <UserSecretsId>ptdoc-api-0a1b2c3d-4e5f-6789-abcd-ef0123456789</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Allow PTDoc.Tests to access internal helpers (e.g. PtaIsBlockedFromNoteType, MergeAiContentIntoSection) -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>PTDoc.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

@@ -396,6 +396,7 @@ public class ClinicalRulesEngineTests : IDisposable
         // Create a complete Evaluation note with all required fields.
         var note = AddNote(NoteType.Evaluation, """
             {
+                "subjective": "Patient reports right shoulder pain rated 7/10 with overhead activity.",
                 "goals": ["Short-term goal: walk 50ft"],
                 "plan": "PT 3x/week for 6 weeks",
                 "planOfCare": "Focus on gait training and strengthening",
