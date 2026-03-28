@@ -308,9 +308,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(submittingUserId);
 
         var auditMock = new Mock<IAuditService>();
+        var patientContextMock = new Mock<IPatientContextAccessor>();
 
         // Act: call the real SubmitIntake handler (not direct entity mutation)
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
 
         // Assert: returned 200 OK
         Assert.IsType<Ok<IntakeResponse>>(result);
@@ -347,9 +348,10 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
 
         var auditMock = new Mock<IAuditService>();
+        var patientContextMock = new Mock<IPatientContextAccessor>();
 
         // Act: call the real SubmitIntake handler on an already-locked form
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
 
         // Assert: the real handler returns 409 Conflict (not BadRequest or OK)
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
@@ -364,7 +366,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
 
         var auditMock = new Mock<IAuditService>();
-        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var patientContextMock = new Mock<IPatientContextAccessor>();
+        var result = await IntakeEndpoints.SubmitIntake(Guid.NewGuid(), _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
 
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(404, statusResult.StatusCode);
@@ -462,6 +465,117 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task UCBeta_ReviewIntake_LockedWithoutSubmit_Returns409()
+    {
+        // Sprint UC-Beta: An intake locked via the /lock endpoint (no SubmittedAt) cannot be reviewed.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            SubmittedAt = null, // Locked without going through /submit
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(409, statusResult.StatusCode);
+        auditMock.Verify(a => a.LogIntakeEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UCBeta_SubmitIntake_Patient_CannotSubmitAnotherPatientsIntake()
+    {
+        // Sprint UC-Beta: A Patient caller must only be able to submit their own intake.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = false,
+            ResponseJson = "{}",
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        // Caller is a Patient but with a *different* patient ID — should be rejected.
+        var differentPatientId = Guid.NewGuid();
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+        identityMock.Setup(x => x.GetCurrentUserRole()).Returns(Roles.Patient);
+
+        var patientContextMock = new Mock<IPatientContextAccessor>();
+        patientContextMock.Setup(x => x.GetCurrentPatientId()).Returns(differentPatientId);
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+
+        Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(result);
+    }
+
+    [Fact]
+    public async Task UCBeta_SubmitIntake_Patient_CanSubmitOwnIntake()
+    {
+        // Sprint UC-Beta: A Patient caller can submit their own intake form.
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = false,
+            ResponseJson = "{}",
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        // Caller is the Patient who owns this intake.
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+        identityMock.Setup(x => x.GetCurrentUserRole()).Returns(Roles.Patient);
+
+        var patientContextMock = new Mock<IPatientContextAccessor>();
+        patientContextMock.Setup(x => x.GetCurrentPatientId()).Returns(patient.Id);
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
+
+        Assert.IsType<Ok<IntakeResponse>>(result);
+        var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
+        Assert.True(updated.IsLocked);
+        Assert.NotNull(updated.SubmittedAt);
+    }
+
+    [Fact]
     public async Task UCBeta_ReviewIntake_LogsAuditEvent_WhenIntakeIsLocked()
     {
         // Sprint UC-Beta: Clinician review of a submitted intake logs an audit event.
@@ -526,8 +640,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         identityMock.Setup(x => x.GetCurrentUserId()).Returns(submitterId);
 
         var auditMock = new Mock<IAuditService>();
+        var patientContextMock = new Mock<IPatientContextAccessor>();
 
-        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, CancellationToken.None);
 
         Assert.IsType<Ok<IntakeResponse>>(result);
         auditMock.Verify(

@@ -57,7 +57,7 @@ public static class IntakeEndpoints
 
         group.MapPost("/{id:guid}/review", ReviewIntake)
             .WithName("ReviewIntake")
-            .WithSummary("Mark a submitted intake as reviewed by a clinician")
+            .WithSummary("Record a clinician review event for a submitted intake response")
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
     }
 
@@ -194,6 +194,7 @@ public static class IntakeEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
+        [FromServices] IPatientContextAccessor patientContext,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -201,6 +202,15 @@ public static class IntakeEndpoints
 
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
+
+        // When the caller is a Patient, verify they own this intake form.
+        // Staff roles (PT, PTA, Admin, FrontDesk) may submit on behalf of any patient.
+        if (string.Equals(identityContext.GetCurrentUserRole(), Roles.Patient, StringComparison.Ordinal))
+        {
+            var callerPatientId = patientContext.GetCurrentPatientId();
+            if (callerPatientId is null || callerPatientId.Value != intake.PatientId)
+                return Results.Forbid();
+        }
 
         if (intake.IsLocked)
             return Results.Conflict(new { error = "Intake is already locked." });
@@ -292,7 +302,8 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
 
-        if (!intake.IsLocked)
+        var isProperlySubmitted = intake.IsLocked && intake.SubmittedAt is not null;
+        if (!isProperlySubmitted)
             return Results.Conflict(new { error = "Intake must be submitted and locked before it can be reviewed." });
 
         var reviewerId = identityContext.GetCurrentUserId();
