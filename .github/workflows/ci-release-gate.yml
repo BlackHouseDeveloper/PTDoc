@@ -1,14 +1,16 @@
-name: "Release Gate (Sprint T)"
+name: "Release Gate (Sprint T / UC-Omega)"
 
-# Sprint T: Release readiness validation.
+# Sprint T + UC-Omega: Release readiness validation.
 # This workflow forms the final CI gate suite, ensuring that all remediation
-# work from Sprints K–S is validated before any release can proceed.
+# work from Sprints K–S and UC-Omega end-to-end validation is complete.
 #
 # Gates:
 #   rbac-gate         — RBAC policy enforcement tests ([Category=RBAC])
 #   tenant-gate       — Tenant isolation tests ([Category=Tenancy])
 #   offline-sync-gate — Offline sync and conflict resolution tests ([Category=OfflineSync])
 #   compliance-gate   — Medicare rules engine and clinical compliance tests ([Category=Compliance])
+#   e2e-workflow-gate — End-to-end HTTP API integration tests ([Category=EndToEnd])
+#                       Validates intake→SOAP→compliance→sync over the real HTTP pipeline.
 #   release-summary   — Aggregates gate results into a release readiness summary artifact
 #
 # Note: Migration gates are handled by ci-db.yml (db-sqlite/sqlserver/postgres,
@@ -275,12 +277,60 @@ jobs:
         retention-days: 30
 
   # ---------------------------------------------------------------------------
+  # Gate 5 (UC-Omega): End-to-end HTTP API integration tests
+  # Validates the full intake → SOAP note → compliance → sync workflow over
+  # the real HTTP pipeline via WebApplicationFactory (not just policy layer).
+  # Every claim in the evidence pack must trace to a passing test in this gate.
+  # ---------------------------------------------------------------------------
+  e2e-workflow-gate:
+    name: "Release Gate ▸ E2E Workflow (UC-Omega)"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: dotnet restore PTDoc.sln
+
+    - name: Build
+      run: dotnet build PTDoc.sln --no-restore --configuration Release
+
+    - name: Run E2E workflow integration tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=EndToEnd" \
+          --logger "trx;LogFileName=e2e-results.trx" \
+          --logger "console;verbosity=normal"
+
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-workflow-gate-results
+        path: '**/e2e-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
   # Release summary — requires all gates to pass, then uploads the release
   # readiness checklist so that every run produces a timestamped artifact.
   # ---------------------------------------------------------------------------
   release-summary:
     name: "Release Gate ▸ Summary"
-    needs: [rbac-gate, tenant-gate, offline-sync-gate, compliance-gate]
+    needs: [rbac-gate, tenant-gate, offline-sync-gate, compliance-gate, e2e-workflow-gate]
     if: always() && (github.event.action != 'closed' || github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
 
@@ -298,6 +348,7 @@ jobs:
         echo "| Tenant Isolation | ${{ needs.tenant-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Offline Sync | ${{ needs.offline-sync-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Compliance | ${{ needs.compliance-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| E2E Workflow (UC-Omega) | ${{ needs.e2e-workflow-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Note:** Migration gates (ci-db.yml) and secret policy gates (ci-secret-policy.yml)" >> $GITHUB_STEP_SUMMARY
         echo "must also pass independently for full release readiness." >> $GITHUB_STEP_SUMMARY
@@ -311,6 +362,7 @@ jobs:
         TENANCY_STATUS="${{ needs.tenant-gate.result }}"
         SYNC_STATUS="${{ needs.offline-sync-gate.result }}"
         COMPLIANCE_STATUS="${{ needs.compliance-gate.result }}"
+        E2E_STATUS="${{ needs.e2e-workflow-gate.result }}"
 
         cat > release-readiness-checklist.md << EOF
         # PTDoc Release Readiness Checklist
@@ -327,6 +379,7 @@ jobs:
         | Tenant isolation | ci-release-gate.yml — tenant-gate | ${TENANCY_STATUS} |
         | Offline sync / conflict resolution | ci-release-gate.yml — offline-sync-gate | ${SYNC_STATUS} |
         | Clinical compliance rules | ci-release-gate.yml — compliance-gate | ${COMPLIANCE_STATUS} |
+        | E2E workflow (intake→SOAP→sync) | ci-release-gate.yml — e2e-workflow-gate | ${E2E_STATUS} |
         | SQLite migrations | ci-db.yml — db-sqlite | see ci-db workflow |
         | SQL Server migrations | ci-db.yml — db-sqlserver | see ci-db workflow |
         | PostgreSQL migrations | ci-db.yml — db-postgres | see ci-db workflow |
@@ -340,13 +393,16 @@ jobs:
         - [ ] All CI gates listed above report success
         - [ ] No critical CodeQL alerts open (see codeql.yml)
         - [ ] docs/RELEASE_READINESS_REPORT.md reviewed and approved
-        - [ ] docs/ACCEPTANCE_EVIDENCE_MAP.md updated through Sprint T
+        - [ ] docs/ACCEPTANCE_EVIDENCE_MAP.md updated through Sprint UC-Omega
+        - [ ] docs/ROLE_CAPABILITY_VERIFICATION_MAP.md reviewed — every row traces to a passing test
+        - [ ] docs/SPRINT_COMPLETION_STATUS.md reflects actual verified state (no overclaims)
         - [ ] CHANGELOG.md [Unreleased] section reviewed
         - [ ] No PHI written to logs (verified by NoPHIIntegrationTests)
         - [ ] Offline-first behavior preserved (verified by OfflineSync gate)
         - [ ] Medicare rules enforced (verified by Compliance gate)
         - [ ] Signed clinical records immutable (verified by Compliance gate)
         - [ ] AI output not auto-persisted (verified by code review)
+        - [ ] Full intake→SOAP→sign→sync workflow validated (verified by E2E gate)
         EOF
 
         echo "✅ Release readiness checklist generated."
@@ -363,7 +419,8 @@ jobs:
         needs.rbac-gate.result != 'success' ||
         needs.tenant-gate.result != 'success' ||
         needs.offline-sync-gate.result != 'success' ||
-        needs.compliance-gate.result != 'success'
+        needs.compliance-gate.result != 'success' ||
+        needs.e2e-workflow-gate.result != 'success'
       run: |
         echo "❌ One or more release gates failed. See gate job results above."
         exit 1
