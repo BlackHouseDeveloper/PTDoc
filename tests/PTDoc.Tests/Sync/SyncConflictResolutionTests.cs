@@ -84,10 +84,19 @@ public class SyncConflictResolutionTests
         var context = CreateInMemoryContext();
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
 
+        // Create entities in the DB so ProcessQueueItemAsync can find them
+        var userId = Guid.NewGuid();
+        var p1 = new Patient { FirstName = "A", LastName = "B", DateOfBirth = new DateTime(1980, 1, 1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        var p2 = new Patient { FirstName = "C", LastName = "D", DateOfBirth = new DateTime(1985, 6, 1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.Patients.AddRange(p1, p2);
+        var appt = new Appointment { PatientId = p1.Id, StartTimeUtc = DateTime.UtcNow, EndTimeUtc = DateTime.UtcNow.AddHours(1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.Appointments.Add(appt);
+        await context.SaveChangesAsync();
+
         // Enqueue some items
-        await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Create);
-        await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Update);
-        await syncEngine.EnqueueAsync("Appointment", Guid.NewGuid(), SyncOperation.Create);
+        await syncEngine.EnqueueAsync("Patient", p1.Id, SyncOperation.Create);
+        await syncEngine.EnqueueAsync("Patient", p2.Id, SyncOperation.Update);
+        await syncEngine.EnqueueAsync("Appointment", appt.Id, SyncOperation.Create);
 
         // Act
         var result = await syncEngine.PushAsync();
