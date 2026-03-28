@@ -33,6 +33,16 @@ public static class NoteEndpoints
         group.MapPut("/{id:guid}", UpdateNote)
             .WithName("UpdateNote")
             .WithSummary("Update a draft clinical note");
+
+        // Sprint UC-Gamma: AI output acceptance gate.
+        // AI-generated content is NEVER persisted automatically — a clinician must
+        // explicitly call this endpoint to write generated text into a draft note.
+        group.MapPost("/{noteId:guid}/accept-ai-suggestion", AcceptAiSuggestion)
+            .WithName("AcceptAiSuggestion")
+            .WithSummary("Accept AI-generated content into a specific section of a draft note")
+            .WithDescription(
+                "Explicit clinician acceptance gate. AI output is not persisted until " +
+                "a clinician (PT or PTA) calls this endpoint. Blocked on signed notes.");
     }
 
     // POST /api/notes
@@ -255,6 +265,72 @@ public static class NoteEndpoints
         });
     }
 
+    // POST /api/notes/{noteId}/accept-ai-suggestion
+    private static async Task<IResult> AcceptAiSuggestion(
+        Guid noteId,
+        [FromBody] AiSuggestionAcceptanceRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
+        [FromServices] IRulesEngine rulesEngine,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.GeneratedText))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.GeneratedText), ["GeneratedText is required."] }
+            });
+
+        if (string.IsNullOrWhiteSpace(request.Section))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.Section), ["Section is required."] }
+            });
+
+        if (string.IsNullOrWhiteSpace(request.GenerationType))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.GenerationType), ["GenerationType is required."] }
+            });
+
+        var note = await db.ClinicalNotes
+            .Include(n => n.ObjectiveMetrics)
+            .FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken);
+
+        if (note is null)
+            return Results.NotFound(new { error = $"Note {noteId} not found." });
+
+        // Sprint UC-Gamma AI guardrail: AI content CANNOT be written to a signed note.
+        // A signed note is immutable; the clinician must create an addendum instead.
+        var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
+        if (!immutabilityResult.IsValid)
+        {
+            return Results.Conflict(new
+            {
+                error = "AI-generated content cannot be accepted into a signed note. Create an addendum instead.",
+                ruleId = immutabilityResult.RuleId
+            });
+        }
+
+        // Merge the accepted AI content into the target SOAP section of ContentJson.
+        note.ContentJson = MergeAiContentIntoSection(note.ContentJson, request.Section, request.GeneratedText);
+
+        var userId = identityContext.GetCurrentUserId();
+        note.LastModifiedUtc = DateTime.UtcNow;
+        note.ModifiedByUserId = userId;
+        note.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        // Audit: log the explicit clinician acceptance of AI-generated content.
+        // NO PHI — only generation type and note identity.
+        await auditService.LogAiGenerationAcceptedAsync(
+            AuditEvent.AiGenerationAccepted(note.Id, request.GenerationType, userId),
+            cancellationToken);
+
+        return Results.Ok(new { note = ToResponse(note) });
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -284,6 +360,32 @@ public static class NoteEndpoints
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Merges AI-generated text into the specified section of the note's ContentJson.
+    /// Creates the section key if it does not exist; replaces it if it does.
+    /// The section key is always stored as lower-case for consistency.
+    /// Sprint UC-Gamma: called only from <see cref="AcceptAiSuggestion"/>
+    /// after the clinician explicitly accepts the generated content.
+    /// </summary>
+    internal static string MergeAiContentIntoSection(string contentJson, string section, string generatedText)
+    {
+        Dictionary<string, object>? content;
+        try
+        {
+            content = JsonSerializer.Deserialize<Dictionary<string, object>>(
+                contentJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException)
+        {
+            content = null;
+        }
+
+        content ??= new Dictionary<string, object>();
+        content[section.ToLowerInvariant()] = generatedText;
+        return JsonSerializer.Serialize(content);
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

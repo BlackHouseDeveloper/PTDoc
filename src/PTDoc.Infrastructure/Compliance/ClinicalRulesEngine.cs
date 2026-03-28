@@ -80,6 +80,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         EvaluateObjectiveMeasures(note, results);
         EvaluateGoals(contentDoc, note.NoteType, results);
         EvaluatePlan(contentDoc, note.NoteType, results);
+        EvaluateSubjectiveSection(contentDoc, note.NoteType, results);
 
         // ── Compliance Rules ──────────────────────────────────────────────────
         EvaluateCertificationPeriod(contentDoc, note.NoteType, results);
@@ -113,6 +114,32 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
             Message = "No objective measures recorded. Clinical assessments require at least one objective measure.",
             Blocking = blocking
         });
+    }
+
+    /// <summary>
+    /// SOAP_SUBJECTIVE: The subjective section must be present and non-empty before signing.
+    /// Blocking for Evaluation and ProgressNote; advisory (Warning) for Daily and Discharge.
+    /// Sprint UC-Gamma: enforces SOAP structure constraints at the service layer.
+    /// </summary>
+    private static void EvaluateSubjectiveSection(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    {
+        if (contentDoc == null) return;
+
+        bool hasSubjective = HasNonEmptyContent(contentDoc.RootElement,
+            "subjective", "chiefComplaint", "patientComplaint", "subjectiveSection");
+
+        if (!hasSubjective)
+        {
+            bool blocking = noteType is NoteType.Evaluation or NoteType.ProgressNote;
+            results.Add(new RuleEvaluationResult
+            {
+                RuleId = "SOAP_SUBJECTIVE",
+                Category = RuleCategory.DocCompleteness,
+                Severity = blocking ? ValidationSeverity.Error : ValidationSeverity.Warning,
+                Message = "Subjective section is required before signing. Document the patient's chief complaint and reported symptoms.",
+                Blocking = blocking
+            });
+        }
     }
 
     /// <summary>

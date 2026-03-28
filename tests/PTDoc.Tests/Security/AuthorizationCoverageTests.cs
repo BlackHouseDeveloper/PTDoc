@@ -189,6 +189,9 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
         new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),
 
+        // Sprint UC-Gamma: AI output acceptance gate — clinician must explicitly accept AI content
+        new("POST", "/api/v1/notes/{noteId:guid}/accept-ai-suggestion", AuthorizationPolicies.NoteWrite),
+
         // ── Compliance rule evaluation (Compliance/ComplianceEndpoints.cs) ────
         new("POST", "/api/v1/compliance/evaluate/pn-frequency/{patientId:guid}",    AuthorizationPolicies.ClinicalStaff),
         new("POST", "/api/v1/compliance/evaluate/8-minute-rule",                    AuthorizationPolicies.ClinicalStaff),

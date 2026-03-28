@@ -125,3 +125,33 @@ public sealed class NoteOperationResponse
     public NoteResponse Note { get; set; } = null!;
     public ComplianceWarning? ComplianceWarning { get; set; }
 }
+
+/// <summary>
+/// Request DTO for accepting AI-generated content into a specific section of a draft note.
+///
+/// This is the explicit clinician acceptance gate required by Sprint UC-Gamma:
+/// AI output is NEVER persisted automatically — a clinician must call this endpoint
+/// to write generated text into the note record.
+/// </summary>
+public sealed class AiSuggestionAcceptanceRequest
+{
+    /// <summary>
+    /// The SOAP section to update (e.g., "assessment", "plan", "subjective", "objective").
+    /// Case-insensitive; stored as lower-case in ContentJson.
+    /// </summary>
+    [Required]
+    public string Section { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The AI-generated text the clinician has reviewed and chosen to accept.
+    /// </summary>
+    [Required]
+    public string GeneratedText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The type of generation (e.g., "Assessment", "Plan", "Goals").
+    /// Used for audit logging only — not persisted in the note.
+    /// </summary>
+    [Required]
+    public string GenerationType { get; set; } = string.Empty;
+}
