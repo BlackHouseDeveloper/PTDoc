@@ -104,3 +104,35 @@ public class CptCodeEntry
     public int Units { get; set; }
     public bool IsTimed { get; set; } // Timed codes subject to 8-minute rule
 }
+
+/// <summary>
+/// Server-authoritative set of CMS-designated time-based CPT codes.
+/// The <see cref="CptCodeEntry.IsTimed"/> flag submitted by UI clients is overridden
+/// by this set during validation to prevent UI serialization from stripping the flag
+/// and bypassing 8-minute rule enforcement.
+/// </summary>
+public static class KnownTimedCptCodes
+{
+    /// <summary>
+    /// CMS time-based procedure codes commonly billed in outpatient physical therapy.
+    /// Any code in this set is always treated as timed, regardless of the client-submitted IsTimed flag.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "97110", // Therapeutic exercises
+        "97112", // Neuromuscular reeducation
+        "97116", // Gait training
+        "97140", // Manual therapy techniques
+        "97150", // Therapeutic procedure (group)
+        "97530", // Therapeutic activities
+        "97535", // Self-care/home management training
+        "97542", // Wheelchair management/propulsion training
+        "97750", // Physical performance test or measurement
+        "97755", // Assistive technology assessment
+        "97760", // Orthotic management/training (initial encounter)
+        "97761", // Prosthetic training (initial encounter)
+        "97763", // Orthotic/prosthetic management (subsequent)
+        "92507", // Treatment of speech, language, voice, communication
+        "92508", // Treatment of speech, language, voice, communication (group)
+    };
+}

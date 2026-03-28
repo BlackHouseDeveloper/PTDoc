@@ -50,6 +50,14 @@ public class RbacEnforcementTests
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, Roles.Billing));
     }
 
+    [Fact]
+    public async Task Billing_CannotExport_Notes()
+    {
+        // Billing is read-only for clinical notes; cannot export to PDF.
+        // NoteExport allows PT, PTA, Admin — Billing is excluded.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, Roles.Billing));
+    }
+
     // ── Must-catch: Owner cannot modify data ─────────────────────────────────
 
     [Fact]
@@ -80,6 +88,14 @@ public class RbacEnforcementTests
         // Owner can read intake status but cannot create/update intake forms.
         // IntakeWrite includes FrontDesk, PT, PTA, Admin — but NOT Owner.
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeWrite, Roles.Owner));
+    }
+
+    [Fact]
+    public async Task Owner_CannotExport_Notes()
+    {
+        // Owner is read-only per role matrix; cannot trigger PDF export.
+        // NoteExport allows PT, PTA, Admin — Owner is excluded.
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, Roles.Owner));
     }
 
     // ── Must-catch: PTA cannot access eval endpoints ─────────────────────────
@@ -126,6 +142,29 @@ public class RbacEnforcementTests
     public async Task PT_CanWrite_PatientRecords()
     {
         Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, Roles.PT));
+    }
+
+    // ── Role confirmation: NoteExport permission ─────────────────────────────
+
+    [Fact]
+    public async Task PT_CanExport_Notes()
+    {
+        // PT is the primary exporting clinician.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, Roles.PT));
+    }
+
+    [Fact]
+    public async Task PTA_CanExport_Notes()
+    {
+        // PTA can export notes they authored.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, Roles.PTA));
+    }
+
+    [Fact]
+    public async Task Admin_CanExport_Notes()
+    {
+        // Admin can export for administrative purposes.
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, Roles.Admin));
     }
 
     // ── Role confirmation: non-clinical roles denied clinical write ───────────
