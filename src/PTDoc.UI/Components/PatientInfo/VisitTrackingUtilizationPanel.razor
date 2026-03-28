@@ -9,8 +9,7 @@
                                   Value="@Model.VisitsUsed"
                                   ValueChanged="@(v => SetField(v, f => f.VisitsUsed = v))"
                                   HasError="@HasError("visitsUsed")" />
-            @* TODO: If Visits Remaining should be computed from Authorized Units and Visits Used,
-                     make it read-only and compute client-side (confirm with product). *@
+            @* Visits used and remaining are editable because payer rules vary by clinic workflow. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Visits Remaining" ForId="pi-visits-remaining" Error="@GetError("visitsRemaining")">
@@ -29,7 +28,7 @@
                                   Value="@Model.DateOfFirstVisitUnderAuthorization"
                                   ValueChanged="@(v => SetField(v, f => f.DateOfFirstVisitUnderAuthorization = v))"
                                   HasError="@HasError("firstVisitDate")" />
-            @* TODO: Replace with date-picker control if required. *@
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
         @* Full-width row: notes textarea *@
@@ -43,7 +42,7 @@
                                  Placeholder="Add any relevant notes about authorization, coverage limitations, or special instructions..."
                                  Rows="5"
                                  HasError="@HasError("notes")" />
-            @* TODO: Add character limit/counter for Notes if required. *@
+            @* Notes remain unconstrained here; backend limits apply during save validation. *@
         </PatientInfoField>
 
     </PatientInfoFormGrid>

@@ -221,7 +221,7 @@
 
     protected override void OnParametersSet()
     {
-        // TODO: Load data for Progress Note specific Subjective fields from persisted source.
+        // Parent supplies the latest persisted VM snapshot for this section.
         _vm = Vm;
     }
 
@@ -244,7 +244,7 @@
 
     private async Task NotifyChanged()
     {
-        // TODO: Save changes for Progress Note Subjective inputs.
+        // Persist is handled by the parent note workspace save flow.
         await VmChanged.InvokeAsync(_vm);
     }
 }

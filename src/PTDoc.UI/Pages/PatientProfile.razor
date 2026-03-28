@@ -2,13 +2,19 @@
 @attribute [Authorize]
 @rendermode InteractiveServer
 @inject NavigationManager NavigationManager
+@using PTDoc.Application.Services
+@using PTDoc.Application.DTOs
+@using PTDoc.UI.Components.Patients.Profile.Models
+@inject IPatientService PatientService
+@inject INoteService NoteService
+@inject IToastService ToastService
 
 <PageTitle>Patient Profile - PTDoc</PageTitle>
 
 <div class="patient-profile-page">
     <div class="patient-profile-page-body">
         <div class="patient-profile-page-container">
-            <PatientDemographicsCardEditable Patient="@patient" />
+            <PatientDemographicsCardEditable Patient="@patient" OnPatientUpdated="LoadPatientAsync" />
             
             <PatientPrimaryActionButton 
                 Label="Start New Note" 
@@ -25,34 +31,51 @@
 
     private PatientProfileVm patient = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        // TODO: Replace with IPatientService.GetById(Id)
-        LoadSamplePatient();
+        await LoadPatientAsync();
     }
 
-    private void LoadSamplePatient()
+    private async Task LoadPatientAsync()
     {
-        patient = new PatientProfileVm
+        if (!Guid.TryParse(Id, out var patientId))
         {
-            Id = Id,
-            DisplayName = "Sarah Johnson",
-            DateOfBirth = "3/14/1985",
-            Email = "sarah.johnson@email.com",
-            PhoneNumber = "(555) 123-4567",
-            Address = "123 Main St, Anytown, ST 12345",
-            FlagsAndComorbidities = new List<string>
+            NavigationManager.NavigateTo("/patients");
+            return;
+        }
+
+        try
+        {
+            var response = await PatientService.GetByIdAsync(patientId);
+            if (response is null)
             {
-                "Diabetes",
-                "Balance Issues",
-                "Hypertension"
-            },
-            PrimaryDiagnosis = "Lower back pain",
-            SecondaryDiagnosis = "Sciatica",
-            ReferringPhysician = "Dr. Smith",
-            InsuranceProvider = "Blue Cross",
-            AuthorizationNumber = "AUTH-2024-001"
-        };
+                NavigationManager.NavigateTo("/patients");
+                return;
+            }
+
+            patient = new PatientProfileVm
+            {
+                Id = response.Id.ToString(),
+                DisplayName = $"{response.FirstName} {response.LastName}".Trim(),
+                DateOfBirth = response.DateOfBirth != default
+                    ? response.DateOfBirth.ToString("M/d/yyyy")
+                    : null,
+                Email = response.Email,
+                PhoneNumber = response.Phone,
+                Address = BuildAddress(response)
+            };
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Failed to load patient. Please try again.");
+        }
+    }
+
+    private static string? BuildAddress(PatientResponse r)
+    {
+        var parts = new[] { r.AddressLine1, r.AddressLine2, r.City, r.State, r.ZipCode }
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+        return string.Join(", ", parts) is { Length: > 0 } addr ? addr : null;
     }
 
     private void HandleStartNote()
@@ -62,33 +85,6 @@
             return;
         }
 
-        var existingNoteId = ResolveExistingNoteIdForPatient(Id);
-        if (!string.IsNullOrWhiteSpace(existingNoteId))
-        {
-            // Existing note context: open note workspace in edit/view mode.
-            NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/note/{Uri.EscapeDataString(existingNoteId)}");
-            return;
-        }
-
-        // No existing note context: route to patient-scoped new-note flow.
         NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note");
-    }
-
-    private string? ResolveExistingNoteIdForPatient(string patientId)
-    {
-        // TODO: Fetch notes for patient from API and pick target note using business rule:
-        // - if exactly one active draft exists, open it
-        // - if multiple notes exist, select most recently modified draft (or prompt user)
-        // - if none exist, return null to start a new note
-
-        // Mock: sample mapping for local navigation behavior testing only.
-        var mockLatestNotesByPatient = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["PT001"] = "1",
-            ["PT002"] = "2",
-            ["PT003"] = "3"
-        };
-
-        return mockLatestNotesByPatient.TryGetValue(patientId, out var noteId) ? noteId : null;
     }
 }

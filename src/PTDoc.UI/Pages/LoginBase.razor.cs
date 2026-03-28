@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using System.ComponentModel.DataAnnotations;
 
@@ -22,8 +23,14 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected AuthMode authMode = AuthMode.Login;
     protected readonly LoginModel loginModel = new();
     protected readonly SignUpModel signUpModel = new();
+    protected List<ClinicSummary> clinics = new();
+    protected List<RoleSummary> roles = new();
     protected string? errorMessage;
+    protected bool isPendingApprovalNotice;
     protected bool isLoading;
+    protected bool isSubmitting;
+    protected bool isPtaFieldsActive;
+    protected bool showPendingConfirmation;
     protected bool isDarkTheme;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
 
@@ -46,6 +53,11 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             errorMessage = "Invalid PIN. Please try again.";
         }
+        else
+        if (Navigation.Uri.Contains("pending_approval=1", StringComparison.OrdinalIgnoreCase))
+        {
+            isPendingApprovalNotice = true;
+        }
 
         authMode = Navigation.Uri.Contains("/signup", StringComparison.OrdinalIgnoreCase)
             ? AuthMode.SignUp
@@ -53,6 +65,25 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         // Subscribe to theme changes
         ThemeService.OnThemeChanged += OnThemeChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserService.SupportsSelfServiceRegistration)
+        {
+            return;
+        }
+
+        try
+        {
+            clinics = (await UserService.GetClinicsForSignupAsync()).ToList();
+            roles = (await UserService.GetRolesForSignupAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load signup lookups");
+            errorMessage = "Unable to load registration options right now. Please try again.";
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -113,6 +144,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         authMode = mode;
         errorMessage = null;
+        showPendingConfirmation = false;
 
         // Update URL without navigation
         var targetUrl = mode == AuthMode.Login ? "/login" : "/signup";
@@ -183,31 +215,68 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected async Task HandleSignUp()
     {
         isLoading = true;
+        isSubmitting = true;
         errorMessage = null;
+        showPendingConfirmation = false;
         StateHasChanged();
 
         try
         {
-            await Task.Delay(500);
+            if (signUpModel.ClinicId is null || signUpModel.ClinicId == Guid.Empty)
+            {
+                errorMessage = "Please select a clinic.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(signUpModel.RoleKey))
+            {
+                errorMessage = "Please select a role.";
+                return;
+            }
+
+            if (signUpModel.Pin != signUpModel.ConfirmPin)
+            {
+                errorMessage = "PIN and confirmation PIN do not match.";
+                return;
+            }
+
+            if (isPtaFieldsActive &&
+                (string.IsNullOrWhiteSpace(signUpModel.LicenseType)
+                || string.IsNullOrWhiteSpace(signUpModel.LicenseNumber)
+                || string.IsNullOrWhiteSpace(signUpModel.LicenseState)))
+            {
+                errorMessage = "License type, number, and state are required for PT/PTA roles.";
+                return;
+            }
 
             // Call the RegisterAsync method
-            var success = await UserService.RegisterAsync(
+            var result = await UserService.RegisterAsync(
                 signUpModel.FullName,
                 signUpModel.Email,
                 signUpModel.DateOfBirth!.Value,
+                signUpModel.RoleKey,
+                signUpModel.ClinicId,
+                signUpModel.Pin,
                 signUpModel.LicenseType,
                 signUpModel.LicenseNumber,
                 signUpModel.LicenseState);
 
-            if (success)
+            if (result.IsPending)
             {
                 Logger.LogInformation("Sign up successful for {Email}", signUpModel.Email);
-                // After successful registration, redirect to login
-                Navigation.NavigateTo("/login");
+                showPendingConfirmation = true;
             }
             else
             {
-                errorMessage = "Unable to create account. Please check your information and try again.";
+                errorMessage = result.Status switch
+                {
+                    RegistrationStatus.EmailAlreadyExists => "An account with that email already exists.",
+                    RegistrationStatus.InvalidPin => "PIN must be exactly 4 digits.",
+                    RegistrationStatus.InvalidLicenseData => "License information is required for PT/PTA roles.",
+                    RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
+                    RegistrationStatus.UsernameCollision => "Unable to create a unique username. Please contact support.",
+                    _ => result.Error ?? "Unable to create account. Please check your information and try again."
+                };
             }
         }
         catch (Exception ex)
@@ -218,8 +287,28 @@ public abstract class LoginBase : ComponentBase, IDisposable
         finally
         {
             isLoading = false;
+            isSubmitting = false;
             StateHasChanged();
         }
+    }
+
+    protected void OnRoleChanged(string roleKey)
+    {
+        isPtaFieldsActive = string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleKey, "PTA", StringComparison.OrdinalIgnoreCase);
+
+        if (!isPtaFieldsActive)
+        {
+            signUpModel.LicenseType = string.Empty;
+            signUpModel.LicenseNumber = string.Empty;
+            signUpModel.LicenseState = string.Empty;
+        }
+    }
+
+    protected Task OnRoleChangedAfterBind()
+    {
+        OnRoleChanged(signUpModel.RoleKey);
+        return Task.CompletedTask;
     }
 
     protected sealed class LoginModel
@@ -245,14 +334,27 @@ public abstract class LoginBase : ComponentBase, IDisposable
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public string Email { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "License type is required")]
+        [Required(ErrorMessage = "Role is required")]
+        public string RoleKey { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Clinic is required")]
+        public Guid? ClinicId { get; set; }
+
+        [Required(ErrorMessage = "PIN is required")]
+        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
+        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        public string Pin { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm PIN is required")]
+        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
+        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        public string ConfirmPin { get; set; } = string.Empty;
+
         public string LicenseType { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "License number is required")]
         [StringLength(50, MinimumLength = 3, ErrorMessage = "License number must be between 3 and 50 characters")]
         public string LicenseNumber { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "License state is required")]
         public string LicenseState { get; set; } = string.Empty;
     }
 

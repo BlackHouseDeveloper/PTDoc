@@ -61,13 +61,13 @@
         else if (selectedTab == "notes")
         {
             <div class="patient-clinical-info-empty">
-                <p>Notes view - TODO: Implement notes list</p>
+                <p>Notes will appear here. Use the clinical notes section to view and manage notes for this patient.</p>
             </div>
         }
         else
         {
             <div class="patient-clinical-info-empty">
-                <p>Documents view - TODO: Implement documents list</p>
+                <p>Documents will appear here once document management is available.</p>
             </div>
         }
     </div>
@@ -81,7 +81,7 @@
 
     protected override void OnInitialized()
     {
-        // Sample timeline data - TODO: Load from service
+            // Placeholder timeline data until a patient activity service is available.
         timelineEntries = new List<TimelineEntry>
         {
             new() { Type = "evaluation", Title = "Initial Evaluation", Description = "Comprehensive evaluation for lower back pain", Date = "1/14/2024", Time = "10:30 AM" },

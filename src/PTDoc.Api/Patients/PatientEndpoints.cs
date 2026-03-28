@@ -77,7 +77,11 @@ public static class PatientEndpoints
             {
                 Id = p.Id,
                 DisplayName = p.FirstName + " " + p.LastName,
-                MedicalRecordNumber = p.MedicalRecordNumber
+                FirstName = p.FirstName,
+                LastName = p.LastName,
+                MedicalRecordNumber = p.MedicalRecordNumber,
+                DateOfBirth = p.DateOfBirth,
+                IsArchived = p.IsArchived
             })
             .ToListAsync(cancellationToken);
 

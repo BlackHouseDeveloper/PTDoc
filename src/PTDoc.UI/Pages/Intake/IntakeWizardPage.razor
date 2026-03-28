@@ -13,6 +13,7 @@
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <PageTitle>Patient Intake - PTDocs +</PageTitle>
 
@@ -28,7 +29,7 @@
                 <section class="intake-page__not-found">
                     <h2>Intake Draft Not Found</h2>
                     <p>We could not locate an intake draft for this patient link.</p>
-                    <p>TODO: Add secure public token intake flow and recovery options.</p>
+                    <p>If you received this link via email or text, please check the link is correct. Contact your care provider for assistance.</p>
                 </section>
             }
             else
@@ -79,9 +80,15 @@
     private bool _draftNotFound;
     private bool _canSelectPatient;
     private string? _validationMessage;
+    private IDisposable? _navGuard;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+
+    protected override void OnInitialized()
+    {
+        _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChanging);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -242,9 +249,19 @@
         {
             State.CurrentStep = (IntakeStep)((int)State.CurrentStep - 1);
         }
-
-        // TODO: Prevent browser back from leaving wizard in patient mode without confirmation.
         return Task.CompletedTask;
+    }
+
+    private ValueTask OnLocationChanging(LocationChangingContext context)
+    {
+        if (!State.IsPatientMode || State.IsLocked || !State.IsDirty || State.IsSubmitting)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        context.PreventNavigation();
+        _validationMessage = "You have unsaved intake changes. Continue through the wizard to save before leaving this page.";
+        return new ValueTask(InvokeAsync(StateHasChanged));
     }
 
     private async Task HandleSubmitAsync()
@@ -323,6 +340,11 @@
             HttpStatusCode.Forbidden => "You do not have permission to modify this intake.",
             _ => "We could not save your intake right now. Please try again."
         };
+    }
+
+    public void Dispose()
+    {
+        _navGuard?.Dispose();
     }
 
     private Task HandleClinicianPatientSelectedAsync(Guid? selectedPatientId)

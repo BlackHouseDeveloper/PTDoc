@@ -7,11 +7,11 @@ public class AuthorizationDetailsVm
 {
     public string AuthorizationNumber { get; set; } = string.Empty;
     public string DateAuthorizationReceived { get; set; } = string.Empty;
-    // TODO: Replace with date-picker control if required.
+    // Date values remain text-based in this VM to align with existing storage format.
 
     public string AuthorizationStartDate { get; set; } = string.Empty;
     public string AuthorizationEndDate { get; set; } = string.Empty;
-    // TODO: Determine if units vs visits affects labels/validation.
+    // Authorization amount supports both visit and unit payer workflows.
 
     public string NumberOfVisitsOrUnitsAuthorized { get; set; } = string.Empty;
 }

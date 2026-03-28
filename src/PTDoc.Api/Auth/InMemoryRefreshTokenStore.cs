@@ -18,7 +18,7 @@ public sealed record RefreshTokenRecord(
 /// <summary>
 /// In-memory refresh token store for development and testing.
 /// WARNING: This implementation loses all tokens on application restart, forcing users to re-authenticate.
-/// TODO: Replace with persistent storage (database, Redis, etc.) for production use.
+/// Production deployments should use a persistent token store implementation.
 /// This is particularly important for HIPAA-compliant healthcare applications where unexpected
 /// session terminations could disrupt clinical workflows.
 /// </summary>

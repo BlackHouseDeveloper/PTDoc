@@ -1,0 +1,44 @@
+@using PTDoc.Application.Services
+@inject IToastService ToastService
+@implements IDisposable
+
+@if (_toasts.Count > 0)
+{
+    <div class="toast-container" role="region" aria-label="Notifications" aria-live="polite">
+        @foreach (var toast in _toasts)
+        {
+            <div class="toast toast--@toast.Level.ToString().ToLower()" role="alert">
+                <div class="toast__body">
+                    @if (!string.IsNullOrWhiteSpace(toast.Title))
+                    {
+                        <strong class="toast__title">@toast.Title</strong>
+                    }
+                    <span class="toast__message">@toast.Message</span>
+                </div>
+                <button class="toast__close"
+                        aria-label="Dismiss notification"
+                        @onclick="() => ToastService.Dismiss(toast.Id)">
+                    &times;
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ToastMessage> _toasts = Array.Empty<ToastMessage>();
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnChange += HandleChange;
+        _toasts = ToastService.GetAll();
+    }
+
+    private void HandleChange()
+    {
+        _toasts = ToastService.GetAll();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => ToastService.OnChange -= HandleChange;
+}
