@@ -60,7 +60,7 @@ public static class AuthorizationPolicies
     /// <summary>Read patient demographics — PT, PTA, Admin, Aide, FrontDesk, Billing.</summary>
     public const string PatientRead = "PatientRead";
 
-    /// <summary>Create/update patient records — PT, PTA, Admin.</summary>
+    /// <summary>Create/update patient records — PT, PTA, Admin (Owner is read-only per Role→Capability matrix).</summary>
     public const string PatientWrite = "PatientWrite";
 
     /// <summary>Read clinical notes — PT, PTA, Admin, Owner, Billing (view-only per FSD §3.2).</summary>
@@ -72,7 +72,7 @@ public static class AuthorizationPolicies
     /// <summary>Read or submit intake forms — PT, PTA, Admin, Patient, FrontDesk.</summary>
     public const string IntakeRead = "IntakeRead";
 
-    /// <summary>Create/manage intake forms — PT, PTA, Admin, FrontDesk.</summary>
+    /// <summary>Create/manage intake forms — PT, PTA, Admin, FrontDesk (Owner is read-only per Role→Capability matrix).</summary>
     public const string IntakeWrite = "IntakeWrite";
 
     /// <summary>Access sync and compliance evaluation endpoints — PT, PTA, Admin, Owner.</summary>
@@ -103,8 +103,9 @@ public static class AuthorizationPolicies
                                Roles.FrontDesk, Roles.Billing));
 
         // PatientWrite: licensed clinicians and admin can create/update patient records
+        // Owner is read-only per Role→Capability matrix ("Edit patient demographics" = Deny for Owner)
         options.AddPolicy(PatientWrite,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
 
         // NoteRead: clinical staff + Billing can read clinical notes (not Aide, FrontDesk, or Patient)
         // Billing is "clinical notes VIEW ONLY" per canonical role matrix
@@ -121,8 +122,9 @@ public static class AuthorizationPolicies
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.Patient, Roles.FrontDesk));
 
         // IntakeWrite: clinical staff and front desk can create/manage intake forms for patients
+        // Owner is read-only per Role→Capability matrix ("Start intake invite" = Deny for Owner)
         options.AddPolicy(IntakeWrite,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.FrontDesk));
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.FrontDesk));
 
         // PatientHepAccess: only patient identities can launch their own HEP portal session
         options.AddPolicy(PatientHepAccess,
