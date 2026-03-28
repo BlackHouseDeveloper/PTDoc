@@ -160,6 +160,10 @@ public static class NoteEndpoints
                         { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
                     });
 
+                // Server-side enforcement: override IsTimed for known timed CPT codes
+                // so that UI serialization cannot bypass 8-minute rule validation.
+                EnforceKnownTimedCptStatus(cptCodes);
+
                 if (cptCodes.Any(c => c.IsTimed))
                 {
                     var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
@@ -258,6 +262,10 @@ public static class NoteEndpoints
                     {
                         { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
                     });
+
+                // Server-side enforcement: override IsTimed for known timed CPT codes
+                // so that UI serialization cannot bypass 8-minute rule validation.
+                EnforceKnownTimedCptStatus(cptCodes);
 
                 if (cptCodes.Any(c => c.IsTimed))
                 {
@@ -449,6 +457,22 @@ public static class NoteEndpoints
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Overrides the <see cref="CptCodeEntry.IsTimed"/> flag to <c>true</c> for any
+    /// CPT code whose code value appears in the server-authoritative <see cref="KnownTimedCptCodes.Codes"/> set.
+    /// This prevents the IsTimed flag from being stripped or defaulted to false by UI serialization,
+    /// ensuring 8-minute rule enforcement cannot be bypassed at the client layer.
+    /// Mutates the list in-place.
+    /// </summary>
+    internal static void EnforceKnownTimedCptStatus(List<CptCodeEntry> cptCodes)
+    {
+        foreach (var entry in cptCodes)
+        {
+            if (KnownTimedCptCodes.Codes.Contains(entry.Code))
+                entry.IsTimed = true;
         }
     }
 

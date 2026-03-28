@@ -222,7 +222,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/ai/goals",       AuthorizationPolicies.ClinicalStaff),
 
         // ── PDF export (Pdf/PdfEndpoints.cs) ─────────────────────────────────
-        new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.NoteExport),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
