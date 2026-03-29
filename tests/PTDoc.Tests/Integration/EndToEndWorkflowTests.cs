@@ -452,13 +452,11 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 ///   - Test authentication scheme that reads the role from the X-Test-Role header
 ///   - External service dependencies (AI, PDF, Payment, Fax, HEP) replaced with no-op mocks
 /// </summary>
-public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisposable
+public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string TestEnv = "Testing";
 
     private SqliteConnection? _sharedConnection;
-    private bool _databaseInitialized;
-    private readonly object _databaseInitLock = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -540,26 +538,21 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisp
 
     protected override void ConfigureClient(HttpClient client)
     {
-        // Migrate the database exactly once across all HttpClient instances created by this factory.
-        // ConfigureClient is called for each CreateClient() call, so a double-checked lock is used
-        // to avoid redundant migrations and potential concurrency issues.
-        if (_databaseInitialized)
-        {
-            return;
-        }
+        // No per-client setup needed; database is initialized once in InitializeAsync.
+    }
 
-        lock (_databaseInitLock)
-        {
-            if (_databaseInitialized)
-            {
-                return;
-            }
-
-            using var scope = Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Database.Migrate();
-            _databaseInitialized = true;
-        }
+    /// <summary>
+    /// Called once by xUnit before any test in the class uses this factory.
+    /// Applies EF Core migrations to the shared in-memory SQLite connection.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        // EnsureServer() triggers WebApplicationFactory to build the host,
+        // which in turn calls ConfigureWebHost/ConfigureTestServices.
+        // Calling CreateClient() forces the host to be built before we migrate.
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.MigrateAsync();
     }
 
     /// <summary>Returns an <see cref="HttpClient"/> that sends no authentication headers.</summary>
@@ -587,7 +580,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisp
         services.AddScoped(_ => mock.Object);
     }
 
-    public new async ValueTask DisposeAsync()
+    public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
         if (_sharedConnection is not null)
@@ -664,10 +657,3 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
         _                 => Guid.NewGuid(),
     };
 }
-
-/// <summary>
-/// Test stub for <see cref="PrincipalRecordResolver"/> that bypasses external-identity
-/// DB lookups by reading the internal user ID directly from the <c>X-Test-Role</c>-derived
-/// NameIdentifier claim set by <see cref="TestRoleAuthHandler"/>.
-
-
