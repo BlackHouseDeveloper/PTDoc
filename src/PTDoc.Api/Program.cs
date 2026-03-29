@@ -295,7 +295,7 @@ if (entraExternalIdOptions.Enabled)
     ValidateEntraExternalIdApiConfiguration(entraExternalIdOptions);
 }
 
-if (legacyApiAuthEnabled)
+if (legacyApiAuthEnabled && !builder.Environment.IsEnvironment("Testing"))
 {
     // Validate JWT configuration on startup
     var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
