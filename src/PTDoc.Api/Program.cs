@@ -295,7 +295,7 @@ if (entraExternalIdOptions.Enabled)
     ValidateEntraExternalIdApiConfiguration(entraExternalIdOptions);
 }
 
-if (legacyApiAuthEnabled)
+if (legacyApiAuthEnabled && !builder.Environment.IsEnvironment("Testing"))
 {
     // Validate JWT configuration on startup
     var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
@@ -720,3 +720,7 @@ static void ValidateEntraExternalIdApiConfiguration(EntraExternalIdOptions optio
 }
 
 
+// Expose the auto-generated Program class as public so WebApplicationFactory<Program>
+// can be used in integration tests without requiring InternalsVisibleTo.
+// This is the recommended pattern for testing ASP.NET Core minimal-API apps.
+public partial class Program { }

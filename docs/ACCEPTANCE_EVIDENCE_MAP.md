@@ -1,9 +1,9 @@
-# PTDoc Acceptance Evidence Map — Sprints A–T
+# PTDoc Acceptance Evidence Map — Sprints A–T, UC-Alpha through UC-Omega
 
-**Effective:** Sprint T  
-**Status:** Release readiness validated  
-**Purpose:** Maps every Sprint A–T acceptance criterion to its verification evidence
-(automated test, CI gate, or documented manual verification step).
+**Effective:** Sprint UC-Omega  
+**Status:** Release readiness validated — evidence corrected per Codex audit  
+**Purpose:** Maps every Sprint A–T and UC-Alpha through UC-Omega acceptance criterion
+to its verification evidence (automated test, CI gate, or documented manual verification step).
 
 ---
 
@@ -299,6 +299,46 @@ evidence is intentionally scaffolded or out of Sprint T scope:
 | External integration API client scaffolding completeness | ⚠️ Partial | Integration clients are scaffolded under `Infrastructure/IntegrationClients/`; full provider implementations are not in current scope |
 | Integration retry/error handling completeness across all external providers | ⚠️ Partial | Baseline behavior is covered by `Integration/IntegrationServiceTests.cs`; advanced provider-specific scenarios remain partial |
 | Multi-node background job concurrency safety (distributed lock) | ⚠️ Partial | Not in Sprint T scope — safe in single-node deployments; distributed lock would require new dev scope which Sprint T prohibits |
+
+---
+
+*Last updated: Sprint UC-Omega — March 2026*  
+*Sprint UC-Omega adds HTTP API integration tests, an e2e-workflow-gate CI job, a role capability*
+*verification map, and a corrected sprint completion status document. Evidence pack reconciled*
+*per Codex audit — all previously over-claimed items are either verified or explicitly marked as gaps.*
+
+---
+
+## Sprint UC-Omega — End-to-End Validation and CI Gates
+
+| Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
+|---|---|---|---|---|
+| HTTP API integration test harness created (WebApplicationFactory) | Test | `tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs` — all `[Category=EndToEnd]` tests | ✅ | — |
+| Unauthenticated request returns 401 (no role escalation) | Test | `EndToEndWorkflowTests.Unauthenticated_Request_Returns_401` | ✅ | — |
+| Full intake workflow: FrontDesk creates → PT submits → PT reviews | Test | `EndToEndWorkflowTests.Intake_Workflow_FrontDesk_Creates_PT_Reviews` | ✅ | — |
+| PT creates Daily note → 201 with note ID | Test | `EndToEndWorkflowTests.PT_Creates_DailyNote_Returns_201_With_NoteId` | ✅ | — |
+| PTA creates Daily note → 201 | Test | `EndToEndWorkflowTests.PTA_Can_Create_DailyNote_Returns_201` | ✅ | — |
+| PTA blocked from Eval note → 403 | Test | `EndToEndWorkflowTests.PTA_Cannot_Create_EvalNote_Returns_403` | ✅ | — |
+| PT creates Eval note then signs → endpoint reachable | Test | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` | ✅ | — |
+| Billing blocked from note write | Test | `EndToEndWorkflowTests.Billing_Cannot_Write_Notes_Returns_403` | ✅ | — |
+| Billing blocked from note sign | Test | `EndToEndWorkflowTests.Billing_Cannot_Sign_Note_Returns_403` | ✅ | — |
+| Billing blocked from PDF export | Test | `EndToEndWorkflowTests.Billing_Cannot_Export_Note_Returns_403` | ✅ | — |
+| Billing blocked from patient demographics edit | Test | `EndToEndWorkflowTests.Billing_Cannot_Edit_Patient_Demographics_Returns_403` | ✅ | — |
+| Billing blocked from sync | Test | `EndToEndWorkflowTests.Billing_Cannot_Access_Sync_Returns_403` | ✅ | — |
+| Owner blocked from note write | Test | `EndToEndWorkflowTests.Owner_Cannot_Write_Notes_Returns_403` | ✅ | — |
+| Owner blocked from demographics edit | Test | `EndToEndWorkflowTests.Owner_Cannot_Edit_Patient_Demographics_Returns_403` | ✅ | — |
+| Owner blocked from PDF export | Test | `EndToEndWorkflowTests.Owner_Cannot_Export_Note_Returns_403` | ✅ | — |
+| FrontDesk blocked from note write | Test | `EndToEndWorkflowTests.FrontDesk_Cannot_Write_Notes_Returns_403` | ✅ | — |
+| FrontDesk blocked from sync | Test | `EndToEndWorkflowTests.FrontDesk_Cannot_Access_Sync_Returns_403` | ✅ | — |
+| Aide blocked from note write | Test | `EndToEndWorkflowTests.Aide_Cannot_Write_Notes_Returns_403` | ✅ | — |
+| Patient blocked from clinical sync | Test | `EndToEndWorkflowTests.Patient_Cannot_Access_Sync_Status_Returns_403` | ✅ | — |
+| PTA blocked from co-sign (PT-only) | Test | `EndToEndWorkflowTests.PTA_Cannot_CoSign_Note_Returns_403` | ✅ | — |
+| PT can access sync status | Test | `EndToEndWorkflowTests.PT_Can_Access_Sync_Status_Returns_200` | ✅ | — |
+| Health liveness endpoint works without auth | Test | `EndToEndWorkflowTests.HealthLive_Returns_200_Without_Auth` | ✅ | — |
+| Intake billing-create blocked | Test | `EndToEndWorkflowTests.Intake_Billing_Cannot_Create_Returns_403` | ✅ | — |
+| CI gate: e2e-workflow-gate runs on every PR | CI Gate | `ci-release-gate.yml` — `e2e-workflow-gate` job (`[Category=EndToEnd]`) | ✅ | — |
+| Role capability verification map published | Manual | `docs/ROLE_CAPABILITY_VERIFICATION_MAP.md` — every claim traces to a passing test | ✅ | — |
+| Sprint completion status document corrects overclaims | Manual | `docs/SPRINT_COMPLETION_STATUS.md` — honest, test-backed status per Codex audit | ✅ | — |
 
 ---
 
