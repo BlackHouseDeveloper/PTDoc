@@ -101,12 +101,12 @@ Each row records:
 
 | Capability | Role | Decision | Enforcement Layer | Test Reference |
 |---|---|---|---|---|
-| Sign Eval/PN/DC note | PT | Allow | API policy (`NoteSign`) | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` ✅ |
+| Sign Eval/PN/DC note | PT | Allow | API policy (`NoteWrite`) | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` ✅ |
 | Sign Eval/PN/DC note | PTA | Deny | API policy | `RbacEnforcementTests.PTA_Cannot_Sign_Eval` |
 | Sign Eval/PN/DC note | Billing | Deny | API policy | `EndToEndWorkflowTests.Billing_Cannot_Sign_Note_Returns_403` ✅ |
-| Sign Daily note | PT | Allow | API policy | `ComplianceEndpointTests` |
-| Sign Daily note | PTA | Allow → Pending Co-sign | API policy + service guard | `ComplianceEndpointTests.PTA_Signs_Daily_Note_Sets_RequiresCoSign` |
-| PT co-sign PTA Daily | PT | Allow | API policy (`NoteCoSign`) | `ComplianceEndpointTests.PT_Can_CoSign_PTA_Daily_Note` |
+| Sign Daily note | PT | Allow | API policy (`NoteWrite`) | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` ✅ |
+| Sign Daily note | PTA | Allow → Pending Co-sign | API policy (`NoteWrite`) + service guard | `RbacEnforcementTests` |
+| PT co-sign PTA Daily | PT | Allow | API policy (`NoteCoSign`) | `AuthorizationCoverageTests` |
 | PT co-sign PTA Daily | PTA | Deny | API policy | `EndToEndWorkflowTests.PTA_Cannot_CoSign_Note_Returns_403` ✅ |
 | PT co-sign PTA Daily | Billing | Deny | API policy | `RbacEnforcementTests` |
 | Add addendum | PT | Allow | API policy (`NoteWrite`) | `AuthorizationCoverageTests` |
@@ -120,7 +120,7 @@ Each row records:
 |---|---|---|---|---|
 | Export PDF | PT | Allow | API policy (`NoteExport`) | `AuthorizationCoverageTests` |
 | Export PDF | PTA | Allow (if permitted) | API policy | `AuthorizationCoverageTests` |
-| Export PDF | Billing | Allow (if permitted) | API policy | `EndToEndWorkflowTests.Billing_Cannot_Export_Note_Returns_403` ✅ (signed-only gate) |
+| Export PDF | Billing | Deny | API policy (`NoteExport`) | `EndToEndWorkflowTests.Billing_Cannot_Export_Note_Returns_403` ✅ |
 | Export PDF | Owner | Deny | API policy | `EndToEndWorkflowTests.Owner_Cannot_Export_Note_Returns_403` ✅ |
 | Export PDF | Patient | Deny | API policy | `RbacEnforcementTests` |
 | Export PDF | FrontDesk | Deny | API policy | `RbacEnforcementTests` |
@@ -132,13 +132,13 @@ Each row records:
 
 | Capability | Role | Decision | Enforcement Layer | Test Reference |
 |---|---|---|---|---|
-| Run/trigger sync | PT | Allow | API policy (`SyncWrite`) | `EndToEndWorkflowTests.PT_Can_Access_Sync_Status_Returns_200` ✅ |
-| Run/trigger sync | PTA | Allow | API policy | `AuthorizationCoverageTests` |
-| Run/trigger sync | Billing | Deny | API policy | `EndToEndWorkflowTests.Billing_Cannot_Access_Sync_Returns_403` ✅ |
-| Run/trigger sync | Owner | Deny | API policy | `RbacEnforcementTests` |
-| Run/trigger sync | Patient | Limited (patient dataset only) | API policy | `EndToEndWorkflowTests.Patient_Cannot_Access_Sync_Status_Returns_403` ✅ |
-| Run/trigger sync | FrontDesk | Deny | API policy | `EndToEndWorkflowTests.FrontDesk_Cannot_Access_Sync_Returns_403` ✅ |
-| Run/trigger sync | Aide | Deny | API policy | `RbacEnforcementTests` |
+| Run/trigger sync | PT | Allow | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.PT_Can_Access_Sync_Status_Returns_200` ✅ |
+| Run/trigger sync | PTA | Allow | API policy (`ClinicalStaff`) | `AuthorizationCoverageTests` |
+| Run/trigger sync | Billing | Deny | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.Billing_Cannot_Access_Sync_Returns_403` ✅ |
+| Run/trigger sync | Owner | Allow | API policy (`ClinicalStaff`) | `AuthorizationCoverageTests` |
+| Run/trigger sync | Patient | Deny | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.Patient_Cannot_Access_Sync_Status_Returns_403` ✅ |
+| Run/trigger sync | FrontDesk | Deny | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.FrontDesk_Cannot_Access_Sync_Returns_403` ✅ |
+| Run/trigger sync | Aide | Deny | API policy (`ClinicalStaff`) | `RbacEnforcementTests` |
 | Sync excludes clinical data | Aide/FrontDesk/Patient | Enforced by scoping | SyncEngine service | `SyncEngineTests.GetClientDelta_ExcludesClinicalNoteForNonClinicalRoles` |
 
 ---

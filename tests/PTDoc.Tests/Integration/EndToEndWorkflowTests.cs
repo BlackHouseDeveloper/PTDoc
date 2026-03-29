@@ -200,7 +200,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     {
         // 1. FrontDesk creates an intake form
         using var fdClient = _factory.CreateClientWithRole(Roles.FrontDesk);
-        var patientId = await CreatePatientAsync(_factory.CreateClientWithRole(Roles.PT));
+        using var ptClientForCreate = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(ptClientForCreate);
 
         var createBody = JsonContent(new CreateIntakeRequest
         {
@@ -273,13 +274,14 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var client = _factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
-        // Create note
+        // Use a Daily note — no blocking clinical-validation rules fire for Daily notes,
+        // so SignNoteAsync will always return Success=true, giving us a reliable 200 OK.
         var createBody = JsonContent(new CreateNoteRequest
         {
             PatientId = patientId,
-            NoteType = NoteType.Evaluation,
+            NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{\"subjective\":\"Initial eval\",\"assessment\":\"Knee pain\",\"plan\":\"PT 3x/week\"}",
+            ContentJson = "{\"subjective\":\"Patient reports progress.\"}",
             CptCodesJson = "[]"
         });
         using var createResp = await client.PostAsync("/api/v1/notes", createBody);
@@ -289,14 +291,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var noteDoc = JsonSerializer.Deserialize<JsonDocument>(createContent, JsonOpts);
         var noteId = noteDoc!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
 
-        // Sign note
+        // Sign note — Daily notes have no blocking compliance violations, so expect 200 OK.
         using var signResp = await client.PostAsync($"/api/v1/notes/{noteId}/sign", null);
-        // Expect 200 (signed) or 422 (content validation failed) — either is acceptable;
-        // the key assertion is that the endpoint is reachable with the correct role.
-        Assert.True(
-            signResp.StatusCode == HttpStatusCode.OK ||
-            signResp.StatusCode == HttpStatusCode.UnprocessableEntity,
-            $"Expected 200 or 422 from sign endpoint, got {signResp.StatusCode}");
+        Assert.Equal(HttpStatusCode.OK, signResp.StatusCode);
     }
 
     [Fact]
@@ -390,7 +387,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     public async Task Owner_Cannot_Edit_Patient_Demographics_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Owner);
-        var patientId = await CreatePatientAsync(_factory.CreateClientWithRole(Roles.PT));
+        using var ptClientForCreate = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(ptClientForCreate);
 
         var body = JsonContent(new UpdatePatientRequest { FirstName = "ModifiedName" });
         using var response = await client.PutAsync($"/api/v1/patients/{patientId}", body);
@@ -403,7 +401,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     public async Task Billing_Cannot_Edit_Patient_Demographics_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
-        var patientId = await CreatePatientAsync(_factory.CreateClientWithRole(Roles.PT));
+        using var ptClientForCreate = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(ptClientForCreate);
 
         var body = JsonContent(new UpdatePatientRequest { FirstName = "BillingEdited" });
         using var response = await client.PutAsync($"/api/v1/patients/{patientId}", body);
@@ -449,9 +448,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
 /// <summary>
 /// WebApplicationFactory for PTDoc.Api that configures an isolated test environment:
-///   - In-memory SQLite database (per-factory instance) with migrations applied
+///   - In-memory SQLite database (per-factory instance) with migrations applied once
 ///   - Test authentication scheme that reads the role from the X-Test-Role header
-///   - JWT validation disabled (Auth:LegacyApiAuthEnabled = false)
 ///   - External service dependencies (AI, PDF, Payment, Fax, HEP) replaced with no-op mocks
 /// </summary>
 public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisposable
@@ -459,6 +457,8 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisp
     private const string TestEnv = "Testing";
 
     private SqliteConnection? _sharedConnection;
+    private bool _databaseInitialized;
+    private readonly object _databaseInitLock = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -540,10 +540,26 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncDisp
 
     protected override void ConfigureClient(HttpClient client)
     {
-        // Migrate the database once the factory has built the service provider.
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.Database.Migrate();
+        // Migrate the database exactly once across all HttpClient instances created by this factory.
+        // ConfigureClient is called for each CreateClient() call, so a double-checked lock is used
+        // to avoid redundant migrations and potential concurrency issues.
+        if (_databaseInitialized)
+        {
+            return;
+        }
+
+        lock (_databaseInitLock)
+        {
+            if (_databaseInitialized)
+            {
+                return;
+            }
+
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Database.Migrate();
+            _databaseInitialized = true;
+        }
     }
 
     /// <summary>Returns an <see cref="HttpClient"/> that sends no authentication headers.</summary>
