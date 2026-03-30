@@ -80,8 +80,15 @@ public class SignatureService : ISignatureService
         if (patient is not null)
         {
             var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
-            var hasDiagnosis = !string.Equals(diagnosisJson.Trim(), "[]", StringComparison.Ordinal)
-                && diagnosisJson.Trim().Length > 2; // non-empty array
+            bool hasDiagnosis = false;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(diagnosisJson);
+                hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
+                    && doc.RootElement.GetArrayLength() > 0;
+            }
+            catch { /* invalid JSON — treat as no diagnoses */ }
+
             if (!hasDiagnosis)
             {
                 return new SignatureResult
@@ -157,6 +164,7 @@ public class SignatureService : ISignatureService
 
         note.CoSignedByUserId = ptUserId;
         note.CoSignedUtc = DateTime.UtcNow;
+        note.NoteStatus = NoteStatus.Signed; // PT co-sign completes the signing workflow
 
         await _context.SaveChangesAsync(ct);
 

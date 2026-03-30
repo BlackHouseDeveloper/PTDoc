@@ -53,9 +53,10 @@ public sealed class IntakeService : IIntakeService
         var clinicId = _tenantContext.GetCurrentClinicId();
         var userId = _identityContext.GetCurrentUserId();
 
-        // Parse name into first/last
+        // Parse name into first/last — split on first space only
         var name = state.FullName?.Trim() ?? string.Empty;
         var spaceIndex = name.IndexOf(' ');
+        // Use everything before first space as first name, rest as last name
         var firstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
         var lastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
 
@@ -84,7 +85,11 @@ public sealed class IntakeService : IIntakeService
 
         _context.Patients.Add(patient);
 
-        var draft = state with { PatientId = patient.Id };
+        var draft = new IntakeResponseDraft();
+        // Copy state properties
+        CopyDraftProperties(state, draft);
+        draft.PatientId = patient.Id;
+
         var intake = new IntakeForm
         {
             PatientId = patient.Id,
@@ -163,7 +168,9 @@ public sealed class IntakeService : IIntakeService
             return;
 
         // Update intake with final submitted state
-        var submittedState = state with { IsSubmitted = true };
+        var submittedState = new IntakeResponseDraft();
+        CopyDraftProperties(state, submittedState);
+        submittedState.IsSubmitted = true;
         intake.ResponseJson = SerializeDraft(submittedState);
         intake.Consents = BuildConsentsJson(state);
         intake.SubmittedAt = DateTime.UtcNow;
@@ -211,6 +218,41 @@ public sealed class IntakeService : IIntakeService
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private static void CopyDraftProperties(IntakeResponseDraft source, IntakeResponseDraft target)
+    {
+        target.PatientId = source.PatientId;
+        target.CurrentStep = source.CurrentStep;
+        target.HipaaAcknowledged = source.HipaaAcknowledged;
+        target.ConsentToTreatAcknowledged = source.ConsentToTreatAcknowledged;
+        target.FullName = source.FullName;
+        target.DateOfBirth = source.DateOfBirth;
+        target.SexAtBirth = source.SexAtBirth;
+        target.EmailAddress = source.EmailAddress;
+        target.PhoneNumber = source.PhoneNumber;
+        target.AddressLine1 = source.AddressLine1;
+        target.AddressLine2 = source.AddressLine2;
+        target.City = source.City;
+        target.StateOrProvince = source.StateOrProvince;
+        target.PostalCode = source.PostalCode;
+        target.EmergencyContactName = source.EmergencyContactName;
+        target.EmergencyContactPhone = source.EmergencyContactPhone;
+        target.InsuranceCompanyName = source.InsuranceCompanyName;
+        target.MemberOrPolicyNumber = source.MemberOrPolicyNumber;
+        target.GroupNumber = source.GroupNumber;
+        target.PayerType = source.PayerType;
+        target.InsuranceCoverageType = source.InsuranceCoverageType;
+        target.HasCurrentMedications = source.HasCurrentMedications;
+        target.HasOtherMedicalConditions = source.HasOtherMedicalConditions;
+        target.UsesAssistiveDevices = source.UsesAssistiveDevices;
+        target.HasPreviousSurgeriesOrInjuries = source.HasPreviousSurgeriesOrInjuries;
+        target.MedicalHistoryNotes = source.MedicalHistoryNotes;
+        target.SelectedBodyRegion = source.SelectedBodyRegion;
+        target.PainDetailDrafts = source.PainDetailDrafts
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        target.IsSubmitted = source.IsSubmitted;
+        target.IsLocked = source.IsLocked;
+    }
 
     private static IntakeResponseDraft DeserializeDraft(string json, Guid patientId)
     {

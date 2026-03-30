@@ -41,44 +41,40 @@ public sealed class BundledIcd10Service : IIcd10Service
 
     private static IReadOnlyList<Icd10Code> LoadCodes()
     {
-        var assembly = typeof(BundledIcd10Service).Assembly;
+        // Try loading from PTDoc.Application assembly using the well-known resource name
+        const string resourceSuffix = "PTDoc.Application.Data.Icd10Codes.json";
 
-        // First try the Application assembly (where the JSON lives)
         var appAssembly = AppDomain.CurrentDomain.GetAssemblies()
             .FirstOrDefault(a => a.GetName().Name == "PTDoc.Application");
 
-        var resourceAssembly = appAssembly ?? assembly;
-
-        // Scan all assemblies if not found
-        var resourceName = resourceAssembly
-            .GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith("Icd10Codes.json", StringComparison.OrdinalIgnoreCase));
-
-        if (resourceName is null)
+        if (appAssembly is not null)
         {
-            // Fallback: search all loaded assemblies
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                resourceName = asm.GetManifestResourceNames()
-                    .FirstOrDefault(n => n.EndsWith("Icd10Codes.json", StringComparison.OrdinalIgnoreCase));
-                if (resourceName is not null)
-                {
-                    resourceAssembly = asm;
-                    break;
-                }
-            }
+            using var stream = appAssembly.GetManifestResourceStream(resourceSuffix);
+            if (stream is not null)
+                return ParseCodes(stream);
         }
 
-        if (resourceName is null)
-            return Array.Empty<Icd10Code>();
+        // Fallback: scan all loaded assemblies for the resource by suffix
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var resourceName = asm.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("Icd10Codes.json", StringComparison.OrdinalIgnoreCase));
 
-        using var stream = resourceAssembly.GetManifestResourceStream(resourceName);
-        if (stream is null)
-            return Array.Empty<Icd10Code>();
+            if (resourceName is null)
+                continue;
 
+            using var stream = asm.GetManifestResourceStream(resourceName);
+            if (stream is not null)
+                return ParseCodes(stream);
+        }
+
+        return Array.Empty<Icd10Code>();
+    }
+
+    private static IReadOnlyList<Icd10Code> ParseCodes(Stream stream)
+    {
         var codes = JsonSerializer.Deserialize<List<Icd10Code>>(stream,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
         return codes?.AsReadOnly() ?? (IReadOnlyList<Icd10Code>)Array.Empty<Icd10Code>();
     }
 }

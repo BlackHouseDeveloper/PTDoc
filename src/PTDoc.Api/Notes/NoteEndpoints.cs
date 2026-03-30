@@ -195,10 +195,27 @@ public static class NoteEndpoints
         }
 
         // Sprint S: Progress Note hard stop — block Daily note creation when PN is required.
-        // Per Medicare guidelines, a Progress Note must be written every 10 visits or 30 days.
+        // Pass payer type to apply payer-aware cadence (Medicare=visit+day, Commercial=day only).
         if (request.NoteType == NoteType.Daily)
         {
-            var pnFreqResult = await rulesEngine.ValidateProgressNoteFrequencyAsync(request.PatientId, cancellationToken);
+            // Derive payer type from Patient.PayerInfoJson for correct threshold selection
+            string? payerType = null;
+            var patientForPayer = await db.Patients
+                .AsNoTracking()
+                .Select(p => new { p.Id, p.PayerInfoJson })
+                .FirstOrDefaultAsync(p => p.Id == request.PatientId, cancellationToken);
+            if (patientForPayer is not null && !string.IsNullOrWhiteSpace(patientForPayer.PayerInfoJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(patientForPayer.PayerInfoJson);
+                    if (doc.RootElement.TryGetProperty("PayerType", out var pt))
+                        payerType = pt.GetString();
+                }
+                catch { /* fall through — use default */ }
+            }
+
+            var pnFreqResult = await rulesEngine.ValidateProgressNoteFrequencyAsync(request.PatientId, payerType, cancellationToken);
             if (pnFreqResult.Severity == RuleSeverity.HardStop)
             {
                 return Results.UnprocessableEntity(new
