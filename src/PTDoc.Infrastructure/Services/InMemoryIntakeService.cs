@@ -4,7 +4,7 @@ using PTDoc.Application.Services;
 
 namespace PTDoc.Infrastructure.Services;
 
-public sealed class MockIntakeService : IIntakeService
+public sealed class InMemoryIntakeService : IIntakeService
 {
     private readonly ConcurrentDictionary<Guid, IntakeResponseDraft> _drafts = new();
 

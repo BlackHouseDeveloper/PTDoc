@@ -75,6 +75,23 @@ public class SignatureService : ISignatureService
             };
         }
 
+        // RQ-033: At least one ICD-10 diagnosis code required before signing.
+        var patient = await _context.Patients.FindAsync(new object[] { note.PatientId }, ct);
+        if (patient is not null)
+        {
+            var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
+            var hasDiagnosis = !string.Equals(diagnosisJson.Trim(), "[]", StringComparison.Ordinal)
+                && diagnosisJson.Trim().Length > 2; // non-empty array
+            if (!hasDiagnosis)
+            {
+                return new SignatureResult
+                {
+                    Success = false,
+                    ErrorMessage = "At least one ICD-10 diagnosis code is required before signing."
+                };
+            }
+        }
+
         // Generate canonical serialization for signature
         var canonicalContent = GenerateCanonicalContent(note);
         var signatureHash = ComputeSha256Hash(canonicalContent);
@@ -88,6 +105,11 @@ public class SignatureService : ISignatureService
         if (signerIsPta)
         {
             note.RequiresCoSign = true;
+            note.NoteStatus = NoteStatus.PendingCoSign;
+        }
+        else
+        {
+            note.NoteStatus = NoteStatus.Signed;
         }
 
         await _context.SaveChangesAsync(ct);

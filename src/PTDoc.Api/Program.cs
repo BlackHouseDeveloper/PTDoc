@@ -98,6 +98,9 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc
 builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
 builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
+builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.BundledIcd10Service>();
+builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
+    builder.Configuration.GetSection(PTDoc.Application.Configuration.RetentionOptions.SectionName));
 builder.Services.AddSingleton<ITreatmentTaxonomyCatalogService, TreatmentTaxonomyCatalogService>();
 builder.Services.AddScoped<INoteWorkspaceV2Service, NoteWorkspaceV2Service>();
 builder.Services.AddSingleton<IWorkspaceReferenceCatalogService, WorkspaceReferenceCatalogService>();
@@ -684,6 +687,7 @@ app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending reg
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
+app.MapObjectiveMetricEndpoints(); // Sprint O: ObjectiveMetric CRUD per note
 app.MapSyncEndpoints(); // Sync endpoints
 app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
@@ -694,6 +698,7 @@ app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
 app.MapNotificationEndpoints(); // In-app notification center
 app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
+app.MapIcd10Endpoints(); // ICD-10 code search (bundled)
 app.MapNoteWorkspaceV2Endpoints(); // Typed eval/reeval/progress workspace API
 
 app.Run();

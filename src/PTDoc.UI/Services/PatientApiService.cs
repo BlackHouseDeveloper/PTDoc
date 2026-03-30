@@ -69,4 +69,52 @@ public sealed class PatientApiService(HttpClient httpClient) : IPatientService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<PatientResponse>(SerializerOptions, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<PatientDiagnosisDto>?> GetDiagnosesAsync(
+        Guid patientId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/v1/patients/{patientId}/diagnoses", cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<PatientDiagnosisDto>>(SerializerOptions, cancellationToken)
+            ?? new List<PatientDiagnosisDto>();
+    }
+
+    public async Task<bool> AddDiagnosisAsync(
+        Guid patientId,
+        string icdCode,
+        string description,
+        bool isPrimary,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            $"/api/v1/patients/{patientId}/diagnoses",
+            new { icdCode, description, isPrimary },
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    public async Task<bool> RemoveDiagnosisAsync(
+        Guid patientId,
+        string icdCode,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.DeleteAsync(
+            $"/api/v1/patients/{patientId}/diagnoses/{Uri.EscapeDataString(icdCode)}", cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
 }

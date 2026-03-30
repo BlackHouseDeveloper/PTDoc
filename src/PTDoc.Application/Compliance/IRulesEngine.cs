@@ -7,9 +7,14 @@ namespace PTDoc.Application.Compliance;
 public interface IRulesEngine
 {
     /// <summary>
-    /// Validates Progress Note frequency requirements (≥10 visits OR ≥30 days).
+    /// Validates Progress Note frequency requirements.
+    /// Medicare: ≥10 visits OR ≥30 days since last PN/Eval.
+    /// Commercial/Unknown payer: ≥30 days only (no visit threshold).
     /// </summary>
-    Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, CancellationToken ct = default);
+    /// <param name="patientId">Patient to validate.</param>
+    /// <param name="payerType">Payer type from PayerInfoJson. Null or empty treated as Commercial.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, string? payerType = null, CancellationToken ct = default);
 
     /// <summary>
     /// Validates CPT unit count against 8-minute rule.

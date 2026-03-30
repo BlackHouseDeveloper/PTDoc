@@ -16,6 +16,9 @@ public sealed class CreateNoteRequest
     [Required]
     public NoteType NoteType { get; set; }
 
+    /// <summary>True when this Evaluation note represents a re-evaluation.</summary>
+    public bool IsReEvaluation { get; set; }
+
     /// <summary>SOAP note content as a JSON string.</summary>
     public string ContentJson { get; set; } = "{}";
 
@@ -24,6 +27,10 @@ public sealed class CreateNoteRequest
 
     /// <summary>CPT codes as a JSON array string.</summary>
     public string CptCodesJson { get; set; } = "[]";
+
+    /// <summary>Therapist NPI for billing/documentation.</summary>
+    [MaxLength(10)]
+    public string? TherapistNpi { get; set; }
 
     /// <summary>
     /// Total treatment time in minutes. When provided together with timed CPT codes, the
@@ -69,6 +76,14 @@ public sealed class CreateObjectiveMetricRequest
     [MaxLength(200)]
     public string Value { get; set; } = string.Empty;
 
+    /// <summary>Laterality: Left, Right, or Bilateral.</summary>
+    [MaxLength(20)]
+    public string? Side { get; set; }
+
+    /// <summary>Unit of measurement (e.g. degrees, grade, sec).</summary>
+    [MaxLength(50)]
+    public string? Unit { get; set; }
+
     public bool IsWNL { get; set; }
 }
 
@@ -80,7 +95,10 @@ public sealed class ObjectiveMetricResponse
     public BodyPart BodyPart { get; set; }
     public MetricType MetricType { get; set; }
     public string Value { get; set; } = string.Empty;
+    public string? Side { get; set; }
+    public string? Unit { get; set; }
     public bool IsWNL { get; set; }
+    public DateTime LastModifiedUtc { get; set; }
 }
 
 // ─── Note Response DTOs ───────────────────────────────────────────────────────
@@ -92,12 +110,16 @@ public sealed class NoteResponse
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
     public NoteType NoteType { get; set; }
+    public bool IsReEvaluation { get; set; }
+    public NoteStatus NoteStatus { get; set; }
     public string ContentJson { get; set; } = "{}";
     public DateTime DateOfService { get; set; }
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
     public string CptCodesJson { get; set; } = "[]";
+    public string? TherapistNpi { get; set; }
+    public int? TotalTreatmentMinutes { get; set; }
     public Guid? ClinicId { get; set; }
     public DateTime LastModifiedUtc { get; set; }
     public IReadOnlyCollection<ObjectiveMetricResponse> ObjectiveMetrics { get; set; } = Array.Empty<ObjectiveMetricResponse>();

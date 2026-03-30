@@ -280,6 +280,12 @@
             return;
         }
 
+        if (!State.ConsentToTreatAcknowledged)
+        {
+            _validationMessage = "You must consent to receive physical therapy treatment before submitting.";
+            return;
+        }
+
         if (State.PatientId is null)
         {
             _validationMessage = "Please complete demographics first to create an intake draft.";
@@ -379,6 +385,7 @@
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
             HipaaAcknowledged = state.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,
@@ -417,6 +424,7 @@
                 ? (IntakeStep)draft.CurrentStep
                 : IntakeStep.Demographics,
             HipaaAcknowledged = draft.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = draft.ConsentToTreatAcknowledged,
             FullName = draft.FullName,
             DateOfBirth = draft.DateOfBirth,
             SexAtBirth = draft.SexAtBirth,

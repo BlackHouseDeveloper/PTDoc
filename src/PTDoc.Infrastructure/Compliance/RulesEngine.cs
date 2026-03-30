@@ -25,10 +25,11 @@ public class RulesEngine : IRulesEngine
     }
 
     /// <summary>
-    /// Validates Progress Note frequency: ≥10 visits OR ≥30 days since last PN/Eval.
+    /// Validates Progress Note frequency: Medicare = ≥10 visits OR ≥30 days; Commercial = ≥30 days only.
     /// </summary>
-    public async Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, CancellationToken ct = default)
+    public async Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, string? payerType = null, CancellationToken ct = default)
     {
+        bool isMedicare = string.Equals(payerType, "Medicare", StringComparison.OrdinalIgnoreCase);
         // Get all notes for patient ordered by date
         var notes = await _context.ClinicalNotes
             .Where(n => n.PatientId == patientId)
@@ -54,19 +55,28 @@ public class RulesEngine : IRulesEngine
             var daysSinceFirstNote = (DateTime.UtcNow.Date - notes.Last().DateOfService.Date).Days;
             var dailyNoteCount = notes.Count(n => n.NoteType == NoteType.Daily);
 
-            if (dailyNoteCount >= ProgressNoteVisitThreshold || daysSinceFirstNote >= ProgressNoteDayThreshold)
+            // Medicare: visit OR day threshold; Commercial/other: day threshold only
+            var visitThresholdMet = isMedicare && dailyNoteCount >= ProgressNoteVisitThreshold;
+            var dayThresholdMet = daysSinceFirstNote >= ProgressNoteDayThreshold;
+
+            if (visitThresholdMet || dayThresholdMet)
             {
                 await _auditService.LogRuleEvaluationAsync(
                     AuditEvent.RuleEvaluation("PN_FREQUENCY", false), ct);
 
+                var thresholdDesc = isMedicare
+                    ? $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
+                    : $"{ProgressNoteDayThreshold} days";
+
                 return RuleResult.HardStop(
                     "PN_FREQUENCY",
-                    "Progress Note required per Medicare guidelines.",
+                    "Progress Note required per payer guidelines.",
                     new Dictionary<string, object>
                     {
                         ["VisitCount"] = dailyNoteCount,
                         ["DaysSinceStart"] = daysSinceFirstNote,
-                        ["Threshold"] = $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
+                        ["Threshold"] = thresholdDesc,
+                        ["PayerType"] = payerType ?? "Commercial"
                     });
             }
 
@@ -82,20 +92,29 @@ public class RulesEngine : IRulesEngine
 
         var daysSinceLastPn = (DateTime.UtcNow.Date - lastPnOrEval.DateOfService.Date).Days;
 
-        if (visitsSinceLastPn >= ProgressNoteVisitThreshold || daysSinceLastPn >= ProgressNoteDayThreshold)
+        // Medicare: visit OR day threshold; Commercial/other: day threshold only
+        var visitsExceeded = isMedicare && visitsSinceLastPn >= ProgressNoteVisitThreshold;
+        var daysExceeded = daysSinceLastPn >= ProgressNoteDayThreshold;
+
+        if (visitsExceeded || daysExceeded)
         {
             await _auditService.LogRuleEvaluationAsync(
                 AuditEvent.RuleEvaluation("PN_FREQUENCY", false), ct);
 
+            var thresholdDescription = isMedicare
+                ? $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
+                : $"{ProgressNoteDayThreshold} days";
+
             return RuleResult.HardStop(
                 "PN_FREQUENCY",
-                "Progress Note required per Medicare guidelines.",
+                "Progress Note required per payer guidelines.",
                 new Dictionary<string, object>
                 {
                     ["VisitsSinceLastPN"] = visitsSinceLastPn,
                     ["DaysSinceLastPN"] = daysSinceLastPn,
                     ["LastPNDate"] = lastPnOrEval.DateOfService,
-                    ["Threshold"] = $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
+                    ["Threshold"] = thresholdDescription,
+                    ["PayerType"] = payerType ?? "Commercial"
                 });
         }
 

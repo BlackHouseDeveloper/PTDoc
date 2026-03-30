@@ -258,9 +258,13 @@ public static class NoteEndpoints
             PatientId = request.PatientId,
             AppointmentId = request.AppointmentId,
             NoteType = request.NoteType,
+            IsReEvaluation = request.IsReEvaluation,
             ContentJson = string.IsNullOrWhiteSpace(request.ContentJson) ? "{}" : request.ContentJson,
             DateOfService = request.DateOfService,
             CptCodesJson = string.IsNullOrWhiteSpace(request.CptCodesJson) ? "[]" : request.CptCodesJson,
+            TherapistNpi = request.TherapistNpi?.Trim(),
+            TotalTreatmentMinutes = request.TotalMinutes,
+            NoteStatus = NoteStatus.Draft,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -268,6 +272,23 @@ public static class NoteEndpoints
         };
 
         db.ClinicalNotes.Add(note);
+
+        // Track 7D: Lock intake form when an Evaluation note is created.
+        // Per acceptance criteria: "Intake cannot be edited after Eval creation."
+        if (request.NoteType == NoteType.Evaluation)
+        {
+            var draftIntake = await db.IntakeForms
+                .Where(f => f.PatientId == request.PatientId && !f.IsLocked)
+                .OrderByDescending(f => f.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (draftIntake is not null)
+            {
+                draftIntake.IsLocked = true;
+                draftIntake.LastModifiedUtc = DateTime.UtcNow;
+            }
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, cancellationToken);
 
@@ -598,12 +619,16 @@ public static class NoteEndpoints
         PatientId = n.PatientId,
         AppointmentId = n.AppointmentId,
         NoteType = n.NoteType,
+        IsReEvaluation = n.IsReEvaluation,
+        NoteStatus = n.NoteStatus,
         ContentJson = n.ContentJson,
         DateOfService = n.DateOfService,
         SignatureHash = n.SignatureHash,
         SignedUtc = n.SignedUtc,
         SignedByUserId = n.SignedByUserId,
         CptCodesJson = n.CptCodesJson,
+        TherapistNpi = n.TherapistNpi,
+        TotalTreatmentMinutes = n.TotalTreatmentMinutes,
         ClinicId = n.ClinicId,
         LastModifiedUtc = n.LastModifiedUtc,
         ObjectiveMetrics = n.ObjectiveMetrics.Select(m => new ObjectiveMetricResponse
@@ -613,7 +638,10 @@ public static class NoteEndpoints
             BodyPart = m.BodyPart,
             MetricType = m.MetricType,
             Value = m.Value,
-            IsWNL = m.IsWNL
+            Side = m.Side,
+            Unit = m.Unit,
+            IsWNL = m.IsWNL,
+            LastModifiedUtc = m.LastModifiedUtc
         }).ToList()
     };
 

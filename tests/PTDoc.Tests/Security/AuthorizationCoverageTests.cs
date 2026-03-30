@@ -177,6 +177,9 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientRead),
         new("PUT",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientWrite),
         new("GET",  "/api/v1/patients/{id:guid}/notes",    AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/patients/{id:guid}/diagnoses",  AuthorizationPolicies.PatientRead),
+        new("POST", "/api/v1/patients/{id:guid}/diagnoses",  AuthorizationPolicies.PatientWrite),
+        new("DELETE", "/api/v1/patients/{id:guid}/diagnoses/{code}", AuthorizationPolicies.PatientWrite),
 
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
         new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
@@ -193,6 +196,12 @@ public class AuthorizationCoverageTests
 
         // Sprint UC-Gamma: AI output acceptance gate — clinician must explicitly accept AI content
         new("POST", "/api/v1/notes/{noteId:guid}/accept-ai-suggestion", AuthorizationPolicies.NoteWrite),
+
+        // Sprint O: Objective metrics CRUD
+        new("GET",    "/api/v1/notes/{noteId:guid}/objective-metrics",             AuthorizationPolicies.NoteRead),
+        new("POST",   "/api/v1/notes/{noteId:guid}/objective-metrics",             AuthorizationPolicies.NoteWrite),
+        new("PUT",    "/api/v1/notes/{noteId:guid}/objective-metrics/{metricId:guid}", AuthorizationPolicies.NoteWrite),
+        new("DELETE", "/api/v1/notes/{noteId:guid}/objective-metrics/{metricId:guid}", AuthorizationPolicies.NoteWrite),
 
         // Sprint UC-Gamma: carry-forward read endpoint — NoteRead (broader access than NoteWrite)
         new("GET",  "/api/v1/notes/carry-forward", AuthorizationPolicies.NoteRead),
