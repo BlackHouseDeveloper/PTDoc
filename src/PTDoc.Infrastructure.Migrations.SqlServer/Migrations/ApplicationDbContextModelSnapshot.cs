@@ -1194,8 +1194,8 @@ namespace PTDoc.Infrastructure.Migrations.SqlServer.Migrations
             modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
+                        .WithOne()
+                        .HasForeignKey("PTDoc.Core.Models.UserNotificationPreferences", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

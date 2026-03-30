@@ -2,7 +2,9 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -12,16 +14,46 @@ public class DailyNoteService : IDailyNoteService
 {
     private readonly ApplicationDbContext _db;
     private readonly IAiClinicalGenerationService _aiService;
+    private readonly ITenantContextAccessor _tenantContext;
+    private readonly IIdentityContextAccessor _identityContext;
+    private readonly ISyncEngine _syncEngine;
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
-    public DailyNoteService(ApplicationDbContext db, IAiClinicalGenerationService aiService)
+    public DailyNoteService(
+        ApplicationDbContext db,
+        IAiClinicalGenerationService aiService,
+        ITenantContextAccessor tenantContext,
+        IIdentityContextAccessor identityContext,
+        ISyncEngine syncEngine)
     {
         _db = db;
         _aiService = aiService;
+        _tenantContext = tenantContext;
+        _identityContext = identityContext;
+        _syncEngine = syncEngine;
     }
 
-    public async Task<DailyNoteResponse> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
+    public async Task<(DailyNoteResponse? Response, string? Error)> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
     {
+        // Validate patient exists in current tenant scope
+        var patientExists = await _db.Patients
+            .AsNoTracking()
+            .AnyAsync(p => p.Id == request.PatientId, ct);
+        if (!patientExists)
+            return (null, $"Patient {request.PatientId} not found.");
+
+        // Validate appointment FK if provided
+        if (request.AppointmentId.HasValue)
+        {
+            var appointment = await _db.Appointments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == request.AppointmentId.Value, ct);
+            if (appointment is null)
+                return (null, $"Appointment {request.AppointmentId} not found.");
+            if (appointment.PatientId != request.PatientId)
+                return (null, $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}.");
+        }
+
         var startOfDay = request.DateOfService.Date;
         var startOfNextDay = startOfDay.AddDays(1);
         var note = await _db.ClinicalNotes
@@ -36,7 +68,12 @@ public class DailyNoteService : IDailyNoteService
         var cptCodesJson = JsonSerializer.Serialize(
             (request.Content.CptCodes ?? new()).Select(c => new { code = c.Code, minutes = c.Minutes ?? 0 }), _json);
 
-        if (note == null)
+        var clinicId = _tenantContext.GetCurrentClinicId();
+        var userId = _identityContext.GetCurrentUserId();
+        var now = DateTime.UtcNow;
+        var isNew = note is null;
+
+        if (isNew)
         {
             note = new ClinicalNote
             {
@@ -45,20 +82,31 @@ public class DailyNoteService : IDailyNoteService
                 NoteType = NoteType.Daily,
                 DateOfService = request.DateOfService,
                 ContentJson = contentJson,
-                CptCodesJson = cptCodesJson
+                CptCodesJson = cptCodesJson,
+                ClinicId = clinicId,
+                LastModifiedUtc = now,
+                ModifiedByUserId = userId,
+                SyncState = SyncState.Pending
             };
             _db.ClinicalNotes.Add(note);
         }
         else
         {
-            note.ContentJson = contentJson;
+            note!.ContentJson = contentJson;
             note.CptCodesJson = cptCodesJson;
+            note.LastModifiedUtc = now;
+            note.ModifiedByUserId = userId;
         }
 
         await _db.SaveChangesAsync(ct);
+        await _syncEngine.EnqueueAsync(
+            "ClinicalNote",
+            note.Id,
+            isNew ? SyncOperation.Create : SyncOperation.Update,
+            ct);
 
         var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
-        return new DailyNoteResponse
+        return (new DailyNoteResponse
         {
             NoteId = note.Id,
             PatientId = note.PatientId,
@@ -67,7 +115,7 @@ public class DailyNoteService : IDailyNoteService
             SignedUtc = note.SignedUtc,
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
-        };
+        }, null);
     }
 
     public async Task<DailyNoteResponse?> GetByIdAsync(Guid noteId, CancellationToken ct = default)
@@ -165,9 +213,7 @@ public class DailyNoteService : IDailyNoteService
 
     public async Task<string> GenerateAssessmentNarrativeAsync(DailyNoteContentDto content, CancellationToken ct = default)
     {
-        var templateResult = BuildAssessmentNarrativeFromTemplate(content);
-        if (!string.IsNullOrWhiteSpace(templateResult))
-            return templateResult;
+        // AI-first: attempt AI generation; fall back to template when AI is unavailable or returns empty.
         try
         {
             var chiefComplaint = content.FocusedActivities?.Any() == true
@@ -185,15 +231,19 @@ public class DailyNoteService : IDailyNoteService
                 IsNoteSigned = false
             };
             var result = await _aiService.GenerateAssessmentAsync(request, ct);
-            return result.Success && !string.IsNullOrWhiteSpace(result.GeneratedText)
-                ? result.GeneratedText
-                : templateResult;
+            if (result.Success && !string.IsNullOrWhiteSpace(result.GeneratedText))
+                return result.GeneratedText;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception)
         {
-            // AI generation unavailable — return template narrative
-            return templateResult;
+            // AI generation unavailable — fall through to template
         }
+
+        return BuildAssessmentNarrativeFromTemplate(content);
     }
 
     private static string BuildAssessmentNarrativeFromTemplate(DailyNoteContentDto content)

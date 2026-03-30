@@ -23,9 +23,22 @@ public static class DailyNoteEndpoints
           .WithName("GetDailyNoteById");
 
         group.MapPost("/", async ([FromBody] SaveDailyNoteRequest request, IDailyNoteService service, CancellationToken ct) =>
-            Results.Ok(await service.SaveDraftAsync(request, ct)))
-            .RequireAuthorization(AuthorizationPolicies.NoteWrite)
-            .WithName("SaveDailyNoteDraft");
+        {
+            var errors = new Dictionary<string, string[]>();
+
+            if (request.PatientId == Guid.Empty)
+                errors[nameof(request.PatientId)] = ["PatientId is required."];
+
+            if (request.DateOfService == default)
+                errors[nameof(request.DateOfService)] = ["DateOfService is required."];
+
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
+
+            var (result, error) = await service.SaveDraftAsync(request, ct);
+            return error is not null ? Results.NotFound(new { error }) : Results.Ok(result);
+        }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
+          .WithName("SaveDailyNoteDraft");
 
         group.MapPost("/generate-assessment", async ([FromBody] DailyNoteContentDto content, IDailyNoteService service, CancellationToken ct) =>
         {

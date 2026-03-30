@@ -8,7 +8,7 @@ using PTDoc.Infrastructure.Data;
 
 #nullable disable
 
-namespace PTDoc.Infrastructure.Data.Migrations.Migrations
+namespace PTDoc.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260330035949_AddUserNotifications")]
