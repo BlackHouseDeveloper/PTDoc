@@ -22,11 +22,14 @@ public class DailyNoteService : IDailyNoteService
 
     public async Task<DailyNoteResponse> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
     {
+        var startOfDay = request.DateOfService.Date;
+        var startOfNextDay = startOfDay.AddDays(1);
         var note = await _db.ClinicalNotes
             .FirstOrDefaultAsync(n =>
                 n.PatientId == request.PatientId &&
                 n.NoteType == NoteType.Daily &&
-                n.DateOfService.Date == request.DateOfService.Date &&
+                n.DateOfService >= startOfDay &&
+                n.DateOfService < startOfNextDay &&
                 n.SignedUtc == null, ct);
 
         var contentJson = JsonSerializer.Serialize(request.Content, _json);
@@ -126,6 +129,8 @@ public class DailyNoteService : IDailyNoteService
         {
             using var doc = JsonDocument.Parse(evalNote.ContentJson);
             var root = doc.RootElement;
+            // Check multiple candidate property names to support evaluation notes from
+            // different schema versions or formats that may use different field names.
             foreach (var propName in new[] { "functionalActivities", "activities", "limitedActivities", "problemActivities" })
             {
                 if (root.TryGetProperty(propName, out var actProp) && actProp.ValueKind == JsonValueKind.Array)
@@ -143,7 +148,10 @@ public class DailyNoteService : IDailyNoteService
             if (root.TryGetProperty("primaryDiagnosis", out var dxProp)) primaryDiagnosis = dxProp.GetString();
             if (root.TryGetProperty("planOfCare", out var pocProp)) planOfCare = pocProp.GetString();
         }
-        catch { /* Gracefully handle malformed eval JSON */ }
+        catch (JsonException)
+        {
+            // Gracefully handle malformed eval JSON — return what we have without activities
+        }
 
         return new EvalCarryForwardResponse
         {
@@ -181,7 +189,11 @@ public class DailyNoteService : IDailyNoteService
                 ? result.GeneratedText
                 : templateResult;
         }
-        catch { return templateResult; }
+        catch (Exception)
+        {
+            // AI generation unavailable — return template narrative
+            return templateResult;
+        }
     }
 
     private static string BuildAssessmentNarrativeFromTemplate(DailyNoteContentDto content)
@@ -193,7 +205,7 @@ public class DailyNoteService : IDailyNoteService
         var targets = content.TreatmentTargets ?? new();
         if (targets.Any())
         {
-            var targetNames = targets.Select(t => ((PTDoc.Core.Models.TreatmentTarget)t).ToString().ToLower()).ToList();
+            var targetNames = targets.Select(t => ((TreatmentTarget)t).ToString().ToLower()).ToList();
             var cptDescs = (content.CptCodes ?? new())
                 .Select(c => c.Code switch { "97110" => "therapeutic exercise", "97140" => "manual therapy", "97112" => "neuromuscular re-education", "97530" => "therapeutic activity", _ => null })
                 .Where(d => d != null).ToList();
@@ -206,8 +218,8 @@ public class DailyNoteService : IDailyNoteService
         var assistLevels = content.AssistanceLevels ?? new();
         if (cueTypes.Any() || assistLevels.Any())
         {
-            var cueNames = cueTypes.Select(c => ((PTDoc.Core.Models.CueType)c).ToString().ToLower() + " cues").ToList();
-            var assistNames = assistLevels.Select(a => ((PTDoc.Core.Models.AssistanceLevel)a).ToString()).ToList();
+            var cueNames = cueTypes.Select(c => ((CueType)c).ToString().ToLower() + " cues").ToList();
+            var assistNames = assistLevels.Select(a => ((AssistanceLevel)a).ToString()).ToList();
             parts.Add($"Patient required {string.Join(", ", cueNames.Concat(assistNames))} for proper exercise execution.");
         }
 
@@ -215,7 +227,7 @@ public class DailyNoteService : IDailyNoteService
         {
             var word = content.TreatmentResponse.Value switch { 0 => "positively", 1 => "negatively", 2 => "with mixed results", _ => "as expected" };
             var improved = (content.FunctionalChanges ?? new()).Where(fc => fc.Status == 0)
-                .Select(fc => ((PTDoc.Core.Models.TreatmentTarget)fc.Target).ToString().ToLower()).ToList();
+                .Select(fc => ((TreatmentTarget)fc.Target).ToString().ToLower()).ToList();
             parts.Add(improved.Any()
                 ? $"Patient responded {word} to treatment and {string.Join(" and ", improved)} showed improvement."
                 : $"Patient responded {word} to treatment.");
