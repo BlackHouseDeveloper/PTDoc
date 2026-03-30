@@ -53,6 +53,10 @@ public class ApplicationDbContext : DbContext
     // Auth: Persisted refresh tokens (hashed; production replacement for InMemoryRefreshTokenStore)
     public DbSet<StoredRefreshToken> StoredRefreshTokens => Set<StoredRefreshToken>();
 
+    // Notifications
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+    public DbSet<UserNotificationPreferences> UserNotificationPreferences => Set<UserNotificationPreferences>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -425,6 +429,35 @@ public class ApplicationDbContext : DbContext
         // Sprint M: OutcomeMeasureResult carries its own ClinicId for efficient tenant filtering.
         modelBuilder.Entity<OutcomeMeasureResult>()
             .HasQueryFilter(r => CurrentClinicId == null || r.ClinicId == CurrentClinicId);
+
+        // Configure UserNotification
+        modelBuilder.Entity<UserNotification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.IsArchived });
+            entity.HasIndex(e => e.Timestamp);
+
+            entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Message).HasMaxLength(1000).IsRequired();
+            entity.Property(e => e.Type).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.TargetUrl).HasMaxLength(500);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure UserNotificationPreferences (one row per user)
+        modelBuilder.Entity<UserNotificationPreferences>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+
+            entity.HasOne(e => e.User)
+                .WithOne()
+                .HasForeignKey<UserNotificationPreferences>(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     /// <summary>

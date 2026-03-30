@@ -25,6 +25,7 @@ using PTDoc.Api.Notes;
 using PTDoc.Api.Patients;
 using PTDoc.Api.Pdf;
 using PTDoc.Api.Sync;
+using PTDoc.Api.Notifications;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
@@ -107,6 +108,7 @@ builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty
@@ -676,6 +678,7 @@ app.MapAiEndpoints(); // AI generation endpoints
 app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
+app.MapNotificationEndpoints(); // In-app notification center
 
 app.Run();
 

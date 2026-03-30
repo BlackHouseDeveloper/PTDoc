@@ -4,7 +4,7 @@
 
 <div class="ptdoc-nav-container">
     <div class="ptdoc-nav-brand">
-        <NavBarBrand />
+        <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
     </div>
     
     <div class="ptdoc-nav-scrollable">
@@ -105,4 +105,9 @@
         </Authorized>
     </AuthorizeView>
 </div>
+
+@code {
+    [Parameter]
+    public EventCallback OnNotificationsClick { get; set; }
+}
 

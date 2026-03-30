@@ -36,6 +36,7 @@ builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();
+builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
