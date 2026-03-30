@@ -56,11 +56,13 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          UNIQUE_DELIM="EOF_PR_TITLE_${PR_NUMBER}_$(date +%s)_$RANDOM"
+          NORMALIZED_PR_TITLE=$(printf '%s' "$PR_TITLE" | tr '\n' ' ' | sed 's/  */ /g')
           {
-            echo "pr_title<<DELIMITER"
-            echo "${PR_TITLE}"
-            echo "DELIMITER"
-          } >> $GITHUB_OUTPUT
+            echo "pr_title<<${UNIQUE_DELIM}"
+            printf '%s\n' "$NORMALIZED_PR_TITLE"
+            echo "${UNIQUE_DELIM}"
+          } >> "$GITHUB_OUTPUT"
           echo "pr_author=${PR_AUTHOR}" >> $GITHUB_OUTPUT
           echo "pr_labels=${PR_LABELS}" >> $GITHUB_OUTPUT
           
