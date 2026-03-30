@@ -943,6 +943,97 @@ namespace PTDoc.Infrastructure.Migrations.SqlServer.Migrations
                     b.ToTable("StoredRefreshTokens");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUrgent")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("TargetUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("UserId", "IsArchived");
+
+                    b.ToTable("UserNotifications");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("DoNotDisturb")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EmailNotifications")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("InAppNotifications")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyAppointmentScheduled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyIncompleteIntake")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyOverdueNote")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyUpcomingAppointment")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PushNotifications")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SoundAlerts")
+                        .HasColumnType("bit");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserNotificationPreferences");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "ClinicalNote")
@@ -1076,6 +1167,34 @@ namespace PTDoc.Infrastructure.Migrations.SqlServer.Migrations
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
                         .WithMany("Sessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId");
+
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
