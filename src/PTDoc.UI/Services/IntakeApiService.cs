@@ -191,7 +191,25 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
     {
         var payload = new
         {
-            hipaaAcknowledged = state.HipaaAcknowledged
+            hipaaAcknowledged = state.HipaaAcknowledged && !state.RevokeHipaaPrivacyNotice,
+            termsOfServiceAccepted = state.TermsOfServiceAccepted,
+            accuracyConfirmed = state.AccuracyConfirmed,
+            treatmentConsentAccepted = !state.RevokeTreatmentConsent,
+            phiReleaseAuthorized = state.PhiReleaseAuthorized && !state.RevokePhiRelease,
+            billingConsentAuthorized = state.BillingConsentAuthorized,
+            communicationPreferences = new
+            {
+                phoneCalls = state.AllowPhoneCalls,
+                textMessages = state.AllowTextMessages,
+                emailMessages = state.AllowEmailMessages
+            },
+            revocations = new
+            {
+                hipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
+                treatmentConsent = state.RevokeTreatmentConsent,
+                marketingCommunications = state.RevokeMarketingCommunications,
+                phiRelease = state.RevokePhiRelease
+            }
         };
 
         return JsonSerializer.Serialize(payload, SerializerOptions);

@@ -34,6 +34,7 @@ builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();

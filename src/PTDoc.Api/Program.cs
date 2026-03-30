@@ -14,6 +14,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using PTDoc.Api.AI;
+using PTDoc.Api.Appointments;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Diagnostics;
@@ -686,6 +687,7 @@ if (legacyApiAuthEnabled)
 app.MapPinAuthEndpoints(); // New PIN-based auth
 app.MapRegistrationEndpoints(); // Self-service registration lookups and create
 app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations
+app.MapAppointmentEndpoints(); // Scheduling read endpoints
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)

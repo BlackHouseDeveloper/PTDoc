@@ -1,0 +1,322 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen && Appointment is not null)
+{
+    <div class="appointment-detail-modal__overlay"
+         @onclick="HandleOverlayClick"
+         @onclick:stopPropagation="false">
+        <div class="appointment-detail-modal__container"
+             @onclick:stopPropagation="true"
+             role="dialog"
+             aria-labelledby="appointment-detail-title"
+             aria-describedby="appointment-detail-description"
+             aria-modal="true">
+            <div class="appointment-detail-modal__header">
+                <div class="appointment-detail-modal__header-content">
+                    <div class="appointment-detail-modal__title-row">
+                        <svg class="appointment-detail-modal__title-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M10 10C12.2091 10 14 8.20914 14 6C14 3.79086 12.2091 2 10 2C7.79086 2 6 3.79086 6 6C6 8.20914 7.79086 10 10 10Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M3.5 17C4.65685 14.3431 7.09594 12.5 10 12.5C12.9041 12.5 15.3431 14.3431 16.5 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <div class="appointment-detail-modal__title-stack">
+                            <h2 id="appointment-detail-title" class="appointment-detail-modal__title">Appointment Details</h2>
+                            <p id="appointment-detail-description" class="appointment-detail-modal__subtitle">
+                                Complete information for @Appointment.PatientName
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="appointment-detail-modal__close"
+                        @onclick="Close"
+                        @ref="closeButtonRef"
+                        aria-label="Close appointment details">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="appointment-detail-modal__content">
+                <section class="appointment-detail-modal__info-card" aria-label="Patient appointment summary">
+                    <div class="appointment-detail-modal__info-grid">
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Patient Name</p>
+                            <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@Appointment.PatientName</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Patient ID</p>
+                            <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@Appointment.PatientId</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Date</p>
+                            <p class="appointment-detail-modal__field-value">@Appointment.AppointmentDate.ToString("ddd, MMM d, yyyy")</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Time</p>
+                            <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@Appointment.StartTime.ToString("h:mm tt")</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Duration</p>
+                            <p class="appointment-detail-modal__field-value">@($"{Appointment.DurationMinutes} minutes")</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">End Time</p>
+                            <p class="appointment-detail-modal__field-value">@Appointment.EndTime.ToString("h:mm tt")</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="appointment-detail-modal__section" aria-label="Appointment details">
+                    <div class="appointment-detail-modal__info-item">
+                        <p class="appointment-detail-modal__field-label">Appointment Type</p>
+                        <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@Appointment.AppointmentType</p>
+                    </div>
+
+                    <div class="appointment-detail-modal__status-grid">
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Appointment Status</p>
+                            <span class="@GetStatusBadgeClass(Appointment.AppointmentStatus)">
+                                @Appointment.AppointmentStatus
+                            </span>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Intake Status</p>
+                            <span class="@GetStatusBadgeClass(Appointment.IntakeStatus)">
+                                @Appointment.IntakeStatus
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="appointment-detail-modal__section" aria-label="Appointment notes">
+                    <p class="appointment-detail-modal__field-label">Appointment Notes</p>
+                    <div class="appointment-detail-modal__notes">
+                        <p class="appointment-detail-modal__notes-text">@GetNotesText()</p>
+                    </div>
+                </section>
+
+                <section class="appointment-detail-modal__section" aria-label="Quick actions">
+                    <p class="appointment-detail-modal__field-label">Quick Actions</p>
+                    <div class="appointment-detail-modal__quick-actions-grid">
+                        <button type="button"
+                                class="@GetContextualQuickActionClass()"
+                                @onclick="HandleContextualActionRequested">
+                            @if (Appointment.IsEvaluationAppointment)
+                            {
+                                <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
+                                    <path d="M6.5 5.5L10.5 8L6.5 10.5V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M13 4.5L6.8125 10.6875L3 6.875" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                                    <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
+                                </svg>
+                            }
+                            <span>@GetContextualQuickActionLabel()</span>
+                        </button>
+
+                        <button type="button"
+                                class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
+                                @onclick="HandleSendReminderRequested">
+                            <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M5 2.5H11L13 4.5V13C13 13.5523 12.5523 14 12 14H5C4.44772 14 4 13.5523 4 13V3.5C4 2.94772 4.44772 2.5 5 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                                <path d="M10.5 2.75V4.75H12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M6.5 7.25H10.5M6.5 10H10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            </svg>
+                            <span>Send Reminder</span>
+                        </button>
+
+                        <button type="button"
+                                class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
+                                @onclick="HandleRescheduleRequested">
+                            <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M4 2.75V4.25M12 2.75V4.25M3.25 6H12.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                <rect x="3.25" y="3.5" width="9.5" height="9.25" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                            </svg>
+                            <span>Reschedule</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="appointment-detail-modal__footer">
+                <button type="button"
+                        class="appointment-detail-modal__footer-button appointment-detail-modal__footer-button--secondary"
+                        @onclick="Close">
+                    Close
+                </button>
+
+                <button type="button"
+                        class="appointment-detail-modal__footer-button appointment-detail-modal__footer-button--primary"
+                        @onclick="HandlePrimaryActionRequested">
+                    @if (Appointment.IsEvaluationAppointment)
+                    {
+                        <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
+                            <path d="M6.5 5.5L10.5 8L6.5 10.5V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M13 4.5L6.8125 10.6875L3 6.875" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
+                        </svg>
+                    }
+                    <span>@GetPrimaryActionLabel()</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public AppointmentDetailViewModel? Appointment { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnActionRequested { get; set; }
+
+    private ElementReference closeButtonRef;
+    private IJSObjectReference? modalModule;
+    private DotNetObjectReference<AppointmentDetailModal>? dotNetRef;
+    private readonly string modalId = $"appointment-detail-modal-{Guid.NewGuid():N}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef = DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+            }
+        }
+
+        if (IsOpen && modalModule is not null && dotNetRef is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                await closeButtonRef.FocusAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+            }
+        }
+        else if (!IsOpen && modalModule is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public Task CloseFromJs() => Close();
+
+    private Task Close() => IsOpenChanged.InvokeAsync(false);
+
+    private void HandleOverlayClick()
+    {
+        _ = Close();
+    }
+
+    private Task HandleActionRequested(string actionName) =>
+        OnActionRequested.HasDelegate
+            ? OnActionRequested.InvokeAsync(actionName)
+            : Task.CompletedTask;
+
+    private Task HandleContextualActionRequested() => HandleActionRequested(GetContextualActionName());
+
+    private Task HandleSendReminderRequested() => HandleActionRequested("send-reminder");
+
+    private Task HandleRescheduleRequested() => HandleActionRequested("reschedule");
+
+    private Task HandlePrimaryActionRequested() => HandleActionRequested(GetPrimaryActionName());
+
+    private string GetPrimaryActionLabel() =>
+        Appointment?.IsEvaluationAppointment == true ? "Start Session Note" : "Check In Patient";
+
+    private string GetPrimaryActionName() =>
+        Appointment?.IsEvaluationAppointment == true ? "start-session-note" : "check-in-patient";
+
+    private string GetContextualQuickActionLabel() =>
+        Appointment?.IsEvaluationAppointment == true ? "Start Note" : "Check In";
+
+    private string GetContextualActionName() =>
+        Appointment?.IsEvaluationAppointment == true ? "start-note" : "check-in";
+
+    private string GetContextualQuickActionClass()
+    {
+        var baseClass = "appointment-detail-modal__quick-action";
+
+        if (Appointment?.IsEvaluationAppointment == true)
+        {
+            return $"{baseClass} appointment-detail-modal__quick-action--outlined";
+        }
+
+        return $"{baseClass} appointment-detail-modal__quick-action--text";
+    }
+
+    private string GetNotesText() =>
+        string.IsNullOrWhiteSpace(Appointment?.Notes)
+            ? "Appointment notes are not available yet."
+            : Appointment.Notes;
+
+    private string GetStatusBadgeClass(string status)
+    {
+        var variant = status.ToLowerInvariant() switch
+        {
+            "scheduled" => "appointment-detail-modal__status-badge--scheduled",
+            "checked in" => "appointment-detail-modal__status-badge--checked-in",
+            "completed" => "appointment-detail-modal__status-badge--completed",
+            _ => "appointment-detail-modal__status-badge--neutral"
+        };
+
+        return $"appointment-detail-modal__status-badge {variant}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (modalModule is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                await modalModule.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors.
+            }
+        }
+
+        dotNetRef?.Dispose();
+    }
+}

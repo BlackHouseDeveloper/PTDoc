@@ -1439,7 +1439,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
             SyncState = SyncState.Pending,
-            DiagnosisCodesJson = null
+            DiagnosisCodesJson = null!
         };
         _db.Patients.Add(patient);
 
