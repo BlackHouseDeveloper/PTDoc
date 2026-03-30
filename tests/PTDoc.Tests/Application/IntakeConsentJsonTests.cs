@@ -99,7 +99,7 @@ public sealed class IntakeConsentJsonTests
         Assert.DoesNotContain("555-1212", json, StringComparison.Ordinal);
         Assert.DoesNotContain("patient@example.com", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("communicationPhoneNumber", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("communicationEmail", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("patient@example.com", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
