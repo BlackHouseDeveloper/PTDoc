@@ -5,6 +5,7 @@ public sealed class IntakeResponseDraft
     public Guid? PatientId { get; set; }
     public int CurrentStep { get; set; }
     public bool HipaaAcknowledged { get; set; }
+    public bool ConsentToTreatAcknowledged { get; set; }
 
     public string? FullName { get; set; }
     public DateTime? DateOfBirth { get; set; }

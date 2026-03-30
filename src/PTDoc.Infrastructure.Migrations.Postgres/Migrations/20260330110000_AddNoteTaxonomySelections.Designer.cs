@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PTDoc.Infrastructure.Data;
@@ -10,10 +11,10 @@ using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Data.Migrations
 {
-    [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    partial class AddNoteTaxonomySelections
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -230,12 +231,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ClinicId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("CoSignedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CoSignedUtc")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("ContentJson")
                         .IsRequired()
                         .HasColumnType("text");
@@ -247,36 +242,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime>("DateOfService")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsReEvaluation")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("LastModifiedUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ModifiedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("NoteStatus")
-                        .HasColumnType("integer");
-
                     b.Property<int>("NoteType")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("PhysicianSignatureHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid?>("PhysicianSignedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("PhysicianSignedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("RequiresCoSign")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("SignatureHash")
                         .HasMaxLength(64)
@@ -289,13 +265,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("SyncState")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("TherapistNpi")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<int?>("TotalTreatmentMinutes")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -449,9 +418,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("StructuredDataJson")
-                        .HasColumnType("text");
-
                     b.Property<DateTime?>("SubmittedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -524,7 +490,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("LoginAttempts");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
+                        modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -581,22 +547,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<bool>("IsWNL")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime>("LastModifiedUtc")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<int>("MetricType")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("NoteId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("Side")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("Unit")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Value")
                         .IsRequired()
@@ -665,43 +620,18 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<string>("AddressLine2")
                         .HasColumnType("text");
 
-                    b.Property<string>("AuthorizationNumber")
-                        .HasColumnType("text");
-
                     b.Property<string>("City")
                         .HasColumnType("text");
 
                     b.Property<Guid?>("ClinicId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("ConsentSigned")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("ConsentSignedDate")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime>("DateOfBirth")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DateOfOnset")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DiagnosisCodesJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("[]");
 
                     b.Property<string>("Email")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
-
-                    b.Property<string>("EmergencyContactName")
-                        .HasColumnType("text");
-
-                    b.Property<string>("EmergencyContactPhone")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -734,16 +664,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<string>("PhysicianNpi")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<string>("ReferringPhysician")
-                        .HasColumnType("text");
-
-                    b.Property<int?>("RetentionYears")
-                        .HasColumnType("integer");
-
                     b.Property<string>("State")
                         .HasColumnType("text");
 
@@ -770,83 +690,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("FirstName", "LastName");
 
                     b.ToTable("Patients");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ArchivedByNoteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ArchivedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("ClinicId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CompletionReason")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<DateTime>("LastUpdatedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("MatchedFunctionalLimitationId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid?>("MetByNoteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("MetUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("OriginatingNoteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PatientId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Source")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Timeframe")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ArchivedByNoteId");
-
-                    b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
-
-                    b.HasIndex("MetByNoteId");
-
-                    b.HasIndex("OriginatingNoteId");
-
-                    b.HasIndex("PatientId");
-
-                    b.HasIndex("PatientId", "Status");
-
-                    b.ToTable("PatientGoals");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -890,52 +733,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("IsRevoked", "ExpiresAt");
 
                     b.ToTable("Sessions");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.StoredRefreshToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ClaimsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("ExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsRevoked")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset?>("RevokedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExpiresAtUtc");
-
-                    b.HasIndex("IsRevoked");
-
-                    b.HasIndex("Subject");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.ToTable("StoredRefreshTokens");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.SyncConflictArchive", b =>
@@ -1137,97 +934,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ClinicId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsArchived")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsRead")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsUrgent")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("TargetUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClinicId");
-
-                    b.HasIndex("Timestamp");
-
-                    b.HasIndex("UserId", "IsArchived");
-
-                    b.ToTable("UserNotifications");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("DoNotDisturb")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("EmailNotifications")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("InAppNotifications")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("NotifyAppointmentScheduled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("NotifyIncompleteIntake")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("NotifyOverdueNote")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("NotifyUpcomingAppointment")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("PushNotifications")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("SoundAlerts")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("UserId");
-
-                    b.ToTable("UserNotificationPreferences");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "ClinicalNote")
@@ -1311,17 +1017,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
-                        .WithMany("TaxonomySelections")
-                        .HasForeignKey("ClinicalNoteId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Note");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.ObjectiveMetric", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
@@ -1368,45 +1063,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Clinic");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ArchivedByNote")
-                        .WithMany()
-                        .HasForeignKey("ArchivedByNoteId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
-                        .WithMany()
-                        .HasForeignKey("ClinicId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "MetByNote")
-                        .WithMany()
-                        .HasForeignKey("MetByNoteId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "OriginatingNote")
-                        .WithMany()
-                        .HasForeignKey("OriginatingNoteId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
-                        .WithMany()
-                        .HasForeignKey("PatientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ArchivedByNote");
-
-                    b.Navigation("Clinic");
-
-                    b.Navigation("MetByNote");
-
-                    b.Navigation("OriginatingNote");
-
-                    b.Navigation("Patient");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
@@ -1428,34 +1084,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Clinic");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
-                        .WithMany()
-                        .HasForeignKey("ClinicId");
-
-                    b.HasOne("PTDoc.Core.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Clinic");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.User", "User")
-                        .WithOne()
-                        .HasForeignKey("PTDoc.Core.Models.UserNotificationPreferences", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
                 {
                     b.Navigation("Patients");
@@ -1463,11 +1091,20 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Users");
                 });
 
+                        modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ClinicalNote")
+                        .WithMany("NoteTaxonomySelections")
+                        .HasForeignKey("ClinicalNoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClinicalNote");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
                     b.Navigation("ObjectiveMetrics");
-
-                    b.Navigation("TaxonomySelections");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>

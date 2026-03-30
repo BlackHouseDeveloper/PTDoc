@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PTDoc.Infrastructure.Data;
@@ -11,9 +12,11 @@ using PTDoc.Infrastructure.Data;
 namespace PTDoc.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260330143103_AddClinicalDataFields")]
+    partial class AddClinicalDataFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -447,9 +450,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<string>("ResponseJson")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StructuredDataJson")
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("SubmittedAt")

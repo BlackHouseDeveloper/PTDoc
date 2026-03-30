@@ -8,6 +8,7 @@ public sealed class IntakeWizardState
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;
     public bool IsPatientMode { get; set; }
     public bool HipaaAcknowledged { get; set; }
+    public bool ConsentToTreatAcknowledged { get; set; }
     public bool IsSubmitting { get; set; }
     public bool IsDirty { get; set; }
     public bool IsSubmitted { get; set; }

@@ -242,16 +242,32 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime>("DateOfService")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsReEvaluation")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("LastModifiedUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ModifiedByUserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("NoteStatus")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("NoteType")
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhysicianSignatureHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PhysicianSignedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PhysicianSignedUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("RequiresCoSign")
@@ -268,6 +284,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("SyncState")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TherapistNpi")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TotalTreatmentMinutes")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -496,6 +519,51 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("LoginAttempts");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CategoryId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CategoryKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CategoryTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicalNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ItemId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ItemLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("ClinicalNoteId");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("CategoryId", "ItemId");
+
+                    b.ToTable("NoteTaxonomySelections");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ObjectiveMetric", b =>
                 {
                     b.Property<Guid>("Id")
@@ -508,10 +576,21 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<bool>("IsWNL")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("MetricType")
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("NoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Side")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Value")
@@ -581,17 +660,42 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<string>("AddressLine2")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AuthorizationNumber")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("City")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ClinicId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ConsentSigned")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ConsentSignedDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("DateOfBirth")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("DateOfOnset")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiagnosisCodesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
                     b.Property<string>("Email")
                         .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EmergencyContactName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EmergencyContactPhone")
+                        .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FirstName")
@@ -625,6 +729,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PhysicianNpi")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReferringPhysician")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RetentionYears")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("State")
                         .HasColumnType("TEXT");
 
@@ -651,6 +765,83 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("FirstName", "LastName");
 
                     b.ToTable("Patients");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ArchivedByNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ArchivedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompletionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MatchedFunctionalLimitationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("MetByNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("MetUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("OriginatingNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Timeframe")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArchivedByNoteId");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("MetByNoteId");
+
+                    b.HasIndex("OriginatingNoteId");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("PatientId", "Status");
+
+                    b.ToTable("PatientGoals");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -1115,6 +1306,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany("TaxonomySelections")
+                        .HasForeignKey("ClinicalNoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ObjectiveMetric", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
@@ -1159,6 +1361,45 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ArchivedByNote")
+                        .WithMany()
+                        .HasForeignKey("ArchivedByNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "MetByNote")
+                        .WithMany()
+                        .HasForeignKey("MetByNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "OriginatingNote")
+                        .WithMany()
+                        .HasForeignKey("OriginatingNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ArchivedByNote");
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("MetByNote");
+
+                    b.Navigation("OriginatingNote");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -1220,6 +1461,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
                     b.Navigation("ObjectiveMetrics");
+
+                    b.Navigation("TaxonomySelections");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>

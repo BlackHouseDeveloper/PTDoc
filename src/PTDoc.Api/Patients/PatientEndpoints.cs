@@ -5,6 +5,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 
 namespace PTDoc.Api.Patients;
 
@@ -45,6 +46,22 @@ public static class PatientEndpoints
             .WithName("GetPatientNotes")
             .WithSummary("Get clinical notes for a patient")
             .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
+        // Diagnosis code management
+        group.MapGet("/{id:guid}/diagnoses", GetDiagnoses)
+            .WithName("GetPatientDiagnoses")
+            .WithSummary("Get diagnosis codes for a patient")
+            .RequireAuthorization(AuthorizationPolicies.PatientRead);
+
+        group.MapPost("/{id:guid}/diagnoses", AddDiagnosis)
+            .WithName("AddPatientDiagnosis")
+            .WithSummary("Add an ICD-10 diagnosis code to a patient")
+            .RequireAuthorization(AuthorizationPolicies.PatientWrite);
+
+        group.MapDelete("/{id:guid}/diagnoses/{code}", RemoveDiagnosis)
+            .WithName("RemovePatientDiagnosis")
+            .WithSummary("Remove an ICD-10 diagnosis code from a patient")
+            .RequireAuthorization(AuthorizationPolicies.PatientWrite);
     }
 
     // GET /api/patients
@@ -134,6 +151,14 @@ public static class PatientEndpoints
             ZipCode = request.ZipCode?.Trim(),
             MedicalRecordNumber = request.MedicalRecordNumber?.Trim(),
             PayerInfoJson = request.PayerInfoJson ?? "{}",
+            ReferringPhysician = request.ReferringPhysician?.Trim(),
+            PhysicianNpi = request.PhysicianNpi?.Trim(),
+            DateOfOnset = request.DateOfOnset,
+            AuthorizationNumber = request.AuthorizationNumber?.Trim(),
+            EmergencyContactName = request.EmergencyContactName?.Trim(),
+            EmergencyContactPhone = request.EmergencyContactPhone?.Trim(),
+            ConsentSigned = request.ConsentSigned,
+            ConsentSignedDate = request.ConsentSigned ? request.ConsentSignedDate ?? DateTime.UtcNow : null,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -229,6 +254,47 @@ public static class PatientEndpoints
         if (request.PayerInfoJson is not null)
             patient.PayerInfoJson = request.PayerInfoJson;
 
+        if (request.ReferringPhysician is not null)
+            patient.ReferringPhysician = request.ReferringPhysician.Trim();
+
+        if (request.PhysicianNpi is not null)
+            patient.PhysicianNpi = request.PhysicianNpi.Trim();
+
+        if (request.DateOfOnset is not null)
+            patient.DateOfOnset = request.DateOfOnset;
+
+        if (request.AuthorizationNumber is not null)
+            patient.AuthorizationNumber = request.AuthorizationNumber.Trim();
+
+        if (request.EmergencyContactName is not null)
+            patient.EmergencyContactName = request.EmergencyContactName.Trim();
+
+        if (request.EmergencyContactPhone is not null)
+            patient.EmergencyContactPhone = request.EmergencyContactPhone.Trim();
+
+        if (request.ConsentSigned is not null)
+        {
+            patient.ConsentSigned = request.ConsentSigned.Value;
+            if (request.ConsentSigned.Value)
+            {
+                // Consent signed — set the date if provided, otherwise default to now if not already set
+                if (request.ConsentSignedDate is not null)
+                    patient.ConsentSignedDate = request.ConsentSignedDate;
+                else if (patient.ConsentSignedDate is null)
+                    patient.ConsentSignedDate = DateTime.UtcNow;
+            }
+            else
+            {
+                // Consent revoked — clear the signature date
+                patient.ConsentSignedDate = null;
+            }
+        }
+        else if (request.ConsentSignedDate is not null && patient.ConsentSigned)
+        {
+            // Date update only allowed when consent is already signed
+            patient.ConsentSignedDate = request.ConsentSignedDate;
+        }
+
         if (request.IsArchived is not null)
             patient.IsArchived = request.IsArchived.Value;
 
@@ -264,7 +330,127 @@ public static class PatientEndpoints
         return Results.Ok(notes.Select(NoteToResponse));
     }
 
+    // GET /api/patients/{id}/diagnoses
+    private static async Task<IResult> GetDiagnoses(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var patient = await db.Patients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (patient is null)
+            return Results.NotFound(new { error = $"Patient {id} not found." });
+
+        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        return Results.Ok(diagnoses);
+    }
+
+    // POST /api/patients/{id}/diagnoses
+    private static async Task<IResult> AddDiagnosis(
+        Guid id,
+        [FromBody] AddDiagnosisRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var patient = await db.Patients
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (patient is null)
+            return Results.NotFound(new { error = $"Patient {id} not found." });
+
+        if (string.IsNullOrWhiteSpace(request.IcdCode))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.IcdCode), ["IcdCode is required."] }
+            });
+
+        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+
+        // Avoid duplicates
+        if (diagnoses.Any(d => string.Equals(d.IcdCode, request.IcdCode.Trim(), StringComparison.OrdinalIgnoreCase)))
+            return Results.Conflict(new { error = $"Diagnosis code {request.IcdCode} is already present." });
+
+        var newList = diagnoses.ToList();
+
+        // If this is primary, clear other primary flags
+        if (request.IsPrimary)
+        {
+            for (int i = 0; i < newList.Count; i++)
+            {
+                newList[i] = new PatientDiagnosisDto
+                {
+                    IcdCode = newList[i].IcdCode,
+                    Description = newList[i].Description,
+                    IsPrimary = false
+                };
+            }
+        }
+
+        newList.Add(new PatientDiagnosisDto
+        {
+            IcdCode = request.IcdCode.Trim().ToUpperInvariant(),
+            Description = request.Description?.Trim() ?? string.Empty,
+            IsPrimary = request.IsPrimary
+        });
+
+        patient.DiagnosisCodesJson = JsonSerializer.Serialize(newList);
+        patient.LastModifiedUtc = DateTime.UtcNow;
+        patient.ModifiedByUserId = identityContext.GetCurrentUserId();
+        patient.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(newList);
+    }
+
+    // DELETE /api/patients/{id}/diagnoses/{code}
+    private static async Task<IResult> RemoveDiagnosis(
+        Guid id,
+        string code,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var patient = await db.Patients
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (patient is null)
+            return Results.NotFound(new { error = $"Patient {id} not found." });
+
+        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        var updated = diagnoses.Where(d => !string.Equals(d.IcdCode, code, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (updated.Count == diagnoses.Count)
+            return Results.NotFound(new { error = $"Diagnosis code {code} not found on patient." });
+
+        patient.DiagnosisCodesJson = JsonSerializer.Serialize(updated);
+        patient.LastModifiedUtc = DateTime.UtcNow;
+        patient.ModifiedByUserId = identityContext.GetCurrentUserId();
+        patient.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
     // ─── Mapping helpers ──────────────────────────────────────────────────────
+
+    private static IReadOnlyList<PatientDiagnosisDto> DeserializeDiagnoses(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<PatientDiagnosisDto>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new List<PatientDiagnosisDto>();
+        }
+        catch
+        {
+            return new List<PatientDiagnosisDto>();
+        }
+    }
 
     private static PatientResponse ToResponse(Patient p) => new()
     {
@@ -281,6 +467,15 @@ public static class PatientEndpoints
         ZipCode = p.ZipCode,
         MedicalRecordNumber = p.MedicalRecordNumber,
         PayerInfoJson = p.PayerInfoJson,
+        ReferringPhysician = p.ReferringPhysician,
+        PhysicianNpi = p.PhysicianNpi,
+        DateOfOnset = p.DateOfOnset,
+        AuthorizationNumber = p.AuthorizationNumber,
+        EmergencyContactName = p.EmergencyContactName,
+        EmergencyContactPhone = p.EmergencyContactPhone,
+        ConsentSigned = p.ConsentSigned,
+        ConsentSignedDate = p.ConsentSignedDate,
+        DiagnosisCodesJson = p.DiagnosisCodesJson,
         IsArchived = p.IsArchived,
         ClinicId = p.ClinicId,
         LastModifiedUtc = p.LastModifiedUtc
@@ -292,12 +487,16 @@ public static class PatientEndpoints
         PatientId = n.PatientId,
         AppointmentId = n.AppointmentId,
         NoteType = n.NoteType,
+        IsReEvaluation = n.IsReEvaluation,
+        NoteStatus = n.NoteStatus,
         ContentJson = n.ContentJson,
         DateOfService = n.DateOfService,
         SignatureHash = n.SignatureHash,
         SignedUtc = n.SignedUtc,
         SignedByUserId = n.SignedByUserId,
         CptCodesJson = n.CptCodesJson,
+        TherapistNpi = n.TherapistNpi,
+        TotalTreatmentMinutes = n.TotalTreatmentMinutes,
         ClinicId = n.ClinicId,
         LastModifiedUtc = n.LastModifiedUtc,
         ObjectiveMetrics = n.ObjectiveMetrics.Select(m => new ObjectiveMetricResponse
@@ -307,7 +506,13 @@ public static class PatientEndpoints
             BodyPart = m.BodyPart,
             MetricType = m.MetricType,
             Value = m.Value,
-            IsWNL = m.IsWNL
+            Side = m.Side,
+            Unit = m.Unit,
+            IsWNL = m.IsWNL,
+            LastModifiedUtc = m.LastModifiedUtc
         }).ToList()
     };
 }
+
+/// <summary>Request body for adding a diagnosis code to a patient.</summary>
+public sealed record AddDiagnosisRequest(string IcdCode, string? Description, bool IsPrimary);

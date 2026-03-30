@@ -79,6 +79,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Email).HasMaxLength(255);
             entity.Property(e => e.Phone).HasMaxLength(20);
             entity.Property(e => e.MedicalRecordNumber).HasMaxLength(50);
+            entity.Property(e => e.PhysicianNpi).HasMaxLength(10);
+            entity.Property(e => e.EmergencyContactPhone).HasMaxLength(20);
+            entity.Property(e => e.DiagnosisCodesJson).IsRequired().HasDefaultValue("[]");
 
             // Relationships
             entity.HasMany(e => e.Appointments)
@@ -120,6 +123,8 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.LastModifiedUtc);
 
             entity.Property(e => e.SignatureHash).HasMaxLength(64); // SHA-256 hex string
+            entity.Property(e => e.PhysicianSignatureHash).HasMaxLength(64);
+            entity.Property(e => e.TherapistNpi).HasMaxLength(10);
 
             // Relationship to Appointment (optional)
             entity.HasOne(e => e.Appointment)
@@ -293,6 +298,8 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.NoteId);
 
             entity.Property(e => e.Value).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Side).HasMaxLength(20);
+            entity.Property(e => e.Unit).HasMaxLength(50);
 
             // Relationship to ClinicalNote
             entity.HasOne(e => e.Note)

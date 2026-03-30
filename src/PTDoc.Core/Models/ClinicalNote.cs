@@ -19,6 +19,23 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // Note type
     public NoteType NoteType { get; set; }
 
+    // Re-evaluation flag — true when this Evaluation note represents a re-evaluation
+    public bool IsReEvaluation { get; set; }
+
+    // Note workflow status (Draft → PendingCoSign → Signed)
+    public NoteStatus NoteStatus { get; set; }
+
+    // Therapist NPI for billing/documentation
+    public string? TherapistNpi { get; set; }
+
+    // Total treatment minutes (for 8-minute rule billing)
+    public int? TotalTreatmentMinutes { get; set; }
+
+    // Physician signature (plan-of-care co-signature)
+    public string? PhysicianSignatureHash { get; set; }
+    public DateTime? PhysicianSignedUtc { get; set; }
+    public Guid? PhysicianSignedByUserId { get; set; }
+
     // Content (stored as JSON for flexibility)
     public string ContentJson { get; set; } = "{}";
 
@@ -62,4 +79,15 @@ public enum NoteType
     Daily = 1,
     ProgressNote = 2,
     Discharge = 3
+}
+
+/// <summary>
+/// Workflow status for a clinical note.
+/// Draft notes are editable; PendingCoSign notes await PT countersignature; Signed notes are immutable.
+/// </summary>
+public enum NoteStatus
+{
+    Draft = 0,
+    PendingCoSign = 1,
+    Signed = 2
 }
