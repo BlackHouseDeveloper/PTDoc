@@ -281,6 +281,12 @@
             return;
         }
 
+        if (!State.ConsentToTreatAcknowledged)
+        {
+            _validationMessage = "You must consent to receive physical therapy treatment before submitting.";
+            return;
+        }
+
         if (!HasRequiredReviewConsents(State))
         {
             _validationMessage = "Complete the required agreements and ensure HIPAA and treatment consent are not revoked before submitting.";
@@ -397,6 +403,7 @@
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
             HipaaAcknowledged = state.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
             TermsOfServiceAccepted = state.TermsOfServiceAccepted,
             AccuracyConfirmed = state.AccuracyConfirmed,
             RevokeHipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
@@ -448,9 +455,8 @@
                 ? (IntakeStep)draft.CurrentStep
                 : IntakeStep.Demographics,
             HipaaAcknowledged = draft.HipaaAcknowledged,
-            TermsOfServiceAccepted = draft.TermsOfServiceAccepted,
+            ConsentToTreatAcknowledged = draft.ConsentToTreatAcknowledged,
             AccuracyConfirmed = draft.AccuracyConfirmed,
-            RevokeHipaaPrivacyNotice = draft.RevokeHipaaPrivacyNotice,
             RevokeTreatmentConsent = draft.RevokeTreatmentConsent,
             RevokeMarketingCommunications = draft.RevokeMarketingCommunications,
             RevokePhiRelease = draft.RevokePhiRelease,
@@ -463,7 +469,6 @@
             BillingConsentAuthorized = draft.BillingConsentAuthorized,
             FullName = draft.FullName,
             DateOfBirth = draft.DateOfBirth,
-            SexAtBirth = draft.SexAtBirth,
             EmailAddress = draft.EmailAddress,
             PhoneNumber = draft.PhoneNumber,
             AddressLine1 = draft.AddressLine1,

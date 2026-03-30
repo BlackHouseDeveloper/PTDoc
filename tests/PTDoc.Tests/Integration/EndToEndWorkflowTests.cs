@@ -439,7 +439,13 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         var content = await response.Content.ReadAsStringAsync();
         var doc = JsonSerializer.Deserialize<JsonDocument>(content, JsonOpts);
-        return doc!.RootElement.GetProperty("id").GetGuid();
+        var patientId = doc!.RootElement.GetProperty("id").GetGuid();
+
+        // RQ-033: Add a diagnosis code so notes can be signed.
+        var diagBody = JsonContent(new { icdCode = "M54.5", description = "Low back pain", isPrimary = true });
+        await client.PostAsync($"/api/v1/patients/{patientId}/diagnoses", diagBody);
+
+        return patientId;
     }
 
     private static StringContent JsonContent<T>(T value) =>

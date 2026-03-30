@@ -28,8 +28,30 @@ public class Patient : ISyncTrackedEntity
     // Clinical
     public string? MedicalRecordNumber { get; set; }
 
+    // Referring physician
+    public string? ReferringPhysician { get; set; }
+    public string? PhysicianNpi { get; set; }
+
+    // Clinical onset and authorization
+    public DateTime? DateOfOnset { get; set; }
+    public string? AuthorizationNumber { get; set; }
+
+    // Emergency contact
+    public string? EmergencyContactName { get; set; }
+    public string? EmergencyContactPhone { get; set; }
+
+    // Consent
+    public bool ConsentSigned { get; set; }
+    public DateTime? ConsentSignedDate { get; set; }
+
+    // Diagnosis codes (JSON array of PatientDiagnosisDto)
+    public string DiagnosisCodesJson { get; set; } = "[]";
+
     // Insurance (JSON blob)
     public string PayerInfoJson { get; set; } = "{}";
+
+    // Retention policy override (null = use system default of 7 years)
+    public int? RetentionYears { get; set; }
 
     // Soft delete
     public bool IsArchived { get; set; }

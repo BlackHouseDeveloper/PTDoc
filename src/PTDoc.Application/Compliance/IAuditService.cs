@@ -300,8 +300,22 @@ public class AuditEvent
     /// Creates an audit event when a patient or staff member submits an intake form.
     /// NO PHI — only intake identity and submitter identity.
     /// </summary>
-    public static AuditEvent IntakeSubmitted(Guid intakeId, Guid userId)
+    public static AuditEvent IntakeSubmitted(Guid intakeId, Guid userId, Dictionary<string, object>? additionalMetadata = null)
     {
+        var metadata = new Dictionary<string, object>
+        {
+            ["IntakeId"] = intakeId,
+            ["Timestamp"] = DateTime.UtcNow
+        };
+
+        if (additionalMetadata is not null)
+        {
+            foreach (var pair in additionalMetadata)
+            {
+                metadata[pair.Key] = pair.Value;
+            }
+        }
+
         return new AuditEvent
         {
             EventType = "IntakeSubmitted",
@@ -310,11 +324,7 @@ public class AuditEvent
             UserId = userId,
             EntityType = "IntakeForm",
             EntityId = intakeId,
-            Metadata = new Dictionary<string, object>
-            {
-                ["IntakeId"] = intakeId,
-                ["Timestamp"] = DateTime.UtcNow
-            }
+            Metadata = metadata
         };
     }
 
@@ -357,6 +367,35 @@ public class AuditEvent
             Metadata = new Dictionary<string, object>
             {
                 ["IntakeId"] = intakeId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    /// <summary>
+    /// Creates an audit event when one or more intake consent permissions are revoked in writing.
+    /// NO PHI — metadata includes consent key names and reference presence only.
+    /// </summary>
+    public static AuditEvent IntakeConsentRevoked(
+        Guid intakeId,
+        Guid userId,
+        IReadOnlyCollection<string> consentKeys,
+        bool hasWrittenReference)
+    {
+        return new AuditEvent
+        {
+            EventType = "IntakeConsentRevoked",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            EntityType = "IntakeForm",
+            EntityId = intakeId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["IntakeId"] = intakeId,
+                ["ConsentKeys"] = consentKeys.ToArray(),
+                ["ConsentKeyCount"] = consentKeys.Count,
+                ["HasWrittenReference"] = hasWrittenReference,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

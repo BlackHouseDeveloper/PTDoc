@@ -9,12 +9,15 @@ namespace PTDoc.Application.Services;
 public interface INoteService
 {
     /// <summary>
-    /// Returns a lightweight list of notes, optionally filtered by patient, note type, or sign status.
+    /// Returns a lightweight list of notes, optionally filtered by patient, note type, sign status,
+    /// or taxonomy category/item (first-class SQL filter via NoteTaxonomySelections join table).
     /// </summary>
     Task<IReadOnlyList<NoteListItemApiResponse>> GetNotesAsync(
         Guid? patientId = null,
         string? noteType = null,
         string? status = null,
         int take = 100,
+        string? categoryId = null,
+        string? itemId = null,
         CancellationToken cancellationToken = default);
 }

@@ -96,6 +96,8 @@ public class AuthorizationCoverageTests
         Assert.Contains(routes, r => r.StartsWith("/api/v1/ai"));
         // PDF export
         Assert.Contains(routes, r => r == "/api/v1/notes/{noteId:guid}/export/pdf");
+        // Daily Treatment Note workflow
+        Assert.Contains(routes, r => r.StartsWith("/api/v1/daily-notes"));
         // Diagnostics
         Assert.Contains(routes, r => r.StartsWith("/diagnostics"));
         // Auth (intentionally anonymous)
@@ -175,6 +177,9 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientRead),
         new("PUT",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientWrite),
         new("GET",  "/api/v1/patients/{id:guid}/notes",    AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/patients/{id:guid}/diagnoses",  AuthorizationPolicies.PatientRead),
+        new("POST", "/api/v1/patients/{id:guid}/diagnoses",  AuthorizationPolicies.PatientWrite),
+        new("DELETE", "/api/v1/patients/{id:guid}/diagnoses/{code}", AuthorizationPolicies.PatientWrite),
 
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
         new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
@@ -185,6 +190,16 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
         new("POST", "/api/v1/intake/{id:guid}/review",                            AuthorizationPolicies.ClinicalStaff),
 
+        // ── Intake reference data (ReferenceData/IntakeReferenceDataEndpoints.cs) ─
+        new("GET",  "/api/v1/reference-data/intake/",                             AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/body-parts",                   AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/medications",                  AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/pain-descriptors",             AuthorizationPolicies.IntakeRead),
+
+        // ── Treatment taxonomy reference data (ReferenceData/TreatmentTaxonomyEndpoints.cs) ─
+        new("GET",  "/api/v1/reference-data/treatment-taxonomy/",                 AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/reference-data/treatment-taxonomy/{categoryId}",     AuthorizationPolicies.ClinicalStaff),
+
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
         new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),
@@ -192,8 +207,21 @@ public class AuthorizationCoverageTests
         // Sprint UC-Gamma: AI output acceptance gate — clinician must explicitly accept AI content
         new("POST", "/api/v1/notes/{noteId:guid}/accept-ai-suggestion", AuthorizationPolicies.NoteWrite),
 
+        // Sprint O: Objective metrics CRUD
+        new("GET",    "/api/v1/notes/{noteId:guid}/objective-metrics",             AuthorizationPolicies.NoteRead),
+        new("POST",   "/api/v1/notes/{noteId:guid}/objective-metrics",             AuthorizationPolicies.NoteWrite),
+        new("PUT",    "/api/v1/notes/{noteId:guid}/objective-metrics/{metricId:guid}", AuthorizationPolicies.NoteWrite),
+        new("DELETE", "/api/v1/notes/{noteId:guid}/objective-metrics/{metricId:guid}", AuthorizationPolicies.NoteWrite),
+
         // Sprint UC-Gamma: carry-forward read endpoint — NoteRead (broader access than NoteWrite)
         new("GET",  "/api/v1/notes/carry-forward", AuthorizationPolicies.NoteRead),
+
+        // ── Typed note workspace v2 (Notes/NoteWorkspaceV2Endpoints.cs) ──────
+        new("GET",  "/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}", AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v2/notes/workspace/", AuthorizationPolicies.NoteWrite),
+        new("GET",  "/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v2/notes/workspace/lookup/icd10", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v2/notes/workspace/lookup/cpt", AuthorizationPolicies.ClinicalStaff),
 
         // ── Compliance rule evaluation (Compliance/ComplianceEndpoints.cs) ────
         new("POST", "/api/v1/compliance/evaluate/pn-frequency/{patientId:guid}",    AuthorizationPolicies.ClinicalStaff),
@@ -223,6 +251,15 @@ public class AuthorizationCoverageTests
 
         // ── PDF export (Pdf/PdfEndpoints.cs) ─────────────────────────────────
         new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.NoteExport),
+
+        // ── Daily Treatment Note workflow (Notes/DailyNoteEndpoints.cs) ───────
+        new("GET",  "/api/v1/daily-notes/patient/{patientId:guid}",        AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/daily-notes/{noteId:guid}",                   AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v1/daily-notes/",                                AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/daily-notes/generate-assessment",             AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/daily-notes/cpt-time",                        AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/daily-notes/check-medical-necessity",         AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/daily-notes/eval-carry-forward/{patientId:guid}", AuthorizationPolicies.NoteRead),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),

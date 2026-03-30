@@ -75,6 +75,43 @@ public class SignatureService : ISignatureService
             };
         }
 
+        // RQ-033: At least one ICD-10 diagnosis code required before signing.
+        var patient = await _context.Patients.FindAsync(new object[] { note.PatientId }, ct);
+        if (patient is null)
+        {
+            return new SignatureResult
+            {
+                Success = false,
+                ErrorMessage = "Patient record not found; cannot sign note without associated patient."
+            };
+        }
+
+        var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
+        bool hasDiagnosis = false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(diagnosisJson);
+            hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
+                && doc.RootElement.GetArrayLength() > 0;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
+        catch (ArgumentException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
+
+        if (!hasDiagnosis)
+        {
+            return new SignatureResult
+            {
+                Success = false,
+                ErrorMessage = "At least one ICD-10 diagnosis code is required before signing."
+            };
+        }
+
         // Generate canonical serialization for signature
         var canonicalContent = GenerateCanonicalContent(note);
         var signatureHash = ComputeSha256Hash(canonicalContent);
@@ -88,6 +125,11 @@ public class SignatureService : ISignatureService
         if (signerIsPta)
         {
             note.RequiresCoSign = true;
+            note.NoteStatus = NoteStatus.PendingCoSign;
+        }
+        else
+        {
+            note.NoteStatus = NoteStatus.Signed;
         }
 
         await _context.SaveChangesAsync(ct);
@@ -135,6 +177,7 @@ public class SignatureService : ISignatureService
 
         note.CoSignedByUserId = ptUserId;
         note.CoSignedUtc = DateTime.UtcNow;
+        note.NoteStatus = NoteStatus.Signed; // PT co-sign completes the signing workflow
 
         await _context.SaveChangesAsync(ct);
 

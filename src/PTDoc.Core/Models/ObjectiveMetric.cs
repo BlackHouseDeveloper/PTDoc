@@ -21,8 +21,17 @@ public class ObjectiveMetric
     // The measured value (degrees for ROM, score for MMT, etc.)
     public string Value { get; set; } = string.Empty;
 
+    // Laterality (e.g. Left, Right, Bilateral)
+    public string? Side { get; set; }
+
+    // Unit of measurement (e.g. degrees, grade, sec)
+    public string? Unit { get; set; }
+
     // Whether the measurement is Within Normal Limits
     public bool IsWNL { get; set; }
+
+    // Audit timestamp
+    public DateTime LastModifiedUtc { get; set; } = DateTime.UtcNow;
 
     // Navigation property
     public ClinicalNote? Note { get; set; }
@@ -44,6 +53,7 @@ public enum BodyPart
     Thoracic = 8,
     Foot = 9,
     Hand = 10,
+    PelvicFloor = 11,
     Other = 99
 }
 

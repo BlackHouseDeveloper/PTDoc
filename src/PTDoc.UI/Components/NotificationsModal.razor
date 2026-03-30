@@ -1,0 +1,707 @@
+@inject IJSRuntime JS
+@inject PTDoc.UI.Services.INotificationCenterService NotificationCenterService
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+@using PTDoc.UI.Services
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="notif-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false" role="presentation">
+        <div class="notif-container" @onclick:stopPropagation="true"
+             role="dialog" aria-modal="true" aria-labelledby="notif-modal-title">
+
+            @if (!showSettings)
+            {
+                <!-- ============================================================
+                     NOTIFICATIONS LIST VIEW
+                     ============================================================ -->
+
+                <!-- Header -->
+                <div class="notif-header">
+                    <div class="notif-header-left">
+                        <div class="notif-bell-wrap" aria-hidden="true">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6.002 6.002 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="notif-header-text">
+                            <h2 id="notif-modal-title" class="notif-title">Notifications</h2>
+                            <p class="notif-subtitle">@UnreadCount unread</p>
+                        </div>
+                    </div>
+                    <div class="notif-header-actions">
+                        <button type="button" class="notif-icon-btn" @onclick="OpenSettings" aria-label="Notification settings" disabled="@isLoading">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button type="button" class="notif-icon-btn" @onclick="Close" aria-label="Close notifications" disabled="@isLoading">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tab / Filter Group -->
+                <div class="notif-tabs" role="tablist" aria-label="Filter notifications">
+                    <button type="button" role="tab"
+                            class="notif-tab @(activeTab == "All" ? "notif-tab--active" : "")"
+                            aria-selected="@(activeTab == "All")"
+                            @onclick='() => SetActiveTabAsync("All")'>
+                        All
+                        <span class="notif-tab-badge">@notifications.Count</span>
+                    </button>
+                    <button type="button" role="tab"
+                            class="notif-tab @(activeTab == "Unread" ? "notif-tab--active" : "")"
+                            aria-selected="@(activeTab == "Unread")"
+                            @onclick='() => SetActiveTabAsync("Unread")'>
+                        Unread
+                        @if (UnreadCount > 0)
+                        {
+                            <span class="notif-tab-badge">@UnreadCount</span>
+                        }
+                    </button>
+                    <button type="button" role="tab"
+                            class="notif-tab @(activeTab == "Urgent" ? "notif-tab--active" : "")"
+                            aria-selected="@(activeTab == "Urgent")"
+                            @onclick='() => SetActiveTabAsync("Urgent")'>
+                        Urgent
+                    </button>
+                </div>
+
+                <!-- Action Bar (Mark All Read / Clear All / Type Filter) -->
+                <div class="notif-action-bar">
+                    <div class="notif-action-buttons">
+                        <button type="button"
+                            class="notif-action-btn @(!notifications.Any() ? "notif-action-btn--disabled" : "")"
+                            disabled="@(!notifications.Any() || isLoading || isSaving)"
+                                @onclick="MarkAllRead"
+                                aria-label="Mark all notifications as read">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Mark All Read
+                        </button>
+                        <button type="button"
+                            class="notif-action-btn @(!notifications.Any() ? "notif-action-btn--disabled" : "")"
+                            disabled="@(!notifications.Any() || isLoading || isSaving)"
+                                @onclick="ClearAll"
+                                aria-label="Clear all notifications">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Clear All
+                        </button>
+                    </div>
+                    <div class="notif-type-filter-wrap">
+                        <label for="notif-type-select" class="sr-only">Filter by notification type</label>
+                        <select id="notif-type-select" class="notif-type-select" @bind="selectedTypeFilter" @bind:after="PersistFiltersAsync" disabled="@isLoading">
+                            <option value="all">All Types</option>
+                            <option value="intake">Incomplete Intake</option>
+                            <option value="overdue">Overdue Note</option>
+                            <option value="appointment">Upcoming Appointment</option>
+                            <option value="scheduled">Appointment Scheduled</option>
+                        </select>
+                        <svg class="notif-select-caret" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="notif-divider" aria-hidden="true"></div>
+
+                <!-- Notifications List / Empty State -->
+                <div class="notif-list-area" role="list" aria-label="Notifications list" aria-live="polite">
+                    @if (isLoading)
+                    {
+                        <div class="notif-loading-state">
+                            <p class="notif-loading-text">Loading notifications...</p>
+                        </div>
+                    }
+                    else if (!FilteredNotifications.Any())
+                    {
+                        <div class="notif-empty-state">
+                            <div class="notif-empty-icon-wrap" aria-hidden="true">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6.002 6.002 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <p class="notif-empty-heading">No Notifications</p>
+                            <p class="notif-empty-body">No notifications to display</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var item in FilteredNotifications)
+                        {
+                            var itemCss = "notif-item"
+                                + (item.IsRead ? "" : " notif-item--unread")
+                                + (item.IsUrgent ? " notif-item--urgent" : "");
+                            var itemLabel = (item.IsRead ? "" : "Unread: ") + item.Title;
+                            <button type="button"
+                                    class="@itemCss"
+                                    role="listitem"
+                                    aria-label="@itemLabel"
+                                    @onclick="() => HandleNotificationClick(item)">
+                                <div class="notif-item-body-wrap">
+                                    <p class="notif-item-title">@item.Title</p>
+                                    <p class="notif-item-message">@item.Message</p>
+                                    <p class="notif-item-time">@item.Timestamp.ToString("MMM d, h:mm tt")</p>
+                                </div>
+                                @if (!item.IsRead)
+                                {
+                                    <span class="notif-unread-dot" aria-hidden="true"></span>
+                                }
+                            </button>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <!-- ============================================================
+                     NOTIFICATION SETTINGS VIEW
+                     ============================================================ -->
+
+                <!-- Header -->
+                <div class="notif-header">
+                    <div class="notif-header-left">
+                        <button type="button" class="notif-icon-btn" @onclick="BackToList" aria-label="Back to notifications">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="notif-bell-wrap notif-bell-wrap--settings" aria-hidden="true">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <h2 id="notif-modal-title" class="notif-title">Notification Settings</h2>
+                    </div>
+                    <button type="button" class="notif-icon-btn" @onclick="Close" aria-label="Close">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Settings Intro -->
+                <p class="notif-settings-intro">Configure how you receive notifications and manage your preferences.</p>
+
+                <!-- Settings Content (scrollable) -->
+                <div class="notif-settings-body">
+
+                    <!-- ── Delivery Methods ── -->
+                    <h3 class="notif-section-heading">Delivery Methods</h3>
+                    <div class="notif-settings-group">
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--app" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6 6 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">In-App Notifications</span>
+                                <span class="notif-toggle-desc">Show notifications within the app</span>
+                            </div>
+                            <label class="notif-switch" aria-label="In-App Notifications toggle">
+                                <input type="checkbox" @bind="inAppNotifications" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--email" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M2 8l10 7 10-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">
+                                    Email Notifications
+                                    <span class="notif-freq-badge">Hourly</span>
+                                </span>
+                                <span class="notif-toggle-desc">Receive notifications via email</span>
+                            </div>
+                            <label class="notif-switch" aria-label="Email Notifications toggle">
+                                <input type="checkbox" @bind="emailNotifications" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--push" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/>
+                                    <circle cx="12" cy="17" r="1" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Push Notifications</span>
+                                <span class="notif-toggle-desc">Mobile and desktop push notifications</span>
+                            </div>
+                            <label class="notif-switch" aria-label="Push Notifications toggle">
+                                <input type="checkbox" @bind="pushNotifications" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--sound" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Sound Alerts</span>
+                                <span class="notif-toggle-desc">Play sound for important notifications</span>
+                            </div>
+                            <label class="notif-switch" aria-label="Sound Alerts toggle">
+                                <input type="checkbox" @bind="soundAlerts" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                    </div>
+
+                    <!-- ── Do Not Disturb ── -->
+                    <h3 class="notif-section-heading">Do Not Disturb</h3>
+                    <div class="notif-settings-group">
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Enable Do Not Disturb</span>
+                                <span class="notif-toggle-desc">Silence notifications during specified hours</span>
+                            </div>
+                            <label class="notif-switch" aria-label="Do Not Disturb toggle">
+                                <input type="checkbox" @bind="doNotDisturb" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+
+                    </div>
+
+                    <!-- ── Notification Types ── -->
+                    <h3 class="notif-section-heading">Notification Types</h3>
+                    <div class="notif-settings-group">
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--intake" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2"/>
+                                    <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2"/>
+                                    <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Incomplete Intake</span>
+                                <span class="notif-toggle-desc">Patient intake forms that need completion</span>
+                            </div>
+                            <label class="notif-checkbox" aria-label="Incomplete Intake notifications">
+                                <input type="checkbox" @bind="notifyIncompleteIntake" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-checkbox-box" aria-hidden="true">
+                                    @if (notifyIncompleteIntake)
+                                    {
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    }
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--overdue" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                                    <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Overdue Note</span>
+                                <span class="notif-toggle-desc">Clinical notes past their documentation deadline</span>
+                            </div>
+                            <label class="notif-checkbox" aria-label="Overdue Note notifications">
+                                <input type="checkbox" @bind="notifyOverdueNote" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-checkbox-box" aria-hidden="true">
+                                    @if (notifyOverdueNote)
+                                    {
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    }
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--appointment" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Upcoming Appointment</span>
+                                <span class="notif-toggle-desc">Appointments starting soon</span>
+                            </div>
+                            <label class="notif-checkbox" aria-label="Upcoming Appointment notifications">
+                                <input type="checkbox" @bind="notifyUpcomingAppointment" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-checkbox-box" aria-hidden="true">
+                                    @if (notifyUpcomingAppointment)
+                                    {
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    }
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="notif-toggle-row">
+                            <div class="notif-type-icon notif-type-icon--scheduled" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+                                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
+                                    <path d="M9 16l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="notif-toggle-text">
+                                <span class="notif-toggle-label">Appointment Scheduled</span>
+                                <span class="notif-toggle-desc">Notifications when appointments are scheduled</span>
+                            </div>
+                            <label class="notif-checkbox" aria-label="Appointment Scheduled notifications">
+                                <input type="checkbox" @bind="notifyAppointmentScheduled" @bind:after="PersistPreferencesAsync" />
+                                <span class="notif-checkbox-box" aria-hidden="true">
+                                    @if (notifyAppointmentScheduled)
+                                    {
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    }
+                                </span>
+                            </label>
+                        </div>
+
+                    </div>
+
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnNotificationNavigate { get; set; }
+
+    private bool showSettings;
+    private bool isLoading;
+    private bool isSaving;
+    private bool wasOpen;
+
+    private string activeTab = "All";
+    private string selectedTypeFilter = "all";
+
+    private bool inAppNotifications = true;
+    private bool emailNotifications = true;
+    private bool pushNotifications = true;
+    private bool soundAlerts = true;
+    private bool doNotDisturb;
+    private bool notifyIncompleteIntake = true;
+    private bool notifyOverdueNote = true;
+    private bool notifyUpcomingAppointment = true;
+    private bool notifyAppointmentScheduled = true;
+
+    private List<NotificationCenterItem> notifications = new();
+
+    private int UnreadCount => notifications.Count(n => !n.IsRead);
+
+    private IEnumerable<NotificationCenterItem> FilteredNotifications
+    {
+        get
+        {
+            var filtered = activeTab switch
+            {
+                "Unread" => notifications.Where(n => !n.IsRead),
+                "Urgent" => notifications.Where(n => n.IsUrgent),
+                _ => notifications.AsEnumerable()
+            };
+
+            if (!string.Equals(selectedTypeFilter, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                filtered = filtered.Where(n => string.Equals(n.Type, selectedTypeFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return filtered.OrderByDescending(n => n.Timestamp);
+        }
+    }
+
+    private IJSObjectReference? modalModule;
+    private DotNetObjectReference<NotificationsModal>? dotNetRef;
+    private readonly string modalId = $"notif-modal-{Guid.NewGuid():N}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !wasOpen)
+        {
+            wasOpen = true;
+            showSettings = false;
+            await LoadModalStateAsync();
+        }
+        else if (!IsOpen)
+        {
+            wasOpen = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef = DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Unable to initialize notifications modal: {ex.Message}");
+            }
+        }
+
+        if (IsOpen && modalModule is not null && dotNetRef is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Notifications modal interaction failed: {ex.Message}");
+            }
+        }
+        else if (!IsOpen && modalModule is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Notifications modal cleanup failed: {ex.Message}");
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs() => await Close();
+
+    private async Task LoadModalStateAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var state = await NotificationCenterService.GetStateAsync();
+            ApplyState(state);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load notifications: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyState(NotificationCenterState state)
+    {
+        notifications = state.Notifications;
+
+        activeTab = state.Filters.ActiveTab;
+        selectedTypeFilter = state.Filters.SelectedTypeFilter;
+
+        inAppNotifications = state.Preferences.InAppNotifications;
+        emailNotifications = state.Preferences.EmailNotifications;
+        pushNotifications = state.Preferences.PushNotifications;
+        soundAlerts = state.Preferences.SoundAlerts;
+        doNotDisturb = state.Preferences.DoNotDisturb;
+        notifyIncompleteIntake = state.Preferences.NotifyIncompleteIntake;
+        notifyOverdueNote = state.Preferences.NotifyOverdueNote;
+        notifyUpcomingAppointment = state.Preferences.NotifyUpcomingAppointment;
+        notifyAppointmentScheduled = state.Preferences.NotifyAppointmentScheduled;
+    }
+
+    private async Task Close()
+    {
+        IsOpen = false;
+        showSettings = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private void HandleOverlayClick() => _ = Close();
+
+    private void OpenSettings() => showSettings = true;
+
+    private void BackToList() => showSettings = false;
+
+    private async Task SetActiveTabAsync(string tab)
+    {
+        activeTab = tab;
+        await PersistFiltersAsync();
+    }
+
+    private async Task PersistFiltersAsync()
+    {
+        try
+        {
+            var state = await NotificationCenterService.SaveFiltersAsync(new NotificationCenterFilters
+            {
+                ActiveTab = activeTab,
+                SelectedTypeFilter = selectedTypeFilter
+            });
+
+            ApplyState(state);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save notification filters: {ex.Message}");
+        }
+    }
+
+    private async Task PersistPreferencesAsync()
+    {
+        isSaving = true;
+        try
+        {
+            var state = await NotificationCenterService.SavePreferencesAsync(new NotificationCenterPreferences
+            {
+                InAppNotifications = inAppNotifications,
+                EmailNotifications = emailNotifications,
+                PushNotifications = pushNotifications,
+                SoundAlerts = soundAlerts,
+                DoNotDisturb = doNotDisturb,
+                NotifyIncompleteIntake = notifyIncompleteIntake,
+                NotifyOverdueNote = notifyOverdueNote,
+                NotifyUpcomingAppointment = notifyUpcomingAppointment,
+                NotifyAppointmentScheduled = notifyAppointmentScheduled
+            });
+
+            ApplyState(state);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save notification settings: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task MarkAllRead()
+    {
+        isSaving = true;
+        try
+        {
+            var state = await NotificationCenterService.MarkAllReadAsync();
+            ApplyState(state);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to mark notifications as read: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ClearAll()
+    {
+        isSaving = true;
+        try
+        {
+            var state = await NotificationCenterService.ClearAllAsync();
+            ApplyState(state);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to clear notifications: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task HandleNotificationClick(NotificationCenterItem item)
+    {
+        isSaving = true;
+        try
+        {
+            var state = await NotificationCenterService.MarkReadAsync(item.Id);
+            ApplyState(state);
+
+            if (!string.IsNullOrWhiteSpace(item.TargetUrl))
+            {
+                await Close();
+                NavigationManager.NavigateTo(item.TargetUrl);
+                if (OnNotificationNavigate.HasDelegate)
+                {
+                    await OnNotificationNavigate.InvokeAsync(item.TargetUrl);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to open notification: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (modalModule is not null)
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                await modalModule.DisposeAsync();
+            }
+
+            dotNetRef?.Dispose();
+        }
+        catch
+        {
+            // Suppress disposal errors (component may be torn down during navigation)
+        }
+    }
+}

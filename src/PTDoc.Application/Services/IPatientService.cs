@@ -34,4 +34,25 @@ public interface IPatientService
         Guid id,
         UpdatePatientRequest request,
         CancellationToken cancellationToken = default);
+
+    // ─── Diagnosis code management ────────────────────────────────────────────
+
+    /// <summary>Returns the patient's current diagnosis codes, or null if patient not found.</summary>
+    Task<IReadOnlyList<PatientDiagnosisDto>?> GetDiagnosesAsync(
+        Guid patientId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Adds an ICD-10 diagnosis code to the patient's diagnosis list.</summary>
+    Task<bool> AddDiagnosisAsync(
+        Guid patientId,
+        string icdCode,
+        string description,
+        bool isPrimary,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Removes an ICD-10 diagnosis code from the patient's diagnosis list.</summary>
+    Task<bool> RemoveDiagnosisAsync(
+        Guid patientId,
+        string icdCode,
+        CancellationToken cancellationToken = default);
 }

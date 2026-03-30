@@ -55,8 +55,8 @@ public class NoteComplianceIntegrationTests : IDisposable
         }
         await _context.SaveChangesAsync();
 
-        // Act: validate PN frequency (simulates what CreateNote endpoint does for Daily notes)
-        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+        // Act: validate PN frequency for Medicare (simulates what CreateNote endpoint does for Daily notes)
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
 
         // Assert: rules engine returns HardStop — endpoint should respond with 422
         Assert.False(result.IsValid);
@@ -113,7 +113,7 @@ public class NoteComplianceIntegrationTests : IDisposable
         await _context.SaveChangesAsync();
 
         // The hard stop rule fires (this is expected — it's what triggers the need for a PN)
-        var pnFreqResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+        var pnFreqResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
         Assert.Equal(RuleSeverity.HardStop, pnFreqResult.Severity);
 
         // But the endpoint should only apply this check when NoteType == Daily.

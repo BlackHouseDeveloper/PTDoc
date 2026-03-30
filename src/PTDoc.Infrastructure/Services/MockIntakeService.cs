@@ -61,6 +61,7 @@ public sealed class MockIntakeService : IIntakeService
             PatientId = state.PatientId,
             CurrentStep = state.CurrentStep,
             HipaaAcknowledged = state.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,

@@ -271,6 +271,7 @@ public class SprintQSmokeCrudTests : IDisposable
             TemplateVersion = "v1.0",
             AccessToken = "test-token-hash",
             ResponseJson = "{\"q1\":\"yes\"}",
+            StructuredDataJson = "{\"schemaVersion\":\"2026-03-30\",\"bodyPartSelections\":[{\"bodyPartId\":\"knee\",\"lateralities\":[\"left\"]}]}",
             PainMapData = "{\"regions\":[\"knee\"]}",
             Consents = "{\"hipaa\":true}"
         };
@@ -283,6 +284,7 @@ public class SprintQSmokeCrudTests : IDisposable
         Assert.Equal(patient.Id, read.PatientId);
         Assert.Equal("v1.0", read.TemplateVersion);
         Assert.Contains("knee", read.PainMapData);
+        Assert.Contains("bodyPartSelections", read.StructuredDataJson);
 
         // Update
         read.IsLocked = true;

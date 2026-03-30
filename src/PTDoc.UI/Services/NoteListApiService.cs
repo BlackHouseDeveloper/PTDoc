@@ -22,6 +22,8 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
         string? noteType = null,
         string? status = null,
         int take = 100,
+        string? categoryId = null,
+        string? itemId = null,
         CancellationToken cancellationToken = default)
     {
         var queryParts = new List<string>();
@@ -32,6 +34,10 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
         if (!string.IsNullOrWhiteSpace(status))
             queryParts.Add($"status={Uri.EscapeDataString(status)}");
         queryParts.Add($"take={take}");
+        if (!string.IsNullOrWhiteSpace(categoryId))
+            queryParts.Add($"categoryId={Uri.EscapeDataString(categoryId)}");
+        if (!string.IsNullOrWhiteSpace(itemId))
+            queryParts.Add($"itemId={Uri.EscapeDataString(itemId)}");
 
         var url = "/api/v1/notes?" + string.Join("&", queryParts);
 
