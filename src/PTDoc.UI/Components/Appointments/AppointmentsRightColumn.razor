@@ -1,3 +1,6 @@
+@using PTDoc.Application.DTOs
+@using PTDoc.Core.Models
+
 @* Appointments Right Column - Composition Component *@
 
 <div class="appointments-right-column">
@@ -5,8 +8,11 @@
     
     <ClinicianScheduler SelectedDate="@SelectedDate" 
                        Clinicians="@Clinicians"
+                       Appointments="@Appointments"
                        View="@View"
-                       Filter="@Filter" />
+                       Filter="@Filter"
+                       OnAppointmentSelected="@OnAppointmentSelected"
+                       AppointmentStatusOverrides="@AppointmentStatusOverrides" />
 </div>
 
 @code {
@@ -20,8 +26,17 @@
     public List<ClinicianSchedule>? Clinicians { get; set; }
 
     [Parameter]
+    public IReadOnlyList<AppointmentListItemResponse>? Appointments { get; set; }
+
+    [Parameter]
     public AppointmentsView View { get; set; } = AppointmentsView.Today;
 
     [Parameter]
     public AppointmentsFilter? Filter { get; set; }
+
+    [Parameter]
+    public EventCallback<AppointmentDetailViewModel> OnAppointmentSelected { get; set; }
+
+    [Parameter]
+    public IReadOnlyDictionary<string, string>? AppointmentStatusOverrides { get; set; }
 }

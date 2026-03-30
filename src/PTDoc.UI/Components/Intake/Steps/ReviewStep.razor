@@ -1,40 +1,783 @@
+@using System.Text.Json
+@using System.Text.RegularExpressions
+@using PTDoc.Core.Models
+@using PTDoc.UI.Components
 @using PTDoc.UI.Components.Intake.Models
 
-<section class="intake-step-shell" data-testid="review-step">
-    <h2>Review</h2>
-    <p>Confirm your details before submitting this intake.</p>
+<section class="review-step" data-testid="review-step">
+    <section class="review-step__banner @(IsAgeVerified ? "review-step__banner--success" : "review-step__banner--warning")" aria-live="polite">
+        <div class="review-step__banner-icon" aria-hidden="true">@GetAgeBannerIcon()</div>
+        <div class="review-step__banner-content">
+            <h2>@GetAgeBannerTitle()</h2>
+            <p>@GetAgeBannerMessage()</p>
+        </div>
+    </section>
 
-    <div class="review-grid">
-        <div><strong>Full Name:</strong> @Display(State.FullName)</div>
-        <div><strong>Date of Birth:</strong> @(State.DateOfBirth?.ToString("d") ?? "Not provided")</div>
-        <div><strong>Email:</strong> @Display(State.EmailAddress)</div>
-        <div><strong>Phone:</strong> @Display(State.PhoneNumber)</div>
-        <div><strong>Emergency Contact:</strong> @Display(State.EmergencyContactName)</div>
-        <div><strong>Insurance:</strong> @Display(State.InsuranceCompanyName)</div>
-        <div><strong>Body Region:</strong> @Display(State.SelectedBodyRegion)</div>
-    </div>
+    <section class="review-step__card review-step__card--highlight">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Review Your Information</h2>
+                <p>Review each section before you submit. You can still return to earlier steps or update the agreements below.</p>
+            </div>
+        </div>
 
-    @if (!State.HipaaAcknowledged)
+        <ul class="review-step__checklist">
+            <li>Verify all contact information is correct.</li>
+            <li>Ensure medical history is accurate.</li>
+            <li>Confirm pain assessment details.</li>
+            <li>Review treatment goals, permissions, and expectations.</li>
+        </ul>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
-        <div class="intake-step-shell__warning">HIPAA acknowledgment is required before final submit.</div>
+        <section class="review-step__message @(State.IsLocked || State.IsSubmitted ? "review-step__message--success" : "review-step__message--warning")" role="status" aria-live="polite">
+            @ValidationMessage
+        </section>
     }
 
-    <IntakeFooterActions
-        ShowBack="true"
-        PrimaryText="Submit Intake"
-        PrimaryTestId="submit-button"
-        PrimaryDisabled="@(!State.HipaaAcknowledged || State.IsSubmitting)"
-        OnBack="OnBack"
-        OnPrimary="OnSubmit" />
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Personal Information</h2>
+                <p>Review your submitted demographic and emergency contact information.</p>
+            </div>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@State.IsLocked">Edit</button>
+        </div>
+
+        <div class="review-step__field-grid">
+            <div class="review-step__field">
+                <span class="review-step__field-label">Full Name</span>
+                <span class="review-step__field-value">@Display(State.FullName)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Date of Birth</span>
+                <span class="review-step__field-value">
+                    @DisplayDate(State.DateOfBirth)
+                    @if (AgeYears.HasValue)
+                    {
+                        <span class="review-step__pill review-step__pill--success">Age @AgeYears.Value</span>
+                    }
+                </span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Email</span>
+                <span class="review-step__field-value">@Display(State.EmailAddress)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Phone</span>
+                <span class="review-step__field-value">@Display(State.PhoneNumber)</span>
+            </div>
+        </div>
+
+        <div class="review-step__divider"></div>
+
+        <div class="review-step__subsection">
+            <h3>Emergency Contact</h3>
+            <div class="review-step__field-grid">
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Name</span>
+                    <span class="review-step__field-value">@Display(State.EmergencyContactName)</span>
+                </div>
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Phone</span>
+                    <span class="review-step__field-value">@Display(State.EmergencyContactPhone)</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Medical History</h2>
+                <p>These answers summarize the health history provided in the intake.</p>
+            </div>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@State.IsLocked">Edit</button>
+        </div>
+
+        <div class="review-step__row-list">
+            <div class="review-step__row">
+                <span>Current Medications</span>
+                <StatusBadge Text="@(State.HasCurrentMedications ? "Yes" : "No")" Variant="@(State.HasCurrentMedications ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
+            </div>
+            <div class="review-step__row">
+                <span>Medical Conditions</span>
+                <StatusBadge Text="@(State.HasOtherMedicalConditions ? "Yes" : "No")" Variant="@(State.HasOtherMedicalConditions ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
+            </div>
+            <div class="review-step__row">
+                <span>Assistive Devices</span>
+                <StatusBadge Text="@(State.UsesAssistiveDevices ? "Yes" : "No")" Variant="@(State.UsesAssistiveDevices ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
+            </div>
+            <div class="review-step__row">
+                <span>Previous Surgeries</span>
+                <StatusBadge Text="@(State.HasPreviousSurgeriesOrInjuries ? "Yes" : "No")" Variant="@(State.HasPreviousSurgeriesOrInjuries ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(State.MedicalHistoryNotes))
+        {
+            <div class="review-step__note-box">
+                <span class="review-step__field-label">Notes</span>
+                <p>@State.MedicalHistoryNotes</p>
+            </div>
+        }
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Pain Assessment</h2>
+                <p>Review the selected pain areas and any pain detail captured so far.</p>
+            </div>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@State.IsLocked">Edit</button>
+        </div>
+
+        <div class="review-step__stack">
+            <div class="review-step__field">
+                <span class="review-step__field-label">Pain Areas</span>
+                <div class="review-step__chip-list">
+                    @if (SelectedRegionLabels.Count == 0)
+                    {
+                        <span class="review-step__pill">No areas selected</span>
+                    }
+                    else
+                    {
+                        @foreach (var region in SelectedRegionLabels)
+                        {
+                            <span class="review-step__pill">@region</span>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="review-step__field">
+                <span class="review-step__field-label">Primary Pain Area</span>
+                <div class="review-step__chip-list">
+                    <span class="review-step__pill review-step__pill--warning">@PrimaryRegionLabel</span>
+                </div>
+            </div>
+
+            <div class="review-step__field">
+                <div class="review-step__slider-header">
+                    <span class="review-step__field-label">Pain Level</span>
+                    <span class="review-step__slider-value">@(PainLevel.HasValue ? $"{PainLevel.Value}/10" : "Not provided")</span>
+                </div>
+                <div class="review-step__slider" aria-hidden="true">
+                    <div class="review-step__slider-fill" style="@($"width: {PainLevelPercent}%;")"></div>
+                </div>
+            </div>
+
+            <div class="review-step__field">
+                <span class="review-step__field-label">Duration of Pain</span>
+                <span class="review-step__field-value">@PainDuration</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Legal Agreements</h2>
+                <p>These agreements are required before the intake can be submitted.</p>
+            </div>
+        </div>
+
+        <div class="review-step__check-grid">
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.TermsOfServiceAccepted" @onchange="OnTermsChanged" disabled="@State.IsLocked" />
+                <span>I agree to the Terms of Service and Privacy Policy.</span>
+            </label>
+
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.HipaaAcknowledged" @onchange="OnHipaaChanged" disabled="@State.IsLocked" />
+                <span>I acknowledge receipt of the HIPAA Notice of Privacy Practices.</span>
+            </label>
+
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.AccuracyConfirmed" @onchange="OnAccuracyChanged" disabled="@State.IsLocked" />
+                <span>I have reviewed my answers and confirm they are accurate.</span>
+            </label>
+        </div>
+
+        <div class="review-step__info-box">
+            Submission locks this response for clinician review. Required agreements must stay active through final submission.
+        </div>
+    </section>
+
+    <section class="review-step__card review-step__card--warning">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Consent Revocation</h2>
+                <p>You may revoke previously granted consents. Revoking required consents will prevent final submission.</p>
+            </div>
+        </div>
+
+        <div class="review-step__check-grid">
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.RevokeHipaaPrivacyNotice" @onchange="OnRevokeHipaaChanged" disabled="@State.IsLocked" />
+                <span>HIPAA Privacy Notice</span>
+            </label>
+
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.RevokeTreatmentConsent" @onchange="OnRevokeTreatmentChanged" disabled="@State.IsLocked" />
+                <span>Treatment Consent</span>
+            </label>
+
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.RevokeMarketingCommunications" @onchange="OnRevokeMarketingChanged" disabled="@State.IsLocked" />
+                <span>Marketing Communications</span>
+            </label>
+
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.RevokePhiRelease" @onchange="OnRevokePhiChanged" disabled="@State.IsLocked" />
+                <span>PHI Release</span>
+            </label>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Communication Consent Status</h2>
+                <p>Your current communication preferences are shown below.</p>
+            </div>
+        </div>
+
+        <div class="review-step__status-grid">
+            <div class="review-step__status-card">
+                <div class="review-step__status-card-header">
+                    <h3>Phone Calls</h3>
+                    <StatusBadge Text="@(PhoneCallsAllowed ? "Allowed" : "Not Allowed")" Variant="@(PhoneCallsAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+                </div>
+                <p>@Display(State.PhoneNumber)</p>
+            </div>
+
+            <div class="review-step__status-card">
+                <div class="review-step__status-card-header">
+                    <h3>Text/SMS</h3>
+                    <StatusBadge Text="@(TextMessagesAllowed ? "Allowed" : "Not Allowed")" Variant="@(TextMessagesAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+                </div>
+                <p>@Display(State.PhoneNumber)</p>
+            </div>
+
+            <div class="review-step__status-card">
+                <div class="review-step__status-card-header">
+                    <h3>Email</h3>
+                    <StatusBadge Text="@(EmailAllowed ? "Allowed" : "Not Allowed")" Variant="@(EmailAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+                </div>
+                <p>@Display(State.EmailAddress)</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Specialty Treatment Eligibility</h2>
+                <p>Specialized treatment eligibility reflects the current intake data available for this draft.</p>
+            </div>
+        </div>
+
+        <div class="review-step__row-list">
+            <div class="review-step__row">
+                <div>
+                    <span>Dry Needling</span>
+                    <p>Eligibility based on the current body region and consent selections.</p>
+                </div>
+                <StatusBadge Text="@(State.DryNeedlingEligible ? "Eligible" : "Not Eligible")" Variant="@(State.DryNeedlingEligible ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+            </div>
+            <div class="review-step__row">
+                <div>
+                    <span>Pelvic Floor Therapy</span>
+                    <p>Eligibility may require additional screening before treatment begins.</p>
+                </div>
+                <StatusBadge Text="@(State.PelvicFloorTherapyEligible ? "Eligible" : "Not Eligible")" Variant="@(State.PelvicFloorTherapyEligible ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+            </div>
+        </div>
+
+        <div class="review-step__success-box">
+            Final specialty-treatment eligibility will be confirmed by your care team when this intake is reviewed.
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>PHI Release Status</h2>
+                <p>Authorization to release protected health information to approved recipients.</p>
+            </div>
+            <button type="button" class="review-step__text-button" @onclick="OpenPhiDetails">View Details</button>
+        </div>
+
+        <div class="review-step__row review-step__row--panel">
+            <div>
+                <span>Release Authorization</span>
+                <p>@(PhiReleaseAllowed ? "You have authorized release of protected health information." : "PHI release has been revoked in this draft.")</p>
+            </div>
+            <StatusBadge Text="@(PhiReleaseAllowed ? "Allowed" : "Revoked")" Variant="@(PhiReleaseAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Billing Consent Status</h2>
+                <p>Credit-card and billing authorization status for this intake.</p>
+            </div>
+        </div>
+
+        <div class="review-step__row review-step__row--panel">
+            <div>
+                <span>Credit Card Authorization</span>
+                <p>@BillingTimestampText</p>
+            </div>
+            <StatusBadge Text="@(State.BillingConsentAuthorized ? "Authorized" : "Pending")" Variant="@(State.BillingConsentAuthorized ? BadgeVariant.Success : BadgeVariant.Warning)" />
+        </div>
+    </section>
+
+    <section class="review-step__card review-step__card--success">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Intake Completion Status</h2>
+                <p>Required consents and permissions needed to finish submission.</p>
+            </div>
+        </div>
+
+        <div class="review-step__row-list">
+            <div class="review-step__row">
+                <span>HIPAA Privacy Notice</span>
+                <StatusBadge Text="@(HipaaConsentComplete ? "Complete" : "Incomplete")" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" />
+            </div>
+            <div class="review-step__row">
+                <span>Treatment Consent</span>
+                <StatusBadge Text="@(TreatmentConsentComplete ? "Complete" : "Incomplete")" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" />
+            </div>
+        </div>
+
+        <div class="review-step__status-chip-row">
+            <StatusBadge Text="HIPAA Acknowledged" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="Treatment Consent Accepted" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="Terms Accepted" Variant="@(State.TermsOfServiceAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="Answers Confirmed" Variant="@(State.AccuracyConfirmed ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+        </div>
+
+        <div class="@(SubmitReady ? "review-step__success-box" : "review-step__warning-box")">
+            @(SubmitReady ? "All required consents complete." : "Complete the required agreements before submitting this intake.")
+        </div>
+    </section>
+
+    <div class="review-step__actions">
+        <button type="button" class="btn review-step__secondary-action" @onclick="OnBackClicked">Back to Previous Step</button>
+        <button type="button" class="btn btn-primary review-step__primary-action" @onclick="OnSubmitClicked" disabled="@(!SubmitReady || State.IsSubmitting || State.IsLocked)" data-testid="submit-button">@SubmitButtonText</button>
+    </div>
+
+    <section class="review-step__footer-note">
+        By clicking submit, your answers will be saved as a signed intake review and the response will become read-only.
+    </section>
 </section>
 
+@if (_isPhiDetailsOpen)
+{
+    <div class="review-step__modal-backdrop" @onclick="ClosePhiDetails"></div>
+    <div class="review-step__modal" role="dialog" aria-modal="true" aria-labelledby="phi-details-title">
+        <div class="review-step__modal-header">
+            <div>
+                <h2 id="phi-details-title">PHI Release Details</h2>
+                <p>Protected health information release summary for this intake draft.</p>
+            </div>
+            <button type="button" class="review-step__modal-close" @onclick="ClosePhiDetails" aria-label="Close PHI release details">Close</button>
+        </div>
+
+        <div class="review-step__modal-body">
+            <p>Release authorization applies to care coordination, billing, and approved third-party requests associated with treatment.</p>
+            <p>Current status: <strong>@(PhiReleaseAllowed ? "Authorized" : "Revoked")</strong></p>
+            <p>Revoking PHI release does not affect your required HIPAA acknowledgement, but it may limit information-sharing workflows until a clinician reviews the intake.</p>
+        </div>
+    </div>
+}
+
 @code {
+    private bool _isPhiDetailsOpen;
+
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public string? ValidationMessage { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback<IntakeStep> OnEditStep { get; set; }
+
+    private int? AgeYears => GetAge(State.DateOfBirth);
+    private bool IsAgeVerified => AgeYears.HasValue && AgeYears.Value >= 18;
+    private bool HipaaConsentComplete => State.HipaaAcknowledged && !State.RevokeHipaaPrivacyNotice;
+    private bool TreatmentConsentComplete => !State.RevokeTreatmentConsent;
+    private bool SubmitReady => HipaaConsentComplete && TreatmentConsentComplete && State.TermsOfServiceAccepted && State.AccuracyConfirmed && !State.IsLocked;
+    private bool PhiReleaseAllowed => State.PhiReleaseAuthorized && !State.RevokePhiRelease;
+    private bool PhoneCallsAllowed => State.AllowPhoneCalls && !State.RevokeMarketingCommunications;
+    private bool TextMessagesAllowed => State.AllowTextMessages && !State.RevokeMarketingCommunications;
+    private bool EmailAllowed => State.AllowEmailMessages && !State.RevokeMarketingCommunications;
+    private int? PainLevel => GetPainLevel(State.PainDetailDrafts);
+    private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
+    private string PainDuration => GetPainDuration(State.PainDetailDrafts);
+    private string SubmitButtonText => State.IsLocked ? "Intake Submitted" : State.IsSubmitting ? "Submitting..." : "Submit Intake Form";
+    private string BillingTimestampText => State.IsSubmitted
+        ? "Billing consent captured when the intake was submitted and locked."
+        : "Billing consent timestamp will be recorded when this intake is submitted.";
+    private IReadOnlyList<string> SelectedRegionLabels => GetSelectedRegionLabels(State);
+    private string PrimaryRegionLabel => GetPrimaryRegionLabel(State);
+
+    private Task OnBackClicked() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
+
+    private Task OnSubmitClicked() => OnSubmit.HasDelegate ? OnSubmit.InvokeAsync() : Task.CompletedTask;
+
+    private Task OnEditRequestedAsync(IntakeStep step) => OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(step) : Task.CompletedTask;
+
+    private Task OnTermsChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.TermsOfServiceAccepted = ToBool(args));
+
+    private Task OnHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.HipaaAcknowledged = ToBool(args));
+
+    private Task OnAccuracyChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.AccuracyConfirmed = ToBool(args));
+
+    private Task OnRevokeHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeHipaaPrivacyNotice = ToBool(args));
+
+    private Task OnRevokeTreatmentChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeTreatmentConsent = ToBool(args));
+
+    private Task OnRevokeMarketingChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeMarketingCommunications = ToBool(args));
+
+    private Task OnRevokePhiChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokePhiRelease = ToBool(args));
+
+    private Task UpdateStateAsync(Action update)
+    {
+        if (State.IsLocked)
+        {
+            return Task.CompletedTask;
+        }
+
+        update();
+        State.IsDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private void OpenPhiDetails()
+    {
+        _isPhiDetailsOpen = true;
+    }
+
+    private void ClosePhiDetails()
+    {
+        _isPhiDetailsOpen = false;
+    }
+
+    private string GetAgeBannerIcon()
+    {
+        return IsAgeVerified ? "✓" : "!";
+    }
+
+    private string GetAgeBannerTitle()
+    {
+        if (IsAgeVerified)
+        {
+            return "Age Verified";
+        }
+
+        return AgeYears.HasValue ? "Age Review Needed" : "Age Pending";
+    }
+
+    private string GetAgeBannerMessage()
+    {
+        if (IsAgeVerified)
+        {
+            return $"Patient is {AgeYears} years old and eligible to complete intake independently.";
+        }
+
+        if (AgeYears.HasValue)
+        {
+            return $"Patient is {AgeYears} years old. A clinician should verify intake eligibility before final use.";
+        }
+
+        return "Date of birth is missing or incomplete, so age-based eligibility could not be confirmed.";
+    }
+
+    private static int? GetAge(DateTime? dateOfBirth)
+    {
+        if (!dateOfBirth.HasValue)
+        {
+            return null;
+        }
+
+        var today = DateTime.Today;
+        var age = today.Year - dateOfBirth.Value.Year;
+        if (dateOfBirth.Value.Date > today.AddYears(-age))
+        {
+            age--;
+        }
+
+        return age < 0 ? null : age;
+    }
 
     private static string Display(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "Not provided" : value;
+    }
+
+    private static string DisplayDate(DateTime? value)
+    {
+        return value?.ToString("MMMM d, yyyy") ?? "Not provided";
+    }
+
+    private static bool ToBool(ChangeEventArgs args)
+    {
+        if (args.Value is bool value)
+        {
+            return value;
+        }
+
+        return args.Value is string text && bool.TryParse(text, out var parsed) && parsed;
+    }
+
+    private static IReadOnlyList<string> GetSelectedRegionLabels(IntakeWizardState state)
+    {
+        var labels = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(state.SelectedBodyRegion))
+        {
+            foreach (var region in state.SelectedBodyRegion.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                AddRegion(region);
+            }
+        }
+
+        foreach (var region in state.SelectedBodyRegions
+                     .Select(value => value.ToString())
+                     .OrderBy(value => value, StringComparer.Ordinal))
+        {
+            AddRegion(region);
+        }
+
+        return labels;
+
+        void AddRegion(string region)
+        {
+            var label = HumanizeRegion(region);
+            if (seen.Add(label))
+            {
+                labels.Add(label);
+            }
+        }
+    }
+
+    private static string GetPrimaryRegionLabel(IntakeWizardState state)
+    {
+        if (!string.IsNullOrWhiteSpace(state.SelectedBodyRegion))
+        {
+            var primary = state.SelectedBodyRegion
+                .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(primary))
+            {
+                return HumanizeRegion(primary);
+            }
+        }
+
+        if (state.SelectedBodyRegions.Count == 0)
+        {
+            return "Not provided";
+        }
+
+        return HumanizeRegion(state.SelectedBodyRegions.First().ToString());
+    }
+
+    private static string HumanizeRegion(string rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return "Not provided";
+        }
+
+        var spaced = Regex.Replace(rawValue, "([a-z])([A-Z])", "$1 $2");
+        spaced = spaced.Replace("Lowerback", "Lower Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Upperback", "Upper Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Midback", "Mid Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Lowercalf", "Lower Calf", StringComparison.OrdinalIgnoreCase)
+            .Replace("Midtorso", "Mid Torso", StringComparison.OrdinalIgnoreCase);
+
+        return spaced;
+    }
+
+    private static int? GetPainLevel(IReadOnlyDictionary<string, object> painDetailDrafts)
+    {
+        foreach (var draft in painDetailDrafts.Values)
+        {
+            if (TryFindIntValue(draft, out var value))
+            {
+                return Math.Clamp(value, 0, 10);
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetPainDuration(IReadOnlyDictionary<string, object> painDetailDrafts)
+    {
+        foreach (var draft in painDetailDrafts.Values)
+        {
+            if (TryFindStringValue(draft, out var value))
+            {
+                return value;
+            }
+        }
+
+        return "Unknown";
+    }
+
+    private static bool TryFindIntValue(object? draftValue, out int result)
+    {
+        result = 0;
+        if (draftValue is null)
+        {
+            return false;
+        }
+
+        var element = draftValue is JsonElement jsonElement
+            ? jsonElement
+            : JsonSerializer.SerializeToElement(draftValue);
+
+        return TryFindIntValue(element, out result);
+    }
+
+    private static bool TryFindIntValue(JsonElement element, out int result)
+    {
+        result = 0;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "painLevel",
+            "painScore",
+            "level",
+            "intensity",
+            "severity",
+            "value"
+        };
+
+        return TryFindMatchingInt(element, names, out result);
+    }
+
+    private static bool TryFindStringValue(object? draftValue, out string result)
+    {
+        result = string.Empty;
+        if (draftValue is null)
+        {
+            return false;
+        }
+
+        var element = draftValue is JsonElement jsonElement
+            ? jsonElement
+            : JsonSerializer.SerializeToElement(draftValue);
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "duration",
+            "painDuration",
+            "durationOfPain"
+        };
+
+        return TryFindMatchingString(element, names, out result);
+    }
+
+    private static bool TryFindMatchingInt(JsonElement element, ISet<string> candidateNames, out int result)
+    {
+        result = 0;
+
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (candidateNames.Contains(property.Name) && TryConvertToInt(property.Value, out result))
+                    {
+                        return true;
+                    }
+
+                    if (TryFindMatchingInt(property.Value, candidateNames, out result))
+                    {
+                        return true;
+                    }
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (TryFindMatchingInt(item, candidateNames, out result))
+                    {
+                        return true;
+                    }
+                }
+                break;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindMatchingString(JsonElement element, ISet<string> candidateNames, out string result)
+    {
+        result = string.Empty;
+
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (candidateNames.Contains(property.Name) && TryConvertToString(property.Value, out result))
+                    {
+                        return true;
+                    }
+
+                    if (TryFindMatchingString(property.Value, candidateNames, out result))
+                    {
+                        return true;
+                    }
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (TryFindMatchingString(item, candidateNames, out result))
+                    {
+                        return true;
+                    }
+                }
+                break;
+        }
+
+        return false;
+    }
+
+    private static bool TryConvertToInt(JsonElement element, out int result)
+    {
+        result = 0;
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number => element.TryGetInt32(out result),
+            JsonValueKind.String => int.TryParse(element.GetString(), out result),
+            _ => false
+        };
+    }
+
+    private static bool TryConvertToString(JsonElement element, out string result)
+    {
+        result = string.Empty;
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var value = element.GetString();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        result = value;
+        return true;
     }
 }

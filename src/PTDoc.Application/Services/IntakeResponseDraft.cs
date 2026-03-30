@@ -5,6 +5,19 @@ public sealed class IntakeResponseDraft
     public Guid? PatientId { get; set; }
     public int CurrentStep { get; set; }
     public bool HipaaAcknowledged { get; set; }
+    public bool TermsOfServiceAccepted { get; set; }
+    public bool AccuracyConfirmed { get; set; }
+    public bool RevokeHipaaPrivacyNotice { get; set; }
+    public bool RevokeTreatmentConsent { get; set; }
+    public bool RevokeMarketingCommunications { get; set; }
+    public bool RevokePhiRelease { get; set; }
+    public bool AllowPhoneCalls { get; set; } = true;
+    public bool AllowTextMessages { get; set; } = true;
+    public bool AllowEmailMessages { get; set; } = true;
+    public bool DryNeedlingEligible { get; set; } = true;
+    public bool PelvicFloorTherapyEligible { get; set; }
+    public bool PhiReleaseAuthorized { get; set; } = true;
+    public bool BillingConsentAuthorized { get; set; } = true;
 
     public string? FullName { get; set; }
     public DateTime? DateOfBirth { get; set; }

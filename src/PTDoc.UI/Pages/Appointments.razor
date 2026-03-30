@@ -1,5 +1,8 @@
 @page "/appointments"
 @attribute [Authorize]
+@using PTDoc.Application.DTOs
+@using PTDoc.Application.Services
+@using PTDoc.Core.Models
 @rendermode InteractiveServer
 
 <PageTitle>Appointments - PTDoc</PageTitle>
@@ -14,10 +17,10 @@
                                OnPrevDay="HandlePrevDay"
                                OnNextDay="HandleNextDay"
                                OnToday="HandleToday"
-                               TotalCount="12"
-                               InProgressCount="1"
-                               CheckedInCount="1"
-                               MissingIntakeCount="2"
+                               TotalCount="@TotalCount"
+                               InProgressCount="@InProgressCount"
+                               CheckedInCount="@CheckedInCount"
+                               MissingIntakeCount="@MissingIntakeCount"
                                IsFiltersOpen="@isFiltersOpen"
                                IsFiltersOpenChanged="@((value) => isFiltersOpen = value)"
                                CurrentFilter="@currentFilter"
@@ -25,15 +28,30 @@
         
         <AppointmentsRightColumn ViewLabel="@GetViewLabel()"
                                 SelectedDate="@selectedDate"
+                                Clinicians="@schedulerClinicians"
+                                Appointments="@visibleAppointments"
                                 View="@selectedView"
-                                Filter="@currentFilter" />
+                                Filter="@currentFilter"
+                                OnAppointmentSelected="@HandleAppointmentSelected"
+                                AppointmentStatusOverrides="@appointmentStatusOverrides" />
     </div>
 </div>
 
 <!-- New Appointment Modal -->
 <NewAppointmentModal IsOpen="@isNewAppointmentModalOpen"
-                    IsOpenChanged="@((value) => isNewAppointmentModalOpen = value)"
+                    IsOpenChanged="@HandleNewAppointmentModalChanged"
+                    Title="@(isRescheduleMode ? "Reschedule Appointment" : "New Appointment")"
+                    Description="@(isRescheduleMode ? "Update the appointment schedule and details" : "Schedule a new appointment for a patient")"
+                    SubmitButtonText="@(isRescheduleMode ? "Save Changes" : "Schedule Appointment")"
+                    InitialValues="@appointmentFormInitialValues"
+                    AvailablePatients="@availablePatients"
+                    AvailableClinicians="@availableClinicians"
                     OnSubmit="@HandleAppointmentSubmit" />
+
+<AppointmentDetailModal IsOpen="@isAppointmentDetailModalOpen"
+                        IsOpenChanged="@HandleAppointmentDetailModalChanged"
+                        Appointment="@selectedAppointmentDetail"
+                        OnActionRequested="@HandleAppointmentDetailAction" />
 
 @code {
     private AppointmentsView selectedView = AppointmentsView.Today;
@@ -41,48 +59,663 @@
     private bool isFiltersOpen = false;
     private AppointmentsFilter currentFilter = new();
     private bool isNewAppointmentModalOpen = false;
+    private bool isAppointmentDetailModalOpen = false;
+    private bool isRescheduleMode = false;
+    private AppointmentDetailViewModel? selectedAppointmentDetail;
+    private NewAppointmentModal.AppointmentFormData? appointmentFormInitialValues;
+    private Guid? appointmentBeingEditedId;
+    private readonly Dictionary<string, string> appointmentStatusOverrides = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<AppointmentListItemResponse> appointmentDirectory = new();
+    private readonly List<AppointmentClinicianResponse> clinicianDirectory = new();
+    private readonly List<PatientListItemResponse> patientDirectory = new();
+    private List<ClinicianSchedule> schedulerClinicians = new();
+    private List<AppointmentListItemResponse> visibleAppointments = new();
+    private List<NewAppointmentModal.PatientOption> availablePatients = new();
+    private List<NewAppointmentModal.ClinicianOption> availableClinicians = new();
 
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+    [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
+    [Inject] private IPatientService PatientService { get; set; } = default!;
+    [Inject] private IToastService ToastService { get; set; } = default!;
 
-    private void HandleViewChanged(AppointmentsView view)
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPatientsAsync();
+        await LoadAppointmentsAsync();
+    }
+
+    private async Task HandleViewChanged(AppointmentsView view)
     {
         selectedView = view;
+        await LoadAppointmentsAsync();
     }
 
-    private void HandlePrevDay()
+    private async Task HandlePrevDay()
     {
         selectedDate = selectedDate.AddDays(-1);
+        await LoadAppointmentsAsync();
     }
 
-    private void HandleNextDay()
+    private async Task HandleNextDay()
     {
         selectedDate = selectedDate.AddDays(1);
+        await LoadAppointmentsAsync();
     }
 
-    private void HandleToday()
+    private async Task HandleToday()
     {
         selectedDate = DateTime.Today;
+        await LoadAppointmentsAsync();
     }
 
     private void HandleFilterChanged(AppointmentsFilter filter)
     {
         currentFilter = filter;
-        // In a real app, this would trigger data refresh with filters applied
+        RebuildSchedulerState();
     }
 
     private void HandleNewAppointment()
     {
+        isRescheduleMode = false;
+        appointmentFormInitialValues = null;
+        appointmentBeingEditedId = null;
         isNewAppointmentModalOpen = true;
     }
 
-    private async Task HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
+    private async Task<bool> HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
     {
-        _ = formData;
-        await Task.CompletedTask;
+        if (!Guid.TryParse(formData.PatientId, out var patientId))
+        {
+            ToastService.ShowWarning("Select a patient before scheduling the appointment.");
+            return false;
+        }
+
+        if (!Guid.TryParse(formData.ClinicianId, out var clinicianId))
+        {
+            ToastService.ShowWarning("Select a clinician before scheduling the appointment.");
+            return false;
+        }
+
+        var patientName = availablePatients.FirstOrDefault(patient => patient.Id == formData.PatientId)?.Name ?? "Patient";
+        var appointmentTime = TimeOnly.FromTimeSpan(formData.AppointmentTime).ToString("h:mm tt");
+        var actionVerb = isRescheduleMode ? "rescheduled" : "scheduled";
+        var requestNotes = string.IsNullOrWhiteSpace(formData.Notes) ? null : formData.Notes.Trim();
+
+        try
+        {
+            AppointmentListItemResponse savedAppointment;
+
+            if (isRescheduleMode)
+            {
+                if (!appointmentBeingEditedId.HasValue)
+                {
+                    ToastService.ShowError("The selected appointment could not be rescheduled.");
+                    return false;
+                }
+
+                var updateRequest = new UpdateAppointmentRequest
+                {
+                    PatientId = patientId,
+                    ClinicianId = clinicianId,
+                    AppointmentType = formData.AppointmentType,
+                    AppointmentDate = formData.AppointmentDate,
+                    AppointmentTime = formData.AppointmentTime,
+                    DurationMinutes = formData.DurationMinutes,
+                    Notes = requestNotes
+                };
+
+                var updatedAppointment = await AppointmentService.UpdateAsync(appointmentBeingEditedId.Value, updateRequest);
+                if (updatedAppointment is null)
+                {
+                    ToastService.ShowError("The appointment could not be found for rescheduling.");
+                    return false;
+                }
+
+                savedAppointment = updatedAppointment;
+            }
+            else
+            {
+                var createRequest = new CreateAppointmentRequest
+                {
+                    PatientId = patientId,
+                    ClinicianId = clinicianId,
+                    AppointmentType = formData.AppointmentType,
+                    AppointmentDate = formData.AppointmentDate,
+                    AppointmentTime = formData.AppointmentTime,
+                    DurationMinutes = formData.DurationMinutes,
+                    Notes = requestNotes
+                };
+
+                savedAppointment = await AppointmentService.CreateAsync(createRequest);
+            }
+
+            UpsertAppointment(savedAppointment);
+            appointmentBeingEditedId = null;
+            appointmentFormInitialValues = null;
+            isRescheduleMode = false;
+            ToastService.ShowSuccess($"{patientName} {actionVerb} for {formData.AppointmentDate:MMM d, yyyy} at {appointmentTime}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Appointments] Error saving appointment: {ex.Message}");
+            ToastService.ShowError("Failed to save the appointment.");
+            return false;
+        }
+    }
+
+    private void HandleAppointmentSelected(AppointmentDetailViewModel appointment)
+    {
+        selectedAppointmentDetail = appointment;
+        isAppointmentDetailModalOpen = true;
+    }
+
+    private Task HandleAppointmentDetailModalChanged(bool isOpen)
+    {
+        isAppointmentDetailModalOpen = isOpen;
+
+        if (!isOpen)
+        {
+            selectedAppointmentDetail = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleAppointmentDetailAction(string actionName)
+    {
+        if (selectedAppointmentDetail is null)
+        {
+            return;
+        }
+
+        switch (actionName)
+        {
+            case "check-in":
+            case "check-in-patient":
+                await HandleCheckInAsync();
+                break;
+            case "start-note":
+            case "start-session-note":
+                await HandleStartNoteAsync();
+                break;
+            case "send-reminder":
+                await HandleSendReminderAsync();
+                break;
+            case "reschedule":
+                await HandleRescheduleAsync();
+                break;
+        }
+    }
+
+    private Task HandleNewAppointmentModalChanged(bool isOpen)
+    {
+        isNewAppointmentModalOpen = isOpen;
+
+        if (!isOpen)
+        {
+            appointmentFormInitialValues = null;
+            isRescheduleMode = false;
+            appointmentBeingEditedId = null;
+        }
+
+        return Task.CompletedTask;
     }
 
     private string GetViewLabel()
     {
         return selectedView == AppointmentsView.Today ? "Today's Appointments" : "Week Appointments";
+    }
+
+    private async Task LoadPatientsAsync()
+    {
+        try
+        {
+            var patients = await PatientService.SearchAsync(query: null, take: 200);
+            patientDirectory.Clear();
+            patientDirectory.AddRange(patients);
+            availablePatients = patients
+                .Select(patient => new NewAppointmentModal.PatientOption
+                {
+                    Id = patient.Id.ToString(),
+                    Name = patient.DisplayName
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Appointments] Error loading patient list: {ex.Message}");
+            ToastService.ShowError("Failed to load appointment patient options.");
+        }
+    }
+
+    private async Task LoadAppointmentsAsync()
+    {
+        try
+        {
+            var (startDate, endDate) = GetAppointmentLoadWindow();
+            var overview = await AppointmentService.GetOverviewAsync(startDate, endDate);
+
+            appointmentDirectory.Clear();
+            appointmentDirectory.AddRange(overview.Appointments);
+            appointmentStatusOverrides.Clear();
+
+            clinicianDirectory.Clear();
+            clinicianDirectory.AddRange(overview.Clinicians);
+
+            availableClinicians = clinicianDirectory
+                .Select(clinician => new NewAppointmentModal.ClinicianOption
+                {
+                    Id = clinician.Id.ToString(),
+                    Name = clinician.DisplayName
+                })
+                .ToList();
+
+            if (availableClinicians.Count == 0)
+            {
+                availableClinicians = appointmentDirectory
+                    .Where(appointment => appointment.ClinicianId.HasValue && !string.IsNullOrWhiteSpace(appointment.ClinicianName))
+                    .GroupBy(appointment => appointment.ClinicianId!.Value)
+                    .Select(group => new NewAppointmentModal.ClinicianOption
+                    {
+                        Id = group.Key.ToString(),
+                        Name = group.First().ClinicianName
+                    })
+                    .OrderBy(clinician => clinician.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            RebuildSchedulerState();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Appointments] Error loading appointments: {ex.Message}");
+            appointmentDirectory.Clear();
+            clinicianDirectory.Clear();
+            availableClinicians = new List<NewAppointmentModal.ClinicianOption>();
+            RebuildSchedulerState();
+            ToastService.ShowError("Failed to load appointments.");
+        }
+    }
+
+    private async Task HandleCheckInAsync()
+    {
+        if (selectedAppointmentDetail is null)
+        {
+            return;
+        }
+
+        if (string.Equals(selectedAppointmentDetail.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase))
+        {
+            ToastService.ShowInfo($"{selectedAppointmentDetail.PatientName} is already checked in.");
+            return;
+        }
+
+        try
+        {
+            var updatedAppointment = await AppointmentService.CheckInAsync(selectedAppointmentDetail.AppointmentId);
+            if (updatedAppointment is null)
+            {
+                ToastService.ShowError("The appointment could not be found for check-in.");
+                return;
+            }
+
+            UpsertAppointment(updatedAppointment);
+            selectedAppointmentDetail = ToAppointmentDetailViewModel(updatedAppointment);
+            ToastService.ShowSuccess($"{selectedAppointmentDetail.PatientName} checked in.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Appointments] Error checking in appointment: {ex.Message}");
+            ToastService.ShowError("Failed to update the appointment status.");
+        }
+    }
+
+    private async Task HandleStartNoteAsync()
+    {
+        if (selectedAppointmentDetail is null)
+        {
+            return;
+        }
+
+        if (selectedAppointmentDetail.PatientRecordId == Guid.Empty)
+        {
+            ToastService.ShowWarning("Patient record not found. Unable to open the note workspace.");
+            return;
+        }
+
+        await HandleAppointmentDetailModalChanged(false);
+        NavigationManager.NavigateTo($"/patient/{selectedAppointmentDetail.PatientRecordId}/new-note");
+    }
+
+    private async Task HandleSendReminderAsync()
+    {
+        if (selectedAppointmentDetail is null)
+        {
+            return;
+        }
+
+        if (selectedAppointmentDetail.PatientRecordId == Guid.Empty)
+        {
+            ToastService.ShowWarning("Patient record not found. Unable to launch the reminder workflow.");
+            return;
+        }
+
+        var patientDetail = await PatientService.GetByIdAsync(selectedAppointmentDetail.PatientRecordId);
+        if (patientDetail is null)
+        {
+            ToastService.ShowWarning("Patient contact details are unavailable.");
+            return;
+        }
+
+        var message = $"Hello {selectedAppointmentDetail.PatientName}, this is a reminder for your PT appointment on {selectedAppointmentDetail.AppointmentDate:dddd, MMMM d, yyyy} at {selectedAppointmentDetail.StartTime:h:mm tt}.";
+
+        if (!string.IsNullOrWhiteSpace(patientDetail.Email))
+        {
+            var subject = Uri.EscapeDataString("Appointment Reminder");
+            var body = Uri.EscapeDataString(message);
+            await HandleAppointmentDetailModalChanged(false);
+            NavigationManager.NavigateTo($"mailto:{patientDetail.Email}?subject={subject}&body={body}", forceLoad: true);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(patientDetail.Phone))
+        {
+            var body = Uri.EscapeDataString(message);
+            await HandleAppointmentDetailModalChanged(false);
+            NavigationManager.NavigateTo($"sms:{patientDetail.Phone}?body={body}", forceLoad: true);
+            return;
+        }
+
+        ToastService.ShowWarning("No email address or phone number is available for this patient.");
+    }
+
+    private async Task HandleRescheduleAsync()
+    {
+        if (selectedAppointmentDetail is null)
+        {
+            return;
+        }
+
+        if (selectedAppointmentDetail.PatientRecordId == Guid.Empty)
+        {
+            ToastService.ShowWarning("Patient record not found. Opening reschedule form without a patient selection.");
+        }
+
+        appointmentFormInitialValues = new NewAppointmentModal.AppointmentFormData
+        {
+            PatientId = selectedAppointmentDetail.PatientRecordId == Guid.Empty
+                ? string.Empty
+                : selectedAppointmentDetail.PatientRecordId.ToString(),
+            AppointmentType = MapAppointmentTypeForForm(selectedAppointmentDetail.AppointmentType),
+            AppointmentDate = selectedAppointmentDetail.AppointmentDate,
+            AppointmentTime = selectedAppointmentDetail.StartTime.ToTimeSpan(),
+            DurationMinutes = selectedAppointmentDetail.DurationMinutes,
+            ClinicianId = selectedAppointmentDetail.ClinicianId,
+            Notes = selectedAppointmentDetail.Notes
+        };
+
+        appointmentBeingEditedId = selectedAppointmentDetail.AppointmentId;
+        isRescheduleMode = true;
+        isNewAppointmentModalOpen = true;
+        await HandleAppointmentDetailModalChanged(false);
+    }
+
+    private void RebuildSchedulerState()
+    {
+        visibleAppointments = GetVisibleAppointments()
+            .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
+            .ThenBy(appointment => appointment.PatientName)
+            .ToList();
+
+        var visibleClinicianKeys = new HashSet<string>(
+            visibleAppointments.Select(GetClinicianIdentityKey),
+            StringComparer.OrdinalIgnoreCase);
+
+        var appointmentCountsByClinician = visibleAppointments
+            .GroupBy(GetClinicianIdentityKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        schedulerClinicians = clinicianDirectory
+            .Select((clinician, index) => new
+            {
+                Schedule = new ClinicianSchedule
+                {
+                    Id = index + 1,
+                    Name = FormatClinicianDisplayName(clinician.DisplayName),
+                    AppointmentCount = appointmentCountsByClinician.GetValueOrDefault(clinician.Id.ToString("D"), 0)
+                },
+                Key = clinician.Id.ToString("D")
+            })
+            .Where(item => selectedView == AppointmentsView.Week || visibleClinicianKeys.Contains(item.Key))
+            .Select(item => item.Schedule)
+            .ToList();
+
+        if (schedulerClinicians.Count == 0)
+        {
+            schedulerClinicians = visibleAppointments
+                .Select(GetEffectiveClinicianName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .Select((name, index) => new ClinicianSchedule
+                {
+                    Id = index + 1,
+                    Name = name,
+                    AppointmentCount = visibleAppointments.Count(appointment =>
+                        string.Equals(GetEffectiveClinicianName(appointment), name, StringComparison.OrdinalIgnoreCase))
+                })
+                .ToList();
+        }
+    }
+
+    private static string MapAppointmentTypeForForm(string appointmentType) =>
+        appointmentType switch
+        {
+            "Follow-up" => "Follow Up",
+            _ => appointmentType
+        };
+
+    private void UpsertAppointment(AppointmentListItemResponse appointment)
+    {
+        var existingIndex = appointmentDirectory.FindIndex(existing => existing.Id == appointment.Id);
+        if (existingIndex >= 0)
+        {
+            appointmentDirectory[existingIndex] = appointment;
+        }
+        else
+        {
+            appointmentDirectory.Add(appointment);
+        }
+
+        appointmentStatusOverrides.Remove(appointment.Id.ToString("D"));
+        EnsureClinicianOption(appointment);
+        RebuildSchedulerState();
+    }
+
+    private void EnsureClinicianOption(AppointmentListItemResponse appointment)
+    {
+        if (!appointment.ClinicianId.HasValue || string.IsNullOrWhiteSpace(appointment.ClinicianName))
+        {
+            return;
+        }
+
+        var clinicianId = appointment.ClinicianId.Value;
+        if (clinicianDirectory.All(clinician => clinician.Id != clinicianId))
+        {
+            clinicianDirectory.Add(new AppointmentClinicianResponse
+            {
+                Id = clinicianId,
+                DisplayName = TrimClinicianPrefix(appointment.ClinicianName)
+            });
+        }
+
+        var clinicianIdValue = clinicianId.ToString();
+        if (availableClinicians.All(clinician => !string.Equals(clinician.Id, clinicianIdValue, StringComparison.OrdinalIgnoreCase)))
+        {
+            availableClinicians.Add(new NewAppointmentModal.ClinicianOption
+            {
+                Id = clinicianIdValue,
+                Name = FormatClinicianDisplayName(appointment.ClinicianName)
+            });
+        }
+    }
+
+    private AppointmentDetailViewModel ToAppointmentDetailViewModel(AppointmentListItemResponse appointment)
+    {
+        var localStart = ToLocalTime(appointment.StartTimeUtc);
+        var localEnd = ToLocalTime(appointment.EndTimeUtc);
+        var durationMinutes = (int)Math.Round((localEnd - localStart).TotalMinutes);
+
+        if (durationMinutes <= 0)
+        {
+            durationMinutes = 45;
+        }
+
+        return new AppointmentDetailViewModel
+        {
+            AppointmentId = appointment.Id,
+            PatientRecordId = appointment.PatientRecordId,
+            PatientName = appointment.PatientName,
+            PatientId = GetDisplayPatientIdentifier(appointment),
+            ClinicianId = appointment.ClinicianId?.ToString() ?? string.Empty,
+            ClinicianName = FormatClinicianDisplayName(appointment.ClinicianName),
+            AppointmentDate = localStart.Date,
+            StartTime = TimeOnly.FromDateTime(localStart),
+            DurationMinutes = durationMinutes,
+            AppointmentType = appointment.AppointmentType,
+            AppointmentStatus = appointment.AppointmentStatus,
+            IntakeStatus = appointment.IntakeStatus,
+            Notes = appointment.Notes
+        };
+    }
+
+    private int TotalCount => visibleAppointments.Count;
+
+    private int InProgressCount => visibleAppointments.Count(appointment =>
+        string.Equals(GetEffectiveAppointmentStatus(appointment), "In Progress", StringComparison.OrdinalIgnoreCase));
+
+    private int CheckedInCount => visibleAppointments.Count(appointment =>
+        string.Equals(GetEffectiveAppointmentStatus(appointment), "Checked In", StringComparison.OrdinalIgnoreCase));
+
+    private int MissingIntakeCount => visibleAppointments.Count(appointment =>
+        string.Equals(appointment.IntakeStatus, "Missing", StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<AppointmentListItemResponse> GetVisibleAppointments()
+    {
+        var (startDate, endDate) = GetVisibleDateWindow();
+
+        return appointmentDirectory.Where(appointment =>
+        {
+            var localDate = ToLocalTime(appointment.StartTimeUtc).Date;
+            return localDate >= startDate && localDate <= endDate && MatchesFilter(appointment);
+        });
+    }
+
+    private bool MatchesFilter(AppointmentListItemResponse appointment)
+    {
+        if (currentFilter.SelectedAppointmentTypes.Count > 0
+            && !currentFilter.SelectedAppointmentTypes.Any(type =>
+                string.Equals(NormalizeFilterValue(type), NormalizeFilterValue(appointment.AppointmentType), StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        if (currentFilter.SelectedAppointmentStatuses.Count > 0
+            && !currentFilter.SelectedAppointmentStatuses.Any(status =>
+                string.Equals(NormalizeFilterValue(status), NormalizeFilterValue(GetEffectiveAppointmentStatus(appointment)), StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        if (currentFilter.SelectedIntakeStatuses.Count > 0
+            && !currentFilter.SelectedIntakeStatuses.Any(status =>
+                string.Equals(NormalizeFilterValue(status), NormalizeFilterValue(appointment.IntakeStatus), StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private (DateTime StartDate, DateTime EndDate) GetVisibleDateWindow()
+    {
+        if (selectedView == AppointmentsView.Today)
+        {
+            var date = selectedDate.Date;
+            return (date, date);
+        }
+
+        var startOfWeek = GetStartOfWeek(selectedDate);
+        return (startOfWeek, startOfWeek.AddDays(6));
+    }
+
+    private (DateTime StartDate, DateTime EndDate) GetAppointmentLoadWindow()
+    {
+        var (visibleStart, visibleEnd) = GetVisibleDateWindow();
+        return (visibleStart.AddDays(-1), visibleEnd.AddDays(1));
+    }
+
+    private string GetEffectiveAppointmentStatus(AppointmentListItemResponse appointment)
+    {
+        if (appointmentStatusOverrides.TryGetValue(appointment.Id.ToString("D"), out var overriddenStatus))
+        {
+            return overriddenStatus;
+        }
+
+        return appointment.AppointmentStatus;
+    }
+
+    private static string GetClinicianIdentityKey(AppointmentListItemResponse appointment) =>
+        appointment.ClinicianId?.ToString("D") ?? FormatClinicianDisplayName(appointment.ClinicianName);
+
+    private static string GetEffectiveClinicianName(AppointmentListItemResponse appointment) =>
+        FormatClinicianDisplayName(appointment.ClinicianName);
+
+    private static string GetDisplayPatientIdentifier(AppointmentListItemResponse appointment)
+    {
+        if (!string.IsNullOrWhiteSpace(appointment.MedicalRecordNumber))
+        {
+            return appointment.MedicalRecordNumber;
+        }
+
+        var compactId = appointment.PatientRecordId.ToString("N");
+        return $"PT-{compactId[..6].ToUpperInvariant()}";
+    }
+
+    private static string FormatClinicianDisplayName(string clinicianName)
+    {
+        if (string.IsNullOrWhiteSpace(clinicianName))
+        {
+            return "Assigned Clinician";
+        }
+
+        return clinicianName.StartsWith("Dr. ", StringComparison.OrdinalIgnoreCase)
+            ? clinicianName
+            : $"Dr. {clinicianName}";
+    }
+
+    private static string TrimClinicianPrefix(string clinicianName) =>
+        clinicianName.StartsWith("Dr. ", StringComparison.OrdinalIgnoreCase)
+            ? clinicianName[4..]
+            : clinicianName;
+
+    private static string NormalizeFilterValue(string value)
+    {
+        return string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+    }
+
+    private static DateTime ToLocalTime(DateTime utcTime)
+    {
+        var normalizedUtc = utcTime.Kind == DateTimeKind.Utc
+            ? utcTime
+            : DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
+
+        return normalizedUtc.ToLocalTime();
+    }
+
+    private static DateTime GetStartOfWeek(DateTime date)
+    {
+        var daysFromSunday = (int)date.DayOfWeek;
+        return date.Date.AddDays(-daysFromSunday);
     }
 }

@@ -128,10 +128,15 @@
     position: absolute;
     left: var(--spacing-1);
     right: var(--spacing-1);
+    appearance: none;
+    display: block;
+    margin: 0;
     background: var(--background);
     border: 2px solid var(--border);
     border-radius: calc(var(--radius-lg) + 4px);
     padding: 2px var(--spacing-2);
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition: box-shadow var(--transition-fast);
     box-sizing: border-box;
@@ -140,6 +145,11 @@
 
 .appointment-block:hover {
     box-shadow: var(--shadow-md);
+}
+
+.appointment-block:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .appointment-block.in-progress {
