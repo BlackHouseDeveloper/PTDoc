@@ -31,7 +31,7 @@ public class ObjectiveMetric
     public bool IsWNL { get; set; }
 
     // Audit timestamp
-    public DateTime LastModifiedUtc { get; set; }
+    public DateTime LastModifiedUtc { get; set; } = DateTime.UtcNow;
 
     // Navigation property
     public ClinicalNote? Note { get; set; }

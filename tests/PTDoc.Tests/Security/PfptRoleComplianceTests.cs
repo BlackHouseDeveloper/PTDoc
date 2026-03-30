@@ -1342,6 +1342,168 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         Assert.Contains("does not require a co-sign", coSignResult.ErrorMessage);
     }
 
+    // ─── RQ-033: Diagnosis code required before signing ────────────────────────
+
+    [Fact]
+    public async Task RQ033_SignNote_BlockedWhenPatientHasNoDiagnoses()
+    {
+        var auditService = new AuditService(_db);
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
+        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
+
+        var userId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            FirstName = "Test", LastName = "NoDx",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending,
+            DiagnosisCodesJson = "[]"
+        };
+        _db.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await signatureService.SignNoteAsync(note.Id, userId);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task RQ033_SignNote_SucceedsWhenPatientHasDiagnosis()
+    {
+        var auditService = new AuditService(_db);
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
+        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
+
+        var userId = Guid.NewGuid();
+        var patient = CreateTestPatient(); // has DiagnosisCodesJson with M54.5
+        _db.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await signatureService.SignNoteAsync(note.Id, userId);
+
+        Assert.True(result.Success, $"Expected signing to succeed but got: {result.ErrorMessage}");
+        Assert.NotNull(result.SignatureHash);
+    }
+
+    [Fact]
+    public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonIsNull()
+    {
+        var auditService = new AuditService(_db);
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
+        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
+
+        var userId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            FirstName = "Test", LastName = "NullDx",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending,
+            DiagnosisCodesJson = null
+        };
+        _db.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await signatureService.SignNoteAsync(note.Id, userId);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonInvalid()
+    {
+        var auditService = new AuditService(_db);
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
+        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
+
+        var userId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            FirstName = "Test", LastName = "InvalidDx",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending,
+            DiagnosisCodesJson = "not-valid-json"
+        };
+        _db.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await signatureService.SignNoteAsync(note.Id, userId);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
     [Fact]
     public async Task UC4_NoteCoSign_Policy_PTOnly()
     {
@@ -1493,6 +1655,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         DateOfBirth = new DateTime(1980, 1, 1),
         LastModifiedUtc = DateTime.UtcNow,
         ModifiedByUserId = Guid.NewGuid(),
-        SyncState = SyncState.Pending
+        SyncState = SyncState.Pending,
+        DiagnosisCodesJson = "[{\"IcdCode\":\"M54.5\",\"Description\":\"Low back pain\",\"IsPrimary\":true}]"
     };
 }

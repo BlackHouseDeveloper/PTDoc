@@ -209,8 +209,14 @@ public static class NoteEndpoints
                 try
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(patientForPayer.PayerInfoJson);
-                    if (doc.RootElement.TryGetProperty("PayerType", out var pt))
-                        payerType = pt.GetString();
+                    foreach (var property in doc.RootElement.EnumerateObject())
+                    {
+                        if (string.Equals(property.Name, "PayerType", StringComparison.OrdinalIgnoreCase))
+                        {
+                            payerType = property.Value.GetString();
+                            break;
+                        }
+                    }
                 }
                 catch { /* fall through — use default */ }
             }
@@ -303,6 +309,9 @@ public static class NoteEndpoints
             {
                 draftIntake.IsLocked = true;
                 draftIntake.LastModifiedUtc = DateTime.UtcNow;
+                draftIntake.ModifiedByUserId = userId;
+                draftIntake.SyncState = SyncState.Pending;
+                await syncEngine.EnqueueAsync("IntakeForm", draftIntake.Id, SyncOperation.Update, cancellationToken);
             }
         }
 

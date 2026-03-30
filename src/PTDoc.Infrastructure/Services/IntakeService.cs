@@ -124,6 +124,13 @@ public sealed class IntakeService : IIntakeService
 
         if (intake is null)
         {
+            // Before creating a new draft, check if a locked intake already exists for this patient.
+            // A locked intake (created after Eval) must not be silently replaced with a new unlocked draft.
+            var hasLockedIntake = await _context.IntakeForms
+                .AnyAsync(f => f.PatientId == state.PatientId.Value && f.IsLocked, cancellationToken);
+
+            if (hasLockedIntake)
+                return;
             var clinicId = _tenantContext.GetCurrentClinicId();
             intake = new IntakeForm
             {

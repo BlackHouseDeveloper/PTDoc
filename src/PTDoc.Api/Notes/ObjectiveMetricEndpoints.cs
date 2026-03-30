@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -69,6 +70,7 @@ public static class ObjectiveMetricEndpoints
         [FromBody] CreateObjectiveMetricRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var note = await db.ClinicalNotes
@@ -77,7 +79,7 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft)
+        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
             return Results.UnprocessableEntity(new { error = "Objective metrics can only be added to draft notes." });
 
         if (string.IsNullOrWhiteSpace(request.Value))
@@ -99,7 +101,14 @@ public static class ObjectiveMetricEndpoints
         };
 
         db.ObjectiveMetrics.Add(metric);
+
+        // Update parent note sync/audit fields so metric changes propagate to clients
+        note.LastModifiedUtc = DateTime.UtcNow;
+        note.ModifiedByUserId = identityContext.GetCurrentUserId();
+        note.SyncState = SyncState.Pending;
+
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", noteId, SyncOperation.Update, cancellationToken);
 
         return Results.Created(
             $"/api/v1/notes/{noteId}/objective-metrics/{metric.Id}",
@@ -112,16 +121,17 @@ public static class ObjectiveMetricEndpoints
         Guid metricId,
         [FromBody] UpdateObjectiveMetricRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var note = await db.ClinicalNotes
-            .AsNoTracking()
             .FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken);
 
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft)
+        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
             return Results.UnprocessableEntity(new { error = "Objective metrics can only be modified on draft notes." });
 
         var metric = await db.ObjectiveMetrics
@@ -157,7 +167,13 @@ public static class ObjectiveMetricEndpoints
 
         metric.LastModifiedUtc = DateTime.UtcNow;
 
+        // Update parent note sync/audit fields
+        note.LastModifiedUtc = DateTime.UtcNow;
+        note.ModifiedByUserId = identityContext.GetCurrentUserId();
+        note.SyncState = SyncState.Pending;
+
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", noteId, SyncOperation.Update, cancellationToken);
 
         return Results.Ok(ToResponse(metric));
     }
@@ -167,16 +183,17 @@ public static class ObjectiveMetricEndpoints
         Guid noteId,
         Guid metricId,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var note = await db.ClinicalNotes
-            .AsNoTracking()
             .FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken);
 
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft)
+        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
             return Results.UnprocessableEntity(new { error = "Objective metrics can only be deleted from draft notes." });
 
         var metric = await db.ObjectiveMetrics
@@ -186,7 +203,14 @@ public static class ObjectiveMetricEndpoints
             return Results.NotFound(new { error = $"Metric {metricId} not found on note {noteId}." });
 
         db.ObjectiveMetrics.Remove(metric);
+
+        // Update parent note sync/audit fields
+        note.LastModifiedUtc = DateTime.UtcNow;
+        note.ModifiedByUserId = identityContext.GetCurrentUserId();
+        note.SyncState = SyncState.Pending;
+
         await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("ClinicalNote", noteId, SyncOperation.Update, cancellationToken);
 
         return Results.NoContent();
     }

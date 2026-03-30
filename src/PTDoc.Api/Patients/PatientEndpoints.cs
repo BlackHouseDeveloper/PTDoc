@@ -275,12 +275,25 @@ public static class PatientEndpoints
         if (request.ConsentSigned is not null)
         {
             patient.ConsentSigned = request.ConsentSigned.Value;
-            if (request.ConsentSigned.Value && patient.ConsentSignedDate is null)
-                patient.ConsentSignedDate = DateTime.UtcNow;
+            if (request.ConsentSigned.Value)
+            {
+                // Consent signed — set the date if provided, otherwise default to now if not already set
+                if (request.ConsentSignedDate is not null)
+                    patient.ConsentSignedDate = request.ConsentSignedDate;
+                else if (patient.ConsentSignedDate is null)
+                    patient.ConsentSignedDate = DateTime.UtcNow;
+            }
+            else
+            {
+                // Consent revoked — clear the signature date
+                patient.ConsentSignedDate = null;
+            }
         }
-
-        if (request.ConsentSignedDate is not null)
+        else if (request.ConsentSignedDate is not null && patient.ConsentSigned)
+        {
+            // Date update only allowed when consent is already signed
             patient.ConsentSignedDate = request.ConsentSignedDate;
+        }
 
         if (request.IsArchived is not null)
             patient.IsArchived = request.IsArchived.Value;

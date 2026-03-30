@@ -77,26 +77,32 @@ public class SignatureService : ISignatureService
 
         // RQ-033: At least one ICD-10 diagnosis code required before signing.
         var patient = await _context.Patients.FindAsync(new object[] { note.PatientId }, ct);
-        if (patient is not null)
+        if (patient is null)
         {
-            var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
-            bool hasDiagnosis = false;
-            try
+            return new SignatureResult
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(diagnosisJson);
-                hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
-                    && doc.RootElement.GetArrayLength() > 0;
-            }
-            catch { /* invalid JSON — treat as no diagnoses */ }
+                Success = false,
+                ErrorMessage = "Patient record not found; cannot sign note without associated patient."
+            };
+        }
 
-            if (!hasDiagnosis)
+        var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
+        bool hasDiagnosis = false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(diagnosisJson);
+            hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
+                && doc.RootElement.GetArrayLength() > 0;
+        }
+        catch { /* invalid JSON — treat as no diagnoses */ }
+
+        if (!hasDiagnosis)
+        {
+            return new SignatureResult
             {
-                return new SignatureResult
-                {
-                    Success = false,
-                    ErrorMessage = "At least one ICD-10 diagnosis code is required before signing."
-                };
-            }
+                Success = false,
+                ErrorMessage = "At least one ICD-10 diagnosis code is required before signing."
+            };
         }
 
         // Generate canonical serialization for signature

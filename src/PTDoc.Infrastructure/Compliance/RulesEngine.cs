@@ -29,6 +29,8 @@ public class RulesEngine : IRulesEngine
     /// </summary>
     public async Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, string? payerType = null, CancellationToken ct = default)
     {
+        // Normalize: null/whitespace → "Commercial"
+        payerType = string.IsNullOrWhiteSpace(payerType) ? "Commercial" : payerType;
         bool isMedicare = string.Equals(payerType, "Medicare", StringComparison.OrdinalIgnoreCase);
         // Get all notes for patient ordered by date
         var notes = await _context.ClinicalNotes
@@ -76,7 +78,7 @@ public class RulesEngine : IRulesEngine
                         ["VisitCount"] = dailyNoteCount,
                         ["DaysSinceStart"] = daysSinceFirstNote,
                         ["Threshold"] = thresholdDesc,
-                        ["PayerType"] = payerType ?? "Commercial"
+                        ["PayerType"] = payerType
                     });
             }
 
@@ -114,7 +116,7 @@ public class RulesEngine : IRulesEngine
                     ["DaysSinceLastPN"] = daysSinceLastPn,
                     ["LastPNDate"] = lastPnOrEval.DateOfService,
                     ["Threshold"] = thresholdDescription,
-                    ["PayerType"] = payerType ?? "Commercial"
+                    ["PayerType"] = payerType
                 });
         }
 
