@@ -10,8 +10,6 @@ using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Data.Migrations
 {
-    [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260330110000_AddNoteTaxonomySelections")]
     partial class AddNoteTaxonomySelections
     {
         /// <inheritdoc />
