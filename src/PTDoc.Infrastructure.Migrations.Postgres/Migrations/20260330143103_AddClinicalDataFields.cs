@@ -206,7 +206,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 name: "IX_PatientGoals_ClinicId",
                 table: "PatientGoals",
                 column: "ClinicId",
-                filter: "ClinicId IS NOT NULL");
+                filter: "\"ClinicId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PatientGoals_MetByNoteId",
