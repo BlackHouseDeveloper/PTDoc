@@ -688,7 +688,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             Mock.Of<ISyncEngine>(),
             CancellationToken.None);
 
-        Assert.IsType<ValidationProblem>(result);
+        Assert.IsType<ProblemHttpResult>(result);
     }
 
     [Fact]
@@ -1001,10 +1001,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakePhiReleaseEligibility_ReturnsAllowed()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"phiReleaseAuthorized\":true,\"writtenRevocationReceived\":false,\"revokedConsentKeys\":[]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1020,10 +1022,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakePhiReleaseEligibility_BlocksRevokedConsent()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"phiReleaseAuthorized\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"phiReleaseAuthorized\"]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1039,10 +1043,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakeCreditCardAuthorizationEligibility_ReturnsAllowed()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"creditCardAuthorizationAccepted\":true,\"writtenRevocationReceived\":false,\"revokedConsentKeys\":[]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1058,10 +1064,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakeCreditCardAuthorizationEligibility_BlocksRevokedConsent()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"creditCardAuthorizationAccepted\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"creditCardAuthorizationAccepted\"]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1077,10 +1085,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsCompleteWhenAllRequiredPresent()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true,\"revokedConsentKeys\":[]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1098,10 +1108,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsMissingWhenHipaaAbsent()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"treatmentConsentAccepted\":true,\"revokedConsentKeys\":[]}"
         };
         _db.IntakeForms.Add(intake);
@@ -1118,10 +1130,12 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsRevokedWhenRequiredConsentRevoked()
     {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
         var intake = new IntakeForm
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"treatmentConsentAccepted\"]}"
         };
         _db.IntakeForms.Add(intake);

@@ -225,6 +225,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ClinicId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("CoSignedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CoSignedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ContentJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -248,6 +254,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid>("PatientId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("RequiresCoSign")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SignatureHash")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
@@ -256,15 +265,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("SignedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("RequiresCoSign")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid?>("CoSignedByUserId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("CoSignedUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("SyncState")
@@ -693,6 +693,52 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("Sessions");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.StoredRefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClaimsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("IsRevoked");
+
+                    b.HasIndex("Subject");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("StoredRefreshTokens");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.SyncConflictArchive", b =>
                 {
                     b.Property<Guid>("Id")
@@ -892,50 +938,95 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.StoredRefreshToken", b =>
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ClaimsJson")
-                        .IsRequired()
+                    b.Property<Guid?>("ClinicId")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("ExpiresAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsRevoked")
+                    b.Property<bool>("IsArchived")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsUrgent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(255)
+                    b.Property<string>("TargetUrl")
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TokenHash")
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(64)
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ExpiresAtUtc");
+                    b.HasIndex("ClinicId");
 
-                    b.HasIndex("IsRevoked");
+                    b.HasIndex("Timestamp");
 
-                    b.HasIndex("Subject");
+                    b.HasIndex("UserId", "IsArchived");
 
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
+                    b.ToTable("UserNotifications");
+                });
 
-                    b.ToTable("StoredRefreshTokens");
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("DoNotDisturb")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("EmailNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("InAppNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyAppointmentScheduled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyIncompleteIntake")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOverdueNote")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyUpcomingAppointment")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PushNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SoundAlerts")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserNotificationPreferences");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
@@ -1086,6 +1177,34 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId");
+
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserNotificationPreferences", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithOne()
+                        .HasForeignKey("PTDoc.Core.Models.UserNotificationPreferences", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>

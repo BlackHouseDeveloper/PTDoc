@@ -91,6 +91,8 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Inf
 builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
+// Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
+builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();
@@ -678,6 +680,7 @@ app.MapAiEndpoints(); // AI generation endpoints
 app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
+app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
 app.MapNotificationEndpoints(); // In-app notification center
 
 app.Run();
