@@ -392,6 +392,52 @@ public class LocalSyncOrchestratorTests
     }
 
     [Fact]
+    public async Task PullChangesAsync_InsertsNewIntakeForm_WithStructuredDataJson()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var serverId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var modifiedUtc = DateTime.UtcNow;
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items = new List<ClientSyncPullItem>
+            {
+                new()
+                {
+                    EntityType = "IntakeForm",
+                    ServerId = serverId,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        PatientId = patientId,
+                        ResponseJson = "{}",
+                        StructuredDataJson = "{\"schemaVersion\":\"2026-03-30\",\"bodyPartSelections\":[{\"bodyPartId\":\"knee\",\"lateralities\":[\"left\"]}]}",
+                        PainMapData = "{\"selectedRegions\":[\"knee-left\"]}",
+                        Consents = "{}",
+                        TemplateVersion = "1.0",
+                        IsLocked = false,
+                        SubmittedAt = (DateTime?)null
+                    }),
+                    LastModifiedUtc = modifiedUtc
+                }
+            }
+        };
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PullChangesAsync();
+
+        Assert.Equal(1, result.PulledCount);
+        Assert.Equal(1, result.AppliedCount);
+
+        var local = await ctx.IntakeFormDrafts.FirstOrDefaultAsync(form => form.ServerId == serverId);
+        Assert.NotNull(local);
+        Assert.Equal(patientId, local!.PatientServerId);
+        Assert.Contains("bodyPartSelections", local.StructuredDataJson);
+        Assert.Equal(SyncState.Synced, local.SyncState);
+    }
+
+    [Fact]
     public async Task PullChangesAsync_MarksConflict_WhenLocalIsPendingAndServerIsOlderOrSameAge()
     {
         var ctx = CreateInMemoryLocalContext();

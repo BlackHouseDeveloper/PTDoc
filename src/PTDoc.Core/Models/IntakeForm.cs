@@ -27,6 +27,9 @@ public class IntakeForm : ISyncTrackedEntity
     // Response data (JSON blob)
     public string ResponseJson { get; set; } = "{}";
 
+    // Server-owned typed intake selections persisted separately from the legacy response payload.
+    public string? StructuredDataJson { get; set; }
+
     // TDD §5.2 IntakeResponse contract alignment
     /// <summary>Body region pain map data (JSON). Maps to TDD PainMapData field.</summary>
     public string PainMapData { get; set; } = "{}";

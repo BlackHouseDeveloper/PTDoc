@@ -421,6 +421,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("StructuredDataJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("SubmittedAt")
                         .HasColumnType("TEXT");
 

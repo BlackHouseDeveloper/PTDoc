@@ -595,6 +595,7 @@ public class SyncEngine : ISyncEngine
                         i.PatientId,
                         i.IsLocked,
                         i.ResponseJson,
+                        i.StructuredDataJson,
                         i.PainMapData,
                         i.Consents,
                         i.TemplateVersion,
@@ -934,6 +935,7 @@ public class SyncEngine : ISyncEngine
                     Id = serverId,
                     PatientId = patientId,
                     ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? "{}",
+                    StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson"),
                     PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? "{}",
                     Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? "{}",
                     TemplateVersion = TryGetString(root, "templateVersion") ?? TryGetString(root, "TemplateVersion") ?? "1.0",
@@ -952,6 +954,7 @@ public class SyncEngine : ISyncEngine
                 if (!existing.IsLocked)
                 {
                     existing.ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? existing.ResponseJson;
+                    existing.StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson") ?? existing.StructuredDataJson;
                     existing.PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? existing.PainMapData;
                     existing.Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
                     existing.LastModifiedUtc = item.LastModifiedUtc;

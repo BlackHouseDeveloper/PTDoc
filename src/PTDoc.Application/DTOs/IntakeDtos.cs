@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PTDoc.Application.Intake;
 
 namespace PTDoc.Application.DTOs;
 
@@ -19,6 +20,9 @@ public sealed class CreateIntakeRequest
     /// <summary>Optional full response payload as JSON.</summary>
     public string ResponseJson { get; set; } = "{}";
 
+    /// <summary>Optional typed structured intake selections validated against server reference data.</summary>
+    public IntakeStructuredDataDto? StructuredData { get; set; }
+
     /// <summary>Template version identifier.</summary>
     [MaxLength(50)]
     public string TemplateVersion { get; set; } = "1.0";
@@ -35,6 +39,9 @@ public sealed class UpdateIntakeRequest
 
     /// <summary>Optional full response payload as JSON.</summary>
     public string ResponseJson { get; set; } = "{}";
+
+    /// <summary>Optional typed structured intake selections validated against server reference data.</summary>
+    public IntakeStructuredDataDto? StructuredData { get; set; }
 
     /// <summary>Template version identifier.</summary>
     [MaxLength(50)]
@@ -66,6 +73,7 @@ public sealed class IntakeResponse
     public string PainMapData { get; set; } = "{}";
     public string Consents { get; set; } = "{}";
     public string ResponseJson { get; set; } = "{}";
+    public IntakeStructuredDataDto? StructuredData { get; set; }
 
     /// <summary>True when the intake is locked after initial evaluation.</summary>
     public bool Locked { get; set; }

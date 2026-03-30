@@ -99,6 +99,7 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PT
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
 builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
 builder.Services.AddSingleton<ITreatmentTaxonomyCatalogService, TreatmentTaxonomyCatalogService>();
+builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
 builder.Services.AddScoped<INoteWorkspaceV2Service, NoteWorkspaceV2Service>();
 builder.Services.AddSingleton<IWorkspaceReferenceCatalogService, WorkspaceReferenceCatalogService>();
 builder.Services.AddSingleton<IPlanOfCareCalculator, PlanOfCareCalculator>();
@@ -694,6 +695,7 @@ app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
 app.MapNotificationEndpoints(); // In-app notification center
 app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
+app.MapIntakeReferenceDataEndpoints(); // Intake body part / medication / pain descriptor reference data
 app.MapNoteWorkspaceV2Endpoints(); // Typed eval/reeval/progress workspace API
 
 app.Run();

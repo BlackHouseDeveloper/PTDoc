@@ -204,6 +204,26 @@ public class SprintOIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task IntakeForm_StructuredDataJson_CanBePersisted()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        const string structuredData = """{"schemaVersion":"2026-03-30","bodyPartSelections":[{"bodyPartId":"knee","lateralities":["left"]}]}""";
+        var intake = CreateTestIntakeForm(patient.Id);
+        intake.StructuredDataJson = structuredData;
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var retrieved = await _db.IntakeForms
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == intake.Id);
+
+        Assert.NotNull(retrieved);
+        Assert.Equal(structuredData, retrieved.StructuredDataJson);
+    }
+
+    [Fact]
     public async Task IntakeForm_IsLocked_DefaultsToFalse()
     {
         var patient = CreateTestPatient();
