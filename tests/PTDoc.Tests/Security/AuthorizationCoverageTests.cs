@@ -190,6 +190,16 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
         new("POST", "/api/v1/intake/{id:guid}/review",                            AuthorizationPolicies.ClinicalStaff),
 
+        // ── Intake reference data (ReferenceData/IntakeReferenceDataEndpoints.cs) ─
+        new("GET",  "/api/v1/reference-data/intake/",                             AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/body-parts",                   AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/medications",                  AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/reference-data/intake/pain-descriptors",             AuthorizationPolicies.IntakeRead),
+
+        // ── Treatment taxonomy reference data (ReferenceData/TreatmentTaxonomyEndpoints.cs) ─
+        new("GET",  "/api/v1/reference-data/treatment-taxonomy/",                 AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/reference-data/treatment-taxonomy/{categoryId}",     AuthorizationPolicies.ClinicalStaff),
+
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
         new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),

@@ -21,6 +21,9 @@ public class LocalIntakeFormDraft : ILocalEntity
     /// <summary>Intake response data as a JSON blob.</summary>
     public string ResponseJson { get; set; } = "{}";
 
+    /// <summary>Typed structured intake selections as a JSON blob.</summary>
+    public string? StructuredDataJson { get; set; }
+
     /// <summary>Pain map data as a JSON blob.</summary>
     public string PainMapData { get; set; } = "{}";
 

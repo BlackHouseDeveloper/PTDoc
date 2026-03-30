@@ -166,6 +166,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                     i.ServerId,
                     patientId = i.PatientServerId,
                     i.ResponseJson,
+                    i.StructuredDataJson,
                     i.PainMapData,
                     i.Consents,
                     i.TemplateVersion,
@@ -748,6 +749,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 ServerId = item.ServerId,
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
                 ResponseJson = GetStringCaseInsensitive(root, "ResponseJson") ?? "{}",
+                StructuredDataJson = GetStringCaseInsensitive(root, "StructuredDataJson"),
                 PainMapData = GetStringCaseInsensitive(root, "PainMapData") ?? "{}",
                 Consents = GetStringCaseInsensitive(root, "Consents") ?? "{}",
                 TemplateVersion = GetStringCaseInsensitive(root, "TemplateVersion") ?? "1.0",
@@ -791,6 +793,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         if (!local.IsLocked) // do not overwrite locked local forms with server draft data
         {
             local.ResponseJson = GetStringCaseInsensitive(root, "ResponseJson") ?? local.ResponseJson;
+            local.StructuredDataJson = GetStringCaseInsensitive(root, "StructuredDataJson") ?? local.StructuredDataJson;
             local.PainMapData = GetStringCaseInsensitive(root, "PainMapData") ?? local.PainMapData;
             local.Consents = GetStringCaseInsensitive(root, "Consents") ?? local.Consents;
         }
@@ -902,10 +905,18 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     }
 
     private static Guid? GetGuid(JsonElement root, string propertyName) =>
-        root.TryGetProperty(propertyName, out var el) && el.TryGetGuid(out var g) ? g : null;
+        root.TryGetProperty(propertyName, out var el)
+            && el.ValueKind == JsonValueKind.String
+            && el.TryGetGuid(out var g)
+            ? g
+            : null;
 
     private static DateTime? GetDateTime(JsonElement root, string propertyName) =>
-        root.TryGetProperty(propertyName, out var el) && el.TryGetDateTime(out var dt) ? dt : null;
+        root.TryGetProperty(propertyName, out var el)
+            && el.ValueKind == JsonValueKind.String
+            && el.TryGetDateTime(out var dt)
+            ? dt
+            : null;
 
     /// <summary>
     /// Reads NoteType from the payload handling both numeric (System.Text.Json default) and string forms.

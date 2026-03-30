@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -109,6 +110,7 @@ public static class IntakeEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
@@ -118,8 +120,18 @@ public static class IntakeEndpoints
                 { nameof(request.PatientId), ["PatientId is required."] }
             });
 
-        // Default null JSON fields to valid empty JSON objects so EF doesn't fail
-        var painMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
+        if (!TryResolveStructuredData(
+                request.StructuredData,
+                request.PainMapData,
+                existingStructuredDataJson: null,
+                intakeReferenceData,
+                out var painMapData,
+                out var structuredDataJson,
+                out var createStructuredDataProblem))
+        {
+            return createStructuredDataProblem!;
+        }
+
         if (!TryNormalizeConsents(request.Consents, requireHipaaAcknowledgement: false, out var consents, out _, out var createValidationProblem))
             return createValidationProblem!;
 
@@ -146,6 +158,7 @@ public static class IntakeEndpoints
             PainMapData = painMapData,
             Consents = consents,
             ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson,
+            StructuredDataJson = structuredDataJson,
             TemplateVersion = request.TemplateVersion,
             IsLocked = false,
             AccessToken = tokenHash, // SHA-256 hash of the raw token
@@ -202,6 +215,7 @@ public static class IntakeEndpoints
         [FromBody] UpdateIntakeRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
@@ -214,13 +228,29 @@ public static class IntakeEndpoints
         if (intake.IsLocked)
             return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
 
-        intake.PainMapData = string.IsNullOrWhiteSpace(request.PainMapData) ? "{}" : request.PainMapData;
+        if (!TryResolveStructuredData(
+                request.StructuredData,
+                request.PainMapData,
+                intake.StructuredDataJson,
+                intakeReferenceData,
+                out var painMapData,
+                out var structuredDataJson,
+                out var updateStructuredDataProblem))
+        {
+            return updateStructuredDataProblem!;
+        }
+
+        intake.PainMapData = painMapData;
 
         if (!TryNormalizeConsents(request.Consents, requireHipaaAcknowledgement: false, out var normalizedConsents, out _, out var updateValidationProblem))
             return updateValidationProblem!;
 
         intake.Consents = normalizedConsents;
         intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+        if (request.StructuredData is not null)
+        {
+            intake.StructuredDataJson = structuredDataJson;
+        }
 
         var templateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? "1.0" : request.TemplateVersion;
         if (templateVersion.Length > 50)
@@ -615,6 +645,7 @@ public static class IntakeEndpoints
         PainMapData = f.PainMapData,
         Consents = f.Consents,
         ResponseJson = f.ResponseJson,
+        StructuredData = TryParseStructuredData(f.StructuredDataJson),
         Locked = f.IsLocked,
         TemplateVersion = f.TemplateVersion,
         SubmittedAt = f.SubmittedAt,
@@ -659,6 +690,65 @@ public static class IntakeEndpoints
 
         normalizedConsents = IntakeConsentJson.Serialize(consentPacket);
         validationProblem = null;
+        return true;
+    }
+
+    private static IntakeStructuredDataDto? TryParseStructuredData(string? structuredDataJson)
+    {
+        if (!IntakeStructuredDataJson.TryParse(structuredDataJson, out var structuredData, out _))
+        {
+            return null;
+        }
+
+        var hasContent = (!string.IsNullOrWhiteSpace(structuredDataJson)
+                && !string.Equals(structuredDataJson.Trim(), "{}", StringComparison.Ordinal))
+            || structuredData.BodyPartSelections.Count > 0
+            || structuredData.MedicationIds.Count > 0
+            || structuredData.PainDescriptorIds.Count > 0;
+
+        return hasContent ? structuredData : null;
+    }
+
+    private static bool TryResolveStructuredData(
+        IntakeStructuredDataDto? requestStructuredData,
+        string? legacyPainMapData,
+        string? existingStructuredDataJson,
+        IIntakeReferenceDataCatalogService intakeReferenceData,
+        out string painMapData,
+        out string? structuredDataJson,
+        out IResult? validationProblem)
+    {
+        validationProblem = null;
+
+        if (requestStructuredData is not null)
+        {
+            if (!IntakeStructuredDataJson.TryNormalize(
+                    requestStructuredData,
+                    intakeReferenceData,
+                    out var normalizationResult,
+                    out var structuredDataValidation))
+            {
+                painMapData = "{}";
+                structuredDataJson = existingStructuredDataJson;
+                validationProblem = Results.ValidationProblem(structuredDataValidation.Errors);
+                return false;
+            }
+
+            painMapData = normalizationResult.PainMapDataJson;
+            structuredDataJson = normalizationResult.StructuredDataJson;
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(existingStructuredDataJson) &&
+            IntakeStructuredDataJson.TryParse(existingStructuredDataJson, out var existingStructuredData, out _))
+        {
+            painMapData = IntakeStructuredDataJson.BuildPainMapProjectionJson(existingStructuredData, intakeReferenceData);
+            structuredDataJson = existingStructuredDataJson;
+            return true;
+        }
+
+        painMapData = string.IsNullOrWhiteSpace(legacyPainMapData) ? "{}" : legacyPainMapData;
+        structuredDataJson = existingStructuredDataJson;
         return true;
     }
 
@@ -833,4 +923,3 @@ public static class IntakeEndpoints
         return Results.Ok(response);
     }
 }
-
