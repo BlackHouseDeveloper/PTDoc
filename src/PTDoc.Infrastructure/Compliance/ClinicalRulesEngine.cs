@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.Sqlite;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Data.Common;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
@@ -69,9 +69,11 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
             goalCount = await _context.PatientGoals
                 .CountAsync(goal => goal.PatientId == note.PatientId, ct);
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 &&
-                                         ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) &&
-                                         ex.Message.Contains("PatientGoals", StringComparison.OrdinalIgnoreCase))
+        catch (DbException ex) when (
+            ex.Message.Contains("PatientGoals", StringComparison.OrdinalIgnoreCase) &&
+            (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) ||
+             ex.Message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase) ||
+             ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)))
         {
             goalCount = 0;
         }

@@ -8,7 +8,7 @@ public static class DailyNoteEndpoints
 {
     public static WebApplication MapDailyNoteEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/daily-notes").RequireAuthorization();
+        var group = app.MapGroup("/api/v1/daily-notes").RequireAuthorization();
 
         group.MapGet("/patient/{patientId:guid}", async (Guid patientId, IDailyNoteService service, CancellationToken ct) =>
             Results.Ok(await service.GetForPatientAsync(patientId, ct: ct)))

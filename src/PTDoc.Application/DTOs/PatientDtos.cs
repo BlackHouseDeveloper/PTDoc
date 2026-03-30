@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace PTDoc.Application.DTOs;
 
@@ -172,6 +173,7 @@ public sealed class PatientListItemResponse
 /// </summary>
 public sealed class PatientDiagnosisDto
 {
+    [JsonPropertyName("code")]
     public string IcdCode { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool IsPrimary { get; set; }

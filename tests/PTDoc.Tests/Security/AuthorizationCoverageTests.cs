@@ -97,7 +97,7 @@ public class AuthorizationCoverageTests
         // PDF export
         Assert.Contains(routes, r => r == "/api/v1/notes/{noteId:guid}/export/pdf");
         // Daily Treatment Note workflow
-        Assert.Contains(routes, r => r.StartsWith("/api/daily-notes"));
+        Assert.Contains(routes, r => r.StartsWith("/api/v1/daily-notes"));
         // Diagnostics
         Assert.Contains(routes, r => r.StartsWith("/diagnostics"));
         // Auth (intentionally anonymous)
@@ -253,13 +253,13 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.NoteExport),
 
         // ── Daily Treatment Note workflow (Notes/DailyNoteEndpoints.cs) ───────
-        new("GET",  "/api/daily-notes/patient/{patientId:guid}",        AuthorizationPolicies.NoteRead),
-        new("GET",  "/api/daily-notes/{noteId:guid}",                   AuthorizationPolicies.NoteRead),
-        new("POST", "/api/daily-notes/",                                AuthorizationPolicies.NoteWrite),
-        new("POST", "/api/daily-notes/generate-assessment",             AuthorizationPolicies.NoteWrite),
-        new("POST", "/api/daily-notes/cpt-time",                        AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/daily-notes/check-medical-necessity",         AuthorizationPolicies.ClinicalStaff),
-        new("GET",  "/api/daily-notes/eval-carry-forward/{patientId:guid}", AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/daily-notes/patient/{patientId:guid}",        AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/daily-notes/{noteId:guid}",                   AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v1/daily-notes/",                                AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/daily-notes/generate-assessment",             AuthorizationPolicies.NoteWrite),
+        new("POST", "/api/v1/daily-notes/cpt-time",                        AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/daily-notes/check-medical-necessity",         AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/daily-notes/eval-carry-forward/{patientId:guid}", AuthorizationPolicies.NoteRead),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PTDoc.Application.Data;
 using PTDoc.Application.Services;
 
 namespace PTDoc.Api.ReferenceData;
@@ -27,7 +28,7 @@ public static class Icd10Endpoints
         [FromServices] IIcd10Service icd10Service = null!)
     {
         if (string.IsNullOrWhiteSpace(q))
-            return Results.Ok(Array.Empty<object>());
+            return Results.Ok(Array.Empty<Icd10Code>());
 
         var limit = maxResults <= 0 ? 20 : Math.Min(maxResults, 100);
         var results = icd10Service.Search(q, limit);

@@ -94,7 +94,14 @@ public class SignatureService : ISignatureService
             hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
                 && doc.RootElement.GetArrayLength() > 0;
         }
-        catch { /* invalid JSON — treat as no diagnoses */ }
+        catch (System.Text.Json.JsonException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
+        catch (ArgumentException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
 
         if (!hasDiagnosis)
         {

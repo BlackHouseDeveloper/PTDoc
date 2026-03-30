@@ -108,16 +108,14 @@ public static class NoteEndpoints
         else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(n => n.SignatureHash == null);
 
-        // Taxonomy filter: semi-join against NoteTaxonomySelections for efficient SQL filtering.
+        // Taxonomy filter: use ANY/EXISTS predicate for an efficient SQL plan.
         if (!string.IsNullOrWhiteSpace(categoryId))
         {
-            var matchingIds = db.NoteTaxonomySelections
-                .Where(s => s.CategoryId == categoryId);
-
-            if (!string.IsNullOrWhiteSpace(itemId))
-                matchingIds = matchingIds.Where(s => s.ItemId == itemId);
-
-            query = query.Where(n => matchingIds.Select(s => s.ClinicalNoteId).Contains(n.Id));
+            query = query.Where(n =>
+                db.NoteTaxonomySelections.Any(s =>
+                    s.ClinicalNoteId == n.Id &&
+                    s.CategoryId == categoryId &&
+                    (string.IsNullOrWhiteSpace(itemId) || s.ItemId == itemId)));
         }
 
         var notes = await query

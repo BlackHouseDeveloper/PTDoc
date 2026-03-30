@@ -313,7 +313,10 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.Status });
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
 
             entity.Property(e => e.Description).HasMaxLength(2000).IsRequired();
             entity.Property(e => e.Category).HasMaxLength(200);
@@ -366,7 +369,10 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.MeasureType });
             entity.HasIndex(e => e.DateRecorded);
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
 
             // Relationship to Patient
             entity.HasOne(e => e.Patient)
@@ -411,14 +417,20 @@ public class ApplicationDbContext : DbContext
         // Sprint J: Configure ClinicId FK on tenant-scoped entities
         modelBuilder.Entity<Patient>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
         });
 
         // Appointment, ClinicalNote, and IntakeForm carry ClinicId as a true FK to Clinic.
         // Denormalized from Patient for efficient per-clinic query filtering.
         modelBuilder.Entity<Appointment>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -427,7 +439,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<ClinicalNote>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -436,7 +451,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<IntakeForm>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -445,12 +463,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
-        });
-
-        modelBuilder.Entity<PatientGoal>(entity =>
-        {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
         });
 
         // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
