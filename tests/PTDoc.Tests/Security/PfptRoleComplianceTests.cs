@@ -652,6 +652,491 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             Times.Once);
     }
 
+    [Fact]
+    public async Task UCBeta_RevokeIntakeConsents_RequiresWrittenConfirmation()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+
+        var result = await IntakeEndpoints.RevokeIntakeConsents(
+            intake.Id,
+            new RevokeIntakeConsentRequest
+            {
+                ConsentKeys = ["hipaaAcknowledged"],
+                WrittenRevocationReceived = false
+            },
+            _db,
+            identityMock.Object,
+            Mock.Of<IAuditService>(),
+            Mock.Of<ISyncEngine>(),
+            CancellationToken.None);
+
+        Assert.IsType<ValidationProblem>(result);
+    }
+
+    [Fact]
+    public async Task UCBeta_RevokeIntakeConsents_UpdatesConsentsAndLogsAudit()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"hipaaAcknowledged\":true,\"communicationEmailConsent\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var actorId = Guid.NewGuid();
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(actorId);
+
+        var auditMock = new Mock<IAuditService>();
+
+        var result = await IntakeEndpoints.RevokeIntakeConsents(
+            intake.Id,
+            new RevokeIntakeConsentRequest
+            {
+                ConsentKeys = ["hipaaAcknowledged", "communicationEmailConsent"],
+                WrittenRevocationReceived = true,
+                WrittenRequestReference = "doc-42"
+            },
+            _db,
+            identityMock.Object,
+            auditMock.Object,
+            Mock.Of<ISyncEngine>(),
+            CancellationToken.None);
+
+        Assert.IsType<Ok<IntakeResponse>>(result);
+
+        var saved = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
+        Assert.Contains("\"hipaaAcknowledged\":true", saved.Consents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"communicationEmailConsent\":true", saved.Consents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"writtenRevocationReceived\":true", saved.Consents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"revokedConsentKeys\"", saved.Consents, StringComparison.OrdinalIgnoreCase);
+
+        auditMock.Verify(
+            a => a.LogIntakeEventAsync(
+                It.Is<AuditEvent>(e =>
+                    e.EventType == "IntakeConsentRevoked" &&
+                    e.UserId == actorId &&
+                    e.EntityId == intake.Id),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeConsentRevocations_ReturnsStateAndAuditHistory()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"hipaaAcknowledged\":false,\"writtenRevocationReceived\":true,\"lastRevocationAtUtc\":\"2026-03-29T00:00:00Z\",\"revokedConsentKeys\":[\"hipaaAcknowledged\"]}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow,
+            EventType = "IntakeConsentRevoked",
+            Severity = "Info",
+            Success = true,
+            UserId = Guid.NewGuid(),
+            EntityType = "IntakeForm",
+            EntityId = intake.Id,
+            CorrelationId = Guid.NewGuid().ToString(),
+            MetadataJson = "{\"ConsentKeys\":[\"hipaaAcknowledged\"],\"HasWrittenReference\":true}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeConsentRevocations(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeConsentRevocationHistoryResponse>>(result);
+        Assert.Equal(intake.Id, ok.Value!.IntakeId);
+        Assert.True(ok.Value.WrittenRevocationReceived);
+        Assert.Contains("hipaaAcknowledged", ok.Value.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Single(ok.Value.AuditEntries);
+        Assert.True(ok.Value.AuditEntries[0].HasWrittenReference);
+        Assert.Contains("hipaaAcknowledged", ok.Value.AuditEntries[0].ConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeConsentRevocationTimeline_PagesAndFiltersByCorrelationId()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"hipaaAcknowledged\":false}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+
+        var matchingCorrelation = Guid.NewGuid().ToString();
+        _db.AuditLogs.AddRange(
+            new AuditLog
+            {
+                TimestampUtc = DateTime.UtcNow.AddMinutes(-3),
+                EventType = "IntakeConsentRevoked",
+                Severity = "Info",
+                Success = true,
+                UserId = Guid.NewGuid(),
+                EntityType = "IntakeForm",
+                EntityId = intake.Id,
+                CorrelationId = matchingCorrelation,
+                MetadataJson = "{\"ConsentKeys\":[\"hipaaAcknowledged\"],\"HasWrittenReference\":false}"
+            },
+            new AuditLog
+            {
+                TimestampUtc = DateTime.UtcNow.AddMinutes(-2),
+                EventType = "IntakeConsentRevoked",
+                Severity = "Info",
+                Success = true,
+                UserId = Guid.NewGuid(),
+                EntityType = "IntakeForm",
+                EntityId = intake.Id,
+                CorrelationId = matchingCorrelation,
+                MetadataJson = "{\"ConsentKeys\":[\"communicationEmailConsent\"],\"HasWrittenReference\":true}"
+            },
+            new AuditLog
+            {
+                TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
+                EventType = "IntakeConsentRevoked",
+                Severity = "Info",
+                Success = true,
+                UserId = Guid.NewGuid(),
+                EntityType = "IntakeForm",
+                EntityId = intake.Id,
+                CorrelationId = Guid.NewGuid().ToString(),
+                MetadataJson = "{\"ConsentKeys\":[\"mediaConsentAccepted\"],\"HasWrittenReference\":true}"
+            });
+
+        await _db.SaveChangesAsync();
+
+        var filteredResult = await IntakeEndpoints.GetIntakeConsentRevocationTimeline(
+            intake.Id,
+            page: 1,
+            pageSize: 10,
+            correlationId: matchingCorrelation,
+            _db,
+            CancellationToken.None);
+
+        var filtered = Assert.IsType<Ok<IntakeConsentRevocationTimelineResponse>>(filteredResult).Value!;
+        Assert.Equal(2, filtered.TotalCount);
+        Assert.Equal(2, filtered.Entries.Count);
+        Assert.All(filtered.Entries, entry => Assert.Equal(matchingCorrelation, entry.CorrelationId));
+
+        var pagedResult = await IntakeEndpoints.GetIntakeConsentRevocationTimeline(
+            intake.Id,
+            page: 2,
+            pageSize: 1,
+            correlationId: null,
+            _db,
+            CancellationToken.None);
+
+        var paged = Assert.IsType<Ok<IntakeConsentRevocationTimelineResponse>>(pagedResult).Value!;
+        Assert.Equal(3, paged.TotalCount);
+        Assert.Single(paged.Entries);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeCommunicationConsentEligibility_ReturnsAllowedChannels()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"communicationCallConsent\":true,\"communicationTextConsent\":true,\"communicationEmailConsent\":true,\"communicationPhoneNumber\":\"555-1212\",\"communicationEmail\":\"patient@example.com\"}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeCommunicationConsentEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeCommunicationConsentEligibilityResponse>>(result).Value!;
+        Assert.True(ok.CallAllowed);
+        Assert.True(ok.TextAllowed);
+        Assert.True(ok.EmailAllowed);
+        Assert.True(ok.AnyChannelAllowed);
+        Assert.Equal("555-1212", ok.CommunicationPhoneNumber);
+        Assert.Equal("patient@example.com", ok.CommunicationEmail);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeCommunicationConsentEligibility_BlocksRevokedChannel()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"communicationCallConsent\":true,\"communicationTextConsent\":true,\"communicationEmailConsent\":true,\"revokedConsentKeys\":[\"communicationTextConsent\"]}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeCommunicationConsentEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeCommunicationConsentEligibilityResponse>>(result).Value!;
+        Assert.True(ok.CallAllowed);
+        Assert.False(ok.TextAllowed);
+        Assert.True(ok.EmailAllowed);
+        Assert.True(ok.AnyChannelAllowed);
+        Assert.Contains("communicationTextConsent", ok.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeSpecialtyConsentEligibility_ReturnsAllowedSpecialties()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"dryNeedlingConsentAccepted\":true,\"pelvicFloorConsentAccepted\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeSpecialtyConsentEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeSpecialtyConsentEligibilityResponse>>(result).Value!;
+        Assert.True(ok.DryNeedlingAllowed);
+        Assert.True(ok.PelvicFloorAllowed);
+        Assert.True(ok.AnySpecialtyAllowed);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeSpecialtyConsentEligibility_BlocksRevokedSpecialty()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = true,
+            Consents = "{\"dryNeedlingConsentAccepted\":true,\"pelvicFloorConsentAccepted\":true,\"revokedConsentKeys\":[\"dryNeedlingConsentAccepted\"]}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeSpecialtyConsentEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeSpecialtyConsentEligibilityResponse>>(result).Value!;
+        Assert.False(ok.DryNeedlingAllowed);
+        Assert.True(ok.PelvicFloorAllowed);
+        Assert.True(ok.AnySpecialtyAllowed);
+        Assert.Contains("dryNeedlingConsentAccepted", ok.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakePhiReleaseEligibility_ReturnsAllowed()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"phiReleaseAuthorized\":true,\"writtenRevocationReceived\":false,\"revokedConsentKeys\":[]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakePhiReleaseEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakePhiReleaseEligibilityResponse>>(result).Value!;
+        Assert.True(ok.PhiReleaseAllowed);
+        Assert.Empty(ok.RevokedConsentKeys);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakePhiReleaseEligibility_BlocksRevokedConsent()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"phiReleaseAuthorized\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"phiReleaseAuthorized\"]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakePhiReleaseEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakePhiReleaseEligibilityResponse>>(result).Value!;
+        Assert.False(ok.PhiReleaseAllowed);
+        Assert.Contains("phiReleaseAuthorized", ok.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeCreditCardAuthorizationEligibility_ReturnsAllowed()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"creditCardAuthorizationAccepted\":true,\"writtenRevocationReceived\":false,\"revokedConsentKeys\":[]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeCreditCardAuthorizationEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeCreditCardAuthorizationEligibilityResponse>>(result).Value!;
+        Assert.True(ok.CreditCardAuthorizationAllowed);
+        Assert.Empty(ok.RevokedConsentKeys);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeCreditCardAuthorizationEligibility_BlocksRevokedConsent()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"creditCardAuthorizationAccepted\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"creditCardAuthorizationAccepted\"]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeCreditCardAuthorizationEligibility(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeCreditCardAuthorizationEligibilityResponse>>(result).Value!;
+        Assert.False(ok.CreditCardAuthorizationAllowed);
+        Assert.Contains("creditCardAuthorizationAccepted", ok.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsCompleteWhenAllRequiredPresent()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true,\"revokedConsentKeys\":[]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeConsentCompleteness(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeConsentCompletenessResponse>>(result).Value!;
+        Assert.True(ok.IsComplete);
+        Assert.Empty(ok.MissingConsentKeys);
+        Assert.Empty(ok.RevokedConsentKeys);
+        Assert.All(ok.Items, item => Assert.True(item.Ready));
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsMissingWhenHipaaAbsent()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"treatmentConsentAccepted\":true,\"revokedConsentKeys\":[]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeConsentCompleteness(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeConsentCompletenessResponse>>(result).Value!;
+        Assert.False(ok.IsComplete);
+        Assert.Contains("hipaaAcknowledged", ok.MissingConsentKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(ok.RevokedConsentKeys);
+    }
+
+    [Fact]
+    public async Task UCBeta_GetIntakeConsentCompleteness_ReturnsRevokedWhenRequiredConsentRevoked()
+    {
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true,\"writtenRevocationReceived\":true,\"revokedConsentKeys\":[\"treatmentConsentAccepted\"]}"
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.GetIntakeConsentCompleteness(intake.Id, _db, CancellationToken.None);
+
+        var ok = Assert.IsType<Ok<IntakeConsentCompletenessResponse>>(result).Value!;
+        Assert.False(ok.IsComplete);
+        Assert.Empty(ok.MissingConsentKeys);
+        Assert.Contains("treatmentConsentAccepted", ok.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+        var item = ok.Items.Single(i => i.ConsentKey == "treatmentConsentAccepted");
+        Assert.False(item.Ready);
+    }
+
     // ─── U-C3: AI not persisted before acceptance ────────────────────────────
 
     [Fact]
