@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -17,6 +18,7 @@ public class DailyNoteService : IDailyNoteService
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IIdentityContextAccessor _identityContext;
     private readonly ISyncEngine _syncEngine;
+    private readonly ITreatmentTaxonomyCatalogService _taxonomyCatalog;
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public DailyNoteService(
@@ -24,13 +26,15 @@ public class DailyNoteService : IDailyNoteService
         IAiClinicalGenerationService aiService,
         ITenantContextAccessor tenantContext,
         IIdentityContextAccessor identityContext,
-        ISyncEngine syncEngine)
+        ISyncEngine syncEngine,
+        ITreatmentTaxonomyCatalogService taxonomyCatalog)
     {
         _db = db;
         _aiService = aiService;
         _tenantContext = tenantContext;
         _identityContext = identityContext;
         _syncEngine = syncEngine;
+        _taxonomyCatalog = taxonomyCatalog;
     }
 
     public async Task<(DailyNoteResponse? Response, string? Error)> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
@@ -52,6 +56,24 @@ public class DailyNoteService : IDailyNoteService
                 return (null, $"Appointment {request.AppointmentId} not found.");
             if (appointment.PatientId != request.PatientId)
                 return (null, $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}.");
+        }
+
+        if (request.Content.TreatmentTaxonomySelections.Count > 0)
+        {
+            var normalizedSelections = new List<TreatmentTaxonomySelectionDto>(request.Content.TreatmentTaxonomySelections.Count);
+
+            foreach (var selection in request.Content.TreatmentTaxonomySelections)
+            {
+                var resolved = _taxonomyCatalog.ResolveSelection(selection.CategoryId, selection.ItemId);
+                if (resolved is null)
+                {
+                    return (null, $"Unknown treatment taxonomy selection '{selection.CategoryId}/{selection.ItemId}'.");
+                }
+
+                normalizedSelections.Add(resolved);
+            }
+
+            request.Content.TreatmentTaxonomySelections = normalizedSelections;
         }
 
         var startOfDay = request.DateOfService.Date;
@@ -98,6 +120,29 @@ public class DailyNoteService : IDailyNoteService
             note.ModifiedByUserId = userId;
         }
 
+        // Sync NoteTaxonomySelections join-table rows atomically with the note save.
+        // For updates, remove stale rows first; for new notes the note ID is already set.
+        if (!isNew)
+        {
+            var stale = await _db.NoteTaxonomySelections
+                .Where(s => s.ClinicalNoteId == note!.Id)
+                .ToListAsync(ct);
+            _db.NoteTaxonomySelections.RemoveRange(stale);
+        }
+
+        foreach (var sel in request.Content.TreatmentTaxonomySelections)
+        {
+            _db.NoteTaxonomySelections.Add(new NoteTaxonomySelection
+            {
+                ClinicalNoteId = note!.Id,
+                CategoryId = sel.CategoryId,
+                CategoryTitle = sel.CategoryTitle,
+                CategoryKind = (int)sel.CategoryKind,
+                ItemId = sel.ItemId,
+                ItemLabel = sel.ItemLabel
+            });
+        }
+
         await _db.SaveChangesAsync(ct);
         await _syncEngine.EnqueueAsync(
             "ClinicalNote",
@@ -140,6 +185,49 @@ public class DailyNoteService : IDailyNoteService
     {
         var notes = await _db.ClinicalNotes
             .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Daily)
+            .OrderByDescending(n => n.DateOfService)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return notes.Select(n =>
+        {
+            var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(n.ContentJson, _json) ?? new();
+            return new DailyNoteResponse
+            {
+                NoteId = n.Id,
+                PatientId = n.PatientId,
+                DateOfService = n.DateOfService,
+                IsSigned = n.SignedUtc.HasValue,
+                SignedUtc = n.SignedUtc,
+                Content = dto
+            };
+        }).ToList();
+    }
+
+    public async Task<List<DailyNoteResponse>> GetByTaxonomyAsync(
+        string categoryId,
+        string? itemId = null,
+        Guid? patientId = null,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        var selectionQuery = _db.NoteTaxonomySelections
+            .AsNoTracking()
+            .Where(s => s.CategoryId == categoryId);
+
+        if (!string.IsNullOrEmpty(itemId))
+            selectionQuery = selectionQuery.Where(s => s.ItemId == itemId);
+
+        var matchingIds = selectionQuery.Select(s => s.ClinicalNoteId);
+
+        var noteQuery = _db.ClinicalNotes
+            .AsNoTracking()
+            .Where(n => n.NoteType == NoteType.Daily && matchingIds.Contains(n.Id));
+
+        if (patientId.HasValue)
+            noteQuery = noteQuery.Where(n => n.PatientId == patientId.Value);
+
+        var notes = await noteQuery
             .OrderByDescending(n => n.DateOfService)
             .Take(limit)
             .ToListAsync(ct);
@@ -262,6 +350,18 @@ public class DailyNoteService : IDailyNoteService
             parts.Add(cptDescs.Any()
                 ? $"Treatment addressed {string.Join(", ", targetNames)} using {string.Join(", ", cptDescs)}."
                 : $"Treatment addressed {string.Join(", ", targetNames)}.");
+        }
+
+        var taxonomySelections = content.TreatmentTaxonomySelections
+            ?.Where(selection => !string.IsNullOrWhiteSpace(selection.ItemLabel))
+            .GroupBy(selection => string.IsNullOrWhiteSpace(selection.CategoryTitle) ? selection.CategoryId : selection.CategoryTitle)
+            .Select(group => $"{group.Key}: {string.Join(", ", group.Select(selection => selection.ItemLabel).Distinct(StringComparer.OrdinalIgnoreCase))}")
+            .ToList()
+            ?? new List<string>();
+
+        if (taxonomySelections.Any())
+        {
+            parts.Add($"Structured treatment focus included {string.Join("; ", taxonomySelections)}.");
         }
 
         var cueTypes = content.CueTypes ?? new();

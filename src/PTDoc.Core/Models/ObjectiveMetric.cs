@@ -44,6 +44,7 @@ public enum BodyPart
     Thoracic = 8,
     Foot = 9,
     Hand = 10,
+    PelvicFloor = 11,
     Other = 99
 }
 

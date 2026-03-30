@@ -197,6 +197,13 @@ public class AuthorizationCoverageTests
         // Sprint UC-Gamma: carry-forward read endpoint — NoteRead (broader access than NoteWrite)
         new("GET",  "/api/v1/notes/carry-forward", AuthorizationPolicies.NoteRead),
 
+        // ── Typed note workspace v2 (Notes/NoteWorkspaceV2Endpoints.cs) ──────
+        new("GET",  "/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}", AuthorizationPolicies.NoteRead),
+        new("POST", "/api/v2/notes/workspace/", AuthorizationPolicies.NoteWrite),
+        new("GET",  "/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v2/notes/workspace/lookup/icd10", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v2/notes/workspace/lookup/cpt", AuthorizationPolicies.ClinicalStaff),
+
         // ── Compliance rule evaluation (Compliance/ComplianceEndpoints.cs) ────
         new("POST", "/api/v1/compliance/evaluate/pn-frequency/{patientId:guid}",    AuthorizationPolicies.ClinicalStaff),
         new("POST", "/api/v1/compliance/evaluate/8-minute-rule",                    AuthorizationPolicies.ClinicalStaff),

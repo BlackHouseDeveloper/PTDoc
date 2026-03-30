@@ -1,3 +1,5 @@
+using PTDoc.Application.ReferenceData;
+
 namespace PTDoc.Application.DTOs;
 
 public class SaveDailyNoteRequest
@@ -44,6 +46,7 @@ public class DailyNoteContentDto
     public List<string> FocusedActivities { get; set; } = new();
     public List<CptCodeEntryDto> CptCodes { get; set; } = new();
     public List<int> TreatmentTargets { get; set; } = new();
+    public List<TreatmentTaxonomySelectionDto> TreatmentTaxonomySelections { get; set; } = new();
     public List<int> CueTypes { get; set; } = new();
     public int? CueIntensity { get; set; }
     public int? TreatmentResponse { get; set; }

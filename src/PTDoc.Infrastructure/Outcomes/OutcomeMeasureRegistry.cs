@@ -174,7 +174,7 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
                 {
                     BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
                     BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.Other
+                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
                 },
                 ScoringBands = new[]
                 {
@@ -200,7 +200,7 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
                 {
                     BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
                     BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.Other
+                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
                 },
                 ScoringBands = new[]
                 {
@@ -225,7 +225,7 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
                 {
                     BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
                     BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.Other
+                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
                 },
                 ScoringBands = new[]
                 {

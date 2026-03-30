@@ -46,9 +46,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
     public DbSet<Addendum> Addendums => Set<Addendum>();
     public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
+    public DbSet<PatientGoal> PatientGoals => Set<PatientGoal>();
 
     // Sprint M: Outcome Measures (TDD §9)
     public DbSet<OutcomeMeasureResult> OutcomeMeasureResults => Set<OutcomeMeasureResult>();
+
+    // First-class taxonomy filter index (see NoteTaxonomySelection)
+    public DbSet<NoteTaxonomySelection> NoteTaxonomySelections => Set<NoteTaxonomySelection>();
 
     // Auth: Persisted refresh tokens (hashed; production replacement for InMemoryRefreshTokenStore)
     public DbSet<StoredRefreshToken> StoredRefreshTokens => Set<StoredRefreshToken>();
@@ -297,6 +301,44 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<PatientGoal>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => new { e.PatientId, e.Status });
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+
+            entity.Property(e => e.Description).HasMaxLength(2000).IsRequired();
+            entity.Property(e => e.Category).HasMaxLength(200);
+            entity.Property(e => e.MatchedFunctionalLimitationId).HasMaxLength(100);
+            entity.Property(e => e.CompletionReason).HasMaxLength(1000);
+
+            entity.HasOne(e => e.Patient)
+                .WithMany()
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.OriginatingNote)
+                .WithMany()
+                .HasForeignKey(e => e.OriginatingNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.MetByNote)
+                .WithMany()
+                .HasForeignKey(e => e.MetByNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ArchivedByNote)
+                .WithMany()
+                .HasForeignKey(e => e.ArchivedByNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // Auth: StoredRefreshToken — token hash is the unique lookup key
         modelBuilder.Entity<StoredRefreshToken>(entity =>
         {
@@ -399,6 +441,11 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
         });
 
+        modelBuilder.Entity<PatientGoal>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+        });
+
         // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
         // Filters are bypassed when no tenant scope is active (system jobs, unauthenticated requests).
         // Use context.Set<T>().IgnoreQueryFilters() to intentionally bypass for admin operations.
@@ -430,6 +477,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<OutcomeMeasureResult>()
             .HasQueryFilter(r => CurrentClinicId == null || r.ClinicId == CurrentClinicId);
 
+        modelBuilder.Entity<PatientGoal>()
+            .HasQueryFilter(g => CurrentClinicId == null || g.ClinicId == CurrentClinicId);
+
         // Configure UserNotification
         modelBuilder.Entity<UserNotification>(entity =>
         {
@@ -458,6 +508,30 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey<UserNotificationPreferences>(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // Configure NoteTaxonomySelection — first-class filter index for taxonomy queries
+        modelBuilder.Entity<NoteTaxonomySelection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicalNoteId);
+            entity.HasIndex(e => e.CategoryId);
+            entity.HasIndex(e => e.ItemId);
+            entity.HasIndex(e => new { e.CategoryId, e.ItemId });
+
+            entity.Property(e => e.CategoryId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.CategoryTitle).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ItemId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ItemLabel).HasMaxLength(200).IsRequired();
+
+            entity.HasOne(e => e.Note)
+                .WithMany(n => n.TaxonomySelections)
+                .HasForeignKey(e => e.ClinicalNoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // NoteTaxonomySelection is accessed via ClinicalNote; filter via the parent note's ClinicId.
+        modelBuilder.Entity<NoteTaxonomySelection>()
+            .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>

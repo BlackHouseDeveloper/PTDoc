@@ -5,9 +5,11 @@ using Moq;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
 using Xunit;
 
@@ -27,6 +29,7 @@ public class DailyNoteServiceTests : IDisposable
     private readonly Mock<ITenantContextAccessor> _tenantMock;
     private readonly Mock<IIdentityContextAccessor> _identityMock;
     private readonly Mock<ISyncEngine> _syncMock;
+    private readonly ITreatmentTaxonomyCatalogService _taxonomyCatalog;
     private readonly DailyNoteService _service;
 
     private static readonly Guid TestClinicId = Guid.NewGuid();
@@ -51,8 +54,9 @@ public class DailyNoteServiceTests : IDisposable
         _identityMock = new Mock<IIdentityContextAccessor>();
         _identityMock.Setup(x => x.GetCurrentUserId()).Returns(TestUserId);
         _syncMock = new Mock<ISyncEngine>();
+        _taxonomyCatalog = new TreatmentTaxonomyCatalogService();
 
-        _service = new DailyNoteService(_db, _aiMock.Object, _tenantMock.Object, _identityMock.Object, _syncMock.Object);
+        _service = new DailyNoteService(_db, _aiMock.Object, _tenantMock.Object, _identityMock.Object, _syncMock.Object, _taxonomyCatalog);
     }
 
     public void Dispose()
@@ -65,7 +69,12 @@ public class DailyNoteServiceTests : IDisposable
 
     private async Task<Patient> CreatePatientAsync()
     {
-        var clinic = new Clinic { Id = Guid.NewGuid(), Name = "Test Clinic" };
+        var clinic = new Clinic
+        {
+            Id = Guid.NewGuid(),
+            Name = "Test Clinic",
+            Slug = $"test-clinic-{Guid.NewGuid():N}"
+        };
         _db.Set<Clinic>().Add(clinic);
         var patient = new Patient
         {
@@ -156,6 +165,51 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Equal(first!.NoteId, second!.NoteId);
         var count = _db.ClinicalNotes.Count(n => n.PatientId == patient.Id && n.NoteType == NoteType.Daily);
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_KnownTreatmentTaxonomySelection_NormalizesCanonicalLabels()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id);
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics",
+                CategoryTitle = "client text should be replaced",
+                ItemLabel = "client text should be replaced"
+            }
+        ];
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(response);
+        var selection = Assert.Single(response!.Content.TreatmentTaxonomySelections);
+        Assert.Equal("Foot & Ankle", selection.CategoryTitle);
+        Assert.Equal("Talocrural joint arthrokinematics (e.g., posterior glide of talus)", selection.ItemLabel);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_UnknownTreatmentTaxonomySelection_ReturnsError()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id);
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "unknown-item"
+            }
+        ];
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(response);
+        Assert.Contains("Unknown treatment taxonomy selection", error);
     }
 
     // ── 4. SaveDraftAsync — sets LastModifiedUtc and enqueues sync ─────────────
@@ -406,5 +460,194 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Equal(patient.Id, result.PatientId);
         Assert.Empty(result.Activities);
         Assert.Null(result.EvalNoteId);
+    }
+
+    // ── 12. NoteTaxonomySelections join-table persistence ────────────────────
+
+    [Fact]
+    public async Task SaveDraftAsync_WithTaxonomySelections_PersistsJoinTableRows()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id);
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics",
+                CategoryTitle = "ignore",
+                ItemLabel = "ignore"
+            }
+        ];
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(response);
+
+        var rows = _db.NoteTaxonomySelections
+            .Where(s => s.ClinicalNoteId == response!.NoteId)
+            .ToList();
+
+        var row = Assert.Single(rows);
+        Assert.Equal("foot-ankle", row.CategoryId);
+        Assert.Equal("talocrural-joint-arthrokinematics", row.ItemId);
+        Assert.Equal("Foot & Ankle", row.CategoryTitle);
+        Assert.Equal("Talocrural joint arthrokinematics (e.g., posterior glide of talus)", row.ItemLabel);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_UpdateNote_ReplacesExistingJoinTableRows()
+    {
+        var patient = await CreatePatientAsync();
+        var date = new DateTime(2026, 3, 30);
+        var request = BuildRequest(patient.Id, date);
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics",
+                CategoryTitle = "x",
+                ItemLabel = "x"
+            }
+        ];
+        var (first, _) = await _service.SaveDraftAsync(request);
+        Assert.NotNull(first);
+
+        // Update with a different selection
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "knee",
+                ItemId = "quad-control-activation",
+                CategoryTitle = "x",
+                ItemLabel = "x"
+            }
+        ];
+        var (second, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(second);
+        Assert.Equal(first!.NoteId, second!.NoteId); // same note updated
+
+        var rows = _db.NoteTaxonomySelections
+            .Where(s => s.ClinicalNoteId == second.NoteId)
+            .ToList();
+
+        var row = Assert.Single(rows);
+        Assert.Equal("knee", row.CategoryId);
+        Assert.Equal("quad-control-activation", row.ItemId);
+    }
+
+    // ── 13. GetByTaxonomyAsync — first-class taxonomy filter queries ──────────
+
+    [Fact]
+    public async Task GetByTaxonomyAsync_FiltersByCategory_ReturnsMatchingNotes()
+    {
+        var patient = await CreatePatientAsync();
+
+        // Note 1: has foot-ankle selection
+        var r1 = BuildRequest(patient.Id, new DateTime(2026, 3, 28));
+        r1.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics",
+                CategoryTitle = "x",
+                ItemLabel = "x"
+            }
+        ];
+        await _service.SaveDraftAsync(r1);
+
+        // Note 2: no taxonomy — should not be returned
+        var r2 = BuildRequest(patient.Id, new DateTime(2026, 3, 29));
+        await _service.SaveDraftAsync(r2);
+
+        var results = await _service.GetByTaxonomyAsync("foot-ankle");
+
+        Assert.Single(results);
+        Assert.Equal(new DateTime(2026, 3, 28), results[0].DateOfService.Date);
+    }
+
+    [Fact]
+    public async Task GetByTaxonomyAsync_FiltersByCategoryAndItem_ReturnsOnlyExactMatch()
+    {
+        var patient = await CreatePatientAsync();
+
+        // Note 1: foot-ankle / talocrural-joint-arthrokinematics
+        var r1 = BuildRequest(patient.Id, new DateTime(2026, 3, 27));
+        r1.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics",
+                CategoryTitle = "x",
+                ItemLabel = "x"
+            }
+        ];
+        await _service.SaveDraftAsync(r1);
+
+        // Note 2: foot-ankle / subtalar-joint-arthrokinematics — same category, different item
+        var r2 = BuildRequest(patient.Id, new DateTime(2026, 3, 28));
+        r2.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "subtalar-joint-arthrokinematics",
+                CategoryTitle = "x",
+                ItemLabel = "x"
+            }
+        ];
+        await _service.SaveDraftAsync(r2);
+
+        var results = await _service.GetByTaxonomyAsync("foot-ankle", itemId: "talocrural-joint-arthrokinematics");
+
+        Assert.Single(results);
+        Assert.Equal(new DateTime(2026, 3, 27), results[0].DateOfService.Date);
+    }
+
+    [Fact]
+    public async Task GetByTaxonomyAsync_UnknownCategory_ReturnsEmpty()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id);
+        await _service.SaveDraftAsync(request);
+
+        var results = await _service.GetByTaxonomyAsync("nonexistent-category");
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task GetByTaxonomyAsync_WithPatientFilter_ScopesToPatient()
+    {
+        var patient1 = await CreatePatientAsync();
+        var patient2 = await CreatePatientAsync();
+
+        var selectionEntry = new TreatmentTaxonomySelectionDto
+        {
+            CategoryId = "foot-ankle",
+            ItemId = "talocrural-joint-arthrokinematics",
+            CategoryTitle = "x",
+            ItemLabel = "x"
+        };
+
+        var r1 = BuildRequest(patient1.Id, new DateTime(2026, 3, 28));
+        r1.Content.TreatmentTaxonomySelections = [selectionEntry];
+        await _service.SaveDraftAsync(r1);
+
+        var r2 = BuildRequest(patient2.Id, new DateTime(2026, 3, 28));
+        r2.Content.TreatmentTaxonomySelections = [selectionEntry];
+        await _service.SaveDraftAsync(r2);
+
+        var results = await _service.GetByTaxonomyAsync("foot-ankle", patientId: patient1.Id);
+
+        Assert.Single(results);
+        Assert.Equal(patient1.Id, results[0].PatientId);
     }
 }

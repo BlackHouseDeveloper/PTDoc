@@ -96,6 +96,16 @@ public class OutcomeMeasureRegistryTests
     }
 
     [Fact]
+    public void GetMeasuresForBodyPart_PelvicFloor_ReturnsGeneralScales()
+    {
+        var measures = _registry.GetMeasuresForBodyPart(BodyPart.PelvicFloor);
+
+        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.PSFS);
+        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.NPRS);
+        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.VAS);
+    }
+
+    [Fact]
     public void GetMeasuresForBodyPart_AnyPart_DoesNotThrow()
     {
         foreach (BodyPart part in Enum.GetValues(typeof(BodyPart)))

@@ -84,6 +84,8 @@ public static class NoteEndpoints
         [FromQuery] string? noteType,
         [FromQuery] string? status,
         [FromQuery] int take,
+        [FromQuery] string? categoryId,
+        [FromQuery] string? itemId,
         [FromServices] ApplicationDbContext db,
         CancellationToken cancellationToken)
     {
@@ -105,6 +107,18 @@ public static class NoteEndpoints
             query = query.Where(n => n.SignatureHash != null);
         else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
             query = query.Where(n => n.SignatureHash == null);
+
+        // Taxonomy filter: semi-join against NoteTaxonomySelections for efficient SQL filtering.
+        if (!string.IsNullOrWhiteSpace(categoryId))
+        {
+            var matchingIds = db.NoteTaxonomySelections
+                .Where(s => s.CategoryId == categoryId);
+
+            if (!string.IsNullOrWhiteSpace(itemId))
+                matchingIds = matchingIds.Where(s => s.ItemId == itemId);
+
+            query = query.Where(n => matchingIds.Select(s => s.ClinicalNoteId).Contains(n.Id));
+        }
 
         var notes = await query
             .OrderByDescending(n => n.DateOfService)

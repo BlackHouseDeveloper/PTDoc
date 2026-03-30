@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 using Xunit;
 
 namespace PTDoc.Tests.Compliance;
@@ -419,6 +421,85 @@ public class ClinicalRulesEngineTests : IDisposable
 
         var blocking = violations.Where(v => v.Blocking).ToList();
         Assert.Empty(blocking);
+    }
+
+    [Fact]
+    public async Task RunClinicalValidation_V2EvaluationPayload_UsesNestedTypedFields()
+    {
+        var patientId = Guid.NewGuid();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                Problems = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pain" },
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        BodyPart = BodyPart.Cervical,
+                        Category = "Mobility",
+                        Description = "Unable to turn head fully to look over shoulder while driving"
+                    }
+                ],
+                NarrativeContext = new SubjectNarrativeContextV2
+                {
+                    ChiefComplaint = "Neck pain with driving"
+                }
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                Goals =
+                [
+                    new WorkspaceGoalEntryV2
+                    {
+                        Description = "Patient will rotate head >=60 degrees to check over shoulder while seated within 3 weeks.",
+                        Category = "Mobility",
+                        Status = GoalStatus.Active
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFrequencyDaysPerWeek = [2],
+                TreatmentDurationWeeks = [6],
+                ComputedPlanOfCare = new ComputedPlanOfCareV2
+                {
+                    StartDate = new DateTime(2026, 3, 30),
+                    EndDate = new DateTime(2026, 5, 10)
+                }
+            }
+        };
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            NoteType = NoteType.Evaluation,
+            ContentJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            DateOfService = new DateTime(2026, 3, 30),
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.ClinicalNotes.Add(note);
+        _context.OutcomeMeasureResults.Add(new OutcomeMeasureResult
+        {
+            PatientId = patientId,
+            NoteId = note.Id,
+            MeasureType = OutcomeMeasureType.NeckDisabilityIndex,
+            Score = 24,
+            ClinicianId = Guid.NewGuid(),
+            DateRecorded = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        var violations = await _engine.RunClinicalValidationAsync(note.Id);
+
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "SOAP_SUBJECTIVE");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_GOALS");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_PLAN");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "COMP_CERT");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "COMP_FUNCTIONAL");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_OBJECTIVE");
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

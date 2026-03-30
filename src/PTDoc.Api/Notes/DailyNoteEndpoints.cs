@@ -62,6 +62,42 @@ public static class DailyNoteEndpoints
             .RequireAuthorization(AuthorizationPolicies.NoteRead)
             .WithName("GetEvalCarryForward");
 
+        group.MapGet("/by-taxonomy", async (
+            [AsParameters] TaxonomyFilterQuery filter,
+            IDailyNoteService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(filter.CategoryId))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    { nameof(filter.CategoryId), ["categoryId is required."] }
+                });
+
+            var normalizedLimit = filter.Limit <= 0 ? 50 : Math.Min(filter.Limit, 500);
+            var results = await service.GetByTaxonomyAsync(
+                filter.CategoryId, filter.ItemId, filter.PatientId, normalizedLimit, ct);
+            return Results.Ok(results);
+        })
+        .RequireAuthorization(AuthorizationPolicies.NoteRead)
+        .WithName("GetDailyNotesByTaxonomy")
+        .WithSummary("Filter daily notes by taxonomy category or specific item");
+
         return app;
     }
+}
+
+/// <summary>Query parameters for the by-taxonomy filter endpoint.</summary>
+internal sealed class TaxonomyFilterQuery
+{
+    [FromQuery(Name = "categoryId")]
+    public string CategoryId { get; set; } = string.Empty;
+
+    [FromQuery(Name = "itemId")]
+    public string? ItemId { get; set; }
+
+    [FromQuery(Name = "patientId")]
+    public Guid? PatientId { get; set; }
+
+    [FromQuery(Name = "limit")]
+    public int Limit { get; set; } = 50;
 }
