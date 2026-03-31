@@ -93,7 +93,7 @@ jobs:
   maui-ios-validation:
     name: Build MAUI iOS (macOS)
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
     - name: Checkout
