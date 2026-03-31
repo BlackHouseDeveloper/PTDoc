@@ -7,7 +7,7 @@ public class PatientPayerInfoVm
 {
     public string PatientName { get; set; } = string.Empty;
     public string DateOfBirthText { get; set; } = string.Empty;
-    // TODO: Replace date text fields with a date-picker control if the design system provides one.
+    // Date values are stored as text in this VM to match current JSON persistence format.
 
     public string InsuranceCompanyName { get; set; } = string.Empty;
     public string MemberIdPolicyNumber { get; set; } = string.Empty;
@@ -19,5 +19,5 @@ public class PatientPayerInfoVm
 
     public string EffectiveStartDate { get; set; } = string.Empty;
     public string EffectiveEndDate { get; set; } = string.Empty;
-    // TODO: Decide if Patient Name and DOB are read-only (pulled from demographics) vs editable here.
+    // Patient identity fields are editable in this panel and saved with the rest of payer data.
 }

@@ -4,7 +4,7 @@
 
 <div class="ptdoc-nav-container">
     <div class="ptdoc-nav-brand">
-        <NavBarBrand />
+        <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
     </div>
     
     <div class="ptdoc-nav-scrollable">
@@ -57,7 +57,7 @@
                 </NavLink>
             </div>
 
-            <!-- Admin Section: visible to ClinicalStaff for Export/Reports, Admin/Owner only for Settings -->
+            <!-- Admin Section: visible to ClinicalStaff for Export/Settings -->
             <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
                 <Authorized Context="staffCtx">
                     <div class="ptdoc-nav-section">
@@ -70,23 +70,12 @@
                             </div>
                         </NavLink>
 
-                        <NavLink class="ptdoc-nav-item" href="reports">
+                        <NavLink class="ptdoc-nav-item" href="settings">
                             <div class="ptdoc-nav-content">
-                                <img src="_content/PTDoc.UI/images/nav-reports.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                                <span class="ptdoc-nav-text">Reports</span>
+                                <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Settings</span>
                             </div>
                         </NavLink>
-
-                        <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.AdminOnly">
-                            <Authorized>
-                                <NavLink class="ptdoc-nav-item" href="settings">
-                                    <div class="ptdoc-nav-content">
-                                        <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                                        <span class="ptdoc-nav-text">Settings</span>
-                                    </div>
-                                </NavLink>
-                            </Authorized>
-                        </AuthorizeView>
                     </div>
                 </Authorized>
             </AuthorizeView>
@@ -105,4 +94,9 @@
         </Authorized>
     </AuthorizeView>
 </div>
+
+@code {
+    [Parameter]
+    public EventCallback OnNotificationsClick { get; set; }
+}
 

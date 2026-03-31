@@ -1,0 +1,45 @@
+<aside class="settings-sidebar" aria-label="Settings navigation">
+    <div class="settings-sidebar-header">
+        <h2 class="settings-sidebar-title">Settings Center</h2>
+        <p class="settings-sidebar-subtitle">Configure workflows and operational preferences</p>
+    </div>
+
+    <nav class="settings-sidebar-nav" aria-label="Settings sections">
+        @foreach (var item in navItems)
+        {
+            <button
+                type="button"
+                class="settings-nav-item @(item.Key == ActiveSection ? "is-active" : string.Empty)"
+                @onclick="() => SelectSection(item.Key)"
+                aria-current="@(item.Key == ActiveSection ? "page" : null)">
+                <span class="settings-nav-item-title">@item.Title</span>
+                <span class="settings-nav-item-description">@item.Description</span>
+            </button>
+        }
+    </nav>
+</aside>
+
+@code {
+    [Parameter]
+    public string ActiveSection { get; set; } = "approvals";
+
+    [Parameter]
+    public EventCallback<string> OnSectionSelected { get; set; }
+
+    private static readonly IReadOnlyList<SettingsNavItem> navItems =
+    [
+        new("scheduling", "Scheduling & Visit Types", "Manage appointment cadence and visit templates"),
+        new("documentation", "Documentation and Compliance", "Configure charting standards and compliance defaults"),
+        new("billing", "Billing and Coding", "Tune payer rules and coding controls"),
+        new("ai-outcomes", "AI & Outcome Measures", "Adjust AI prompts and outcomes workflows"),
+        new("notifications", "Notifications and Messaging", "Set delivery channels and escalation rules"),
+        new("approvals", "Approvals", "Review onboarding and access requests")
+    ];
+
+    private async Task SelectSection(string sectionKey)
+    {
+        await OnSectionSelected.InvokeAsync(sectionKey);
+    }
+
+    private sealed record SettingsNavItem(string Key, string Title, string Description);
+}

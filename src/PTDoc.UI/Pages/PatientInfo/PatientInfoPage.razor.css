@@ -6,7 +6,7 @@
 }
 
 .pi-page-container {
-    max-width: 1284px; /* matches Figma artboard width; TODO: review with responsive breakpoint spec */
+    max-width: 1284px; /* matches current Figma artboard width */
     margin: 0 auto;
     padding: var(--spacing-8) var(--spacing-8);
     box-sizing: border-box;

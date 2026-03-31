@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.Notes;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -8,10 +9,11 @@ using Xunit;
 namespace PTDoc.Tests.Compliance;
 
 /// <summary>
-/// Sprint S: Integration tests verifying compliance rule enforcement in the note lifecycle.
+/// Sprint S / Sprint UC-Delta: Integration tests verifying compliance rule enforcement in the note lifecycle.
 /// Tests cover:
 ///   - Progress Note hard stop blocks Daily note creation after threshold
 ///   - 8-minute rule advisory warning is surfaced when units exceed allowed
+///   - 8-minute rule timed CPT bypass prevention (Sprint UC-Delta)
 ///   - Signature locking prevents editing a signed note
 ///   - Audit log entry is written on successful note edit
 /// </summary>
@@ -53,8 +55,8 @@ public class NoteComplianceIntegrationTests : IDisposable
         }
         await _context.SaveChangesAsync();
 
-        // Act: validate PN frequency (simulates what CreateNote endpoint does for Daily notes)
-        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+        // Act: validate PN frequency for Medicare (simulates what CreateNote endpoint does for Daily notes)
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
 
         // Assert: rules engine returns HardStop — endpoint should respond with 422
         Assert.False(result.IsValid);
@@ -111,7 +113,7 @@ public class NoteComplianceIntegrationTests : IDisposable
         await _context.SaveChangesAsync();
 
         // The hard stop rule fires (this is expected — it's what triggers the need for a PN)
-        var pnFreqResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+        var pnFreqResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
         Assert.Equal(RuleSeverity.HardStop, pnFreqResult.Severity);
 
         // But the endpoint should only apply this check when NoteType == Daily.
@@ -299,6 +301,100 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.True(auditEvent.Metadata.ContainsKey("Timestamp"));
         Assert.DoesNotContain("ContentJson", auditEvent.Metadata.Keys);
         Assert.DoesNotContain("PatientId", auditEvent.Metadata.Keys);
+    }
+
+    // ─── Sprint UC-Delta: 8-minute rule timed CPT bypass prevention ──────────
+
+    [Fact]
+    public void EightMinuteRule_KnownTimedCptCode_IsAlwaysEnforcedAsTimed()
+    {
+        // Sprint UC-Delta: Verify that EnforceKnownTimedCptStatus overrides IsTimed=false
+        // for any code in the server-authoritative KnownTimedCptCodes set.
+        // This prevents a UI client from stripping the IsTimed flag to bypass 8-minute rule
+        // enforcement by serializing CPT entries with IsTimed=false.
+
+        // Arrange: client submits known timed codes with IsTimed deliberately set to false
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = 2, IsTimed = false },
+            new() { Code = "97140", Units = 1, IsTimed = false },
+        };
+
+        // Act: apply server-side enforcement (mutates in-place)
+        NoteEndpoints.EnforceKnownTimedCptStatus(cptCodes);
+
+        // Assert: known timed codes are overridden to IsTimed=true
+        Assert.True(cptCodes[0].IsTimed, "97110 is a known timed code and must be treated as timed");
+        Assert.True(cptCodes[1].IsTimed, "97140 is a known timed code and must be treated as timed");
+    }
+
+    [Fact]
+    public void EightMinuteRule_UnknownCptCode_IsNotEnforcedAsTimed()
+    {
+        // Sprint UC-Delta: Unknown CPT codes with IsTimed=false must remain unchanged —
+        // only server-authoritative codes are overridden.
+
+        // Arrange: unknown code with IsTimed=false
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "99999", Units = 1, IsTimed = false }
+        };
+
+        // Act
+        NoteEndpoints.EnforceKnownTimedCptStatus(cptCodes);
+
+        // Assert: unknown code remains non-timed
+        Assert.False(cptCodes[0].IsTimed, "99999 is not a known timed code; IsTimed should remain false");
+    }
+
+    [Fact]
+    public async Task EightMinuteRule_KnownTimedCode_WithIsTimedFalse_StillEnforcedByEngine()
+    {
+        // Sprint UC-Delta: End-to-end verification that 8-minute rule fires for a known
+        // timed code even when the client submitted IsTimed=false.
+
+        // Arrange: 30 minutes = 2 units allowed; client submits 10 units with IsTimed=false
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = 10, IsTimed = false }
+        };
+
+        // After enforcement, IsTimed becomes true for 97110
+        NoteEndpoints.EnforceKnownTimedCptStatus(cptCodes);
+        Assert.True(cptCodes[0].IsTimed);
+
+        // Act
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
+
+        // Assert: the 8-minute rule fires with a warning because 10 units > 2 allowed
+        Assert.Equal(RuleSeverity.Warning, result.Severity);
+        Assert.Equal("8MIN_RULE", result.RuleId);
+        Assert.Contains("PT override required", result.Message);
+        Assert.Equal(2, result.Data["AllowedUnits"]);
+        Assert.Equal(10, result.Data["RequestedUnits"]);
+    }
+
+    [Fact]
+    public async Task EightMinuteRule_UnknownCode_WithIsTimedFalse_IsNotEnforced()
+    {
+        // Sprint UC-Delta: Verify that unknown CPT codes with IsTimed=false are NOT
+        // treated as timed (only server-authoritative codes are overridden).
+
+        // Arrange: unknown code with IsTimed=false and excessive units — 8-minute rule should NOT fire
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "99999", Units = 100, IsTimed = false }
+        };
+
+        NoteEndpoints.EnforceKnownTimedCptStatus(cptCodes);
+        Assert.False(cptCodes[0].IsTimed, "Unknown code should remain non-timed");
+
+        // Act: 8-minute rule only checks IsTimed=true codes; 99999 is IsTimed=false so no enforcement
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
+
+        // Assert: success — no timed codes, nothing to enforce
+        Assert.Equal(RuleSeverity.Info, result.Severity);
+        Assert.True(result.IsValid);
     }
 
     public void Dispose()

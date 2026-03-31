@@ -14,9 +14,9 @@
                         <path d="M10 5V15M5 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
                     </svg>
-                    <h2 id="new-appointment-title">New Appointment</h2>
+                    <h2 id="new-appointment-title">@Title</h2>
                 </div>
-                <p id="new-appointment-description" class="modal-description">Schedule a new appointment for a patient</p>
+                <p id="new-appointment-description" class="modal-description">@Description</p>
             </div>
 
             <!-- Modal Body -->
@@ -31,12 +31,18 @@
                         @ref="firstInputRef"
                         required 
                         aria-required="true">
-                        <option value="">Select a patient...</option>
-                        <option value="1">Tom Anderson</option>
-                        <option value="2">Maria Garcia</option>
-                        <option value="3">Carlos Ramirez</option>
-                        <option value="4">Lisa Wong</option>
-                        <option value="5">John Smith</option>
+                        @if (GetPatientOptions().Count == 0)
+                        {
+                            <option value="">No patients available</option>
+                        }
+                        else
+                        {
+                            <option value="">Select a patient...</option>
+                            @foreach (var patient in GetPatientOptions())
+                            {
+                                <option value="@patient.Id">@patient.Name</option>
+                            }
+                        }
                     </select>
                 </div>
 
@@ -106,11 +112,27 @@
                         @bind="ClinicianId"
                         required 
                         aria-required="true">
-                        <option value="">Select clinician...</option>
-                        <option value="1">Dr. Emily Chen</option>
-                        <option value="2">Dr. Sarah Mitchell</option>
+                        @if (GetClinicianOptions().Count == 0)
+                        {
+                            <option value="">No clinicians available</option>
+                        }
+                        else
+                        {
+                            <option value="">Select clinician...</option>
+                            @foreach (var clinician in GetClinicianOptions())
+                            {
+                                <option value="@clinician.Id">@clinician.Name</option>
+                            }
+                        }
                     </select>
                 </div>
+
+                @if (!string.IsNullOrWhiteSpace(submitFeedbackMessage))
+                {
+                    <div class="submit-feedback submit-feedback--error" role="alert" aria-live="assertive">
+                        @submitFeedbackMessage
+                    </div>
+                }
 
                 <!-- Notes (Optional) -->
                 <div class="form-field">
@@ -128,12 +150,12 @@
                     <button type="button" class="btn-cancel" @onclick="Close">
                         Cancel
                     </button>
-                    <button type="submit" class="btn-primary">
+                    <button type="submit" class="btn-primary" disabled="@isSubmitting" aria-busy="@isSubmitting">
                         <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
                         </svg>
-                        Schedule Appointment
+                        @(isSubmitting ? "Saving..." : SubmitButtonText)
                     </button>
                 </div>
             </form>
@@ -156,13 +178,32 @@
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
-    public EventCallback<AppointmentFormData> OnSubmit { get; set; }
+    public Func<AppointmentFormData, Task<bool>>? OnSubmit { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "New Appointment";
+
+    [Parameter]
+    public string Description { get; set; } = "Schedule a new appointment for a patient";
+
+    [Parameter]
+    public string SubmitButtonText { get; set; } = "Schedule Appointment";
+
+    [Parameter]
+    public AppointmentFormData? InitialValues { get; set; }
+
+    [Parameter]
+    public List<PatientOption> AvailablePatients { get; set; } = new();
+
+    [Parameter]
+    public List<ClinicianOption> AvailableClinicians { get; set; } = new();
 
     private ElementReference firstInputRef;
     private ElementReference modalContainerRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<NewAppointmentModal>? dotNetRef;
     private string modalId = $"new-appointment-modal-{Guid.NewGuid():N}";
+    private bool wasOpen;
 
     private string PatientId { get; set; } = string.Empty;
     private string AppointmentType { get; set; } = string.Empty;
@@ -171,6 +212,18 @@
     private int DurationMinutes { get; set; } = 45;
     private string ClinicianId { get; set; } = string.Empty;
     private string Notes { get; set; } = string.Empty;
+    private string? submitFeedbackMessage;
+    private bool isSubmitting;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !wasOpen)
+        {
+            ApplyFormState(InitialValues);
+        }
+
+        wasOpen = IsOpen;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -222,17 +275,16 @@
 
     private async Task Close()
     {
-        IsOpen = false;
+        if (isSubmitting)
+        {
+            return;
+        }
+
         await IsOpenChanged.InvokeAsync(false);
-        
-        // Clear form
-        PatientId = string.Empty;
-        AppointmentType = string.Empty;
-        AppointmentDate = DateTime.Today;
-        AppointmentTimeInput = new TimeOnly(9, 0);
-        DurationMinutes = 45;
-        ClinicianId = string.Empty;
-        Notes = string.Empty;
+
+        ApplyFormState(null);
+        submitFeedbackMessage = null;
+        wasOpen = false;
     }
 
     private void HandleOverlayClick()
@@ -242,6 +294,25 @@
 
     private async Task HandleSubmit()
     {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        submitFeedbackMessage = null;
+
+        if (string.IsNullOrWhiteSpace(PatientId))
+        {
+            submitFeedbackMessage = "Select a patient before scheduling the appointment.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ClinicianId))
+        {
+            submitFeedbackMessage = "Select a clinician before scheduling the appointment.";
+            return;
+        }
+
         // Convert TimeOnly to TimeSpan
         var timeOnly = AppointmentTimeInput ?? new TimeOnly(9, 0);
         TimeSpan parsedTime = new TimeSpan(timeOnly.Hour, timeOnly.Minute, 0);
@@ -257,8 +328,30 @@
             Notes = Notes
         };
 
-        await OnSubmit.InvokeAsync(formData);
-        await Close();
+        isSubmitting = true;
+
+        bool wasSuccessful;
+        try
+        {
+            wasSuccessful = OnSubmit is null || await OnSubmit(formData);
+        }
+        catch
+        {
+            submitFeedbackMessage = "Unable to save the appointment right now. Please try again.";
+            return;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+
+        if (wasSuccessful)
+        {
+            await Close();
+            return;
+        }
+
+        submitFeedbackMessage ??= "Unable to save the appointment. Review the details and try again.";
     }
 
     public async ValueTask DisposeAsync()
@@ -286,5 +379,50 @@
         public int DurationMinutes { get; set; }
         public string ClinicianId { get; set; } = string.Empty;
         public string Notes { get; set; } = string.Empty;
+    }
+
+    public class PatientOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public class ClinicianOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private IReadOnlyList<PatientOption> GetPatientOptions()
+    {
+        return AvailablePatients;
+    }
+
+    private IReadOnlyList<ClinicianOption> GetClinicianOptions()
+    {
+        return AvailableClinicians;
+    }
+
+    private void ApplyFormState(AppointmentFormData? initialValues)
+    {
+        if (initialValues is null)
+        {
+            PatientId = string.Empty;
+            AppointmentType = string.Empty;
+            AppointmentDate = DateTime.Today;
+            AppointmentTimeInput = new TimeOnly(9, 0);
+            DurationMinutes = 45;
+            ClinicianId = string.Empty;
+            Notes = string.Empty;
+            return;
+        }
+
+        PatientId = initialValues.PatientId;
+        AppointmentType = initialValues.AppointmentType;
+        AppointmentDate = initialValues.AppointmentDate;
+        AppointmentTimeInput = TimeOnly.FromTimeSpan(initialValues.AppointmentTime);
+        DurationMinutes = initialValues.DurationMinutes;
+        ClinicianId = initialValues.ClinicianId;
+        Notes = initialValues.Notes;
     }
 }

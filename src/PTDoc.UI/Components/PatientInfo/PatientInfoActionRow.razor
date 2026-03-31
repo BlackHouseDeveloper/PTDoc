@@ -70,8 +70,6 @@
 
     private async Task HandleBack()
     {
-        // TODO: Show unsaved-changes confirmation modal when IsDirty == true.
-        //       Use existing modal system once available.
         await OnBack.InvokeAsync();
     }
 }

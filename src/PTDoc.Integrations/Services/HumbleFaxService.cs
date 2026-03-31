@@ -39,9 +39,8 @@ public class HumbleFaxService : IFaxService
             };
         }
 
-        // TODO: Implement actual HumbleFax API integration
-        // This is a mock implementation for now
-        // Production would call HumbleFax API with PDF content
+        // Current implementation runs in deterministic stub mode.
+        // A production implementation should call the HumbleFax API with PDF payloads.
 
         // Mock successful fax for development
         await Task.Delay(200, cancellationToken); // Simulate API call
@@ -67,7 +66,7 @@ public class HumbleFaxService : IFaxService
             };
         }
 
-        // TODO: Implement actual status retrieval
+        // Stub status lookup path for environments without live fax gateway wiring.
         await Task.Delay(50, cancellationToken);
 
         return new FaxResult

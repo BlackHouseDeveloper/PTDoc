@@ -109,7 +109,7 @@ public static class ComplianceEndpoints
                         return Results.Forbid();
                 }
 
-                var result = await signatureService.SignNoteAsync(noteId, userId);
+                var result = await signatureService.SignNoteAsync(noteId, userId, signerIsPta: isPta);
 
                 if (!result.Success)
                 {
@@ -129,11 +129,47 @@ public static class ComplianceEndpoints
                 {
                     success = true,
                     signatureHash = result.SignatureHash,
-                    signedUtc = result.SignedUtc
+                    signedUtc = result.SignedUtc,
+                    // Sprint UC4: Notify caller that PT co-sign is required for PTA-authored notes
+                    requiresCoSign = result.RequiresCoSign
                 });
             })
             .WithName("SignNote")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
+
+        // Co-sign endpoint — PT-only, countersigns a PTA-authored note per Medicare rules.
+        notesGroup.MapPost("/{noteId:guid}/co-sign",
+            async (Guid noteId, ISignatureService signatureService,
+                   IIdentityContextAccessor identityContext) =>
+            {
+                var userId = identityContext.GetCurrentUserId();
+                if (userId == Guid.Empty)
+                {
+                    return Results.Unauthorized();
+                }
+
+                var result = await signatureService.CoSignNoteAsync(noteId, userId);
+
+                if (!result.Success)
+                {
+                    return result.Status switch
+                    {
+                        CoSignStatus.NotFound => Results.NotFound(new { error = result.ErrorMessage }),
+                        CoSignStatus.AlreadyCoSigned or
+                        CoSignStatus.DoesNotRequireCoSign or
+                        CoSignStatus.NotSigned => Results.Conflict(new { error = result.ErrorMessage }),
+                        _ => Results.BadRequest(new { error = result.ErrorMessage }),
+                    };
+                }
+
+                return Results.Ok(new
+                {
+                    success = true,
+                    coSignedUtc = result.CoSignedUtc
+                });
+            })
+            .WithName("CoSignNote")
+            .RequireAuthorization(AuthorizationPolicies.NoteCoSign);
 
         // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",

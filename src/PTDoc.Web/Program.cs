@@ -28,11 +28,18 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<IUserService, WebUserService>();
+builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
-builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
+builder.Services.AddScoped<IPatientService, PatientApiService>();
+builder.Services.AddScoped<INoteService, NoteListApiService>();
+builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
+builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
+builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
@@ -88,18 +95,16 @@ builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", client =>
 {
     client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
 });
 builder.Services.AddHttpClient("ServerAPI", client =>
 {
-    client.BaseAddress = new Uri(
-        builder.Environment.IsDevelopment()
-            ? "http://localhost:5145"
-            : "https://your-production-domain.com"
-    );
-});
+    client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
+})
+    .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
 
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("ServerAPI"));
@@ -326,6 +331,17 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
     using (authResponse)
     {
+        if (authResponse.StatusCode == HttpStatusCode.Forbidden)
+        {
+            var errorResponse = await authResponse.Content.ReadFromJsonAsync<WebAuthErrorResponse>(cancellationToken: httpContext.RequestAborted);
+            if (string.Equals(errorResponse?.Status, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Redirect("/login?pending_approval=1");
+            }
+
+            return Results.Redirect("/login?error=1");
+        }
+
         if (authResponse.StatusCode == HttpStatusCode.Unauthorized)
         {
             return Results.Redirect("/login?error=1");
@@ -440,6 +456,11 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
         new(PTDocClaimTypes.AuthenticationType, "web_cookie")
     };
 
+    if (!string.IsNullOrWhiteSpace(loginResponse.Token))
+    {
+        claims.Add(new Claim(PTDocClaimTypes.ApiAccessToken, loginResponse.Token));
+    }
+
     if (loginResponse.ClinicId.HasValue)
     {
         claims.Add(new Claim(HttpTenantContextAccessor.ClinicIdClaimType, loginResponse.ClinicId.Value.ToString()));
@@ -457,6 +478,8 @@ file sealed class WebPinLoginRequest
 
 file sealed class WebPinLoginResponse
 {
+    public required string Status { get; init; }
+
     public required Guid UserId { get; init; }
 
     public required string Username { get; init; }
@@ -468,4 +491,11 @@ file sealed class WebPinLoginResponse
     public required string Role { get; init; }
 
     public Guid? ClinicId { get; init; }
+}
+
+file sealed class WebAuthErrorResponse
+{
+    public string? Status { get; init; }
+
+    public string? Error { get; init; }
 }

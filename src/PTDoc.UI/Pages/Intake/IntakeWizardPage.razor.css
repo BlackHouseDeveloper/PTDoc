@@ -12,7 +12,7 @@
     display: grid;
     gap: var(--spacing-6);
     margin: 0 auto;
-    max-width: calc(var(--spacing-16) * 7);
+    max-width: calc(var(--spacing-16) * 10);
     padding: var(--spacing-4);
 }
 
@@ -33,4 +33,10 @@
 .intake-page__not-found p {
     color: var(--muted-foreground);
     margin: 0;
+}
+
+@media (max-width: 767px) {
+    .intake-page__content {
+        padding: var(--spacing-4);
+    }
 }

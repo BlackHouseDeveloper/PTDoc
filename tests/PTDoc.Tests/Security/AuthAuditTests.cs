@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -230,6 +231,187 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.Equal("LoginFailed", records[0].EventType);
         Assert.Equal("LoginSuccess", records[1].EventType);
         Assert.Equal("Logout", records[2].EventType);
+    }
+
+    // ─── Intake audit events (Sprint UC-Beta) ────────────────────────────────
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeSubmitted_HasCorrectEventType()
+    {
+        var intakeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeSubmitted(intakeId, userId);
+
+        Assert.Equal("IntakeSubmitted", evt.EventType);
+        Assert.Equal("Info", evt.Severity);
+        Assert.True(evt.Success);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("IntakeForm", evt.EntityType);
+        Assert.Equal(intakeId, evt.EntityId);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeLocked_HasCorrectEventType()
+    {
+        var intakeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeLocked(intakeId, userId);
+
+        Assert.Equal("IntakeLocked", evt.EventType);
+        Assert.Equal("Info", evt.Severity);
+        Assert.True(evt.Success);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("IntakeForm", evt.EntityType);
+        Assert.Equal(intakeId, evt.EntityId);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeReviewed_HasCorrectEventType()
+    {
+        var intakeId = Guid.NewGuid();
+        var reviewerId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeReviewed(intakeId, reviewerId);
+
+        Assert.Equal("IntakeReviewed", evt.EventType);
+        Assert.Equal("Info", evt.Severity);
+        Assert.True(evt.Success);
+        Assert.Equal(reviewerId, evt.UserId);
+        Assert.Equal("IntakeForm", evt.EntityType);
+        Assert.Equal(intakeId, evt.EntityId);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeSubmitted_MetadataContainsNoPhiFields()
+    {
+        var evt = AuditEvent.IntakeSubmitted(Guid.NewGuid(), Guid.NewGuid());
+
+        // Metadata must not contain PHI such as patient name, DOB, or clinical content
+        Assert.DoesNotContain("PatientName", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DateOfBirth", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ResponseJson", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Consents", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeSubmitted_MergesConsentSummaryWithoutPhi()
+    {
+        var summary = IntakeConsentJson.CreateAuditSummary(new IntakeConsentPacket
+        {
+            HipaaAcknowledged = true,
+            CommunicationEmailConsent = true,
+            CommunicationEmail = "patient@example.com",
+            AuthorizedContacts =
+            [
+                new AuthorizedContact { Name = "Pat Smith", PhoneNumber = "555-0100", Relationship = "Parent" }
+            ]
+        });
+
+        var evt = AuditEvent.IntakeSubmitted(Guid.NewGuid(), Guid.NewGuid(), summary);
+
+        Assert.True(evt.Metadata.ContainsKey("HipaaAcknowledged"));
+        Assert.True(evt.Metadata.ContainsKey("AuthorizedContactCount"));
+        Assert.DoesNotContain("CommunicationEmail", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CommunicationPhoneNumber", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Name", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task LogIntakeEventAsync_IntakeSubmitted_PersistsToAuditLog()
+    {
+        var intakeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeSubmitted(intakeId, userId);
+
+        await _auditService.LogIntakeEventAsync(evt);
+
+        var record = await _context.AuditLogs
+            .Where(a => a.EventType == "IntakeSubmitted")
+            .FirstOrDefaultAsync();
+
+        Assert.NotNull(record);
+        Assert.Equal("IntakeSubmitted", record.EventType);
+        Assert.Equal(userId, record.UserId);
+        Assert.Equal("IntakeForm", record.EntityType);
+        Assert.Equal(intakeId, record.EntityId);
+        Assert.True(record.Success);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task LogIntakeEventAsync_IntakeReviewed_PersistsToAuditLog()
+    {
+        var intakeId = Guid.NewGuid();
+        var reviewerId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeReviewed(intakeId, reviewerId);
+
+        await _auditService.LogIntakeEventAsync(evt);
+
+        var record = await _context.AuditLogs
+            .Where(a => a.EventType == "IntakeReviewed")
+            .FirstOrDefaultAsync();
+
+        Assert.NotNull(record);
+        Assert.Equal("IntakeReviewed", record.EventType);
+        Assert.Equal(reviewerId, record.UserId);
+        Assert.Equal("IntakeForm", record.EntityType);
+        Assert.Equal(intakeId, record.EntityId);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_IntakeConsentRevoked_HasCorrectEventTypeAndNoPhi()
+    {
+        var intakeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var evt = AuditEvent.IntakeConsentRevoked(
+            intakeId,
+            userId,
+            ["hipaaAcknowledged", "communicationEmailConsent"],
+            hasWrittenReference: true);
+
+        Assert.Equal("IntakeConsentRevoked", evt.EventType);
+        Assert.Equal("Info", evt.Severity);
+        Assert.True(evt.Success);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("IntakeForm", evt.EntityType);
+        Assert.Equal(intakeId, evt.EntityId);
+        Assert.DoesNotContain("PatientName", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DateOfBirth", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CommunicationEmail", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CommunicationPhoneNumber", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task LogIntakeEventAsync_IntakeConsentRevoked_PersistsToAuditLog()
+    {
+        var intakeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.IntakeConsentRevoked(
+            intakeId,
+            userId,
+            ["hipaaAcknowledged"],
+            hasWrittenReference: false);
+
+        await _auditService.LogIntakeEventAsync(evt);
+
+        var record = await _context.AuditLogs
+            .Where(a => a.EventType == "IntakeConsentRevoked")
+            .FirstOrDefaultAsync();
+
+        Assert.NotNull(record);
+        Assert.Equal("IntakeConsentRevoked", record.EventType);
+        Assert.Equal(userId, record.UserId);
+        Assert.Equal("IntakeForm", record.EntityType);
+        Assert.Equal(intakeId, record.EntityId);
+        Assert.DoesNotContain("patient@example.com", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     public async ValueTask DisposeAsync()

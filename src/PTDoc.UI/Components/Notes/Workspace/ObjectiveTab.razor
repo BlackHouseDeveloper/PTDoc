@@ -183,7 +183,7 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public string PatientId { get; set; } = string.Empty;
 
-    // Goal sidebar data — passed from parent (TODO: wire to IPatientGoalService)
+    // Goal sidebar data is provided by the parent container.
     [Parameter] public int GoalCount { get; set; }
     [Parameter] public int GoalProgressPercent { get; set; }
     [Parameter] public int ShortTermGoalCount { get; set; }
@@ -240,14 +240,14 @@
 
     private void HandleAddExercise()
     {
-        // TODO: open exercise picker modal; for now stub an entry
+        // Adds a placeholder entry until the exercise picker is introduced.
         _vm.TherapeuticExercises.Add($"Exercise {_vm.TherapeuticExercises.Count + 1} (stub)");
         VmChanged.InvokeAsync(_vm);
     }
 
     private void HandleAddTechnique()
     {
-        // TODO: open technique picker modal; for now stub an entry
+        // Adds a placeholder entry until the technique picker is introduced.
         _vm.ManualTechniques.Add($"Technique {_vm.ManualTechniques.Count + 1} (stub)");
         VmChanged.InvokeAsync(_vm);
     }

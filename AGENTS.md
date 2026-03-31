@@ -59,11 +59,20 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PFP_DB_PATH`: overrides the SQLite database path used by `PTDoc-Foundry.sh`.
 - `API_URL`: overrides the API URL used by `run-ptdoc.sh` and defaults to `http://localhost:5170`.
 - `SKIP_API`: if set, `run-ptdoc.sh` will not auto-start the API.
+- `SKIP_SECRET_SETUP`: if set, `run-ptdoc.sh` will not auto-run `setup-dev-secrets.sh` when API startup fails because signing keys are missing.
 - `PTDOC_SERIAL_BUILD=1`: makes `cleanbuild-ptdoc.sh` use serialized builds (`-m:1` and `BuildInParallel=false`).
 - `PTDoc_API_BASE_URL`: overrides the MAUI client base URL.
 
 ## Platform Notes
 
 - `run-ptdoc.sh` auto-starts the API for Android, iOS, and Mac Catalyst unless `SKIP_API` is set.
+- `run-ptdoc.sh` considers the API ready only after `GET /health/live` succeeds; if the API exits because dev signing keys are missing, it will try `./setup-dev-secrets.sh` once unless `SKIP_SECRET_SETUP` is set.
 - Android emulator traffic should use `http://10.0.2.2:5170`; iOS simulator and Mac Catalyst use `http://localhost:5170`.
 - `cleanbuild-ptdoc.sh` logs to `build-logs/cleanbuild-*.log`, runs Debug and Release builds, then runs tests discovered under `src/` and `tests/` matching `*.Tests.csproj`.
+
+## Operational Diagnostics
+
+- Liveness check: `curl http://localhost:5170/health/live`
+- Readiness check: `curl http://localhost:5170/health/ready`
+- Authenticated DB diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db`
+- Detect SQLite model drift: `EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api`

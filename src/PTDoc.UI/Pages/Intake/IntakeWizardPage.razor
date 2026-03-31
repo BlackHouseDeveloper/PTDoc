@@ -2,7 +2,10 @@
 @page "/intake/{PatientId:guid}"
 @rendermode InteractiveServer
 
+@using System.Net
+@using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Services
+@using PTDoc.UI.Components.Auth
 @using PTDoc.UI.Components.Intake
 @using PTDoc.UI.Components.Intake.Models
 @using PTDoc.UI.Components.Intake.Steps
@@ -11,11 +14,12 @@
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <PageTitle>Patient Intake - PTDocs +</PageTitle>
 
 <div class="intake-page" data-testid="intake-page">
-    <GlobalPageHeader />
+    <GlobalPageHeader Configuration="@HeaderConfiguration" />
 
     <div class="intake-page__shell">
         <PainProgressBar CurrentStep="@State.CurrentStep" />
@@ -26,11 +30,25 @@
                 <section class="intake-page__not-found">
                     <h2>Intake Draft Not Found</h2>
                     <p>We could not locate an intake draft for this patient link.</p>
-                    <p>TODO: Add secure public token intake flow and recovery options.</p>
+                    <p>If you received this link via email or text, please check the link is correct. Contact your care provider for assistance.</p>
                 </section>
             }
             else
             {
+                @if (ShowClinicianPatientSelector)
+                {
+                    <RoleGate Roles="@ClinicianSelectorRoles">
+                        <ClinicianPatientSelector SelectedPatientId="@State.PatientId" SelectedPatientIdChanged="HandleClinicianPatientSelectedAsync" Disabled="@State.IsLocked" />
+                    </RoleGate>
+                }
+
+                @if (State.IsLocked)
+                {
+                    <section class="intake-page__notice" role="status">
+                        <p>This intake has been submitted and locked. Editing is disabled.</p>
+                    </section>
+                }
+
                 @switch (State.CurrentStep)
                 {
                     case IntakeStep.Demographics:
@@ -43,7 +61,7 @@
                         <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
                         break;
                     case IntakeStep.Review:
-                        <ReviewStep State="@State" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" />
+                        <ReviewStep State="@State" ValidationMessage="@_validationMessage" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" OnEditStep="HandleEditStepAsync" />
                         break;
                     default:
                         <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
@@ -61,13 +79,29 @@
     private IntakeWizardState State { get; set; } = new();
     private Guid? _loadedPatientId;
     private bool _draftNotFound;
+    private bool _canSelectPatient;
     private string? _validationMessage;
+    private IDisposable? _navGuard;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+    private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner}";
+    private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+
+    protected override void OnInitialized()
+    {
+        _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChanging);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        var user = authState.User;
+        var isAuthenticated = user.Identity?.IsAuthenticated == true;
+
+        _canSelectPatient = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.Owner));
 
         State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || !isAuthenticated;
 
@@ -126,6 +160,12 @@
 
     private async Task HandleDemographicsContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         _validationMessage = null;
         _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -148,34 +188,57 @@
 
         if (!State.PatientId.HasValue)
         {
-            var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
-            State.PatientId = patientId;
-            _loadedPatientId = patientId;
+            try
+            {
+                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
+                State.PatientId = patientId;
+                _loadedPatientId = patientId;
 
-            // TODO: Persist draft locally first (SQLite) and then sync via service.
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+                await IntakeService.SaveDraftAsync(ToDraft(State));
 
-            NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
+                NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
+            }
+            catch (HttpRequestException ex)
+            {
+                _validationMessage = ToUserFacingApiError(ex);
+            }
+
             return;
         }
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
-        await IntakeService.SaveDraftAsync(ToDraft(State));
+        try
+        {
+            await IntakeService.SaveDraftAsync(ToDraft(State));
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
     }
 
     private async Task HandlePainAssessmentContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         State.CurrentStep = IntakeStep.PainDetails;
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
         await SaveDraftIfPossibleAsync();
     }
 
     private async Task HandlePainDetailsContinueAsync()
     {
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         State.CurrentStep = IntakeStep.Review;
 
-        // TODO: Persist draft locally first (SQLite) and then sync via service.
         await SaveDraftIfPossibleAsync();
     }
 
@@ -187,18 +250,46 @@
         {
             State.CurrentStep = (IntakeStep)((int)State.CurrentStep - 1);
         }
-
-        // TODO: Prevent browser back from leaving wizard in patient mode without confirmation.
         return Task.CompletedTask;
+    }
+
+    private ValueTask OnLocationChanging(LocationChangingContext context)
+    {
+        if (!State.IsPatientMode || State.IsLocked || !State.IsDirty || State.IsSubmitting)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        context.PreventNavigation();
+        _validationMessage = "You have unsaved intake changes. Continue through the wizard to save before leaving this page.";
+        return new ValueTask(InvokeAsync(StateHasChanged));
     }
 
     private async Task HandleSubmitAsync()
     {
         _validationMessage = null;
 
+        if (State.IsLocked)
+        {
+            _validationMessage = "This intake is locked and cannot be modified.";
+            return;
+        }
+
         if (!State.HipaaAcknowledged)
         {
             _validationMessage = "You must acknowledge the HIPAA Privacy Notice before submitting.";
+            return;
+        }
+
+        if (!State.ConsentToTreatAcknowledged)
+        {
+            _validationMessage = "You must consent to receive physical therapy treatment before submitting.";
+            return;
+        }
+
+        if (!HasRequiredReviewConsents(State))
+        {
+            _validationMessage = "Complete the required agreements and ensure HIPAA and treatment consent are not revoked before submitting.";
             return;
         }
 
@@ -212,11 +303,15 @@
 
         try
         {
-            // TODO: Add full validation for all required fields before final submit.
             await IntakeService.SubmitAsync(ToDraft(State));
             State.IsDirty = false;
-
-            // TODO: lock intake after final submission and show confirmation screen.
+            State.IsSubmitted = true;
+            State.IsLocked = true;
+            _validationMessage = "Intake submitted successfully. This form is now locked.";
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
         }
         finally
         {
@@ -226,16 +321,74 @@
 
     private Task HandleStateChangedAsync()
     {
+        if (State.IsLocked)
+        {
+            return Task.CompletedTask;
+        }
+
         State.IsDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleEditStepAsync(PTDoc.Core.Models.IntakeStep step)
+    {
+        if (!State.IsLocked)
+        {
+            State.CurrentStep = step;
+            _validationMessage = null;
+        }
+
         return Task.CompletedTask;
     }
 
     private async Task SaveDraftIfPossibleAsync()
     {
-        if (State.PatientId.HasValue)
+        if (State.PatientId.HasValue && !State.IsLocked)
         {
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            try
+            {
+                await IntakeService.SaveDraftAsync(ToDraft(State));
+            }
+            catch (HttpRequestException ex)
+            {
+                _validationMessage = ToUserFacingApiError(ex);
+            }
         }
+    }
+
+    private static string ToUserFacingApiError(HttpRequestException ex)
+    {
+        return ex.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => "Your session has expired or is missing API authorization. Please sign in again.",
+            HttpStatusCode.Forbidden => "You do not have permission to modify this intake.",
+            _ => "We could not save your intake right now. Please try again."
+        };
+    }
+
+    public void Dispose()
+    {
+        _navGuard?.Dispose();
+    }
+
+    private Task HandleClinicianPatientSelectedAsync(Guid? selectedPatientId)
+    {
+        if (!selectedPatientId.HasValue)
+        {
+            State = new IntakeWizardState
+            {
+                CurrentStep = IntakeStep.Demographics,
+                IsPatientMode = State.IsPatientMode
+            };
+            _loadedPatientId = null;
+            _draftNotFound = false;
+            _validationMessage = null;
+            _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+            return Task.CompletedTask;
+        }
+
+        NavigationManager.NavigateTo($"/intake/{selectedPatientId.Value}");
+        return Task.CompletedTask;
     }
 
     private string GetModeQuery()
@@ -250,6 +403,20 @@
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
             HipaaAcknowledged = state.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
+            TermsOfServiceAccepted = state.TermsOfServiceAccepted,
+            AccuracyConfirmed = state.AccuracyConfirmed,
+            RevokeHipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
+            RevokeTreatmentConsent = state.RevokeTreatmentConsent,
+            RevokeMarketingCommunications = state.RevokeMarketingCommunications,
+            RevokePhiRelease = state.RevokePhiRelease,
+            AllowPhoneCalls = state.AllowPhoneCalls,
+            AllowTextMessages = state.AllowTextMessages,
+            AllowEmailMessages = state.AllowEmailMessages,
+            DryNeedlingEligible = state.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = state.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = state.PhiReleaseAuthorized,
+            BillingConsentAuthorized = state.BillingConsentAuthorized,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,
@@ -273,7 +440,9 @@
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
             SelectedBodyRegion = SerializeSelectedRegions(state),
-            PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            IsSubmitted = state.IsSubmitted,
+            IsLocked = state.IsLocked
         };
     }
 
@@ -286,9 +455,20 @@
                 ? (IntakeStep)draft.CurrentStep
                 : IntakeStep.Demographics,
             HipaaAcknowledged = draft.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = draft.ConsentToTreatAcknowledged,
+            AccuracyConfirmed = draft.AccuracyConfirmed,
+            RevokeTreatmentConsent = draft.RevokeTreatmentConsent,
+            RevokeMarketingCommunications = draft.RevokeMarketingCommunications,
+            RevokePhiRelease = draft.RevokePhiRelease,
+            AllowPhoneCalls = draft.AllowPhoneCalls,
+            AllowTextMessages = draft.AllowTextMessages,
+            AllowEmailMessages = draft.AllowEmailMessages,
+            DryNeedlingEligible = draft.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = draft.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = draft.PhiReleaseAuthorized,
+            BillingConsentAuthorized = draft.BillingConsentAuthorized,
             FullName = draft.FullName,
             DateOfBirth = draft.DateOfBirth,
-            SexAtBirth = draft.SexAtBirth,
             EmailAddress = draft.EmailAddress,
             PhoneNumber = draft.PhoneNumber,
             AddressLine1 = draft.AddressLine1,
@@ -310,7 +490,38 @@
             MedicalHistoryNotes = draft.MedicalHistoryNotes,
             SelectedBodyRegion = draft.SelectedBodyRegion,
             SelectedBodyRegions = DeserializeSelectedRegions(draft.SelectedBodyRegion),
-            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            IsSubmitted = draft.IsSubmitted,
+            IsLocked = draft.IsLocked
+        };
+    }
+
+    private HeaderConfiguration HeaderConfiguration => new()
+    {
+        Route = "/intake",
+        Title = State.CurrentStep == IntakeStep.Review ? "Patient Intake Review" : "Patient Intake",
+        Subtitle = $"Step {(int)State.CurrentStep + 1} of 4 • {GetStepTitle(State.CurrentStep)}",
+        ShowSyncControls = false,
+        ShowStatusBadge = false
+    };
+
+    private static bool HasRequiredReviewConsents(IntakeWizardState state)
+    {
+        return state.HipaaAcknowledged
+            && state.TermsOfServiceAccepted
+            && state.AccuracyConfirmed
+            && !state.RevokeHipaaPrivacyNotice
+            && !state.RevokeTreatmentConsent;
+    }
+
+    private static string GetStepTitle(IntakeStep step)
+    {
+        return step switch
+        {
+            IntakeStep.Demographics => "Demographics",
+            IntakeStep.PainAssessment => "Pain Assessment",
+            IntakeStep.PainDetails => "Pain Details",
+            _ => "Review"
         };
     }
 

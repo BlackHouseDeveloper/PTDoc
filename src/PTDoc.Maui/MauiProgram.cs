@@ -42,8 +42,11 @@ public static class MauiProgram
 		builder.Services.AddScoped<IThemeService, MauiThemeService>();
 		builder.Services.AddScoped<ISyncService, SyncService>();
 		builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
-		builder.Services.AddScoped<IIntakeService, MockIntakeService>();
+		builder.Services.AddScoped<IIntakeService, IntakeApiService>();
+		builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 		builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+		builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
+		builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 		builder.Services.AddScoped<IIntakeInviteService, MockIntakeInviteService>();
 		builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 		builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();

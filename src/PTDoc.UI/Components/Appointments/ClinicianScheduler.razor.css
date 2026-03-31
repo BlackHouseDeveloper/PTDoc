@@ -1,11 +1,15 @@
 .clinician-scheduler {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .scheduler-viewport {
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
 }
 
 .scheduler-grid {
@@ -14,11 +18,8 @@
     /* Guarantee at least 65px per slot (12-slot day = 780px) so 45-min blocks
        are ~49px — enough for two lines of text. The viewport scrolls if needed. */
     min-height: max(100%, 780px);
-    width: 100%;
-}
-
-.scheduler-grid.week-view {
-    min-width: max-content;
+    width: max-content;
+    min-width: 100%;
 }
 
 .time-column {
@@ -128,10 +129,15 @@
     position: absolute;
     left: var(--spacing-1);
     right: var(--spacing-1);
+    appearance: none;
+    display: block;
+    margin: 0;
     background: var(--background);
     border: 2px solid var(--border);
     border-radius: calc(var(--radius-lg) + 4px);
     padding: 2px var(--spacing-2);
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition: box-shadow var(--transition-fast);
     box-sizing: border-box;
@@ -140,6 +146,11 @@
 
 .appointment-block:hover {
     box-shadow: var(--shadow-md);
+}
+
+.appointment-block:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .appointment-block.in-progress {
@@ -238,8 +249,6 @@
     }
 
     .scheduler-viewport {
-        /* Keep horizontal + vertical scrolling available in narrow layouts. */
-        overflow: auto;
         min-height: 24rem;
     }
 

@@ -8,7 +8,7 @@
     - Populated list
     - Empty state: Show friendly "No recent exports yet" message
     
-    TODO: Pull from audit log system (no PHI stored in logs)
+    Current version uses local sample activity data for UI preview.
 *@
 
 <div class="recent-activity-panel">
@@ -74,7 +74,7 @@
     [Parameter]
     public List<ExportActivityItem> ActivityItems { get; set; } = new();
 
-    // Mock data for demo (TODO: Replace with real data from audit log service)
+    // Local sample data used to demonstrate UI behavior when no activity is supplied.
     protected override void OnInitialized()
     {
         if (ActivityItems.Count == 0)

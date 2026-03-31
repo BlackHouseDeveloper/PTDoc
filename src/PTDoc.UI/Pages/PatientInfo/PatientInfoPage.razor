@@ -4,7 +4,13 @@
 @rendermode InteractiveServer
 @using PTDoc.UI.Components.PatientInfo
 @using PTDoc.UI.Components.PatientInfo.Models
+@using PTDoc.Application.Services
+@using PTDoc.Application.DTOs
+@using System.Text.Json
 @inject NavigationManager Navigation
+@inject IPatientService PatientService
+@inject IToastService ToastService
+@implements IDisposable
 
 <PageTitle>Patient &amp; Payer Information - PTDoc</PageTitle>
 
@@ -67,9 +73,16 @@
     [Parameter] public string? Id { get; set; }
 
     private PatientInfoPageVm Vm { get; set; } = new();
+    private IDisposable? _navGuard;
+
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     // ── Dropdown option lists ────────────────────────────────────────────────
-    // TODO: fetch real option lists from IPatientService or a lookup service.
+    // These are clinical constants used for select UIs, not API-driven data.
     private IReadOnlyList<PatientInfoSelectOptionVm> ProviderTypeOptions { get; } = new[]
     {
         new PatientInfoSelectOptionVm("commercial", "Commercial"),
@@ -109,39 +122,79 @@
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        LoadSampleData();
+        await LoadPatientAsync();
+        _navGuard = Navigation.RegisterLocationChangingHandler(OnLocationChanging);
     }
 
-    /// <summary>
-    /// Minimal sample data set for local UI preview.
-    /// TODO: fetch existing patient/payer/authorization info from IPatientService by patientId.
-    /// </summary>
-    private void LoadSampleData()
+    private async Task LoadPatientAsync()
     {
-        var patientSnapshot = GetPatientSnapshot(Id);
+        if (!Guid.TryParse(Id, out var patientGuid))
+        {
+            Vm = new PatientInfoPageVm { PatientDisplayName = "New Patient" };
+            return;
+        }
+
+        var patient = await PatientService.GetByIdAsync(patientGuid);
+        if (patient is null)
+        {
+            ToastService.ShowError("Patient not found.");
+            Vm = new PatientInfoPageVm { PatientDisplayName = "Patient Not Found" };
+            return;
+        }
+
+        PayerInfoStorage? payer = null;
+        if (!string.IsNullOrWhiteSpace(patient.PayerInfoJson) && patient.PayerInfoJson != "{}")
+        {
+            try { payer = JsonSerializer.Deserialize<PayerInfoStorage>(patient.PayerInfoJson, SerializerOptions); }
+            catch { /* ignore – treat as empty */ }
+        }
 
         Vm = new PatientInfoPageVm
         {
-            PatientDisplayName = patientSnapshot.DisplayName,
+            PatientDisplayName = patient.FirstName + " " + patient.LastName,
             PatientPayer = new PatientPayerInfoVm
             {
-                PatientName = patientSnapshot.DisplayName,
-                DateOfBirthText = patientSnapshot.DateOfBirth ?? string.Empty,
-                InsuranceCompanyName = patientSnapshot.InsuranceProvider ?? string.Empty,
-                // All other fields remain empty by default if we do not have that data yet.
+                PatientName = patient.FirstName + " " + patient.LastName,
+                DateOfBirthText = patient.DateOfBirth == default ? string.Empty : patient.DateOfBirth.ToString("M/d/yyyy"),
+                InsuranceCompanyName = payer?.InsuranceCompanyName ?? string.Empty,
+                MemberIdPolicyNumber = payer?.MemberIdPolicyNumber ?? string.Empty,
+                GroupNumber = payer?.GroupNumber ?? string.Empty,
+                ProviderType = payer?.ProviderType ?? string.Empty,
+                InsurancePriority = payer?.InsurancePriority ?? string.Empty,
+                YearType = payer?.YearType ?? string.Empty,
+                EffectiveStartDate = payer?.EffectiveStartDate ?? string.Empty,
+                EffectiveEndDate = payer?.EffectiveEndDate ?? string.Empty,
             },
             Authorization = new AuthorizationDetailsVm
             {
-                AuthorizationNumber = patientSnapshot.AuthorizationNumber ?? string.Empty,
+                AuthorizationNumber = payer?.AuthorizationNumber ?? string.Empty,
+                DateAuthorizationReceived = payer?.DateAuthorizationReceived ?? string.Empty,
+                AuthorizationStartDate = payer?.AuthorizationStartDate ?? string.Empty,
+                AuthorizationEndDate = payer?.AuthorizationEndDate ?? string.Empty,
+                NumberOfVisitsOrUnitsAuthorized = payer?.NumberOfVisitsOrUnitsAuthorized ?? string.Empty,
             },
-            Utilization = new UtilizationVm(),
+            Utilization = new UtilizationVm
+            {
+                VisitsUsed = payer?.VisitsUsed ?? string.Empty,
+                VisitsRemaining = payer?.VisitsRemaining ?? string.Empty,
+                DateOfFirstVisitUnderAuthorization = payer?.DateOfFirstVisitUnderAuthorization ?? string.Empty,
+                NotesComments = payer?.NotesComments ?? string.Empty,
+            },
             SupportingDocs = new SupportingDocumentationVm
             {
-                ReferringPhysicianName = patientSnapshot.ReferringPhysician ?? string.Empty,
+                ReferringPhysicianName = payer?.ReferringPhysicianName ?? string.Empty,
+                PhysicianNpiNumber = payer?.PhysicianNpiNumber ?? string.Empty,
+                CaseManagerAdjusterContactInfo = payer?.CaseManagerAdjusterContactInfo ?? string.Empty,
             },
-            AdditionalSettings = new AdditionalAuthorizationSettingsVm(),
+            AdditionalSettings = new AdditionalAuthorizationSettingsVm
+            {
+                AuthorizationStatus = payer?.AuthorizationStatus ?? string.Empty,
+                AuthorizationType = payer?.AuthorizationType ?? string.Empty,
+                ReAuthorizationDueDate = payer?.ReAuthorizationDueDate ?? string.Empty,
+                VisitAlertThreshold = payer?.VisitAlertThreshold ?? string.Empty,
+            },
             IsDirty = false,
             IsSaving = false,
         };
@@ -158,80 +211,128 @@
 
     private async Task HandleSave()
     {
-        if (!Vm.IsDirty || HasPageErrors || Vm.IsSaving)
+        if (!Vm.IsDirty || HasPageErrors || Vm.IsSaving) return;
+
+        if (!Guid.TryParse(Id, out var patientGuid))
         {
+            ToastService.ShowError("Cannot save: invalid patient ID.");
             return;
         }
 
         Vm.IsSaving = true;
         StateHasChanged();
 
-        // TODO: persist changes via IPatientService.UpdatePatientInfo(...)
-        await Task.Delay(500); // Stub: simulate async save
+        try
+        {
+            var payerInfo = new PayerInfoStorage
+            {
+                InsuranceCompanyName = Vm.PatientPayer.InsuranceCompanyName,
+                MemberIdPolicyNumber = Vm.PatientPayer.MemberIdPolicyNumber,
+                GroupNumber = Vm.PatientPayer.GroupNumber,
+                ProviderType = Vm.PatientPayer.ProviderType,
+                InsurancePriority = Vm.PatientPayer.InsurancePriority,
+                YearType = Vm.PatientPayer.YearType,
+                EffectiveStartDate = Vm.PatientPayer.EffectiveStartDate,
+                EffectiveEndDate = Vm.PatientPayer.EffectiveEndDate,
+                AuthorizationNumber = Vm.Authorization.AuthorizationNumber,
+                DateAuthorizationReceived = Vm.Authorization.DateAuthorizationReceived,
+                AuthorizationStartDate = Vm.Authorization.AuthorizationStartDate,
+                AuthorizationEndDate = Vm.Authorization.AuthorizationEndDate,
+                NumberOfVisitsOrUnitsAuthorized = Vm.Authorization.NumberOfVisitsOrUnitsAuthorized,
+                VisitsUsed = Vm.Utilization.VisitsUsed,
+                VisitsRemaining = Vm.Utilization.VisitsRemaining,
+                DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
+                NotesComments = Vm.Utilization.NotesComments,
+                CaseManagerAdjusterContactInfo = Vm.SupportingDocs.CaseManagerAdjusterContactInfo,
+                ReferringPhysicianName = Vm.SupportingDocs.ReferringPhysicianName,
+                PhysicianNpiNumber = Vm.SupportingDocs.PhysicianNpiNumber,
+                AuthorizationStatus = Vm.AdditionalSettings.AuthorizationStatus,
+                AuthorizationType = Vm.AdditionalSettings.AuthorizationType,
+                ReAuthorizationDueDate = Vm.AdditionalSettings.ReAuthorizationDueDate,
+                VisitAlertThreshold = Vm.AdditionalSettings.VisitAlertThreshold,
+            };
 
-        Vm.IsSaving = false;
-        Vm.IsDirty = false;
-        // TODO: Show non-blocking success toast using the existing toast system.
-        StateHasChanged();
+            var updateRequest = new UpdatePatientRequest
+            {
+                PayerInfoJson = JsonSerializer.Serialize(payerInfo, SerializerOptions)
+            };
+
+            await PatientService.UpdateAsync(patientGuid, updateRequest);
+            Vm.IsDirty = false;
+            ToastService.ShowSuccess("Patient information saved.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PatientInfo] Save failed: {ex.Message}");
+            ToastService.ShowError("Failed to save. Please try again.");
+        }
+        finally
+        {
+            Vm.IsSaving = false;
+            StateHasChanged();
+        }
     }
 
     private void HandleBack()
     {
-        // TODO: Implement unsaved-changes guard (confirm navigation) if IsDirty == true.
         if (!string.IsNullOrWhiteSpace(Id))
         {
             Navigation.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}");
             return;
         }
-
         Navigation.NavigateTo("/patients");
     }
 
-    private static PatientInfoPatientSnapshot GetPatientSnapshot(string? id)
+    private ValueTask OnLocationChanging(LocationChangingContext context)
     {
-        // TODO: fetch existing patient/payer/authorization info from IPatientService by patientId.
-        // UI-only fallback: hydrate from known patient sample data when available.
-        return id switch
+        if (Vm.IsDirty)
         {
-            null or "" => PatientInfoPatientSnapshot.Default,
-            _ => new PatientInfoPatientSnapshot
-            {
-                Id = id,
-                DisplayName = "Sarah Johnson",
-                DateOfBirth = "3/14/1985",
-                ReferringPhysician = "Dr. Smith",
-                InsuranceProvider = "Blue Cross",
-                AuthorizationNumber = "AUTH-2024-001"
-            }
-        };
+            context.PreventNavigation();
+            ToastService.ShowWarning("You have unsaved changes. Save or discard them before leaving.");
+        }
+        return ValueTask.CompletedTask;
     }
 
-    private sealed class PatientInfoPatientSnapshot
-    {
-        public static readonly PatientInfoPatientSnapshot Default = new()
-        {
-            Id = string.Empty,
-            DisplayName = "Sarah Johnson",
-            DateOfBirth = string.Empty,
-            ReferringPhysician = "Dr. John Smith",
-            InsuranceProvider = string.Empty,
-            AuthorizationNumber = string.Empty
-        };
+    public void Dispose() => _navGuard?.Dispose();
 
-        public string Id { get; init; } = string.Empty;
-        public string DisplayName { get; init; } = string.Empty;
-        public string? DateOfBirth { get; init; }
-        public string? ReferringPhysician { get; init; }
-        public string? InsuranceProvider { get; init; }
-        public string? AuthorizationNumber { get; init; }
+    /// <summary>
+    /// Internal DTO for serializing all payer and authorization fields into
+    /// <see cref="PatientResponse.PayerInfoJson"/>.
+    /// </summary>
+    private sealed class PayerInfoStorage
+    {
+        public string? InsuranceCompanyName { get; set; }
+        public string? MemberIdPolicyNumber { get; set; }
+        public string? GroupNumber { get; set; }
+        public string? ProviderType { get; set; }
+        public string? InsurancePriority { get; set; }
+        public string? YearType { get; set; }
+        public string? EffectiveStartDate { get; set; }
+        public string? EffectiveEndDate { get; set; }
+        public string? AuthorizationNumber { get; set; }
+        public string? DateAuthorizationReceived { get; set; }
+        public string? AuthorizationStartDate { get; set; }
+        public string? AuthorizationEndDate { get; set; }
+        public string? NumberOfVisitsOrUnitsAuthorized { get; set; }
+        public string? VisitsUsed { get; set; }
+        public string? VisitsRemaining { get; set; }
+        public string? DateOfFirstVisitUnderAuthorization { get; set; }
+        public string? NotesComments { get; set; }
+        public string? CaseManagerAdjusterContactInfo { get; set; }
+        public string? ReferringPhysicianName { get; set; }
+        public string? PhysicianNpiNumber { get; set; }
+        public string? AuthorizationStatus { get; set; }
+        public string? AuthorizationType { get; set; }
+        public string? ReAuthorizationDueDate { get; set; }
+        public string? VisitAlertThreshold { get; set; }
     }
 
     // ── Validation ───────────────────────────────────────────────────────────
-    // UI-only stubs. TODO: Replace with shared validation rules or FluentValidation
-    // when backend model is known.
+
+    // Field-level UI validation before the save request is sent to the API.
+    // Server-side validation errors are shown via ToastService.ShowError in HandleSave.
 
     private bool HasPageErrors => Vm.FieldErrors.Count > 0;
-
     private Dictionary<string, string> GetPanelErrors(string panel)
     {
         // Return a subset of FieldErrors keyed for that panel, filtering by prefix.
@@ -247,7 +348,6 @@
         ValidateNumericField("authUnits", Vm.Authorization.NumberOfVisitsOrUnitsAuthorized);
         ValidateNumericField("alertThreshold", Vm.AdditionalSettings.VisitAlertThreshold);
         ValidateNpi("npi", Vm.SupportingDocs.PhysicianNpiNumber);
-        // TODO: Map server-side validation errors to FieldErrors.
     }
 
     private void ValidateNumericField(string key, string value)
@@ -262,11 +362,10 @@
     private void ValidateNpi(string key, string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
-        // Basic UI-only check: 10 digits only.
+        // Basic format check: NPI must be exactly 10 digits (HIPAA standard).
         if (value.Trim().Length != 10 || !value.Trim().All(char.IsDigit))
         {
             Vm.FieldErrors[key] = "NPI must be exactly 10 digits.";
         }
-        // TODO: Validate NPI via server/API if required.
     }
 }

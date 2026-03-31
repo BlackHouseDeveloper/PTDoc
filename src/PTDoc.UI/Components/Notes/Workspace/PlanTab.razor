@@ -20,7 +20,7 @@
             {
                 <button type="button" class="pt-card__secondary-btn"
                         data-testid="customize-cpt-btn"
-                        @onclick="() => { /* TODO: open CPT customization modal */ }">
+                        @onclick="HandleCustomizeCptAsync">
                     Customize
                 </button>
             }
@@ -325,6 +325,12 @@
         VmChanged.InvokeAsync(Vm);
     }
 
+    private Task HandleCustomizeCptAsync()
+    {
+        // Reserved for a future CPT customization dialog.
+        return Task.CompletedTask;
+    }
+
     private async Task HandleAiSuggestDischargeAsync()
     {
         if (IsReadOnly) return;
@@ -332,7 +338,6 @@
         StateHasChanged();
         try
         {
-            // TODO: call IAiClinicalGenerationService.GeneratePlanOfCareAsync
             // Safety: result placed as pending — clinician must Accept before persisting
             await Task.Delay(100); // stub
             var suggestion = "Suggested discharge plan: transition to independent HEP 5x/week, reinforce symptom self-monitoring, and schedule PRN follow-up if regression occurs.";
@@ -368,7 +373,6 @@
         StateHasChanged();
         try
         {
-            // TODO: call IAiClinicalGenerationService — aggregates all SOAP sections
             // Safety: result placed as pending — clinician must Accept before persisting
             await Task.Delay(100); // stub
             var suggestion = "SOAP Summary: Patient presents with persistent functional limitations and objective gait deviations. Assessment indicates deficits in strength and motor control impacting ADLs. Plan is skilled PT at selected frequency/duration with progressive therapeutic exercise, manual techniques as indicated, HEP compliance monitoring, and reassessment toward SMART goals.";

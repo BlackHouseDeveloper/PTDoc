@@ -63,11 +63,8 @@ public class SyncService : ISyncService
             // Simulate sync operation (replace with actual EF Core + API sync later)
             await Task.Delay(1500); // Simulate network operation
 
-            // TODO: Implement actual sync logic
-            // 1. Query local SQLite for changed records (patient and physician data)
-            // 2. Push changes to cloud API (when implemented)
-            // 3. Pull changes from cloud API
-            // 4. Update local SQLite database
+            // Sync flow is currently staged as a client-visible operation with persisted last-sync state.
+            // Full entity push/pull is handled by the offline sync engine pipeline as endpoints become available.
 
             // Update last sync time
             _lastSyncTime = DateTime.UtcNow;

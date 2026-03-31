@@ -218,7 +218,7 @@
     private Task UpdateAssociatedSymptoms(HashSet<string> value)
     {
         _associatedSymptoms = value;
-        // TODO: Persist associated symptoms to SubjectiveVm when backend model includes this field.
+        // Stored locally until SubjectiveVm adds a dedicated associated-symptoms field.
         return VmChanged.InvokeAsync(_vm);
     }
 

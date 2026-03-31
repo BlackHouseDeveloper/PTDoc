@@ -115,6 +115,37 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task AuthenticateAsync_InactiveUser_ReturnsPendingApprovalStatus()
+    {
+        // Arrange
+        var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "pendinguser",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Pending",
+            LastName = "User",
+            Role = "PT",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        // Act
+        var result = await authService.AuthenticateAsync("pendinguser", "1234", "127.0.0.1", "TestAgent");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(AuthStatus.PendingApproval, result.Status);
+        Assert.Equal(user.Id, result.UserId);
+    }
+
+    [Fact]
     public void HashPin_SamePin_ProducesDifferentHashes()
     {
         // Act

@@ -53,8 +53,16 @@ public static class PinAuthEndpoints
             return Results.Unauthorized();
         }
 
+        if (result.Status == AuthStatus.PendingApproval)
+        {
+            return Results.Json(
+                new { status = AuthStatus.PendingApproval.ToString(), error = "Account pending admin approval." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         return Results.Ok(new PinLoginResponse
         {
+            Status = result.Status.ToString(),
             UserId = result.UserId,
             Username = result.Username,
             Token = result.Token,

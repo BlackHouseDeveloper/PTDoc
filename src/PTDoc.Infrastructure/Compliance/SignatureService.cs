@@ -13,6 +13,7 @@ namespace PTDoc.Infrastructure.Compliance;
 /// Service for managing clinical note signatures and addendums.
 /// Uses SHA-256 for deterministic signature hashing.
 /// Sprint N: Pre-sign clinical validation integrated via IClinicalRulesEngine.
+/// Sprint UC4: PTA co-sign requirement — PTA-signed Daily notes require PT countersignature.
 /// </summary>
 public class SignatureService : ISignatureService
 {
@@ -36,8 +37,9 @@ public class SignatureService : ISignatureService
     /// <summary>
     /// Signs a clinical note with SHA-256 hash of canonical content.
     /// Sprint N: Runs pre-sign clinical validation; blocking violations prevent signing.
+    /// Sprint UC4: When signerIsPta = true, sets RequiresCoSign = true on the note.
     /// </summary>
-    public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, CancellationToken ct = default)
+    public async Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, bool signerIsPta = false, CancellationToken ct = default)
     {
         var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
 
@@ -73,6 +75,43 @@ public class SignatureService : ISignatureService
             };
         }
 
+        // RQ-033: At least one ICD-10 diagnosis code required before signing.
+        var patient = await _context.Patients.FindAsync(new object[] { note.PatientId }, ct);
+        if (patient is null)
+        {
+            return new SignatureResult
+            {
+                Success = false,
+                ErrorMessage = "Patient record not found; cannot sign note without associated patient."
+            };
+        }
+
+        var diagnosisJson = patient.DiagnosisCodesJson ?? "[]";
+        bool hasDiagnosis = false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(diagnosisJson);
+            hasDiagnosis = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
+                && doc.RootElement.GetArrayLength() > 0;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
+        catch (ArgumentException)
+        {
+            /* invalid JSON — treat as no diagnoses */
+        }
+
+        if (!hasDiagnosis)
+        {
+            return new SignatureResult
+            {
+                Success = false,
+                ErrorMessage = "At least one ICD-10 diagnosis code is required before signing."
+            };
+        }
+
         // Generate canonical serialization for signature
         var canonicalContent = GenerateCanonicalContent(note);
         var signatureHash = ComputeSha256Hash(canonicalContent);
@@ -81,6 +120,17 @@ public class SignatureService : ISignatureService
         note.SignatureHash = signatureHash;
         note.SignedUtc = DateTime.UtcNow;
         note.SignedByUserId = userId;
+
+        // Sprint UC4: PTA-signed notes require PT co-signature per Medicare rules.
+        if (signerIsPta)
+        {
+            note.RequiresCoSign = true;
+            note.NoteStatus = NoteStatus.PendingCoSign;
+        }
+        else
+        {
+            note.NoteStatus = NoteStatus.Signed;
+        }
 
         await _context.SaveChangesAsync(ct);
 
@@ -92,8 +142,49 @@ public class SignatureService : ISignatureService
         {
             Success = true,
             SignatureHash = signatureHash,
-            SignedUtc = note.SignedUtc
+            SignedUtc = note.SignedUtc,
+            RequiresCoSign = note.RequiresCoSign
         };
+    }
+
+    /// <summary>
+    /// PT countersigns a PTA-authored note (co-sign requirement per Medicare rules).
+    /// The note must already be signed by PTA (RequiresCoSign = true) and not yet co-signed.
+    /// </summary>
+    public async Task<CoSignResult> CoSignNoteAsync(Guid noteId, Guid ptUserId, CancellationToken ct = default)
+    {
+        var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
+
+        if (note == null)
+        {
+            return new CoSignResult { Success = false, Status = CoSignStatus.NotFound, ErrorMessage = "Note not found" };
+        }
+
+        if (string.IsNullOrEmpty(note.SignatureHash))
+        {
+            return new CoSignResult { Success = false, Status = CoSignStatus.NotSigned, ErrorMessage = "Note has not been signed yet" };
+        }
+
+        if (!note.RequiresCoSign)
+        {
+            return new CoSignResult { Success = false, Status = CoSignStatus.DoesNotRequireCoSign, ErrorMessage = "Note does not require a co-sign" };
+        }
+
+        if (note.CoSignedByUserId.HasValue)
+        {
+            return new CoSignResult { Success = false, Status = CoSignStatus.AlreadyCoSigned, ErrorMessage = "Note has already been co-signed" };
+        }
+
+        note.CoSignedByUserId = ptUserId;
+        note.CoSignedUtc = DateTime.UtcNow;
+        note.NoteStatus = NoteStatus.Signed; // PT co-sign completes the signing workflow
+
+        await _context.SaveChangesAsync(ct);
+
+        await _auditService.LogNoteSignedAsync(
+            AuditEvent.NoteSigned(noteId, $"CoSign:{note.NoteType}", note.SignatureHash!, ptUserId), ct);
+
+        return new CoSignResult { Success = true, Status = CoSignStatus.Success, CoSignedUtc = note.CoSignedUtc };
     }
 
     /// <summary>
@@ -179,7 +270,6 @@ public class SignatureService : ISignatureService
     /// </summary>
     private static string GenerateCanonicalContent(ClinicalNote note)
     {
-        // Create deterministic representation of note content
         var canonical = new
         {
             note.PatientId,
@@ -189,11 +279,10 @@ public class SignatureService : ISignatureService
             note.CptCodesJson
         };
 
-        // Use stable JSON serialization (sorted keys, consistent formatting)
         var options = new JsonSerializerOptions
         {
             WriteIndented = false,
-            PropertyNamingPolicy = null // Use exact property names
+            PropertyNamingPolicy = null
         };
 
         return JsonSerializer.Serialize(canonical, options);

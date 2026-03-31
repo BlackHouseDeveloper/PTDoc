@@ -8,8 +8,8 @@ public class AdditionalAuthorizationSettingsVm
     public string AuthorizationStatus { get; set; } = string.Empty;
     public string AuthorizationType { get; set; } = string.Empty;
     public string ReAuthorizationDueDate { get; set; } = string.Empty;
-    // TODO: Replace with date-picker control if required.
+    // Date values remain text-based in this VM to align with existing storage format.
 
     public string VisitAlertThreshold { get; set; } = string.Empty;
-    // TODO: Confirm allowed values and whether threshold triggers UI alerts elsewhere.
+    // Threshold is interpreted by downstream alerting workflows.
 }

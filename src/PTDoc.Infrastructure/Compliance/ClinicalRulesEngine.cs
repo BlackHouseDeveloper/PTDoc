@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Data.Common;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
@@ -57,11 +59,31 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         }
 
         var results = new List<RuleEvaluationResult>();
+        var outcomeMeasureCount = await _context.OutcomeMeasureResults
+            .CountAsync(result => result.NoteId == note.Id, ct);
+        // Some test/runtime databases may not yet include PatientGoals (staggered migrations).
+        // Treat missing table as zero goals so signature validation remains available.
+        var goalCount = 0;
+        try
+        {
+            goalCount = await _context.PatientGoals
+                .CountAsync(goal => goal.PatientId == note.PatientId, ct);
+        }
+        catch (DbException ex) when (
+            ex.Message.Contains("PatientGoals", StringComparison.OrdinalIgnoreCase) &&
+            (ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) ||
+             ex.Message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase) ||
+             ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)))
+        {
+            goalCount = 0;
+        }
 
         JsonDocument? contentDoc = null;
+        StructuredValidationSnapshot? snapshot = null;
         try
         {
             contentDoc = JsonDocument.Parse(note.ContentJson);
+            snapshot = BuildStructuredSnapshot(contentDoc.RootElement, goalCount, outcomeMeasureCount);
         }
         catch (JsonException)
         {
@@ -77,18 +99,19 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         }
 
         // ── Documentation Completeness ────────────────────────────────────────
-        EvaluateObjectiveMeasures(note, results);
-        EvaluateGoals(contentDoc, note.NoteType, results);
-        EvaluatePlan(contentDoc, note.NoteType, results);
+        EvaluateObjectiveMeasures(note, outcomeMeasureCount, results);
+        EvaluateGoals(contentDoc, snapshot, note.NoteType, results);
+        EvaluatePlan(contentDoc, snapshot, note.NoteType, results);
+        EvaluateSubjectiveSection(contentDoc, snapshot, note.NoteType, results);
 
         // ── Compliance Rules ──────────────────────────────────────────────────
-        EvaluateCertificationPeriod(contentDoc, note.NoteType, results);
-        EvaluateFunctionalLimitation(contentDoc, note.NoteType, results);
+        EvaluateCertificationPeriod(contentDoc, snapshot, note.NoteType, results);
+        EvaluateFunctionalLimitation(contentDoc, snapshot, note.NoteType, results);
         EvaluateCptCombinations(note.CptCodesJson, results);
 
         // ── Medicare Rules ────────────────────────────────────────────────────
-        EvaluatePlanOfCareRequirement(contentDoc, note.NoteType, results);
-        EvaluateFunctionalReporting(contentDoc, note.NoteType, results);
+        EvaluatePlanOfCareRequirement(contentDoc, snapshot, note.NoteType, results);
+        EvaluateFunctionalReporting(contentDoc, snapshot, note.NoteType, results);
 
         contentDoc?.Dispose();
         return results.AsReadOnly();
@@ -100,9 +123,9 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// DOC_OBJECTIVE: Notes of type Evaluation or ProgressNote must have at least
     /// one objective metric recorded.
     /// </summary>
-    private static void EvaluateObjectiveMeasures(ClinicalNote note, List<RuleEvaluationResult> results)
+    private static void EvaluateObjectiveMeasures(ClinicalNote note, int outcomeMeasureCount, List<RuleEvaluationResult> results)
     {
-        if (note.ObjectiveMetrics.Any()) return;
+        if (note.ObjectiveMetrics.Any() || outcomeMeasureCount > 0) return;
 
         bool blocking = note.NoteType is NoteType.Evaluation or NoteType.ProgressNote;
         results.Add(new RuleEvaluationResult
@@ -116,14 +139,54 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     }
 
     /// <summary>
-    /// DOC_GOALS: Treatment goals are required for Evaluation and Progress Note types;
-    /// advisory for Daily notes.
+    /// SOAP_SUBJECTIVE: The subjective section must be present and non-empty before signing.
+    /// Blocking for Evaluation and ProgressNote; advisory (Warning) for Daily and Discharge.
+    /// Sprint UC-Gamma: enforces SOAP structure constraints at the service layer.
+    ///
+    /// Recognized field names (case-insensitive):
+    ///   "subjective"         — primary SOAP Subjective section
+    ///   "chiefComplaint"     — chief complaint from Evaluation intake carry-forward
+    ///   "patientComplaint"   — legacy alias used by older note templates
+    ///   "subjectiveSection"  — explicit section wrapper used in some UI serializers
     /// </summary>
-    private static void EvaluateGoals(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluateSubjectiveSection(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (contentDoc == null) return;
 
-        bool hasGoals = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasSubjective = snapshot?.HasSubjective ?? HasNonEmptyContent(contentDoc.RootElement,
+            "subjective", "chiefComplaint", "patientComplaint", "subjectiveSection");
+
+        if (!hasSubjective)
+        {
+            bool blocking = noteType is NoteType.Evaluation or NoteType.ProgressNote;
+            results.Add(new RuleEvaluationResult
+            {
+                RuleId = "SOAP_SUBJECTIVE",
+                Category = RuleCategory.DocCompleteness,
+                Severity = blocking ? ValidationSeverity.Error : ValidationSeverity.Warning,
+                Message = "Subjective section is required before signing. Document the patient's chief complaint and reported symptoms.",
+                Blocking = blocking
+            });
+        }
+    }
+
+    /// <summary>
+    /// DOC_GOALS: Treatment goals are required for Evaluation and Progress Note types;
+    /// advisory for Daily notes.
+    /// </summary>
+    private static void EvaluateGoals(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
+    {
+        if (contentDoc == null) return;
+
+        bool hasGoals = snapshot?.HasGoals ?? HasNonEmptyContent(contentDoc.RootElement,
             "goals", "goalNarratives", "shortTermGoals", "longTermGoals");
 
         if (!hasGoals && noteType is NoteType.Evaluation or NoteType.ProgressNote)
@@ -153,12 +216,16 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// <summary>
     /// DOC_PLAN: A treatment plan is required for Evaluation and Progress Note types.
     /// </summary>
-    private static void EvaluatePlan(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluatePlan(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (contentDoc == null) return;
         if (noteType is not (NoteType.Evaluation or NoteType.ProgressNote)) return;
 
-        bool hasPlan = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasPlan = snapshot?.HasPlan ?? HasNonEmptyContent(contentDoc.RootElement,
             "plan", "treatmentPlan", "planOfCare");
 
         if (!hasPlan)
@@ -179,12 +246,16 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// <summary>
     /// COMP_CERT: A certification period must be documented on Evaluation and Progress Note types.
     /// </summary>
-    private static void EvaluateCertificationPeriod(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluateCertificationPeriod(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (contentDoc == null) return;
         if (noteType is not (NoteType.Evaluation or NoteType.ProgressNote)) return;
 
-        bool hasCertification = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasCertification = snapshot?.HasCertificationPeriod ?? HasNonEmptyContent(contentDoc.RootElement,
             "certificationPeriod", "certPeriod", "certificationDate");
 
         if (!hasCertification)
@@ -204,11 +275,15 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// COMP_FUNCTIONAL: Functional limitation documentation is required for
     /// Evaluation (blocking) and advisory for all other note types.
     /// </summary>
-    private static void EvaluateFunctionalLimitation(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluateFunctionalLimitation(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (contentDoc == null) return;
 
-        bool hasLimitation = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasLimitation = snapshot?.HasFunctionalLimitation ?? HasNonEmptyContent(contentDoc.RootElement,
             "functionalLimitations", "functionalLimitation");
 
         if (hasLimitation) return;
@@ -284,12 +359,16 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// <summary>
     /// MEDICARE_POC: A Plan of Care is required on every Evaluation per Medicare guidelines.
     /// </summary>
-    private static void EvaluatePlanOfCareRequirement(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluatePlanOfCareRequirement(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (noteType != NoteType.Evaluation) return;
         if (contentDoc == null) return;
 
-        bool hasPoc = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasPoc = snapshot?.HasPlanOfCare ?? HasNonEmptyContent(contentDoc.RootElement,
             "planOfCare", "poc", "plan", "treatmentPlan");
 
         if (!hasPoc)
@@ -309,12 +388,16 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// MEDICARE_FUNCTIONAL_REPORT: Functional reporting is recommended for Progress Notes
     /// per Medicare guidelines (advisory, non-blocking).
     /// </summary>
-    private static void EvaluateFunctionalReporting(JsonDocument? contentDoc, NoteType noteType, List<RuleEvaluationResult> results)
+    private static void EvaluateFunctionalReporting(
+        JsonDocument? contentDoc,
+        StructuredValidationSnapshot? snapshot,
+        NoteType noteType,
+        List<RuleEvaluationResult> results)
     {
         if (noteType != NoteType.ProgressNote) return;
         if (contentDoc == null) return;
 
-        bool hasFunctionalReport = HasNonEmptyContent(contentDoc.RootElement,
+        bool hasFunctionalReport = snapshot?.HasFunctionalReporting ?? HasNonEmptyContent(contentDoc.RootElement,
             "functionalLimitations", "functionalLimitation", "functionalReporting", "gCodes");
 
         if (!hasFunctionalReport)
@@ -338,9 +421,15 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// </summary>
     private static bool HasNonEmptyContent(JsonElement element, params string[] propertyNames)
     {
+        // Build a case-insensitive lookup of all properties in the element.
+        // JsonElement.TryGetProperty is case-sensitive; we need to support notes serialized
+        // with PascalCase keys (e.g., "Subjective", "ChiefComplaint") as well as camelCase.
+        var allProperties = element.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value, StringComparer.OrdinalIgnoreCase);
+
         foreach (var name in propertyNames)
         {
-            if (!element.TryGetProperty(name, out var prop)) continue;
+            if (!allProperties.TryGetValue(name, out var prop)) continue;
             switch (prop.ValueKind)
             {
                 case JsonValueKind.String:
@@ -357,5 +446,114 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
             }
         }
         return false;
+    }
+
+    private static StructuredValidationSnapshot? BuildStructuredSnapshot(
+        JsonElement root,
+        int goalCount,
+        int outcomeMeasureCount)
+    {
+        // Only engage workspace-v2 structured parsing when the expected top-level
+        // workspace sections are explicitly present in the payload.
+        // Otherwise, fall back to generic field-name checks for legacy/simple JSON.
+        if (!HasProperty(root, "schemaVersion") ||
+            !HasProperty(root, "subjective") ||
+            !HasProperty(root, "objective") ||
+            !HasProperty(root, "assessment") ||
+            !HasProperty(root, "plan"))
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+                root.GetRawText(),
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+            if (payload is null || payload.SchemaVersion != WorkspaceSchemaVersions.EvalReevalProgressV2)
+            {
+                return null;
+            }
+
+            var hasSubjective = payload.Subjective.Problems.Count > 0 ||
+                                payload.Subjective.Locations.Count > 0 ||
+                                payload.Subjective.FunctionalLimitations.Count > 0 ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.AdditionalFunctionalLimitations) ||
+                                payload.Subjective.CurrentPainScore > 0 ||
+                                payload.Subjective.BestPainScore > 0 ||
+                                payload.Subjective.WorstPainScore > 0 ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.KnownCause) ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.NarrativeContext.ChiefComplaint) ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.NarrativeContext.HistoryOfPresentIllness) ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.NarrativeContext.MechanismOfInjury) ||
+                                !string.IsNullOrWhiteSpace(payload.Subjective.NarrativeContext.DifficultyExperienced) ||
+                                !string.IsNullOrWhiteSpace(payload.ProgressQuestionnaire.OverallCondition) ||
+                                !string.IsNullOrWhiteSpace(payload.ProgressQuestionnaire.GoalProgress) ||
+                                !string.IsNullOrWhiteSpace(payload.ProgressQuestionnaire.PainFrequency);
+
+            var hasGoals = payload.Assessment.Goals.Count > 0 || goalCount > 0;
+            var hasPlan = payload.Plan.TreatmentFrequencyDaysPerWeek.Count > 0 ||
+                          payload.Plan.TreatmentDurationWeeks.Count > 0 ||
+                          payload.Plan.SelectedCptCodes.Count > 0 ||
+                          payload.Plan.TreatmentFocuses.Count > 0 ||
+                          !string.IsNullOrWhiteSpace(payload.Plan.PlanOfCareNarrative) ||
+                          !string.IsNullOrWhiteSpace(payload.Plan.ClinicalSummary) ||
+                          payload.Plan.ComputedPlanOfCare.ProgressNoteDueDates.Count > 0;
+            var hasCertificationPeriod = (payload.Plan.ComputedPlanOfCare.StartDate.HasValue &&
+                                          payload.Plan.ComputedPlanOfCare.EndDate.HasValue) ||
+                                         payload.Plan.TreatmentDurationWeeks.Count > 0;
+            var hasFunctionalLimitation = payload.Subjective.FunctionalLimitations.Count > 0 ||
+                                          !string.IsNullOrWhiteSpace(payload.Subjective.AdditionalFunctionalLimitations) ||
+                                          !string.IsNullOrWhiteSpace(payload.Assessment.FunctionalLimitationsSummary) ||
+                                          payload.ProgressQuestionnaire.ImprovedActivities.Count > 0 ||
+                                          payload.ProgressQuestionnaire.ImpactedAreas.Count > 0;
+            var hasPlanOfCare = hasPlan;
+            var hasFunctionalReporting = hasFunctionalLimitation ||
+                                         payload.Objective.OutcomeMeasures.Count > 0 ||
+                                         outcomeMeasureCount > 0;
+
+            return new StructuredValidationSnapshot
+            {
+                HasSubjective = hasSubjective,
+                HasGoals = hasGoals,
+                HasPlan = hasPlan,
+                HasCertificationPeriod = hasCertificationPeriod,
+                HasFunctionalLimitation = hasFunctionalLimitation,
+                HasPlanOfCare = hasPlanOfCare,
+                HasFunctionalReporting = hasFunctionalReporting
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool HasProperty(JsonElement element, string propertyName)
+    {
+        foreach (var prop in element.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private sealed class StructuredValidationSnapshot
+    {
+        public bool HasSubjective { get; init; }
+        public bool HasGoals { get; init; }
+        public bool HasPlan { get; init; }
+        public bool HasCertificationPeriod { get; init; }
+        public bool HasFunctionalLimitation { get; init; }
+        public bool HasPlanOfCare { get; init; }
+        public bool HasFunctionalReporting { get; init; }
     }
 }

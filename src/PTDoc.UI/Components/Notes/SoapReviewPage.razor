@@ -1,0 +1,608 @@
+@namespace PTDoc.UI.Components.Notes
+@using System.Globalization
+@using System.Linq
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="soap-review-page" data-testid="soap-review-page" aria-label="SOAP review page">
+    <section class="soap-review-page__card soap-review-page__card--ai">
+        <div class="soap-review-page__card-header">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 2.25L10.3295 5.67052L13.75 7L10.3295 8.32948L9 11.75L7.67052 8.32948L4.25 7L7.67052 5.67052L9 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M13.5 11.25L14.0909 12.6591L15.5 13.25L14.0909 13.8409L13.5 15.25L12.9091 13.8409L11.5 13.25L12.9091 12.6591L13.5 11.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <div class="soap-review-page__title-stack">
+                    <h2>AI-Generated Clinical Summary</h2>
+                    <span class="soap-review-page__badge">Auto-generated</span>
+                </div>
+            </div>
+
+            <button type="button"
+                    class="soap-review-page__text-action"
+                    disabled="@(IsReadOnly || IsRegeneratingSummary)"
+                    @onclick="() => OnRegenerateSummary.InvokeAsync()">
+                @if (IsRegeneratingSummary)
+                {
+                    <span class="soap-review-page__spinner" aria-hidden="true"></span>
+                    <span>Regenerating…</span>
+                }
+                else
+                {
+                    <span class="soap-review-page__action-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.6668 2.91663V5.83329H8.75016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M2.3335 11.0834V8.16671H5.25016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M3.5535 5.73579C3.80037 5.03874 4.25596 4.43428 4.8585 4.00557C5.46104 3.57687 6.18129 3.34486 6.92044 3.34133C7.65959 3.3378 8.38201 3.56291 8.98861 3.98584C9.59522 4.40878 10.0566 5.00888 10.3102 5.70355L11.6668 5.83329" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M10.4465 8.26421C10.1996 8.96126 9.74404 9.56572 9.1415 9.99442C8.53896 10.4231 7.81871 10.6551 7.07956 10.6587C6.34041 10.6622 5.61799 10.4371 5.01139 10.0142C4.40478 9.59122 3.94338 8.99112 3.68983 8.29646L2.33316 8.16671" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span>Regenerate</span>
+                }
+            </button>
+        </div>
+
+        <div class="soap-review-page__summary-box">
+            <p>@GetClinicalSummary()</p>
+        </div>
+
+        <p class="soap-review-page__helper-text">
+            Note: AI-generated summaries should be reviewed and edited for accuracy before submission.
+        </p>
+    </section>
+
+    <div class="soap-review-page__meta-grid">
+        <section class="soap-review-page__card">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--muted" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 9C10.6569 9 12 7.65685 12 6C12 4.34315 10.6569 3 9 3C7.34315 3 6 4.34315 6 6C6 7.65685 7.34315 9 9 9Z" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M4.5 14.25C4.5 12.5931 6.51472 11.25 9 11.25C11.4853 11.25 13.5 12.5931 13.5 14.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <h2>Patient Information</h2>
+            </div>
+
+            <div class="soap-review-page__field-stack">
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Patient Name</span>
+                    <span class="soap-review-page__field-value">@GetPatientName()</span>
+                </div>
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Patient ID</span>
+                    <span class="soap-review-page__field-value">@GetPatientId()</span>
+                </div>
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Date of Birth</span>
+                    <span class="soap-review-page__field-value">@GetPatientDob()</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="soap-review-page__card">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--muted" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3.75" y="4.5" width="10.5" height="9.75" rx="1.5" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M6.75 2.75V5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                        <path d="M11.25 2.75V5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                        <path d="M3.75 7.5H14.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <h2>Session Details</h2>
+            </div>
+
+            <div class="soap-review-page__field-stack">
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Session Date</span>
+                    <span class="soap-review-page__field-value">@GetSessionDate()</span>
+                </div>
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Duration</span>
+                    <span class="soap-review-page__field-value">@GetSessionDuration()</span>
+                </div>
+                <div class="soap-review-page__field">
+                    <span class="soap-review-page__field-label">Note Type</span>
+                    <span class="soap-review-page__field-value">
+                        <span class="soap-review-page__pill">@GetNoteType()</span>
+                    </span>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="soap-review-page__card">
+        <div class="soap-review-page__card-header">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--subjective" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 10.5C10.6569 10.5 12 9.15685 12 7.5C12 5.84315 10.6569 4.5 9 4.5C7.34315 4.5 6 5.84315 6 7.5C6 9.15685 7.34315 10.5 9 10.5Z" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M4.5 14.25C4.5 12.5931 6.51472 11.25 9 11.25C11.4853 11.25 13.5 12.5931 13.5 14.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <h2>Subjective</h2>
+            </div>
+
+            <button type="button"
+                    class="soap-review-page__text-action"
+                    disabled="@IsReadOnly"
+                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Subjective)">
+                <span class="soap-review-page__action-icon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <span>Edit</span>
+            </button>
+        </div>
+
+        <div class="soap-review-page__section-grid">
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Chief Complaint</span>
+                <span class="soap-review-page__field-value">@GetChiefComplaint()</span>
+            </div>
+
+            <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
+                <div class="soap-review-page__field-panel">
+                    <div class="soap-review-page__field-label-row">
+                        <span class="soap-review-page__field-label">Pain Level</span>
+                        <span class="soap-review-page__pain-chip">@GetPainScoreLabel()</span>
+                    </div>
+                    <div class="soap-review-page__pain-track" aria-hidden="true">
+                        <div class="soap-review-page__pain-fill" style="@GetPainFillStyle()"></div>
+                    </div>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Pain Location</span>
+                    <span class="soap-review-page__field-value">@GetPainLocation()</span>
+                </div>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Pain Description</span>
+                <span class="soap-review-page__field-value">@GetPainDescription()</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Functional Limitations</span>
+                <span class="soap-review-page__field-value">@GetFunctionalLimitations()</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="soap-review-page__card">
+        <div class="soap-review-page__card-header">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--objective" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7.5 3L9.75 7.5L15 9L9.75 10.5L7.5 15L5.25 10.5L0 9L5.25 7.5L7.5 3Z" fill="currentColor" />
+                    </svg>
+                </span>
+                <h2>Objective</h2>
+            </div>
+
+            <button type="button"
+                    class="soap-review-page__text-action"
+                    disabled="@IsReadOnly"
+                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Objective)">
+                <span class="soap-review-page__action-icon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <span>Edit</span>
+            </button>
+        </div>
+
+        <div class="soap-review-page__section-grid">
+            <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Range of Motion</span>
+                    <span class="soap-review-page__field-value">@GetRangeOfMotion()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Manual Muscle Test</span>
+                    <span class="soap-review-page__field-value">@GetManualMuscleTest()</span>
+                </div>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Special Tests</span>
+                <span class="soap-review-page__field-value">@GetSpecialTests()</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Clinical Observations</span>
+                <span class="soap-review-page__field-value">@GetClinicalObservations()</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="soap-review-page__card">
+        <div class="soap-review-page__card-header">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--assessment" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="9" cy="9" r="5.25" stroke="currentColor" stroke-width="1.3" />
+                        <circle cx="9" cy="9" r="1.75" fill="currentColor" />
+                    </svg>
+                </span>
+                <h2>Assessment</h2>
+            </div>
+
+            <button type="button"
+                    class="soap-review-page__text-action"
+                    disabled="@IsReadOnly"
+                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Assessment)">
+                <span class="soap-review-page__action-icon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <span>Edit</span>
+            </button>
+        </div>
+
+        <div class="soap-review-page__section-grid">
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Diagnosis</span>
+                <span class="soap-review-page__field-value">@GetDiagnosis()</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Prognosis</span>
+                <span class="soap-review-page__field-value">@GetPrognosis()</span>
+            </div>
+
+            <section class="soap-review-page__subcard soap-review-page__subcard--ai">
+                <div class="soap-review-page__card-header">
+                    <div class="soap-review-page__title-group">
+                        <span class="soap-review-page__icon" aria-hidden="true">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M9 2.25L10.3295 5.67052L13.75 7L10.3295 8.32948L9 11.75L7.67052 8.32948L4.25 7L7.67052 5.67052L9 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </span>
+                        <div class="soap-review-page__title-stack">
+                            <h3>AI-Suggested Treatment Goals</h3>
+                            <span class="soap-review-page__badge">AI-generated</span>
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="soap-review-page__text-action"
+                            disabled="@(IsReadOnly || IsRegeneratingGoals)"
+                            @onclick="() => OnRegenerateGoals.InvokeAsync()">
+                        @if (IsRegeneratingGoals)
+                        {
+                            <span class="soap-review-page__spinner" aria-hidden="true"></span>
+                            <span>Regenerating…</span>
+                        }
+                        else
+                        {
+                            <span>Regenerate</span>
+                        }
+                    </button>
+                </div>
+
+                <ul class="soap-review-page__goal-list">
+                    @foreach (var goal in GetGoalItems())
+                    {
+                        <li>
+                            <span class="soap-review-page__goal-icon" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2" />
+                                    <path d="M5.25 8L7.08333 9.83333L10.75 6.16667" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </span>
+                            <span>@goal</span>
+                        </li>
+                    }
+                </ul>
+            </section>
+        </div>
+    </section>
+
+    <section class="soap-review-page__card">
+        <div class="soap-review-page__card-header">
+            <div class="soap-review-page__title-group">
+                <span class="soap-review-page__icon soap-review-page__icon--plan" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3.75" y="3.75" width="10.5" height="10.5" rx="1.5" stroke="currentColor" stroke-width="1.3" />
+                        <path d="M8.25 3.75V14.25" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <h2>Plan</h2>
+            </div>
+
+            <button type="button"
+                    class="soap-review-page__text-action"
+                    disabled="@IsReadOnly"
+                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Plan)">
+                <span class="soap-review-page__action-icon" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <span>Edit</span>
+            </button>
+        </div>
+
+        <div class="soap-review-page__section-grid">
+            <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Frequency</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentFrequency)</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Duration</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentDuration)</span>
+                </div>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Home Exercise Program</span>
+                <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.HomeExerciseProgramNotes)</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Follow-Up</span>
+                <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.FollowUpInstructions)</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="soap-review-page__action-bar" aria-label="Review actions">
+        <button type="button"
+                class="soap-review-page__button soap-review-page__button--secondary"
+                disabled="@IsReadOnly"
+                @onclick="() => OnBackToEdit.InvokeAsync()">
+            <span class="soap-review-page__button-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8.75 3.5L5.25 7L8.75 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </span>
+            <span>Back to Edit</span>
+        </button>
+
+        <button type="button"
+                class="soap-review-page__button soap-review-page__button--outline"
+                @onclick="() => OnExportPdf.InvokeAsync()">
+            <span class="soap-review-page__button-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 2.33337V8.16671" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                    <path d="M4.6665 5.83337L6.99984 8.16671L9.33317 5.83337" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M2.9165 11.0834H11.0832" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+            </span>
+            <span>Export PDF</span>
+        </button>
+
+        <button type="button"
+                class="soap-review-page__button soap-review-page__button--primary"
+                disabled="@(IsReadOnly || IsSubmitting)"
+                @onclick="() => OnSubmit.InvokeAsync()">
+            <span class="soap-review-page__button-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.6667 2.33337L6.08333 7.91671" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M11.6667 2.33337L8.16667 11.6667L6.08333 7.91671L2.33333 5.83337L11.6667 2.33337Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </span>
+            <span>Submit &amp; Lock Note</span>
+        </button>
+    </section>
+
+    <section class="soap-review-page__system-note" role="note" aria-label="System note">
+        <div class="soap-review-page__system-note-header">
+            <span class="soap-review-page__system-note-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 1.75L11.0833 3.20833V6.70833C11.0833 9.25833 9.3775 11.6333 7 12.25C4.6225 11.6333 2.91667 9.25833 2.91667 6.70833V3.20833L7 1.75Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </span>
+            <span>Note:</span>
+        </div>
+        <p>Once submitted, this note will be locked and cannot be edited. Please review all information carefully before submission.</p>
+    </section>
+</section>
+
+@code {
+    private const string EmptyState = "Not documented";
+
+    [Parameter, EditorRequired] public SoapNoteVm Note { get; set; } = new();
+    [Parameter] public DateTime? DateOfService { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsRegeneratingSummary { get; set; }
+    [Parameter] public bool IsRegeneratingGoals { get; set; }
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter, EditorRequired] public EventCallback<SoapSection> OnEditSection { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnBackToEdit { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnRegenerateSummary { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnRegenerateGoals { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnExportPdf { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
+
+    private string GetPatientName() => DisplayOrEmpty(Note.PatientName);
+
+    private string GetPatientId() => DisplayOrEmpty(Note.PatientId);
+
+    private string GetPatientDob() => DisplayOrEmpty(Note.PatientDob);
+
+    private string GetSessionDate() =>
+        DateOfService.HasValue
+            ? DateOfService.Value.ToString("M/d/yyyy", CultureInfo.InvariantCulture)
+            : EmptyState;
+
+    private string GetSessionDuration()
+    {
+        var unitCount = Note.Plan.SelectedCptCodes.Sum(code => Math.Max(0, code.Units));
+        if (unitCount <= 0)
+        {
+            return EmptyState;
+        }
+
+        return $"{unitCount * 15} min";
+    }
+
+    private string GetNoteType() => DisplayOrEmpty(Note.NoteType);
+
+    private string GetClinicalSummary() => DisplayOrEmpty(Note.Plan.ClinicalSummary);
+
+    private string GetChiefComplaint() => JoinValues(Note.Subjective.Problems, Note.Subjective.OtherProblem);
+
+    private string GetPainLocation() => JoinValues(Note.Subjective.Locations, Note.Subjective.OtherLocation);
+
+    private string GetPainDescription()
+    {
+        var details = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(Note.Subjective.PainFrequency))
+        {
+            details.Add(Note.Subjective.PainFrequency);
+        }
+
+        if (!string.IsNullOrWhiteSpace(Note.Subjective.KnownCause))
+        {
+            details.Add(Note.Subjective.KnownCause);
+        }
+
+        return details.Count == 0 ? EmptyState : string.Join(" • ", details);
+    }
+
+    private string GetFunctionalLimitations() =>
+        JoinValues(Note.Subjective.FunctionalLimitations, Note.Subjective.AdditionalFunctionalLimitations);
+
+    private string GetPainScoreLabel() => HasPainScore() ? $"{Math.Clamp(Note.Subjective.CurrentPainScore, 0, 10)}/10" : EmptyState;
+
+    private string GetPainFillStyle()
+    {
+        var width = HasPainScore() ? Math.Clamp(Note.Subjective.CurrentPainScore, 0, 10) * 10 : 0;
+        return $"width: {width}%;";
+    }
+
+    private string GetRangeOfMotion()
+    {
+        var entries = Note.Objective.OutcomeMeasures
+            .Where(measure => measure.Name.Contains("rom", StringComparison.OrdinalIgnoreCase))
+            .Select(FormatOutcomeMeasure)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        return entries.Count == 0 ? EmptyState : string.Join(" • ", entries);
+    }
+
+    private string GetManualMuscleTest()
+    {
+        var entries = Note.Objective.OutcomeMeasures
+            .Where(measure =>
+                measure.Name.Contains("mmt", StringComparison.OrdinalIgnoreCase) ||
+                measure.Name.Contains("strength", StringComparison.OrdinalIgnoreCase))
+            .Select(FormatOutcomeMeasure)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        return entries.Count == 0 ? EmptyState : string.Join(" • ", entries);
+    }
+
+    private string GetSpecialTests()
+    {
+        var entries = Note.Objective.OutcomeMeasures
+            .Where(measure =>
+                !measure.Name.Contains("rom", StringComparison.OrdinalIgnoreCase) &&
+                !measure.Name.Contains("mmt", StringComparison.OrdinalIgnoreCase) &&
+                !measure.Name.Contains("strength", StringComparison.OrdinalIgnoreCase))
+            .Select(FormatOutcomeMeasure)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        return entries.Count == 0 ? EmptyState : string.Join(" • ", entries);
+    }
+
+    private string GetClinicalObservations()
+    {
+        var details = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(Note.Objective.PrimaryGaitPattern))
+        {
+            details.Add($"Gait: {Note.Objective.PrimaryGaitPattern}");
+        }
+
+        if (Note.Objective.GaitDeviations.Count > 0)
+        {
+            details.Add($"Deviations: {string.Join(", ", Note.Objective.GaitDeviations.OrderBy(value => value))}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Note.Objective.ClinicalObservationNotes))
+        {
+            details.Add(Note.Objective.ClinicalObservationNotes);
+        }
+
+        return details.Count == 0 ? EmptyState : string.Join(" • ", details);
+    }
+
+    private string GetDiagnosis()
+    {
+        if (Note.Assessment.DiagnosisCodes.Count > 0)
+        {
+            return string.Join(" • ", Note.Assessment.DiagnosisCodes.Select(code => $"{code.Code} {code.Description}".Trim()));
+        }
+
+        return DisplayOrEmpty(Note.Assessment.AssessmentNarrative);
+    }
+
+    private string GetPrognosis() => DisplayOrEmpty(Note.Assessment.OverallPrognosis);
+
+    private IReadOnlyList<string> GetGoalItems()
+    {
+        var goals = Note.Assessment.Goals
+            .Select(goal => string.IsNullOrWhiteSpace(goal.Description) ? null : goal.Description.Trim())
+            .Where(goal => !string.IsNullOrWhiteSpace(goal))
+            .Cast<string>()
+            .ToList();
+
+        if (goals.Count == 0)
+        {
+            return [ "No treatment goals documented." ];
+        }
+
+        return goals;
+    }
+
+    private bool HasPainScore() =>
+        Note.Subjective.CurrentPainScore > 0 ||
+        Note.Subjective.BestPainScore > 0 ||
+        Note.Subjective.WorstPainScore > 0 ||
+        !string.IsNullOrWhiteSpace(Note.Subjective.PainFrequency);
+
+    private static string FormatOutcomeMeasure(OutcomeMeasureEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Name))
+        {
+            return string.Empty;
+        }
+
+        return string.IsNullOrWhiteSpace(entry.Score)
+            ? entry.Name.Trim()
+            : $"{entry.Name.Trim()}: {entry.Score.Trim()}";
+    }
+
+    private static string JoinValues(IEnumerable<string> values, string? additionalValue)
+    {
+        var items = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(additionalValue))
+        {
+            items.Add(additionalValue.Trim());
+        }
+
+        return items.Count == 0 ? EmptyState : string.Join(", ", items);
+    }
+
+    private static string DisplayOrEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? EmptyState : value.Trim();
+}

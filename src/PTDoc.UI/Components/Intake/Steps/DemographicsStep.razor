@@ -43,7 +43,9 @@
 
     <HipaaPrivacyNoticeCard
         HipaaAcknowledged="@State.HipaaAcknowledged"
-        HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged" />
+        HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged"
+        ConsentToTreatAcknowledged="@State.ConsentToTreatAcknowledged"
+        ConsentToTreatAcknowledgedChanged="OnConsentToTreatChanged" />
 
     @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
@@ -117,6 +119,7 @@
     private Task OnHasPreviousSurgeriesOrInjuriesChanged(bool value) => UpdateStateAsync(() => State.HasPreviousSurgeriesOrInjuries = value);
     private Task OnMedicalHistoryNotesChanged(string? value) => UpdateStateAsync(() => State.MedicalHistoryNotes = value);
     private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() => State.HipaaAcknowledged = value);
+    private Task OnConsentToTreatChanged(bool value) => UpdateStateAsync(() => State.ConsentToTreatAcknowledged = value);
 
     private Task OnContinueClicked() => OnContinue.HasDelegate ? OnContinue.InvokeAsync() : Task.CompletedTask;
 }

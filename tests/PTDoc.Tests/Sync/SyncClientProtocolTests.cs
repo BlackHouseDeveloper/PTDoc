@@ -51,6 +51,7 @@ public class SyncClientProtocolTests
             PatientId = patient.Id,
             TemplateVersion = "1.0",
             AccessToken = Guid.NewGuid().ToString(),
+            StructuredDataJson = "{\"schemaVersion\":\"2026-03-30\",\"bodyPartSelections\":[{\"bodyPartId\":\"knee\",\"lateralities\":[\"left\"]}]}",
             LastModifiedUtc = watermark.AddMinutes(1) // after watermark
         };
         var oldForm = new IntakeForm
@@ -73,6 +74,7 @@ public class SyncClientProtocolTests
         Assert.Equal("IntakeForm", result.Items[0].EntityType);
         Assert.Equal(form.Id, result.Items[0].ServerId);
         Assert.Contains("IsLocked", result.Items[0].DataJson);
+        Assert.Contains("StructuredDataJson", result.Items[0].DataJson);
     }
 
     [Fact]
@@ -642,9 +644,18 @@ public class SyncClientProtocolTests
         var context = CreateInMemoryContext();
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
 
+        // Create entities in the DB so ProcessQueueItemAsync can find them
+        var userId = Guid.NewGuid();
+        var patient = new Patient { FirstName = "Reconnect", LastName = "User", DateOfBirth = new DateTime(1990, 1, 1), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Daily, DateOfService = DateTime.UtcNow, ContentJson = "{}", LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending };
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
         // Enqueue offline changes (simulating work done while offline)
-        await syncEngine.EnqueueAsync("Patient", Guid.NewGuid(), SyncOperation.Create);
-        await syncEngine.EnqueueAsync("ClinicalNote", Guid.NewGuid(), SyncOperation.Update);
+        await syncEngine.EnqueueAsync("Patient", patient.Id, SyncOperation.Create);
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update);
 
         // Verify offline queue has items
         var statusBefore = await syncEngine.GetQueueStatusAsync();

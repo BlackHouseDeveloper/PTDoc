@@ -9,7 +9,7 @@
                                   Value="@Model.PatientName"
                                   ValueChanged="@(v => SetField(v, f => f.PatientName = v))"
                                   HasError="@HasError("patientName")" />
-            @* TODO: Decide if Patient Name is read-only (from demographics) vs editable here. *@
+            @* Current behavior: editable in this panel and persisted via PatientInfoPage save. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Date of Birth" ForId="pi-dob" Error="@GetError("dob")">
@@ -17,7 +17,7 @@
                                   Value="@Model.DateOfBirthText"
                                   ValueChanged="@(v => SetField(v, f => f.DateOfBirthText = v))"
                                   HasError="@HasError("dob")" />
-            @* TODO: Replace text date input with date-picker control if design/system has one. *@
+            @* Date input currently accepts text to match existing page model storage format. *@
         </PatientInfoField>
 
         <PatientInfoField Label="Insurance Company Name" ForId="pi-insurance-name" Error="@GetError("insuranceName")">

@@ -1,0 +1,357 @@
+.soap-review-page {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.soap-review-page__meta-grid,
+.soap-review-page__field-grid,
+.soap-review-page__action-bar {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.soap-review-page__meta-grid,
+.soap-review-page__field-grid--split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.soap-review-page__card,
+.soap-review-page__subcard,
+.soap-review-page__system-note {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.soap-review-page__card,
+.soap-review-page__subcard {
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-5);
+}
+
+.soap-review-page__card--ai,
+.soap-review-page__subcard--ai {
+    background: color-mix(in srgb, var(--success) 7%, var(--card));
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.soap-review-page__card-header,
+.soap-review-page__title-group,
+.soap-review-page__title-stack,
+.soap-review-page__field-stack,
+.soap-review-page__field,
+.soap-review-page__section-grid,
+.soap-review-page__field-panel,
+.soap-review-page__field-label-row,
+.soap-review-page__goal-list,
+.soap-review-page__goal-list li,
+.soap-review-page__system-note,
+.soap-review-page__system-note-header,
+.soap-review-page__button,
+.soap-review-page__text-action {
+    display: flex;
+}
+
+.soap-review-page__card-header,
+.soap-review-page__field-label-row,
+.soap-review-page__action-bar {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.soap-review-page__title-group,
+.soap-review-page__goal-list li,
+.soap-review-page__button,
+.soap-review-page__text-action,
+.soap-review-page__system-note-header {
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.soap-review-page__title-stack,
+.soap-review-page__field-stack,
+.soap-review-page__field,
+.soap-review-page__section-grid,
+.soap-review-page__field-panel,
+.soap-review-page__goal-list,
+.soap-review-page__system-note {
+    flex-direction: column;
+}
+
+.soap-review-page__title-stack {
+    gap: var(--spacing-1);
+}
+
+.soap-review-page__card-header {
+    align-items: flex-start;
+    gap: var(--spacing-3);
+}
+
+.soap-review-page__icon {
+    color: var(--primary);
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.soap-review-page__icon--muted {
+    color: var(--primary);
+}
+
+.soap-review-page__icon--subjective {
+    color: var(--info);
+}
+
+.soap-review-page__icon--objective {
+    color: var(--warning);
+}
+
+.soap-review-page__icon--assessment,
+.soap-review-page__icon--plan {
+    color: var(--primary);
+}
+
+.soap-review-page h2,
+.soap-review-page h3 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    margin: 0;
+}
+
+.soap-review-page__badge,
+.soap-review-page__pill,
+.soap-review-page__pain-chip {
+    align-items: center;
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 1;
+    width: fit-content;
+}
+
+.soap-review-page__badge {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+    padding: var(--spacing-1) var(--spacing-2);
+}
+
+.soap-review-page__pill {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--info) 18%, var(--border));
+    color: var(--foreground);
+    padding: calc(var(--spacing-1) + 1px) var(--spacing-2);
+}
+
+.soap-review-page__pain-chip {
+    background: color-mix(in srgb, var(--warning) 18%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
+    color: color-mix(in srgb, var(--warning) 70%, var(--foreground));
+    padding: var(--spacing-1) var(--spacing-2);
+}
+
+.soap-review-page__summary-box,
+.soap-review-page__field-panel {
+    background: color-mix(in srgb, var(--muted) 65%, transparent);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+}
+
+.soap-review-page__summary-box {
+    border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+}
+
+.soap-review-page__summary-box p,
+.soap-review-page__field-value,
+.soap-review-page__goal-list,
+.soap-review-page__system-note p {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-relaxed);
+    margin: 0;
+}
+
+.soap-review-page__helper-text,
+.soap-review-page__field-label {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    margin: 0;
+}
+
+.soap-review-page__field-label {
+    font-weight: var(--font-weight-medium);
+}
+
+.soap-review-page__field-stack,
+.soap-review-page__section-grid,
+.soap-review-page__goal-list {
+    gap: var(--spacing-3);
+}
+
+.soap-review-page__field {
+    gap: var(--spacing-1);
+}
+
+.soap-review-page__field-panel {
+    gap: var(--spacing-2);
+}
+
+.soap-review-page__pain-track {
+    background: color-mix(in srgb, var(--warning) 12%, var(--muted));
+    border-radius: 999px;
+    height: var(--spacing-2);
+    overflow: hidden;
+    width: 100%;
+}
+
+.soap-review-page__pain-fill {
+    background: var(--warning);
+    border-radius: inherit;
+    height: 100%;
+    transition: width var(--transition-normal);
+}
+
+.soap-review-page__text-action {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    justify-content: center;
+    min-height: var(--touch-target-desktop);
+    padding: 0;
+    white-space: nowrap;
+}
+
+.soap-review-page__text-action:disabled {
+    color: var(--muted-foreground);
+    cursor: not-allowed;
+}
+
+.soap-review-page__action-icon,
+.soap-review-page__button-icon,
+.soap-review-page__goal-icon,
+.soap-review-page__system-note-icon {
+    display: inline-flex;
+}
+
+.soap-review-page__goal-list {
+    list-style: none;
+    padding: 0;
+}
+
+.soap-review-page__goal-icon {
+    color: var(--primary);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.soap-review-page__action-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.soap-review-page__button {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    justify-content: center;
+    min-height: calc(var(--touch-target-desktop) + var(--spacing-3));
+    padding: var(--spacing-3) var(--spacing-4);
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.soap-review-page__button:hover:not(:disabled),
+.soap-review-page__text-action:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.soap-review-page__button:focus-visible,
+.soap-review-page__text-action:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.soap-review-page__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.soap-review-page__button--secondary {
+    background: var(--card);
+}
+
+.soap-review-page__button--outline {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.soap-review-page__button--primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.soap-review-page__system-note {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--info) 22%, var(--border));
+    gap: var(--spacing-2);
+    padding: var(--spacing-3) var(--spacing-4);
+}
+
+.soap-review-page__system-note-header {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    justify-content: flex-start;
+}
+
+.soap-review-page__system-note-icon {
+    color: var(--foreground);
+}
+
+.soap-review-page__spinner {
+    animation: soap-review-spin 0.8s linear infinite;
+    border: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    border-radius: 50%;
+    border-top-color: currentColor;
+    display: inline-flex;
+    height: var(--spacing-4);
+    width: var(--spacing-4);
+}
+
+@keyframes soap-review-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 1024px) {
+    .soap-review-page__meta-grid,
+    .soap-review-page__field-grid--split,
+    .soap-review-page__action-bar {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .soap-review-page__card,
+    .soap-review-page__subcard {
+        padding: var(--spacing-4);
+    }
+
+    .soap-review-page__card-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .soap-review-page__text-action {
+        justify-content: flex-start;
+    }
+}

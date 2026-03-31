@@ -29,7 +29,7 @@ Implemented the Patients page matching the Figma prototype (Light + Dark themes)
   - Search icon (left-positioned)
   - Two-way binding (Value/ValueChanged)
   - Matches Figma specs: border-radius (10px), padding, colors
-  - TODO: Debounced service query
+  - Debounced service query handled by Patients page (300ms cancellation-based debounce)
   - data-testid="patients-search"
 - Parameters: Value, ValueChanged, Placeholder
 
@@ -43,7 +43,7 @@ Implemented the Patients page matching the Figma prototype (Light + Dark themes)
   - Two-column details grid (DOB, Last Visit)
   - Clickable with keyboard support
   - Hover state (border color + shadow)
-  - TODO: Navigate to patient detail route
+  - Navigation wired via parent callback
   - data-testid="patient-card-{id}"
 - Parameters: Patient (PatientListItemVm), OnOpen
 
@@ -53,8 +53,8 @@ Implemented the Patients page matching the Figma prototype (Light + Dark themes)
 - Features:
   - Responsive 3-column grid (desktop), 2-col (tablet), 1-col (mobile)
   - Empty state placeholder
+  - Empty-state icon treatment
   - Optional ItemTemplate for custom rendering
-  - TODO: Loading skeleton state
   - data-testid="patients-card-section"
 - Parameters: Items, ItemTemplate, OnCardClick
 
@@ -62,12 +62,12 @@ Implemented the Patients page matching the Figma prototype (Light + Dark themes)
 - **PTDoc.UI/Pages/Patients.razor**
 - **PTDoc.UI/Pages/Patients.razor.css**
 - Features:
-  - Composes header → search → card section
-  - Sample data (6 patients)
-  - Local search filtering (stub)
+  - Composes header -> search -> card section
+  - Real patient list loading via IPatientService
+  - Debounced server-side search filtering
   - "Add Patient" button (opens AddPatientModal)
-  - Loading state (stubbed)
-  - TODOs: Real service integration, navigation
+  - Loading state rendered with LoadingSkeleton components
+  - Create flow wired through IPatientService and toast feedback
 
 ## Files Modified
 - **PTDoc.UI/_Imports.razor** - Added Patients namespace imports
@@ -96,27 +96,21 @@ All components use semantic tokens that automatically switch with theme toggle. 
 - Focus-visible outlines
 - Semantic HTML (button, h1-h3, p)
 
-## TODOs for Future Implementation
-1. **PatientSearchInput**: Implement debounced service query
-2. **PatientCard**: Wire navigation to patient detail route
-3. **PatientCardSection**: Add LoadingSkeleton component for loading state
-4. **PatientsPage**: 
-   - Replace sample data with IPatientService query
-   - Integrate real search/filter with backend
-   - Implement HandleAddPatient with service
-   - Implement HandlePatientClick navigation
-5. **Empty state**: Add illustration/icon
+## Current Implementation Notes
+1. **PatientSearchInput**: Input emits immediate changes; debounce and API calls are orchestrated in Patients page logic.
+2. **PatientCard**: Card open action routes through parent callback to page-level navigation handling.
+3. **PatientCardSection**: Empty state includes iconography and responsive card grid behavior.
+4. **PatientsPage**:
+  - Uses IPatientService for load/search/create.
+  - Uses 300ms cancellation-based debounce for search.
+  - Surfaces operation outcomes through toast notifications.
+5. **Loading behavior**: Skeleton loaders render while async patient queries are in-flight.
 
-## Sample Data
-6 patients with varied status:
-- Active (Success badge): Sarah Johnson, Michael Chen, James Williams, Lisa Anderson
-- Pending (Warning badge): Emily Rodriguez
-- Inactive (Default badge): Robert Martinez
+## Data Source
+Patient list data is loaded from API-backed patient service calls (no page-level hardcoded sample set).
 
 ## Build Status
-✅ Build succeeded with no errors
-✅ No warnings in new Patients components
-✅ Existing component warnings unrelated to this implementation
+Build/test verification should be run from the current branch and environment before release.
 
 ## Testing Hooks
 All components include data-testid attributes:

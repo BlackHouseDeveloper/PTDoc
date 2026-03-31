@@ -25,12 +25,14 @@ public static class IntegrationEndpoints
         // Payment endpoints
         group.MapPost("/payment/process", ProcessPaymentAsync)
             .WithName("ProcessPayment")
-            .WithSummary("Process a payment using tokenized payment data");
+            .WithSummary("Process a payment using tokenized payment data")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // Fax endpoints
         group.MapPost("/fax/send", SendFaxAsync)
             .WithName("SendFax")
-            .WithSummary("Send a fax to an external provider");
+            .WithSummary("Send a fax to an external provider")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // HEP endpoints
         if (hepOptions.Enabled && hepOptions.ClinicianAssignmentEnabled)
@@ -57,11 +59,13 @@ public static class IntegrationEndpoints
         // External system mapping endpoints
         group.MapPost("/mappings/{patientId:guid}", GetOrCreateMappingAsync)
             .WithName("GetOrCreateMapping")
-            .WithSummary("Get or create external system mapping for patient");
+            .WithSummary("Get or create external system mapping for patient")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         group.MapGet("/mappings/patient/{patientId:guid}", GetPatientMappingsAsync)
             .WithName("GetPatientMappings")
-            .WithSummary("Get all external system mappings for a patient");
+            .WithSummary("Get all external system mappings for a patient")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
     }
 
     private static async Task<IResult> ProcessPaymentAsync(

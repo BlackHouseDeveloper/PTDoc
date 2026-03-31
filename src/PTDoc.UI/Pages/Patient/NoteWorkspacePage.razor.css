@@ -14,13 +14,28 @@
 }
 
 ::deep .note-workspace__alert {
-    background: rgba(var(--destructive-rgb), 0.1);
-    border: calc(var(--spacing-1) / 4) solid rgba(var(--destructive-rgb), 0.35);
-    color: var(--destructive);
     border-radius: var(--radius);
     padding: var(--spacing-3) var(--spacing-4);
     font-size: var(--text-sm);
     font-weight: var(--font-weight-semibold);
+}
+
+::deep .note-workspace__alert--error {
+    background: rgba(var(--destructive-rgb), 0.1);
+    border: calc(var(--spacing-1) / 4) solid rgba(var(--destructive-rgb), 0.35);
+    color: var(--destructive);
+}
+
+::deep .note-workspace__alert--info {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border: calc(var(--spacing-1) / 4) solid color-mix(in srgb, var(--info) 28%, var(--border));
+    color: var(--foreground);
+}
+
+::deep .note-workspace__alert--success {
+    background: color-mix(in srgb, var(--success) 10%, var(--card));
+    border: calc(var(--spacing-1) / 4) solid color-mix(in srgb, var(--success) 28%, var(--border));
+    color: var(--foreground);
 }
 
 @media (max-width: 1024px) {

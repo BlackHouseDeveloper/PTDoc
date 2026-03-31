@@ -46,10 +46,20 @@ public class SignatureServiceTests : IDisposable
     {
         // Arrange
         var userId = Guid.NewGuid();
+        var patient = new PTDoc.Core.Models.Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            DiagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
         var note = new ClinicalNote
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             NoteType = NoteType.Evaluation,
             DateOfService = DateTime.UtcNow,
             ContentJson = "{\"assessment\":\"test\"}",
@@ -107,10 +117,21 @@ public class SignatureServiceTests : IDisposable
     {
         // Arrange
         var userId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var patient = new PTDoc.Core.Models.Patient
+        {
+            Id = patientId,
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            DiagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
         var note1 = new ClinicalNote
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = new DateTime(2024, 1, 1),
             ContentJson = "{\"subjective\":\"test\"}",
@@ -239,10 +260,20 @@ public class SignatureServiceTests : IDisposable
     {
         // Arrange
         var userId = Guid.NewGuid();
+        var patient = new PTDoc.Core.Models.Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            DiagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
         var note = new ClinicalNote
         {
             Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
+            PatientId = patient.Id,
             NoteType = NoteType.Evaluation,
             DateOfService = DateTime.UtcNow,
             ContentJson = "{\"test\":\"data\"}",
@@ -325,10 +356,21 @@ public class SignatureServiceTests : IDisposable
             .Setup(e => e.RunClinicalValidationAsync(noteId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { warning });
 
+        var patientId = Guid.NewGuid();
+        var patient = new PTDoc.Core.Models.Patient
+        {
+            Id = patientId,
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            DiagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
         var note = new ClinicalNote
         {
             Id = noteId,
-            PatientId = Guid.NewGuid(),
+            PatientId = patientId,
             NoteType = NoteType.Daily,
             ContentJson = "{}",
             DateOfService = DateTime.UtcNow,

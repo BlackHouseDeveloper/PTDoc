@@ -14,6 +14,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using PTDoc.Api.AI;
+using PTDoc.Api.Appointments;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Diagnostics;
@@ -24,15 +25,19 @@ using PTDoc.Api.Integrations;
 using PTDoc.Api.Notes;
 using PTDoc.Api.Patients;
 using PTDoc.Api.Pdf;
+using PTDoc.Api.ReferenceData;
 using PTDoc.Api.Sync;
+using PTDoc.Api.Notifications;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Pdf;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Security;
 using PTDoc.Application.Sync;
 using PTDoc.AI.Services;
@@ -40,8 +45,10 @@ using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Integrations;
+using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Observability;
 using PTDoc.Infrastructure.Pdf;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Security;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.BackgroundJobs;
@@ -71,6 +78,7 @@ builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>(); // Sprint J: clinic/tenant scoping
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 
 // Register sync services
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
@@ -88,6 +96,20 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infr
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
+// Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
+builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
+builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.BundledIcd10Service>();
+builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
+    builder.Configuration.GetSection(PTDoc.Application.Configuration.RetentionOptions.SectionName));
+builder.Services.AddSingleton<ITreatmentTaxonomyCatalogService, TreatmentTaxonomyCatalogService>();
+builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+builder.Services.AddScoped<INoteWorkspaceV2Service, NoteWorkspaceV2Service>();
+builder.Services.AddSingleton<IWorkspaceReferenceCatalogService, WorkspaceReferenceCatalogService>();
+
+builder.Services.AddSingleton<IPlanOfCareCalculator, PlanOfCareCalculator>();
+builder.Services.AddSingleton<IAssessmentCompositionService, AssessmentCompositionService>();
+builder.Services.AddSingleton<IGoalManagementService, GoalManagementService>();
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();
@@ -105,6 +127,7 @@ builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty
@@ -293,7 +316,7 @@ if (entraExternalIdOptions.Enabled)
     ValidateEntraExternalIdApiConfiguration(entraExternalIdOptions);
 }
 
-if (legacyApiAuthEnabled)
+if (legacyApiAuthEnabled && !builder.Environment.IsEnvironment("Testing"))
 {
     // Validate JWT configuration on startup
     var jwtConfig = builder.Configuration.GetSection("Jwt").Get<JwtOptions>();
@@ -424,8 +447,10 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
-builder.Services.AddSingleton<JwtTokenIssuer>();
+// Replaced InMemoryRefreshTokenStore with database-backed store for production durability.
+// JwtTokenIssuer is Scoped (not Singleton) because it depends on the Scoped IRefreshTokenStore.
+builder.Services.AddScoped<IRefreshTokenStore, DbRefreshTokenStore>();
+builder.Services.AddScoped<JwtTokenIssuer>();
 builder.Services.AddScoped<ICredentialValidator, LegacyApiCredentialValidator>();
 
 var app = builder.Build();
@@ -660,9 +685,13 @@ if (legacyApiAuthEnabled)
     app.MapAuthEndpoints();
 }
 app.MapPinAuthEndpoints(); // New PIN-based auth
+app.MapRegistrationEndpoints(); // Self-service registration lookups and create
+app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations
+app.MapAppointmentEndpoints(); // Scheduling read endpoints
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
+app.MapObjectiveMetricEndpoints(); // Sprint O: ObjectiveMetric CRUD per note
 app.MapSyncEndpoints(); // Sync endpoints
 app.MapComplianceEndpoints(); // Compliance rule evaluation
 app.MapNoteEndpoints(); // Note signature and addendum
@@ -670,6 +699,13 @@ app.MapAiEndpoints(); // AI generation endpoints
 app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
+app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
+app.MapNotificationEndpoints(); // In-app notification center
+app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
+app.MapIcd10Endpoints(); // ICD-10 code search (bundled)
+app.MapIntakeReferenceDataEndpoints(); // Intake body part / medication / pain descriptor reference data
+app.MapNoteWorkspaceV2Endpoints(); // Typed eval/reeval/progress workspace API
+
 
 app.Run();
 
@@ -714,3 +750,7 @@ static void ValidateEntraExternalIdApiConfiguration(EntraExternalIdOptions optio
 }
 
 
+// Expose the auto-generated Program class as public so WebApplicationFactory<Program>
+// can be used in integration tests without requiring InternalsVisibleTo.
+// This is the recommended pattern for testing ASP.NET Core minimal-API apps.
+public partial class Program { }

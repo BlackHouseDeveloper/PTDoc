@@ -4,7 +4,7 @@ namespace PTDoc.Infrastructure.Services;
 
 /// <summary>
 /// Mock implementation of IDashboardService for development
-/// TODO: Replace with actual implementation that fetches from API/database
+/// Provides deterministic sample data while backend dashboard aggregation is not wired.
 /// </summary>
 public class MockDashboardService : IDashboardService
 {
