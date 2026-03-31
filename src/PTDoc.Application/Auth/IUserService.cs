@@ -7,6 +7,7 @@ namespace PTDoc.Application.Auth
     using System.Security.Claims;
     using System.Threading;
     using System.Threading.Tasks;
+
     using PTDoc.Application.Identity;
 
     /// <summary>
