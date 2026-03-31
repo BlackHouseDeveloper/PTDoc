@@ -98,8 +98,8 @@ public static class NoteWorkspaceV2Endpoints
 
     private static IResult SearchIcd10(
         [FromQuery(Name = "q")] string? query,
-        [FromQuery] int take = 20,
-        IWorkspaceReferenceCatalogService catalogs)
+        IWorkspaceReferenceCatalogService catalogs,
+        [FromQuery] int take = 20)
     {
         var takeClamped = Math.Clamp(take, 1, 100);
         return Results.Ok(catalogs.SearchIcd10(query, takeClamped));
@@ -107,8 +107,8 @@ public static class NoteWorkspaceV2Endpoints
 
     private static IResult SearchCpt(
         [FromQuery(Name = "q")] string? query,
-        [FromQuery] int take = 20,
-        IWorkspaceReferenceCatalogService catalogs)
+        IWorkspaceReferenceCatalogService catalogs,
+        [FromQuery] int take = 20)
     {
         var takeClamped = Math.Clamp(take, 1, 100);
         return Results.Ok(catalogs.SearchCpt(query, takeClamped));
