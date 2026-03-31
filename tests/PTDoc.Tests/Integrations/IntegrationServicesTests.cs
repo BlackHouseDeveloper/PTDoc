@@ -500,16 +500,21 @@ public class MockHttpClientFactory : IHttpClientFactory
 
 public sealed class StubHttpMessageHandler : HttpMessageHandler
 {
-    private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
+    private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _responder;
 
     public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    {
+        _responder = (request, _) => Task.FromResult(responder(request));
+    }
+
+    public StubHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder)
     {
         _responder = responder;
     }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        return Task.FromResult(_responder(request));
+        return _responder(request, cancellationToken);
     }
 
     public static HttpResponseMessage JsonResponse(string json)

@@ -5,6 +5,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Sync;
@@ -939,8 +940,8 @@ public class SyncEngine : ISyncEngine
                     PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? "{}",
                     Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? "{}",
                     TemplateVersion = TryGetString(root, "templateVersion") ?? TryGetString(root, "TemplateVersion") ?? "1.0",
-                    // AccessToken is required and unique — generate a server-side token for client-pushed intake forms
-                    AccessToken = Guid.NewGuid().ToString("N"),
+                    // AccessToken stores canonical hashed invite state; use a non-shareable placeholder hash here.
+                    AccessToken = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())).ToLowerInvariant(),
                     IsLocked = false, // Never trust IsLocked from client push
                     LastModifiedUtc = item.LastModifiedUtc,
                     ModifiedByUserId = actingUserId,

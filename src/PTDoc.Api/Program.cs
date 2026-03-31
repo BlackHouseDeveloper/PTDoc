@@ -33,6 +33,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Observability;
@@ -59,11 +60,29 @@ using PTDoc.Integrations.Services;
 var builder = WebApplication.CreateBuilder(args);
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
 var legacyApiAuthEnabled = builder.Configuration.GetValue<bool?>("Auth:LegacyApiAuthEnabled") ?? true;
+var intakeInviteOptions = builder.Configuration.GetSection(IntakeInviteOptions.SectionName).Get<IntakeInviteOptions>() ?? new IntakeInviteOptions();
 
 if (!builder.Environment.IsDevelopment() &&
     AzureRuntimeConfigurationValidator.RequiresAzureOpenAiConfiguration(builder.Configuration))
 {
     AzureRuntimeConfigurationValidator.ValidateAzureOpenAiConfiguration(builder.Configuration);
+}
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    if (string.IsNullOrWhiteSpace(intakeInviteOptions.SigningKey) ||
+        intakeInviteOptions.SigningKey.StartsWith("REPLACE_", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            "IntakeInvite:SigningKey has not been configured for PTDoc.Api. " +
+            "Run ./setup-dev-secrets.sh or set IntakeInvite:SigningKey in API user-secrets before starting the API.");
+    }
+
+    if (intakeInviteOptions.SigningKey.Length < 32)
+    {
+        throw new InvalidOperationException(
+            $"IntakeInvite:SigningKey must be at least 32 characters for PTDoc.Api. Current length: {intakeInviteOptions.SigningKey.Length}.");
+    }
 }
 
 // Add HttpContextAccessor for identity context
@@ -79,6 +98,7 @@ builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
+builder.Services.Configure<IntakeInviteOptions>(builder.Configuration.GetSection(IntakeInviteOptions.SectionName));
 
 // Register sync services
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
@@ -125,9 +145,13 @@ builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PT
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
 builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
+builder.Services.AddScoped<IEmailDeliveryService, SendGridEmailService>();
+builder.Services.AddScoped<ISmsDeliveryService, TwilioSmsService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
+builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
+builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty
@@ -690,6 +714,8 @@ app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending reg
 app.MapAppointmentEndpoints(); // Scheduling read endpoints
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
+app.MapIntakeAccessEndpoints(); // Standalone patient invite validation, OTP, and patient access
+app.MapIntakeDeliveryEndpoints(); // Share-link, QR, email, and SMS intake delivery
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
 app.MapObjectiveMetricEndpoints(); // Sprint O: ObjectiveMetric CRUD per note
 app.MapSyncEndpoints(); // Sync endpoints

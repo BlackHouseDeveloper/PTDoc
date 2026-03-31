@@ -26,11 +26,11 @@ public sealed class NoteWorkspaceApiServiceTests
         var noteId = Guid.NewGuid();
         string? requestBody = null;
 
-        var handler = new StubHttpMessageHandler(request =>
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/api/v2/notes/workspace/", request.RequestUri!.AbsolutePath);
-            requestBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
 
             var response = new NoteWorkspaceV2LoadResponse
             {
@@ -105,11 +105,11 @@ public sealed class NoteWorkspaceApiServiceTests
         var noteId = Guid.NewGuid();
         string? requestBody = null;
 
-        var handler = new StubHttpMessageHandler(request =>
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
         {
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal($"/api/v1/notes/{noteId}/accept-ai-suggestion", request.RequestUri!.AbsolutePath);
-            requestBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
             return StubHttpMessageHandler.JsonResponse("""{"success":true}""");
         });
 

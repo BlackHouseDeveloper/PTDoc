@@ -19,6 +19,7 @@ using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
@@ -240,6 +241,170 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task FrontDesk_Can_Generate_Intake_Delivery_Link_And_Read_Status()
+    {
+        using var ptClientForCreate = _factory.CreateClientWithRole(Roles.PT);
+        using var frontDeskClient = _factory.CreateClientWithRole(Roles.FrontDesk);
+        var patientId = await CreatePatientAsync(ptClientForCreate);
+        var intakeId = await CreateIntakeAsync(frontDeskClient, patientId);
+
+        using var linkResponse = await frontDeskClient.PostAsync($"/api/v1/intake/{intakeId}/delivery/link", null);
+        Assert.Equal(HttpStatusCode.OK, linkResponse.StatusCode);
+
+        var bundle = JsonSerializer.Deserialize<IntakeDeliveryBundleResponse>(
+            await linkResponse.Content.ReadAsStringAsync(),
+            JsonOpts);
+        Assert.NotNull(bundle);
+        Assert.Equal(intakeId, bundle!.IntakeId);
+        Assert.Equal(patientId, bundle.PatientId);
+        Assert.Contains($"/intake/{patientId:D}?mode=patient&invite=", bundle.InviteUrl, StringComparison.Ordinal);
+        Assert.Contains("<svg", bundle.QrSvg, StringComparison.OrdinalIgnoreCase);
+
+        using var statusResponse = await frontDeskClient.GetAsync($"/api/v1/intake/{intakeId}/delivery/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+
+        var status = JsonSerializer.Deserialize<IntakeDeliveryStatusResponse>(
+            await statusResponse.Content.ReadAsStringAsync(),
+            JsonOpts);
+        Assert.NotNull(status);
+        Assert.True(status!.InviteActive);
+        Assert.NotNull(status.InviteExpiresAt);
+        Assert.NotNull(status.LastLinkGeneratedAt);
+    }
+
+    [Fact]
+    public async Task PT_Can_Send_Intake_Invite_Email()
+    {
+        using var ptClient = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(ptClient);
+        var intakeId = await CreateIntakeAsync(ptClient, patientId);
+
+        using var sendResponse = await ptClient.PostAsync(
+            $"/api/v1/intake/{intakeId}/delivery/send",
+            JsonContent(new IntakeSendInviteRequest
+            {
+                Channel = IntakeDeliveryChannel.Email,
+                Destination = "updated.patient@example.com"
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, sendResponse.StatusCode);
+
+        var result = JsonSerializer.Deserialize<IntakeDeliverySendResult>(
+            await sendResponse.Content.ReadAsStringAsync(),
+            JsonOpts);
+        Assert.NotNull(result);
+        Assert.True(result!.Success);
+        Assert.Equal(IntakeDeliveryChannel.Email, result.Channel);
+        Assert.Equal("u***t@example.com", result.DestinationMasked);
+        Assert.NotNull(result.SentAt);
+        Assert.NotNull(result.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task Admin_Can_Read_Intake_Delivery_Status()
+    {
+        using var ptClient = _factory.CreateClientWithRole(Roles.PT);
+        using var adminClient = _factory.CreateClientWithRole(Roles.Admin);
+        var patientId = await CreatePatientAsync(ptClient);
+        var intakeId = await CreateIntakeAsync(ptClient, patientId);
+
+        using var seedResponse = await ptClient.PostAsync($"/api/v1/intake/{intakeId}/delivery/link", null);
+        Assert.Equal(HttpStatusCode.OK, seedResponse.StatusCode);
+
+        using var statusResponse = await adminClient.GetAsync($"/api/v1/intake/{intakeId}/delivery/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task Billing_Cannot_Generate_Intake_Delivery_Link_Returns_403()
+    {
+        using var ptClient = _factory.CreateClientWithRole(Roles.PT);
+        using var billingClient = _factory.CreateClientWithRole(Roles.Billing);
+        var patientId = await CreatePatientAsync(ptClient);
+        var intakeId = await CreateIntakeAsync(ptClient, patientId);
+
+        using var response = await billingClient.PostAsync($"/api/v1/intake/{intakeId}/delivery/link", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Standalone_Intake_Invite_Allows_Draft_Load_Update_And_Submit()
+    {
+        using var frontDeskClient = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var ptClientForCreate = _factory.CreateClientWithRole(Roles.PT);
+        using var anonymousClient = _factory.CreateUnauthenticatedClient();
+        var patientId = await CreatePatientAsync(ptClientForCreate);
+        var intakeId = await CreateIntakeAsync(frontDeskClient, patientId);
+
+        using var bundleResponse = await frontDeskClient.PostAsync($"/api/v1/intake/{intakeId}/delivery/link", null);
+        Assert.Equal(HttpStatusCode.OK, bundleResponse.StatusCode);
+
+        var bundle = JsonSerializer.Deserialize<IntakeDeliveryBundleResponse>(
+            await bundleResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var inviteToken = ReadInviteToken(bundle.InviteUrl);
+
+        using var validateResponse = await anonymousClient.PostAsync(
+            "/api/v1/intake/access/validate-invite",
+            JsonContent(new ValidateIntakeInviteRequest { InviteToken = inviteToken }));
+        Assert.Equal(HttpStatusCode.OK, validateResponse.StatusCode);
+
+        var validatePayload = JsonSerializer.Deserialize<IntakeInviteResult>(
+            await validateResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.True(validatePayload.IsValid);
+        Assert.False(string.IsNullOrWhiteSpace(validatePayload.AccessToken));
+
+        using var draftRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/intake/access/patient/{patientId}/draft");
+        draftRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+
+        using var draftResponse = await anonymousClient.SendAsync(draftRequest);
+        Assert.Equal(HttpStatusCode.OK, draftResponse.StatusCode);
+
+        var draft = JsonSerializer.Deserialize<IntakeResponse>(
+            await draftResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.Equal(intakeId, draft.Id);
+        Assert.False(draft.Locked);
+
+        using var updateRequest = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"/api/v1/intake/access/{intakeId}")
+        {
+            Content = JsonContent(new UpdateIntakeRequest
+            {
+                PainMapData = """{"regions":["lumbar"]}""",
+                Consents = """{"hipaaAcknowledged":true,"termsOfServiceAccepted":true}""",
+                ResponseJson = """{"fullName":"Patient Updated Through Invite"}""",
+                TemplateVersion = "1.1"
+            })
+        };
+        updateRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+
+        using var updateResponse = await anonymousClient.SendAsync(updateRequest);
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+
+        using var submitRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/intake/access/{intakeId}/submit");
+        submitRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+
+        using var submitResponse = await anonymousClient.SendAsync(submitRequest);
+        Assert.Equal(HttpStatusCode.OK, submitResponse.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedIntake = await db.IntakeForms.SingleAsync(form => form.Id == intakeId);
+        Assert.True(storedIntake.IsLocked);
+        Assert.NotNull(storedIntake.SubmittedAt);
+        Assert.Contains("lumbar", storedIntake.PainMapData, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── Note authoring → compliance workflow ─────────────────────────────────
 
     [Fact]
@@ -407,6 +572,45 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PT_Can_Export_Signed_Note_Returns_Pdf_File()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var signResponse = await client.PostAsync($"/api/v1/notes/{noteId}/sign", null);
+        Assert.Equal(HttpStatusCode.OK, signResponse.StatusCode);
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+
+        var bytes = await exportResponse.Content.ReadAsByteArrayAsync();
+        Assert.NotEmpty(bytes);
+        Assert.StartsWith("%PDF", Encoding.UTF8.GetString(bytes));
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "PdfExport");
+        Assert.Contains(noteId.ToString(), audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Test", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PT_Can_Accept_Ai_Suggestion_Into_V2_Workspace_Note()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
@@ -455,7 +659,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    public async Task PT_Cannot_Accept_Ai_Suggestion_On_Signed_Note_Returns_422()
+    public async Task PT_Cannot_Accept_Ai_Suggestion_On_Signed_Note_Returns_409()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
@@ -490,7 +694,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         });
         using var acceptResponse = await client.PostAsync($"/api/v1/notes/{noteId}/accept-ai-suggestion", acceptBody);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, acceptResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, acceptResponse.StatusCode);
     }
 
     [Fact]
@@ -575,6 +779,33 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         return patientId;
     }
 
+    private static async Task<Guid> CreateIntakeAsync(HttpClient client, Guid patientId)
+    {
+        using var response = await client.PostAsync("/api/v1/intake", JsonContent(new CreateIntakeRequest
+        {
+            PatientId = patientId,
+            PainMapData = """{"regions":["knee"]}""",
+            Consents = """{"hipaaAcknowledged":true}""",
+            ResponseJson = """{"status":"draft"}"""
+        }));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var doc = JsonSerializer.Deserialize<JsonDocument>(content, JsonOpts);
+        return doc!.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static string ReadInviteToken(string inviteUrl)
+    {
+        var inviteQueryPart = new Uri(inviteUrl).Query
+            .TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(part => part.StartsWith("invite=", StringComparison.OrdinalIgnoreCase));
+
+        Assert.False(string.IsNullOrWhiteSpace(inviteQueryPart), $"Invite token was not found in invite URL: {inviteUrl}");
+        return Uri.UnescapeDataString(inviteQueryPart!["invite=".Length..]);
+    }
+
     private static StringContent JsonContent<T>(T value) =>
         new(JsonSerializer.Serialize(value, JsonOpts), Encoding.UTF8, "application/json");
 }
@@ -605,6 +836,9 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["Jwt:SigningKey"] = "integration-test-signing-key-do-not-use-in-prod-min-64-chars!",
                 ["Jwt:Issuer"] = "ptdoc-integration-tests",
                 ["Jwt:Audience"] = "ptdoc-api-tests",
+                ["IntakeInvite:SigningKey"] = "integration-test-intake-invite-key-do-not-use-in-prod-64-chars!",
+                ["IntakeInvite:PublicWebBaseUrl"] = "http://localhost",
+                ["IntakeInvite:InviteExpiryMinutes"] = "1440",
                 // Dummy values that satisfy non-null guards without triggering Azure calls
                 ["AzureBlobStorage:ConnectionString"] = "UseDevelopmentStorage=true",
                 ["AzureOpenAi:Endpoint"] = "https://test.openai.azure.com/",
@@ -637,11 +871,46 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
             // ── Replace external service dependencies with no-op mocks ───────────────
             ReplaceWithMock<IAiService>(services);
-            ReplaceWithMock<IPdfRenderer>(services);
             ReplaceWithMock<IPaymentService>(services);
             ReplaceWithMock<IFaxService>(services);
             ReplaceWithMock<IHomeExerciseProgramService>(services);
             ReplaceWithMock<IAiClinicalGenerationService>(services);
+
+            var pdfRendererMock = new Mock<IPdfRenderer>();
+            pdfRendererMock
+                .Setup(renderer => renderer.ExportNoteToPdfAsync(It.IsAny<NoteExportDto>()))
+                .ReturnsAsync((NoteExportDto note) =>
+                {
+                    var content = Encoding.UTF8.GetBytes($"%PDF-1.4 test export {note.NoteId:D}");
+                    return new PdfExportResult
+                    {
+                        PdfBytes = content,
+                        FileName = $"note_{note.NoteId}_{DateTime.UtcNow:yyyyMMdd}.pdf",
+                        ContentType = "application/pdf",
+                        FileSizeBytes = content.Length
+                    };
+                });
+            ReplaceWithInstance(services, pdfRendererMock.Object);
+
+            var emailDeliveryMock = new Mock<IEmailDeliveryService>();
+            emailDeliveryMock
+                .Setup(service => service.SendAsync(It.IsAny<EmailDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmailDeliveryResult
+                {
+                    Success = true,
+                    ProviderMessageId = "sendgrid-test-message"
+                });
+            ReplaceWithInstance(services, emailDeliveryMock.Object);
+
+            var smsDeliveryMock = new Mock<ISmsDeliveryService>();
+            smsDeliveryMock
+                .Setup(service => service.SendAsync(It.IsAny<SmsDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SmsDeliveryResult
+                {
+                    Success = true,
+                    ProviderMessageId = "twilio-test-message"
+                });
+            ReplaceWithInstance(services, smsDeliveryMock.Object);
 
             // ── Replace ITenantContextAccessor with a null-returning stub ────────────
             // This prevents HttpTenantContextAccessor from throwing when there's no
@@ -711,6 +980,15 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
         var mock = new Mock<TService>();
         services.AddScoped(_ => mock.Object);
+    }
+
+    private static void ReplaceWithInstance<TService>(IServiceCollection services, TService instance) where TService : class
+    {
+        var existing = services.FirstOrDefault(d => d.ServiceType == typeof(TService));
+        if (existing != null)
+            services.Remove(existing);
+
+        services.AddScoped(_ => instance);
     }
 
     public new async Task DisposeAsync()

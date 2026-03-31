@@ -2,6 +2,7 @@ namespace PTDoc.Application.Services;
 
 public sealed class IntakeResponseDraft
 {
+    public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
     public int CurrentStep { get; set; }
     public bool HipaaAcknowledged { get; set; }

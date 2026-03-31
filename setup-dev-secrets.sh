@@ -50,6 +50,10 @@ echo "Setting Jwt:SigningKey for PTDoc.Api..."
 dotnet user-secrets set "Jwt:SigningKey" "$JWT_KEY" --project "$API_PROJECT" >/dev/null
 echo -e "${GREEN}✓ Jwt:SigningKey stored in user-secrets for PTDoc.Api${NC}"
 
+echo "Setting IntakeInvite:SigningKey for PTDoc.Api..."
+dotnet user-secrets set "IntakeInvite:SigningKey" "$INTAKE_KEY" --project "$API_PROJECT" >/dev/null
+echo -e "${GREEN}✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Api${NC}"
+
 echo "Setting IntakeInvite:SigningKey for PTDoc.Web..."
 dotnet user-secrets set "IntakeInvite:SigningKey" "$INTAKE_KEY" --project "$WEB_PROJECT" >/dev/null
 echo -e "${GREEN}✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Web${NC}"

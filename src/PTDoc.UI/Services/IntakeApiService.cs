@@ -2,12 +2,17 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Microsoft.AspNetCore.Components;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 
 namespace PTDoc.UI.Services;
 
-public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
+public sealed class IntakeApiService(
+    HttpClient httpClient,
+    IIntakeSessionStore sessionStore,
+    NavigationManager navigationManager) : IIntakeService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -17,7 +22,12 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
 
     public async Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.GetAsync($"/api/v1/intake/patient/{patientId}/draft", cancellationToken);
+        var response = await SendWithOptionalStandaloneAccessAsync(
+            HttpMethod.Get,
+            authenticatedPath: $"/api/v1/intake/patient/{patientId}/draft",
+            standalonePath: $"/api/v1/intake/access/patient/{patientId}/draft",
+            body: null,
+            cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -95,7 +105,12 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
             TemplateVersion = "1.0"
         };
 
-        var response = await httpClient.PutAsJsonAsync($"/api/v1/intake/{existing.Id}", updateRequest, cancellationToken);
+        var response = await SendWithOptionalStandaloneAccessAsync(
+            HttpMethod.Put,
+            authenticatedPath: $"/api/v1/intake/{existing.Id}",
+            standalonePath: $"/api/v1/intake/access/{existing.Id}",
+            body: updateRequest,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
@@ -119,13 +134,23 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
             throw new InvalidOperationException($"Cannot submit intake; intake {existing.Id} is already locked.");
         }
 
-        var response = await httpClient.PostAsync($"/api/v1/intake/{existing.Id}/submit", content: null, cancellationToken);
+        var response = await SendWithOptionalStandaloneAccessAsync(
+            HttpMethod.Post,
+            authenticatedPath: $"/api/v1/intake/{existing.Id}/submit",
+            standalonePath: $"/api/v1/intake/access/{existing.Id}/submit",
+            body: null,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
     private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken)
     {
-        var response = await httpClient.GetAsync($"/api/v1/intake/patient/{patientId}/draft", cancellationToken);
+        var response = await SendWithOptionalStandaloneAccessAsync(
+            HttpMethod.Get,
+            authenticatedPath: $"/api/v1/intake/patient/{patientId}/draft",
+            standalonePath: $"/api/v1/intake/access/patient/{patientId}/draft",
+            body: null,
+            cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -150,6 +175,83 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
         response.EnsureSuccessStatusCode();
     }
 
+    private async Task<HttpResponseMessage> SendWithOptionalStandaloneAccessAsync(
+        HttpMethod method,
+        string authenticatedPath,
+        string standalonePath,
+        object? body,
+        CancellationToken cancellationToken)
+    {
+        var accessToken = await TryGetStandaloneAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            if (body is null)
+            {
+                using var authenticatedRequest = new HttpRequestMessage(method, authenticatedPath);
+                return await httpClient.SendAsync(authenticatedRequest, cancellationToken);
+            }
+
+            return await SendJsonAsync(method, authenticatedPath, body, cancellationToken);
+        }
+
+        using var standaloneRequest = new HttpRequestMessage(method, standalonePath);
+        standaloneRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessToken);
+        if (body is not null)
+        {
+            standaloneRequest.Content = JsonContent.Create(body, options: SerializerOptions);
+        }
+
+        return await httpClient.SendAsync(standaloneRequest, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendJsonAsync(
+        HttpMethod method,
+        string path,
+        object body,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, path)
+        {
+            Content = JsonContent.Create(body, options: SerializerOptions)
+        };
+
+        return await httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private async Task<string?> TryGetStandaloneAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        if (!IsStandalonePatientMode())
+        {
+            return null;
+        }
+
+        var session = await sessionStore.GetAsync(cancellationToken);
+        if (session is null || session.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return null;
+        }
+
+        return session.Token;
+    }
+
+    private bool IsStandalonePatientMode()
+    {
+        if (!Uri.TryCreate(navigationManager.Uri, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!uri.AbsolutePath.StartsWith("/intake", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var query = uri.Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return query.Any(part => string.Equals(part, "mode=patient", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static IntakeResponseDraft ToDraft(IntakeResponse response)
     {
         IntakeResponseDraft draft;
@@ -171,6 +273,7 @@ public sealed class IntakeApiService(HttpClient httpClient) : IIntakeService
         }
 
         draft.PatientId = response.PatientId;
+        draft.IntakeId = response.Id;
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
         return draft;

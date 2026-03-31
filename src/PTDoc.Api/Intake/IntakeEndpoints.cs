@@ -638,7 +638,7 @@ public static class IntakeEndpoints
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
-    private static IntakeResponse ToResponse(IntakeForm f) => new()
+    internal static IntakeResponse ToResponse(IntakeForm f) => new()
     {
         Id = f.Id,
         PatientId = f.PatientId,
@@ -663,7 +663,7 @@ public static class IntakeEndpoints
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
-    private static bool TryNormalizeConsents(
+    internal static bool TryNormalizeConsents(
         string? consentsJson,
         bool requireHipaaAcknowledgement,
         out string normalizedConsents,
@@ -693,7 +693,7 @@ public static class IntakeEndpoints
         return true;
     }
 
-    private static IntakeStructuredDataDto? TryParseStructuredData(string? structuredDataJson)
+    internal static IntakeStructuredDataDto? TryParseStructuredData(string? structuredDataJson)
     {
         if (!IntakeStructuredDataJson.TryParse(structuredDataJson, out var structuredData, out _))
         {
@@ -709,7 +709,7 @@ public static class IntakeEndpoints
         return hasContent ? structuredData : null;
     }
 
-    private static bool TryResolveStructuredData(
+    internal static bool TryResolveStructuredData(
         IntakeStructuredDataDto? requestStructuredData,
         string? legacyPainMapData,
         string? existingStructuredDataJson,

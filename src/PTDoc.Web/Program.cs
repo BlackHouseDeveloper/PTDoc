@@ -33,6 +33,8 @@ builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, HttpSyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, IntakeApiService>();
+builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
+builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
@@ -50,44 +52,6 @@ builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, Ht
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
-
-builder.Services.Configure<IntakeInviteOptions>(
-    builder.Configuration.GetSection(IntakeInviteOptions.SectionName));
-
-if (builder.Environment.IsDevelopment())
-{
-    // Development: accept any invite token and use fixed OTP "123456" for easy local testing.
-    builder.Services.AddScoped<IIntakeInviteService, MockIntakeInviteService>();
-}
-else
-{
-    // Production / Staging: validate signed JWT invite tokens and use cryptographically random OTPs.
-    var intakeInviteConfig = builder.Configuration
-        .GetSection(IntakeInviteOptions.SectionName)
-        .Get<IntakeInviteOptions>();
-
-    if (intakeInviteConfig is null || string.IsNullOrWhiteSpace(intakeInviteConfig.SigningKey) ||
-        intakeInviteConfig.SigningKey.StartsWith("REPLACE_", StringComparison.Ordinal))
-    {
-        throw new InvalidOperationException(
-            "IntakeInvite:SigningKey has not been configured. " +
-            "Run the bootstrap script to generate and store a secure key:\n" +
-            "  macOS/Linux: ./setup-dev-secrets.sh\n" +
-            "  Windows:     .\\setup-dev-secrets.ps1\n" +
-            "Or manually run: dotnet user-secrets set \"IntakeInvite:SigningKey\" <key> " +
-            "--project src/PTDoc.Web/PTDoc.Web.csproj");
-    }
-
-    if (intakeInviteConfig.SigningKey.Length < 32)
-    {
-        throw new InvalidOperationException(
-            $"IntakeInvite:SigningKey must be at least 32 characters. " +
-            $"Current length: {intakeInviteConfig.SigningKey.Length}. " +
-            "Run ./setup-dev-secrets.sh (macOS/Linux) or .\\setup-dev-secrets.ps1 (Windows) to generate a valid key.");
-    }
-
-    builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
-}
 builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.Infrastructure.Services.MockDashboardService>();
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 

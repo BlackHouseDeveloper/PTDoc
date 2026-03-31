@@ -205,6 +205,28 @@ public class ConfigurationValidationTests
     }
 
     [Trait("Category", "SecretPolicy")]
+    [Theory]
+    [InlineData("src/PTDoc.Api/appsettings.json", "IntakeInvite:SigningKey")]
+    [InlineData("src/PTDoc.Api/appsettings.Development.json", "IntakeInvite:SigningKey")]
+    public void ApiAppsettings_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty(string repoRelativePath, string configKey)
+    {
+        var fullPath = Path.Combine(FindRepoRoot(), repoRelativePath);
+        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
+
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
+            .Build();
+
+        var keyValue = config[configKey];
+
+        Assert.True(
+            string.IsNullOrEmpty(keyValue) ||
+            keyValue.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal),
+            $"{repoRelativePath} [{configKey}] must be a REPLACE_ placeholder. " +
+            $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
+    }
+
+    [Trait("Category", "SecretPolicy")]
     [Fact]
     public void WebAppsettingsDevelopment_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty()
     {

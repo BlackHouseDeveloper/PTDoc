@@ -3,6 +3,9 @@ namespace PTDoc.Application.Intake;
 /// <summary>Manages secure invite tokens and OTP verification for the standalone patient intake flow.</summary>
 public interface IIntakeInviteService
 {
+    /// <summary>Creates or rotates the secure invite link for a specific intake record.</summary>
+    Task<IntakeInviteLinkResult> CreateInviteAsync(Guid intakeId, CancellationToken cancellationToken = default);
+
     /// <summary>Validates a signed invite token from the URL and issues a short-lived intake access token.</summary>
     Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default);
 

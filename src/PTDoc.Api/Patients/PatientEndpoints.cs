@@ -98,6 +98,8 @@ public static class PatientEndpoints
                 FirstName = p.FirstName,
                 LastName = p.LastName,
                 MedicalRecordNumber = p.MedicalRecordNumber,
+                Email = p.Email,
+                Phone = p.Phone,
                 DateOfBirth = p.DateOfBirth,
                 IsArchived = p.IsArchived
             })

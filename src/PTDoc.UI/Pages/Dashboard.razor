@@ -8,7 +8,6 @@
 @inject IAppointmentService AppointmentService
 @inject INoteService NoteService
 @inject INotificationCenterService NotificationCenterService
-@inject IIntakeService IntakeService
 @inject IToastService ToastService
 @rendermode InteractiveServer
 @implements IDisposable
@@ -131,7 +130,9 @@
                 .Select(p => new SendIntakeModal.PatientOption
                 {
                     Id = p.Id.ToString(),
-                    Name = $"{p.FirstName} {p.LastName}"
+                    Name = $"{p.FirstName} {p.LastName}",
+                    Email = p.Email,
+                    PhoneNumber = p.Phone
                 })
                 .ToList();
         }
@@ -242,28 +243,13 @@
 
     private async Task HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
     {
-        if (!Guid.TryParse(formData.PatientId, out var patientGuid))
-        {
-            ToastService.ShowError("Invalid patient selected.");
-            return;
-        }
-
         try
         {
-            var draft = new PTDoc.Application.Services.IntakeResponseDraft
-            {
-                PatientId = patientGuid,
-                EmailAddress = formData.Email,
-                PhoneNumber = formData.PhoneNumber
-            };
-            await IntakeService.SaveDraftAsync(draft);
-            ToastService.ShowSuccess("Intake form created. Share the intake link with the patient to complete.");
-            await LoadDashboardSnapshotAsync();
+            await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dashboard] Error creating intake draft: {ex.Message}");
-            ToastService.ShowError("Failed to create intake form. Please try again.");
+            Console.WriteLine($"[Dashboard] Error refreshing intake state: {ex.Message}");
         }
     }
 

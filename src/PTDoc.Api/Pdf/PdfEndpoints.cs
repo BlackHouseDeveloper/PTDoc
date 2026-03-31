@@ -59,7 +59,9 @@ public static class PdfEndpoints
             {
                 NoteId = note.Id,
                 DateOfService = note.DateOfService,
+                NoteTypeDisplayName = note.NoteType.ToString(),
                 ContentJson = note.ContentJson ?? "{}",
+                CptCodesJson = note.CptCodesJson ?? "[]",
 
                 // Patient information
                 PatientFirstName = note.Patient?.FirstName ?? string.Empty,
@@ -70,6 +72,8 @@ public static class PdfEndpoints
                 SignatureHash = note.SignatureHash,
                 SignedUtc = note.SignedUtc,
                 SignedByUserId = note.SignedByUserId,
+                ClinicianDisplayName = await ResolveClinicianDisplayNameAsync(dbContext, note.SignedByUserId),
+                ClinicianCredentials = await ResolveClinicianCredentialsAsync(dbContext, note.SignedByUserId),
 
                 // Export options
                 IncludeMedicareCompliance = true,
@@ -109,5 +113,39 @@ public static class PdfEndpoints
                 detail: ex.Message,
                 statusCode: 500);
         }
+    }
+
+    private static async Task<string> ResolveClinicianDisplayNameAsync(ApplicationDbContext dbContext, Guid? userId)
+    {
+        if (!userId.HasValue)
+        {
+            return string.Empty;
+        }
+
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == userId.Value);
+
+        if (user is null)
+        {
+            return string.Empty;
+        }
+
+        var name = $"{user.FirstName} {user.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? user.Username : name;
+    }
+
+    private static async Task<string> ResolveClinicianCredentialsAsync(ApplicationDbContext dbContext, Guid? userId)
+    {
+        if (!userId.HasValue)
+        {
+            return string.Empty;
+        }
+
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == userId.Value);
+
+        return user?.Role ?? string.Empty;
     }
 }

@@ -159,6 +159,8 @@ public sealed class PatientListItemResponse
     public Guid Id { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public string? MedicalRecordNumber { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public DateTime DateOfBirth { get; set; }

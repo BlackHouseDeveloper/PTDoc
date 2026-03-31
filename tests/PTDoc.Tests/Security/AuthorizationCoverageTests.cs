@@ -137,6 +137,15 @@ public class AuthorizationCoverageTests
             // Health probes (liveness + readiness)
             "GET /health/live",
             "GET /health/ready",
+            // Standalone intake access flow uses signed invite / session tokens in the payload or header.
+            "POST /api/v1/intake/access/validate-invite",
+            "POST /api/v1/intake/access/send-otp",
+            "POST /api/v1/intake/access/verify-otp",
+            "POST /api/v1/intake/access/validate-session",
+            "POST /api/v1/intake/access/revoke-session",
+            "GET /api/v1/intake/access/patient/{patientId:guid}/draft",
+            "PUT /api/v1/intake/access/{id:guid}",
+            "POST /api/v1/intake/access/{id:guid}/submit",
             // HEP patient launch callback — token is encoded in the URL path, not the auth header
             "GET /api/v1/integrations/hep/patient-launch/{launchToken}",
         };
@@ -189,6 +198,20 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/intake/{id:guid}/submit",                            AuthorizationPolicies.IntakeRead),
         new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
         new("POST", "/api/v1/intake/{id:guid}/review",                            AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/intake/{id:guid}/delivery/link",                     AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/{id:guid}/delivery/send",                     AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/intake/{id:guid}/delivery/status",                   AuthorizationPolicies.IntakeRead),
+
+        // ── Standalone intake access (Intake/IntakeAccessEndpoints.cs) ───────
+        // These endpoints are intentionally anonymous because they perform token/header validation in-handler.
+        new("POST", "/api/v1/intake/access/validate-invite",                      null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/intake/access/send-otp",                             null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/intake/access/verify-otp",                           null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/intake/access/validate-session",                     null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/intake/access/revoke-session",                       null, IsIntentionallyAnonymous: true),
+        new("GET",  "/api/v1/intake/access/patient/{patientId:guid}/draft",       null, IsIntentionallyAnonymous: true),
+        new("PUT",  "/api/v1/intake/access/{id:guid}",                            null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/intake/access/{id:guid}/submit",                     null, IsIntentionallyAnonymous: true),
 
         // ── Intake reference data (ReferenceData/IntakeReferenceDataEndpoints.cs) ─
         new("GET",  "/api/v1/reference-data/intake/",                             AuthorizationPolicies.IntakeRead),

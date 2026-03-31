@@ -16,4 +16,10 @@ public sealed class IntakeInviteOptions
 
     /// <summary>Minutes before a session access token expires. Defaults to 120 (2 hours).</summary>
     public int AccessTokenExpiryMinutes { get; init; } = 120;
+
+    /// <summary>Minutes before an intake invite link expires and must be regenerated.</summary>
+    public int InviteExpiryMinutes { get; init; } = 1440;
+
+    /// <summary>Public PTDoc.Web base URL used when constructing shareable intake invite links.</summary>
+    public string PublicWebBaseUrl { get; init; } = "http://localhost:5000";
 }

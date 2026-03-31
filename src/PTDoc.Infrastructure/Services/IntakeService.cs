@@ -3,6 +3,8 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Services;
@@ -94,7 +96,8 @@ public sealed class IntakeService : IIntakeService
         {
             PatientId = patient.Id,
             TemplateVersion = "1.0",
-            AccessToken = GenerateAccessToken(),
+            // Canonical invite links are minted separately; store a non-shareable placeholder hash.
+            AccessToken = GenerateAccessTokenPlaceholderHash(),
             ResponseJson = SerializeDraft(draft),
             Consents = BuildConsentsJson(state),
             IsLocked = false,
@@ -136,7 +139,8 @@ public sealed class IntakeService : IIntakeService
             {
                 PatientId = state.PatientId.Value,
                 TemplateVersion = "1.0",
-                AccessToken = GenerateAccessToken(),
+                // Canonical invite links are minted separately; store a non-shareable placeholder hash.
+                AccessToken = GenerateAccessTokenPlaceholderHash(),
                 ResponseJson = SerializeDraft(state),
                 Consents = BuildConsentsJson(state),
                 IsLocked = false,
@@ -303,7 +307,10 @@ public sealed class IntakeService : IIntakeService
         return JsonSerializer.Serialize(consents);
     }
 
-    private static string GenerateAccessToken()
-        => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
-            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    private static string GenerateAccessTokenPlaceholderHash()
+    {
+        var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(secret));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
 }
