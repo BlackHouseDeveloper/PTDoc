@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -93,6 +94,28 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Allowlist of claim types that are safe to persist alongside a refresh token.
+    /// Identity claims (user ID, roles, names) are included; credential claims
+    /// (e.g. <see cref="PTDocClaimTypes.ApiAccessToken"/>) are explicitly excluded
+    /// to prevent credentials from being stored in the database.
+    /// </summary>
+    private static readonly HashSet<string> SafeRefreshClaimTypes = new(StringComparer.Ordinal)
+    {
+        PTDocClaimTypes.InternalUserId,
+        PTDocClaimTypes.ExternalProvider,
+        PTDocClaimTypes.ExternalSubject,
+        PTDocClaimTypes.AuthenticationType,
+        ClaimTypes.NameIdentifier,
+        ClaimTypes.Name,
+        ClaimTypes.Role,
+        ClaimTypes.GivenName,
+        ClaimTypes.Surname,
+        ClaimTypes.Email,
+        "sub",
+        "oid",
+    };
+
     private static string ComputeHash(string token)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
@@ -101,7 +124,11 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
 
     private static string SerializeClaims(IEnumerable<Claim> claims)
     {
-        var dtos = claims.Select(c => new ClaimDto { Type = c.Type, Value = c.Value });
+        // Persist only known-safe identity claims.
+        // Credential claims (e.g. ApiAccessToken) must never be stored in the DB.
+        var dtos = claims
+            .Where(c => SafeRefreshClaimTypes.Contains(c.Type))
+            .Select(c => new ClaimDto { Type = c.Type, Value = c.Value });
         return JsonSerializer.Serialize(dtos);
     }
 

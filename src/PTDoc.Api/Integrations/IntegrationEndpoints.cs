@@ -211,6 +211,16 @@ public static class IntegrationEndpoints
         HttpContext httpContext,
         [FromServices] IMemoryCache memoryCache)
     {
+        // Validate the route parameter before using it as a cache key.
+        // Generated tokens are 32-char lowercase hex strings; reject anything
+        // oversized or containing non-hex characters to prevent cache-key abuse.
+        if (string.IsNullOrEmpty(launchToken) ||
+            launchToken.Length > 64 ||
+            !launchToken.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+        {
+            return Results.BadRequest();
+        }
+
         if (!memoryCache.TryGetValue<string>(GetLaunchCacheKey(launchToken), out var patientPortalUrl) ||
             string.IsNullOrWhiteSpace(patientPortalUrl))
         {

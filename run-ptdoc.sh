@@ -171,7 +171,7 @@ start_api() {
 
   for attempt in 1 2; do
     echo "${BLUE}🚀 Starting PTDoc API on $API_URL...${RESET}"
-    dotnet run --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
     API_PID=$!
 
     # Wait for API to be ready (listening + health endpoint)

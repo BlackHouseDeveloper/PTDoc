@@ -49,6 +49,10 @@ Write-Host "Setting Jwt:SigningKey for PTDoc.Api..."
 dotnet user-secrets set "Jwt:SigningKey" $jwtKey --project $ApiProject | Out-Null
 Write-Host "✓ Jwt:SigningKey stored in user-secrets for PTDoc.Api" -ForegroundColor Green
 
+Write-Host "Setting IntakeInvite:SigningKey for PTDoc.Api..."
+dotnet user-secrets set "IntakeInvite:SigningKey" $intakeKey --project $ApiProject | Out-Null
+Write-Host "✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Api" -ForegroundColor Green
+
 Write-Host "Setting IntakeInvite:SigningKey for PTDoc.Web..."
 dotnet user-secrets set "IntakeInvite:SigningKey" $intakeKey --project $WebProject | Out-Null
 Write-Host "✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Web" -ForegroundColor Green

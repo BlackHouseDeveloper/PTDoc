@@ -248,7 +248,7 @@ log "Checking dependency rules..."
 
 # Core should have no project references
 CORE_PROJECT_FILE="$ROOT_DIR/src/PTDoc.Core/PTDoc.Core.csproj"
-CORE_PROJECT_REFS_COUNT=$(grep -E '^[[:space:]]*<ProjectReference Include="[^"]+"' "$CORE_PROJECT_FILE" 2>/dev/null | wc -l | tr -d '[:space:]')
+CORE_PROJECT_REFS_COUNT=$((grep -E '^[[:space:]]*<ProjectReference Include="[^"]+"' "$CORE_PROJECT_FILE" 2>/dev/null || true) | wc -l | tr -d '[:space:]')
 
 if [ "$CORE_PROJECT_REFS_COUNT" -eq 0 ]; then
   log_success "Core: No dependencies (correct)"
