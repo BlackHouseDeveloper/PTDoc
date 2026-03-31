@@ -13,6 +13,20 @@ namespace PTDoc.Api.Appointments;
 /// </summary>
 public static class AppointmentEndpoints
 {
+    private const string AppointmentOverbookingErrorCode = "APPOINTMENT_OVERBOOKING";
+    private static readonly string[] SchedulableClinicianRoles =
+    [
+        Roles.PT,
+        Roles.PTA,
+        Roles.Admin,
+        Roles.Owner,
+        Roles.PracticeManager,
+        "Physical Therapist",
+        "Physical Therapist Assistant",
+        "Clinician",
+        "Provider"
+    ];
+
     public static void MapAppointmentEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/appointments")
@@ -72,7 +86,7 @@ public static class AppointmentEndpoints
             .AsNoTracking()
             .Where(user => user.IsActive
                 && (currentClinicId == null || user.ClinicId == currentClinicId)
-                && IsSchedulableClinicianRole(user.Role))
+                && SchedulableClinicianRoles.Contains(user.Role))
             .OrderBy(user => user.LastName)
             .ThenBy(user => user.FirstName)
             .Select(user => new AppointmentClinicianResponse
@@ -133,6 +147,22 @@ public static class AppointmentEndpoints
         }
 
         var (startUtc, endUtc) = BuildUtcRange(request.AppointmentDate, request.AppointmentTime, request.DurationMinutes);
+        var schedulingConflict = await GetSchedulingConflictAsync(
+            db,
+            clinician.Id,
+            patient.ClinicId,
+            startUtc,
+            endUtc,
+            excludeAppointmentId: null,
+            cancellationToken);
+
+        if (schedulingConflict is not null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), [BuildSchedulingConflictMessage(schedulingConflict)] }
+            });
+        }
 
         var appointment = new Appointment
         {
@@ -148,7 +178,14 @@ public static class AppointmentEndpoints
         };
 
         db.Appointments.Add(appointment);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsSchedulingConflictDbException(ex))
+        {
+            return BuildSchedulingConflictResult();
+        }
 
         var response = await BuildAppointmentResponseAsync(db, appointment.Id, cancellationToken);
         return Results.Created($"/api/v1/appointments/{appointment.Id}", response);
@@ -207,6 +244,22 @@ public static class AppointmentEndpoints
         }
 
         var (startUtc, endUtc) = BuildUtcRange(request.AppointmentDate, request.AppointmentTime, request.DurationMinutes);
+        var schedulingConflict = await GetSchedulingConflictAsync(
+            db,
+            clinician.Id,
+            patient.ClinicId,
+            startUtc,
+            endUtc,
+            excludeAppointmentId: id,
+            cancellationToken);
+
+        if (schedulingConflict is not null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), [BuildSchedulingConflictMessage(schedulingConflict)] }
+            });
+        }
 
         appointment.PatientId = patient.Id;
         appointment.ClinicalId = clinician.Id;
@@ -216,7 +269,14 @@ public static class AppointmentEndpoints
         appointment.Notes = NormalizeNotes(request.Notes);
         appointment.ClinicId = patient.ClinicId;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsSchedulingConflictDbException(ex))
+        {
+            return BuildSchedulingConflictResult();
+        }
 
         var response = await BuildAppointmentResponseAsync(db, appointment.Id, cancellationToken);
         return Results.Ok(response);
@@ -360,12 +420,9 @@ public static class AppointmentEndpoints
             .Where(user => user.Id == clinicianId
                 && user.IsActive
                 && user.ClinicId == clinicId
-                && IsSchedulableClinicianRole(user.Role))
+                && SchedulableClinicianRoles.Contains(user.Role))
             .FirstOrDefaultAsync(cancellationToken);
     }
-
-    private static bool IsSchedulableClinicianRole(string role) =>
-        role == Roles.PT || role == Roles.PTA || role == Roles.Admin || role == Roles.Owner;
 
     private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result)
     {
@@ -397,6 +454,49 @@ public static class AppointmentEndpoints
         var startUtc = localStart.ToUniversalTime();
         return (startUtc, startUtc.AddMinutes(durationMinutes));
     }
+
+    private static async Task<AppointmentConflictRow?> GetSchedulingConflictAsync(
+        ApplicationDbContext db,
+        Guid clinicianId,
+        Guid? clinicId,
+        DateTime startUtc,
+        DateTime endUtc,
+        Guid? excludeAppointmentId,
+        CancellationToken cancellationToken)
+    {
+        return await db.Appointments
+            .AsNoTracking()
+            .Where(appointment => appointment.ClinicalId == clinicianId
+                && appointment.ClinicId == clinicId
+                && appointment.Status != AppointmentStatus.Cancelled
+                && appointment.Status != AppointmentStatus.NoShow
+                && (!excludeAppointmentId.HasValue || appointment.Id != excludeAppointmentId.Value)
+                && appointment.StartTimeUtc < endUtc
+                && startUtc < appointment.EndTimeUtc)
+            .OrderBy(appointment => appointment.StartTimeUtc)
+            .Select(appointment => new AppointmentConflictRow
+            {
+                StartTimeUtc = appointment.StartTimeUtc,
+                EndTimeUtc = appointment.EndTimeUtc
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static string BuildSchedulingConflictMessage(AppointmentConflictRow conflict)
+    {
+        var localStart = DateTime.SpecifyKind(conflict.StartTimeUtc, DateTimeKind.Utc).ToLocalTime();
+        var localEnd = DateTime.SpecifyKind(conflict.EndTimeUtc, DateTimeKind.Utc).ToLocalTime();
+        return $"This clinician is already booked from {localStart:h:mm tt} to {localEnd:h:mm tt} on {localStart:MMM d, yyyy}.";
+    }
+
+    private static IResult BuildSchedulingConflictResult() =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            { nameof(CreateAppointmentRequest.AppointmentTime), ["This clinician is already booked for the selected time."] }
+        });
+
+    private static bool IsSchedulingConflictDbException(DbUpdateException exception) =>
+        exception.GetBaseException().Message.Contains(AppointmentOverbookingErrorCode, StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizeNotes(string? notes) =>
         string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
@@ -472,5 +572,11 @@ public static class AppointmentEndpoints
         public string? Notes { get; init; }
         public DateTime? IntakeSubmittedAt { get; init; }
         public bool HasIntake { get; init; }
+    }
+
+    private sealed class AppointmentConflictRow
+    {
+        public DateTime StartTimeUtc { get; init; }
+        public DateTime EndTimeUtc { get; init; }
     }
 }

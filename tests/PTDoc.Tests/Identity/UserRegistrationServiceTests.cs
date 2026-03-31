@@ -195,9 +195,10 @@ public class UserRegistrationServiceTests
     }
 
     [Fact]
-    public async Task RejectRegistrationAsync_DeletesPendingUser()
+    public async Task RejectRegistrationAsync_KeepsUserInactiveAndAuditsDecision()
     {
         await using var context = CreateInMemoryContext();
+        var adminId = Guid.NewGuid();
         var user = new User
         {
             Username = "reject_me",
@@ -213,9 +214,21 @@ public class UserRegistrationServiceTests
         await context.SaveChangesAsync();
 
         var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
-        var result = await sut.RejectRegistrationAsync(user.Id, Guid.NewGuid());
+        var result = await sut.RejectRegistrationAsync(user.Id, adminId);
 
         Assert.Equal(RegistrationStatus.Succeeded, result.Status);
-        Assert.Null(await context.Users.FindAsync(user.Id));
+
+        var persistedUser = await context.Users.FindAsync(user.Id);
+        Assert.NotNull(persistedUser);
+        Assert.False(persistedUser!.IsActive);
+
+        var rejectionAudit = await context.AuditLogs
+            .Where(a => a.EntityType == nameof(User)
+                && a.EntityId == user.Id
+                && a.EventType == "RegistrationRejected")
+            .SingleAsync();
+
+        Assert.Equal(adminId, rejectionAudit.UserId);
+        Assert.True(rejectionAudit.Success);
     }
 }

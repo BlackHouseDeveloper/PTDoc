@@ -1,0 +1,851 @@
+@using PTDoc.UI.Services
+@inject IAdminApprovalService AdminApprovalService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<section class="approvals-dashboard" aria-label="Admin Approval Dashboard">
+    <header class="approvals-header">
+        <div>
+            <h1>Admin Approval Dashboard</h1>
+            <p>Review onboarding and access requests prior to account activation.</p>
+        </div>
+
+        <div class="approvals-header-actions">
+            <div class="pending-summary" aria-label="Pending request count">
+                <span class="pending-summary-label">@SummaryLabel</span>
+                <strong class="pending-summary-value">@PendingCount</strong>
+            </div>
+
+            <button type="button" class="btn btn-outline" @onclick="RefreshPlaceholders">Refresh</button>
+        </div>
+    </header>
+
+    <div class="refresh-meta">
+        Last refreshed: @lastRefreshed
+    </div>
+
+    <div class="status-tabs" role="tablist" aria-label="Request status filters">
+        @foreach (var tab in statusTabs)
+        {
+            <button
+                type="button"
+                role="tab"
+                class="status-tab @(selectedStatusTab == tab ? "is-active" : string.Empty)"
+                aria-selected="@(selectedStatusTab == tab)"
+                @onclick="() => SetStatusTab(tab)">
+                @tab
+            </button>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="data-state" role="status">Loading approval requests...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <div class="data-state error" role="alert">@loadError</div>
+    }
+
+    <section class="approvals-filters" aria-label="Search and filter controls">
+        <div class="filter-row">
+            <label class="filter-field">
+                <span>Search</span>
+                <input type="text" placeholder="Name, email, or request ID" value="@searchQuery" @oninput="OnSearchInput" />
+            </label>
+
+            <label class="filter-field">
+                <span>Status</span>
+                <select value="@statusFilter" @onchange="OnStatusFilterChanged">
+                    <option>All</option>
+                    <option>Pending</option>
+                    <option>Approved</option>
+                    <option>Rejected</option>
+                    <option>On Hold</option>
+                    <option>Cancelled</option>
+                </select>
+            </label>
+
+            <label class="filter-field">
+                <span>Role</span>
+                <select value="@roleFilter" @onchange="OnRoleFilterChanged">
+                    <option>All Roles</option>
+                    <option>PT</option>
+                    <option>PTA</option>
+                    <option>Admin</option>
+                </select>
+            </label>
+
+            <label class="filter-field">
+                <span>Clinic</span>
+                <select value="@clinicFilter" @onchange="OnClinicFilterChanged">
+                    <option>All Clinics</option>
+                    <option>North Campus</option>
+                    <option>East Rehab</option>
+                    <option>Downtown Outpatient</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="filter-row">
+            <label class="filter-field">
+                <span>Date From</span>
+                <input type="date" value="@FormatDateForInput(dateFrom)" @onchange="OnDateFromChanged" />
+            </label>
+
+            <label class="filter-field">
+                <span>Date To</span>
+                <input type="date" value="@FormatDateForInput(dateTo)" @onchange="OnDateToChanged" />
+            </label>
+
+            <label class="filter-field">
+                <span>Sort By</span>
+                <select value="@sortBy" @onchange="OnSortByChanged">
+                    <option>Date submitted</option>
+                    <option>Name</option>
+                    <option>Status</option>
+                </select>
+            </label>
+        </div>
+    </section>
+
+    <div class="approvals-table-card">
+        <div class="approvals-table-wrapper" role="region" aria-label="Approval requests table">
+            <table class="approvals-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Request ID</th>
+                        <th scope="col">Applicant Name</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Requested Role</th>
+                        <th scope="col">Clinic / Organization</th>
+                        <th scope="col">Submitted Timestamp</th>
+                        <th scope="col">Credential Check</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Reviewed By</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var request in FilteredRequests)
+                    {
+                        <tr>
+                            <td>@request.RequestId</td>
+                            <td>@request.ApplicantName</td>
+                            <td>@request.Email</td>
+                            <td>@request.RequestedRole</td>
+                            <td>@request.Clinic</td>
+                            <td>@request.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
+                                <span class="credential-indicator @(request.CredentialsComplete ? "is-complete" : "is-warning")"
+                                      aria-label="@(request.CredentialsComplete ? "Credential fields complete" : "Credential fields missing")">
+                                    @if (request.CredentialsComplete)
+                                    {
+                                        <span aria-hidden="true">&#10003;</span>
+                                        <span>Complete</span>
+                                    }
+                                    else
+                                    {
+                                        <span aria-hidden="true">&#9888;</span>
+                                        <span>Missing data</span>
+                                    }
+                                </span>
+                            </td>
+                            <td>
+                                <ApprovalStatusBadge Status="@request.Status" />
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(request.ReviewedBy) ? "-" : request.ReviewedBy)</td>
+                            <td>
+                                <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenReview(request)">
+                                    Review
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+            <footer class="pagination-row" aria-label="Pagination controls">
+            <div class="pagination-meta">
+                <label class="filter-field inline-field">
+                    <span>Page Size</span>
+                    <select value="@pageSize" @onchange="OnPageSizeChanged">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+
+                <span>Page @currentPage of @TotalPages</span>
+                <span>@FilteredCount total results</span>
+            </div>
+
+            <div class="pagination-actions">
+                <button type="button" class="btn btn-outline" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+                <button type="button" class="btn btn-outline" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next</button>
+            </div>
+        </footer>
+    </div>
+</section>
+
+@if (selectedRequest is not null)
+{
+    <div class="detail-backdrop" @onclick="CloseReviewPanel">
+        <aside class="detail-panel" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="review-title">
+            <header class="detail-panel-header">
+                <div>
+                    <h2 id="review-title">Request Detail</h2>
+                    <p>Review request metadata, credentials, and action readiness.</p>
+                </div>
+
+                <button type="button" class="icon-close" @onclick="CloseReviewPanel" aria-label="Close review panel">
+                    &#10005;
+                </button>
+            </header>
+
+            <section class="detail-group" aria-label="Request metadata">
+                <h3>Request Metadata</h3>
+                <dl>
+                    <div><dt>ID</dt><dd>@selectedRequest.RequestId</dd></div>
+                    <div><dt>Submitted</dt><dd>@selectedRequest.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</dd></div>
+                    <div><dt>Source</dt><dd>Self-service registration</dd></div>
+                    <div><dt>Status</dt><dd><ApprovalStatusBadge Status="@selectedRequest.Status" /></dd></div>
+                </dl>
+            </section>
+
+            <section class="detail-group" aria-label="Applicant information">
+                <h3>Applicant Information</h3>
+                <dl>
+                    <div><dt>Name</dt><dd>@selectedRequest.ApplicantName</dd></div>
+                    <div><dt>Email</dt><dd>@selectedRequest.Email</dd></div>
+                    <div><dt>Date of Birth</dt><dd>••/••/1989</dd></div>
+                    <div><dt>Role Requested</dt><dd>@selectedRequest.RequestedRole</dd></div>
+                    <div><dt>Clinic</dt><dd>@selectedRequest.Clinic</dd></div>
+                </dl>
+            </section>
+
+            <section class="detail-group" aria-label="Credential information">
+                <h3>Credential / License Data</h3>
+                <dl>
+                    <div>
+                        <dt>
+                            License Type
+                            <span class="validation-icon @(selectedRequest.CredentialsComplete ? "ok" : "warning")" aria-hidden="true">
+                                @(selectedRequest.CredentialsComplete ? "&#10003;" : "!")
+                            </span>
+                        </dt>
+                        <dd>@selectedRequest.LicenseType</dd>
+                    </div>
+                    <div>
+                        <dt>
+                            License Number
+                            <span class="validation-icon @(selectedRequest.CredentialsComplete ? "ok" : "warning")" aria-hidden="true">
+                                @(selectedRequest.CredentialsComplete ? "&#10003;" : "!")
+                            </span>
+                        </dt>
+                        <dd>@selectedRequest.LicenseNumber</dd>
+                    </div>
+                    <div>
+                        <dt>License State</dt>
+                        <dd>@selectedRequest.LicenseState</dd>
+                    </div>
+                </dl>
+
+                @if (!selectedRequest.CredentialsComplete)
+                {
+                    <p class="detail-warning" role="note">Approval disabled: required credential fields are incomplete.</p>
+                }
+            </section>
+
+            <section class="detail-group" aria-label="Audit timeline placeholder">
+                <h3>Audit / History Timeline</h3>
+                <div class="placeholder-box">Timeline events will appear here once backend audit APIs are connected.</div>
+            </section>
+
+            <section class="detail-group" aria-label="Admin notes placeholder">
+                <h3>Admin Notes</h3>
+                <textarea rows="3" placeholder="Add reviewer notes (placeholder only)"></textarea>
+            </section>
+
+            <footer class="detail-actions">
+                <button type="button" class="btn btn-primary" disabled="@(!selectedRequest.CredentialsComplete || isSubmittingAction)" @onclick="OpenApproveConfirmation">Approve</button>
+                <button type="button" class="btn btn-outline-danger" disabled="@isSubmittingAction" @onclick="OpenRejectConfirmation">Reject</button>
+                <button type="button" class="btn btn-outline" disabled="@isSubmittingAction" @onclick="OpenOnHoldConfirmation">On Hold</button>
+                <button type="button" class="btn btn-outline" disabled="@isSubmittingAction" @onclick="OpenCancelConfirmation">Cancel Request</button>
+                <button type="button" class="btn btn-outline" disabled>Revoke Invite</button>
+            </footer>
+
+            @if (!string.IsNullOrWhiteSpace(actionFeedback))
+            {
+                <p class="action-feedback" role="status">@actionFeedback</p>
+            }
+        </aside>
+    </div>
+}
+
+@if (showConfirmationModal)
+{
+    <div class="detail-backdrop" @onclick="CloseConfirmation">
+        <div class="confirmation-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+            <h3 id="confirmation-title">@confirmationTitle</h3>
+            <p>@confirmationBody</p>
+            <div class="confirmation-actions">
+                <button type="button" class="btn btn-outline" @onclick="CloseConfirmation">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="ConfirmActionAsync" disabled="@isSubmittingAction">Confirm</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string DefaultStatusTab = "Pending";
+    private const string DefaultStatusFilter = "All";
+    private const string DefaultRoleFilter = "All Roles";
+    private const string DefaultClinicFilter = "All Clinics";
+    private const string DefaultSortBy = "Date submitted";
+    private const int DefaultPageSize = 25;
+
+    private string lastRefreshed = "Not refreshed yet";
+
+    private string selectedStatusTab = DefaultStatusTab;
+    private string searchQuery = string.Empty;
+    private string statusFilter = DefaultStatusFilter;
+    private string roleFilter = DefaultRoleFilter;
+    private string clinicFilter = DefaultClinicFilter;
+    private DateTime? dateFrom;
+    private DateTime? dateTo;
+    private string sortBy = DefaultSortBy;
+
+    private int pageSize = DefaultPageSize;
+    private int currentPage = 1;
+    private int totalServerCount;
+
+    private ApprovalRequestRow? selectedRequest;
+
+    private bool showConfirmationModal;
+    private string confirmationTitle = "Confirm action";
+    private string confirmationBody = "This is a UI placeholder confirmation modal.";
+    private ApprovalAction? pendingAction;
+
+    private bool isLoading;
+    private string? loadError;
+    private bool isSubmittingAction;
+    private string? actionFeedback;
+    private bool suppressQuerySync;
+    private string? lastLoadedQuery;
+
+    private static readonly IReadOnlyList<string> statusTabs =
+    [
+        "Pending",
+        "Approved",
+        "Rejected",
+        "On Hold",
+        "Cancelled"
+    ];
+
+    private List<ApprovalRequestRow> requests = [];
+
+    private int PendingCount => totalServerCount;
+
+    private string SummaryLabel => selectedStatusTab == DefaultStatusTab
+        ? "Pending Requests"
+        : $"{selectedStatusTab} Requests";
+
+    private int FilteredCount => totalServerCount;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(totalServerCount / (double)Math.Max(1, pageSize)));
+
+    private IEnumerable<ApprovalRequestRow> FilteredRequests => requests;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+        ApplyStateFromQuery(Navigation.Uri);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPendingRequestsAsync();
+    }
+
+    private async Task RefreshPlaceholders()
+    {
+        await LoadPendingRequestsAsync();
+    }
+
+    private void OpenReview(ApprovalRequestRow request)
+    {
+        selectedRequest = request;
+    }
+
+    private void CloseReviewPanel()
+    {
+        selectedRequest = null;
+    }
+
+    private void OpenApproveConfirmation()
+    {
+        pendingAction = ApprovalAction.Approve;
+        confirmationTitle = "Approve request";
+        confirmationBody = "You are confirming approval for this request.";
+        showConfirmationModal = true;
+    }
+
+    private void OpenRejectConfirmation()
+    {
+        pendingAction = ApprovalAction.Reject;
+        confirmationTitle = "Reject request";
+        confirmationBody = "You are confirming rejection for this request.";
+        showConfirmationModal = true;
+    }
+
+    private void OpenOnHoldConfirmation()
+    {
+        pendingAction = ApprovalAction.OnHold;
+        confirmationTitle = "Place request on hold";
+        confirmationBody = "You are placing this request on hold.";
+        showConfirmationModal = true;
+    }
+
+    private void OpenCancelConfirmation()
+    {
+        pendingAction = ApprovalAction.Cancel;
+        confirmationTitle = "Cancel request";
+        confirmationBody = "You are cancelling this registration request.";
+        showConfirmationModal = true;
+    }
+
+    private void CloseConfirmation()
+    {
+        showConfirmationModal = false;
+        pendingAction = null;
+    }
+
+    private async Task ConfirmActionAsync()
+    {
+        if (selectedRequest is null || pendingAction is null)
+        {
+            CloseConfirmation();
+            return;
+        }
+
+        isSubmittingAction = true;
+        actionFeedback = null;
+
+        AdminApprovalActionResult result = pendingAction.Value switch
+        {
+            ApprovalAction.Approve => await AdminApprovalService.ApproveAsync(selectedRequest.UserId),
+            ApprovalAction.Reject => await AdminApprovalService.RejectAsync(selectedRequest.UserId),
+            ApprovalAction.OnHold => await AdminApprovalService.HoldAsync(selectedRequest.UserId),
+            ApprovalAction.Cancel => await AdminApprovalService.CancelAsync(selectedRequest.UserId),
+            _ => new AdminApprovalActionResult(false, null, "Unsupported action")
+        };
+
+        if (result.Succeeded)
+        {
+            actionFeedback = pendingAction switch
+            {
+                ApprovalAction.Approve => "Request approved successfully.",
+                ApprovalAction.Reject => "Request rejected successfully.",
+                ApprovalAction.OnHold => "Request placed on hold successfully.",
+                ApprovalAction.Cancel => "Request cancelled successfully.",
+                _ => "Request updated successfully."
+            };
+
+            CloseConfirmation();
+            await LoadPendingRequestsAsync();
+            selectedRequest = null;
+        }
+        else
+        {
+            actionFeedback = result.Error ?? "Unable to process action.";
+        }
+
+        isSubmittingAction = false;
+    }
+
+    private async Task LoadPendingRequestsAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            var effectiveStatus = selectedStatusTab == DefaultStatusTab
+                ? statusFilter
+                : selectedStatusTab;
+
+            var response = await AdminApprovalService.GetPendingAsync(new AdminApprovalQuery(
+                Search: searchQuery,
+                Status: effectiveStatus,
+                Role: roleFilter,
+                Clinic: clinicFilter,
+                FromDate: dateFrom,
+                ToDate: dateTo,
+                SortBy: sortBy,
+                Page: currentPage,
+                PageSize: pageSize));
+
+            requests = response.Items
+                .Select(item => new ApprovalRequestRow(
+                    item.Id,
+                    item.Id.ToString("N")[..8].ToUpperInvariant(),
+                    item.FullName,
+                    item.Email,
+                    item.RoleKey,
+                    item.ClinicName ?? "Unassigned",
+                    item.RequestedAtUtc,
+                    false,
+                    item.Status,
+                    null,
+                    item.RoleKey,
+                    "Not provided",
+                    "Unknown"))
+                .ToList();
+
+            totalServerCount = response.TotalCount;
+            currentPage = Math.Clamp(response.Page, 1, TotalPages);
+            pageSize = response.PageSize;
+            lastLoadedQuery = GetQueryPart(Navigation.Uri);
+            lastRefreshed = DateTime.Now.ToString("yyyy-MM-dd hh:mm tt");
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+            requests = [];
+            totalServerCount = 0;
+            currentPage = 1;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            SyncQueryFromState();
+        }
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < TotalPages)
+        {
+            currentPage++;
+            SyncQueryFromState();
+        }
+    }
+
+    private void SetStatusTab(string tab)
+    {
+        if (selectedStatusTab == tab)
+        {
+            return;
+        }
+
+        selectedStatusTab = tab;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        searchQuery = args.Value?.ToString() ?? string.Empty;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnStatusFilterChanged(ChangeEventArgs args)
+    {
+        statusFilter = args.Value?.ToString() ?? DefaultStatusFilter;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnRoleFilterChanged(ChangeEventArgs args)
+    {
+        roleFilter = args.Value?.ToString() ?? DefaultRoleFilter;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnClinicFilterChanged(ChangeEventArgs args)
+    {
+        clinicFilter = args.Value?.ToString() ?? DefaultClinicFilter;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnDateFromChanged(ChangeEventArgs args)
+    {
+        dateFrom = ParseDate(args.Value?.ToString());
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnDateToChanged(ChangeEventArgs args)
+    {
+        dateTo = ParseDate(args.Value?.ToString());
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnSortByChanged(ChangeEventArgs args)
+    {
+        sortBy = args.Value?.ToString() ?? DefaultSortBy;
+        ResetToFirstPageAndSync();
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var parsedPageSize) && parsedPageSize > 0)
+        {
+            pageSize = parsedPageSize;
+        }
+        else
+        {
+            pageSize = DefaultPageSize;
+        }
+
+        ResetToFirstPageAndSync();
+    }
+
+    private void ResetToFirstPageAndSync()
+    {
+        currentPage = 1;
+        SyncQueryFromState();
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var nextQuery = GetQueryPart(e.Location);
+        if (string.Equals(nextQuery, lastLoadedQuery, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ApplyStateFromQuery(e.Location);
+        currentPage = Math.Clamp(currentPage, 1, TotalPages);
+        _ = InvokeAsync(async () =>
+        {
+            await LoadPendingRequestsAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void ApplyStateFromQuery(string location)
+    {
+        var uri = Navigation.ToAbsoluteUri(location);
+        var query = ParseQueryString(uri.Query);
+
+        suppressQuerySync = true;
+
+        selectedStatusTab = ReadString(query, "tab", DefaultStatusTab, statusTabs.Contains);
+        searchQuery = ReadString(query, "q", string.Empty, _ => true);
+        statusFilter = ReadString(query, "status", DefaultStatusFilter, IsAllowedStatusFilter);
+        roleFilter = ReadString(query, "role", DefaultRoleFilter, IsAllowedRoleFilter);
+        clinicFilter = ReadString(query, "clinic", DefaultClinicFilter, IsAllowedClinicFilter);
+        sortBy = ReadString(query, "sort", DefaultSortBy, IsAllowedSortBy);
+        dateFrom = ParseDate(ReadString(query, "from", string.Empty, _ => true));
+        dateTo = ParseDate(ReadString(query, "to", string.Empty, _ => true));
+        pageSize = ReadInt(query, "pageSize", DefaultPageSize, value => value is 10 or 25 or 50);
+        currentPage = ReadInt(query, "page", 1, value => value >= 1);
+
+        suppressQuerySync = false;
+    }
+
+    private void SyncQueryFromState()
+    {
+        if (suppressQuerySync)
+        {
+            return;
+        }
+
+        currentPage = Math.Clamp(currentPage, 1, TotalPages);
+
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var basePath = uri.GetLeftPart(UriPartial.Path);
+        var query = new Dictionary<string, string?>();
+
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            query["q"] = searchQuery.Trim();
+        }
+
+        if (!string.Equals(selectedStatusTab, DefaultStatusTab, StringComparison.Ordinal))
+        {
+            query["tab"] = selectedStatusTab;
+        }
+
+        if (!string.Equals(statusFilter, DefaultStatusFilter, StringComparison.Ordinal))
+        {
+            query["status"] = statusFilter;
+        }
+
+        if (!string.Equals(roleFilter, DefaultRoleFilter, StringComparison.Ordinal))
+        {
+            query["role"] = roleFilter;
+        }
+
+        if (!string.Equals(clinicFilter, DefaultClinicFilter, StringComparison.Ordinal))
+        {
+            query["clinic"] = clinicFilter;
+        }
+
+        if (dateFrom.HasValue)
+        {
+            query["from"] = dateFrom.Value.ToString("yyyy-MM-dd");
+        }
+
+        if (dateTo.HasValue)
+        {
+            query["to"] = dateTo.Value.ToString("yyyy-MM-dd");
+        }
+
+        if (!string.Equals(sortBy, DefaultSortBy, StringComparison.Ordinal))
+        {
+            query["sort"] = sortBy;
+        }
+
+        if (pageSize != DefaultPageSize)
+        {
+            query["pageSize"] = pageSize.ToString();
+        }
+
+        if (currentPage > 1)
+        {
+            query["page"] = currentPage.ToString();
+        }
+
+        var nextUri = query.Count == 0
+            ? basePath
+            : $"{basePath}?{BuildQueryString(query)}";
+
+        if (!string.Equals(uri.ToString(), nextUri, StringComparison.Ordinal))
+        {
+            Navigation.NavigateTo(nextUri, replace: true);
+        }
+    }
+
+    private static DateTime? ParseDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(value, out var parsedDate)
+            ? parsedDate.Date
+            : null;
+    }
+
+    private static string FormatDateForInput(DateTime? date) =>
+        date?.ToString("yyyy-MM-dd") ?? string.Empty;
+
+    private static string ReadString(
+        IDictionary<string, string> query,
+        string key,
+        string defaultValue,
+        Func<string, bool> isAllowed)
+    {
+        if (!query.TryGetValue(key, out var value))
+        {
+            return defaultValue;
+        }
+
+        var parsed = value.ToString();
+        return string.IsNullOrWhiteSpace(parsed) || !isAllowed(parsed)
+            ? defaultValue
+            : parsed;
+    }
+
+    private static int ReadInt(
+        IDictionary<string, string> query,
+        string key,
+        int defaultValue,
+        Func<int, bool> isAllowed)
+    {
+        if (!query.TryGetValue(key, out var value))
+        {
+            return defaultValue;
+        }
+
+        return int.TryParse(value.ToString(), out var parsed) && isAllowed(parsed)
+            ? parsed
+            : defaultValue;
+    }
+
+    private static bool IsAllowedStatusFilter(string value) => value is "All" or "Pending" or "Approved" or "Rejected" or "On Hold" or "Cancelled";
+
+    private static bool IsAllowedRoleFilter(string value) => value is "All Roles" or "PT" or "PTA" or "Admin";
+
+    private static bool IsAllowedClinicFilter(string value) => value is "All Clinics" or "North Campus" or "East Rehab" or "Downtown Outpatient";
+
+    private static bool IsAllowedSortBy(string value) => value is "Date submitted" or "Name" or "Status";
+
+    private static Dictionary<string, string> ParseQueryString(string queryString)
+    {
+        var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(queryString))
+        {
+            return results;
+        }
+
+        var trimmed = queryString.StartsWith('?') ? queryString[1..] : queryString;
+        foreach (var pair in trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = pair.IndexOf('=');
+            if (separatorIndex < 0)
+            {
+                continue;
+            }
+
+            var key = Uri.UnescapeDataString(pair[..separatorIndex]);
+            var value = Uri.UnescapeDataString(pair[(separatorIndex + 1)..]);
+            results[key] = value;
+        }
+
+        return results;
+    }
+
+    private static string BuildQueryString(IReadOnlyDictionary<string, string?> query)
+    {
+        return string.Join(
+            "&",
+            query
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Value))
+                .Select(entry => $"{Uri.EscapeDataString(entry.Key)}={Uri.EscapeDataString(entry.Value!)}"));
+    }
+
+    private static string GetQueryPart(string location)
+    {
+        var uri = new Uri(location, UriKind.Absolute);
+        return uri.Query;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+
+    private sealed record ApprovalRequestRow(
+        Guid UserId,
+        string RequestId,
+        string ApplicantName,
+        string Email,
+        string RequestedRole,
+        string Clinic,
+        DateTime SubmittedAtUtc,
+        bool CredentialsComplete,
+        string Status,
+        string? ReviewedBy,
+        string LicenseType,
+        string LicenseNumber,
+        string LicenseState);
+
+    private enum ApprovalAction
+    {
+        Approve,
+        Reject,
+        OnHold,
+        Cancel
+    }
+}

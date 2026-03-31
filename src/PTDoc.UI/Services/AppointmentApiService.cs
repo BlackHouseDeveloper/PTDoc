@@ -33,7 +33,7 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
         CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/v1/appointments/", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken)
             ?? throw new InvalidOperationException("Appointment creation response was empty.");
@@ -51,7 +51,7 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
     }
 
@@ -68,5 +68,82 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
+    }
+
+    private static async Task EnsureSuccessStatusCodeAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var errorMessage = await TryReadErrorMessageAsync(response, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static async Task<string?> TryReadErrorMessageAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        if (response.Content is null)
+        {
+            return null;
+        }
+
+        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
+            if (document.RootElement.TryGetProperty("errors", out var errorsElement)
+                && errorsElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in errorsElement.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in property.Value.EnumerateArray())
+                        {
+                            var message = item.GetString();
+                            if (!string.IsNullOrWhiteSpace(message))
+                            {
+                                return message;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (document.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                var message = errorElement.GetString();
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+
+            if (document.RootElement.TryGetProperty("title", out var titleElement))
+            {
+                var message = titleElement.GetString();
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
     }
 }

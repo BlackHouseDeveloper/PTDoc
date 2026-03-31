@@ -1,11 +1,15 @@
 .clinician-scheduler {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .scheduler-viewport {
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
 }
 
 .scheduler-grid {
@@ -14,11 +18,8 @@
     /* Guarantee at least 65px per slot (12-slot day = 780px) so 45-min blocks
        are ~49px — enough for two lines of text. The viewport scrolls if needed. */
     min-height: max(100%, 780px);
-    width: 100%;
-}
-
-.scheduler-grid.week-view {
-    min-width: max-content;
+    width: max-content;
+    min-width: 100%;
 }
 
 .time-column {
@@ -248,8 +249,6 @@
     }
 
     .scheduler-viewport {
-        /* Keep horizontal + vertical scrolling available in narrow layouts. */
-        overflow: auto;
         min-height: 24rem;
     }
 

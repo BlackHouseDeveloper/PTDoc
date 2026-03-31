@@ -12,7 +12,8 @@ public interface IUserRegistrationService
     Task<IReadOnlyList<RoleSummary>> GetRegisterableRolesAsync(
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PendingUserSummary>> GetPendingRegistrationsAsync(
+    Task<PendingRegistrationsPage> GetPendingRegistrationsAsync(
+        PendingRegistrationsQuery query,
         CancellationToken cancellationToken = default);
 
     Task<RegistrationResult> ApproveRegistrationAsync(
@@ -23,5 +24,15 @@ public interface IUserRegistrationService
     Task<RegistrationResult> RejectRegistrationAsync(
         Guid userId,
         Guid rejectedBy,
+        CancellationToken cancellationToken = default);
+
+    Task<RegistrationResult> HoldRegistrationAsync(
+        Guid userId,
+        Guid heldBy,
+        CancellationToken cancellationToken = default);
+
+    Task<RegistrationResult> CancelRegistrationAsync(
+        Guid userId,
+        Guid cancelledBy,
         CancellationToken cancellationToken = default);
 }

@@ -199,7 +199,10 @@
         catch (Exception ex)
         {
             Console.WriteLine($"[Appointments] Error saving appointment: {ex.Message}");
-            ToastService.ShowError("Failed to save the appointment.");
+            var message = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+                ? ex.Message
+                : "Failed to save the appointment.";
+            ToastService.ShowError(message);
             return false;
         }
     }

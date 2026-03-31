@@ -1,0 +1,43 @@
+.approval-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    border: 1px solid transparent;
+    line-height: 1.2;
+}
+
+.approval-status-badge.is-pending {
+    background: rgba(var(--warning-rgb), 0.15);
+    border-color: rgba(var(--warning-rgb), 0.35);
+    color: #975a00;
+}
+
+.approval-status-badge.is-approved {
+    background: rgba(var(--success-rgb), 0.15);
+    border-color: rgba(var(--success-rgb), 0.35);
+    color: var(--success);
+}
+
+.approval-status-badge.is-rejected {
+    background: rgba(var(--destructive-rgb), 0.12);
+    border-color: rgba(var(--destructive-rgb), 0.3);
+    color: var(--destructive);
+}
+
+.approval-status-badge.is-on-hold {
+    background: rgba(var(--info-rgb), 0.14);
+    border-color: rgba(var(--info-rgb), 0.35);
+    color: var(--info);
+}
+
+.approval-status-badge.is-cancelled,
+.approval-status-badge.is-expired,
+.approval-status-badge.is-revoked {
+    background: var(--muted);
+    border-color: var(--border);
+    color: var(--muted-foreground);
+}

@@ -45,7 +45,25 @@ public sealed record PendingUserSummary(
     Guid Id,
     string FullName,
     string Email,
+    string Status,
     string RoleKey,
     Guid? ClinicId,
     string? ClinicName,
     DateTime RequestedAtUtc);
+
+public sealed record PendingRegistrationsQuery(
+    string? Search,
+    string? Status,
+    string? Role,
+    string? Clinic,
+    DateTime? FromDate,
+    DateTime? ToDate,
+    string? SortBy,
+    int Page = 1,
+    int PageSize = 25);
+
+public sealed record PendingRegistrationsPage(
+    IReadOnlyList<PendingUserSummary> Items,
+    int TotalCount,
+    int Page,
+    int PageSize);
