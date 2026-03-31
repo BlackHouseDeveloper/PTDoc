@@ -6,16 +6,16 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 
 - Restate the task briefly and identify only the docs needed for that task.
 - Reuse existing patterns; do not refactor unrelated code.
-- Check file placement against [`/Users/calvinccarter/Projects/PTDoc/docs/ARCHITECTURE.md`](/Users/calvinccarter/Projects/PTDoc/docs/ARCHITECTURE.md) before adding files.
+- Check file placement against [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before adding files.
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
 
 ## Documentation Order
 
 When repo docs conflict with generic framework habits, follow repo docs in this order:
 
-1. [`/Users/calvinccarter/Projects/PTDoc/docs/ARCHITECTURE.md`](/Users/calvinccarter/Projects/PTDoc/docs/ARCHITECTURE.md) and other system-design specs.
-2. [`/Users/calvinccarter/Projects/PTDoc/.github/copilot-instructions.md`](/Users/calvinccarter/Projects/PTDoc/.github/copilot-instructions.md), [`/Users/calvinccarter/Projects/PTDoc/docs/DEVELOPMENT.md`](/Users/calvinccarter/Projects/PTDoc/docs/DEVELOPMENT.md), and [`/Users/calvinccarter/Projects/PTDoc/docs/CI.md`](/Users/calvinccarter/Projects/PTDoc/docs/CI.md).
-3. [`/Users/calvinccarter/Projects/PTDoc/README.md`](/Users/calvinccarter/Projects/PTDoc/README.md), [`/Users/calvinccarter/Projects/PTDoc/docs/SECURITY.md`](/Users/calvinccarter/Projects/PTDoc/docs/SECURITY.md), [`/Users/calvinccarter/Projects/PTDoc/docs/RUNTIME_TARGETS.md`](/Users/calvinccarter/Projects/PTDoc/docs/RUNTIME_TARGETS.md), [`/Users/calvinccarter/Projects/PTDoc/docs/EF_MIGRATIONS.md`](/Users/calvinccarter/Projects/PTDoc/docs/EF_MIGRATIONS.md), [`/Users/calvinccarter/Projects/PTDoc/docs/TROUBLESHOOTING.md`](/Users/calvinccarter/Projects/PTDoc/docs/TROUBLESHOOTING.md), and [`/Users/calvinccarter/Projects/PTDoc/docs/BUILD.md`](/Users/calvinccarter/Projects/PTDoc/docs/BUILD.md).
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and other system-design specs.
+2. [`.github/copilot-instructions.md`](.github/copilot-instructions.md), [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md), and [`docs/CI.md`](docs/CI.md).
+3. [`README.md`](README.md), [`docs/SECURITY.md`](docs/SECURITY.md), [`docs/RUNTIME_TARGETS.md`](docs/RUNTIME_TARGETS.md), [`docs/EF_MIGRATIONS.md`](docs/EF_MIGRATIONS.md), [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md), and [`docs/BUILD.md`](docs/BUILD.md).
 
 ## Critical Repo Rules
 
@@ -35,7 +35,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 ## Setup And Common Commands
 
-- SDK is pinned by [`/Users/calvinccarter/Projects/PTDoc/global.json`](/Users/calvinccarter/Projects/PTDoc/global.json) to .NET `8.0.417`.
+- SDK is pinned by [`global.json`](global.json) to .NET `8.0.417`.
 - Bootstrap development secrets before running API or Web:
   - `./setup-dev-secrets.sh`
   - Windows: `./setup-dev-secrets.ps1`

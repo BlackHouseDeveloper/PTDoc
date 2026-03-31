@@ -1,4 +1,2 @@
-using System.Runtime.CompilerServices;
-
-// Allow PTDoc.Tests to access internal members for integration-style endpoint handler tests.
-[assembly: InternalsVisibleTo("PTDoc.Tests")]
+// InternalsVisibleTo is declared in PTDoc.Api.csproj via AssemblyAttribute MSBuild item.
+// Do not add duplicate declarations here.

@@ -113,16 +113,22 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
 
     /// <summary>
     /// Returns true when the exception is caused by a unique constraint violation.
-    /// Checks the inner exception message as a cross-provider heuristic (SQLite, SQL Server, Postgres
-    /// all include "UNIQUE" or "unique" in their constraint violation messages).
+    /// Checks provider-specific exception types and error codes rather than message strings
+    /// for reliable cross-provider detection:
+    /// - SQLite: <see cref="Microsoft.Data.Sqlite.SqliteException"/> with error code 19 (SQLITE_CONSTRAINT)
+    /// - SQL Server: <see cref="Microsoft.Data.SqlClient.SqlException"/> with error number 2627 or 2601
+    /// - PostgreSQL: <see cref="Npgsql.PostgresException"/> with SqlState "23505"
     /// Other <see cref="DbUpdateException"/> types (deadlock, timeout, etc.) return false and propagate.
     /// </summary>
     private static bool IsDuplicateKeyException(DbUpdateException ex)
     {
-        var innerMessage = ex.InnerException?.Message ?? string.Empty;
-        return innerMessage.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
-            || innerMessage.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
-            || innerMessage.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
+        return ex.InnerException switch
+        {
+            Microsoft.Data.Sqlite.SqliteException sqlite => sqlite.SqliteErrorCode == 19, // SQLITE_CONSTRAINT
+            Microsoft.Data.SqlClient.SqlException sql => sql.Number is 2627 or 2601,
+            Npgsql.PostgresException pg => pg.SqlState == "23505",
+            _ => false
+        };
     }
 
     private sealed class ClaimDto

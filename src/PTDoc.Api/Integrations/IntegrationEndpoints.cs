@@ -218,10 +218,18 @@ public static class IntegrationEndpoints
         }
 
         memoryCache.Remove(GetLaunchCacheKey(launchToken));
+
+        // Validate the URL before redirecting to prevent open redirects or unsafe navigation.
+        if (!Uri.TryCreate(patientPortalUrl, UriKind.Absolute, out var patientPortalUri) ||
+            !string.Equals(patientPortalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest();
+        }
+
         httpContext.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
         httpContext.Response.Headers.Pragma = "no-cache";
         httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
-        return Results.Redirect(patientPortalUrl, permanent: false);
+        return Results.Redirect(patientPortalUri.ToString(), permanent: false);
     }
 
     private static async Task<IResult> GetOrCreateMappingAsync(

@@ -235,7 +235,9 @@ public sealed class OpenAiService : IAiService
     {
         var endpoint = _configuration["AzureOpenAIEndpoint"];
         var apiKey = _configuration["AzureOpenAIKey"];
-        var deployment = _configuration["AzureOpenAIDeployment"];
+        var deployment = !string.IsNullOrWhiteSpace(model)
+            ? model
+            : _configuration["AzureOpenAIDeployment"];
         var aiFeatureEnabled = bool.TryParse(
             _configuration["FeatureFlags:EnableAiGeneration"],
             out var parsedAiFeatureEnabled)

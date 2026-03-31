@@ -72,13 +72,16 @@ public static class PdfEndpoints
                 SignatureHash = note.SignatureHash,
                 SignedUtc = note.SignedUtc,
                 SignedByUserId = note.SignedByUserId,
-                ClinicianDisplayName = await ResolveClinicianDisplayNameAsync(dbContext, note.SignedByUserId),
-                ClinicianCredentials = await ResolveClinicianCredentialsAsync(dbContext, note.SignedByUserId),
-
-                // Export options
-                IncludeMedicareCompliance = true,
-                IncludeSignatureBlock = true
             };
+
+            // Resolve clinician info with a single DB query (display name + credentials).
+            var (clinicianDisplayName, clinicianCredentials) = await ResolveClinicianInfoAsync(dbContext, note.SignedByUserId);
+            noteData.ClinicianDisplayName = clinicianDisplayName;
+            noteData.ClinicianCredentials = clinicianCredentials;
+
+            // Export options
+            noteData.IncludeMedicareCompliance = true;
+            noteData.IncludeSignatureBlock = true;
 
             // Renderer receives DTO with NO database access
             var result = await pdfRenderer.ExportNoteToPdfAsync(noteData);
@@ -115,11 +118,11 @@ public static class PdfEndpoints
         }
     }
 
-    private static async Task<string> ResolveClinicianDisplayNameAsync(ApplicationDbContext dbContext, Guid? userId)
+    private static async Task<(string DisplayName, string Credentials)> ResolveClinicianInfoAsync(ApplicationDbContext dbContext, Guid? userId)
     {
         if (!userId.HasValue)
         {
-            return string.Empty;
+            return (string.Empty, string.Empty);
         }
 
         var user = await dbContext.Users
@@ -128,24 +131,15 @@ public static class PdfEndpoints
 
         if (user is null)
         {
-            return string.Empty;
+            return (string.Empty, string.Empty);
         }
 
-        var name = $"{user.FirstName} {user.LastName}".Trim();
-        return string.IsNullOrWhiteSpace(name) ? user.Username : name;
-    }
-
-    private static async Task<string> ResolveClinicianCredentialsAsync(ApplicationDbContext dbContext, Guid? userId)
-    {
-        if (!userId.HasValue)
+        var displayName = $"{user.FirstName} {user.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(displayName))
         {
-            return string.Empty;
+            displayName = user.Username;
         }
 
-        var user = await dbContext.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(candidate => candidate.Id == userId.Value);
-
-        return user?.Role ?? string.Empty;
+        return (displayName, user.Role ?? string.Empty);
     }
 }
