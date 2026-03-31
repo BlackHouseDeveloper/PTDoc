@@ -7,7 +7,7 @@ namespace PTDoc.Application.Auth
     using System.Security.Claims;
     using System.Threading;
     using System.Threading.Tasks;
-  using PTDoc.Application.Identity;
+    using PTDoc.Application.Identity;
 
     /// <summary>
     /// Service interface for user authentication and management.

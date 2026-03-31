@@ -173,18 +173,18 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-            modelBuilder.Entity<ExternalIdentityMapping>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.HasIndex(e => new { e.Provider, e.ExternalSubject }).IsUnique();
-                entity.HasIndex(e => new { e.PrincipalType, e.InternalEntityId });
-                entity.HasIndex(e => e.TenantId).HasFilter("TenantId IS NOT NULL");
-                entity.HasIndex(e => e.IsActive);
+        modelBuilder.Entity<ExternalIdentityMapping>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Provider, e.ExternalSubject }).IsUnique();
+            entity.HasIndex(e => new { e.PrincipalType, e.InternalEntityId });
+            entity.HasIndex(e => e.TenantId).HasFilter("TenantId IS NOT NULL");
+            entity.HasIndex(e => e.IsActive);
 
-                entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
-                entity.Property(e => e.ExternalSubject).HasMaxLength(255).IsRequired();
-                entity.Property(e => e.PrincipalType).HasMaxLength(50).IsRequired();
-            });
+            entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ExternalSubject).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.PrincipalType).HasMaxLength(50).IsRequired();
+        });
 
         // Configure Session
         modelBuilder.Entity<Session>(entity =>

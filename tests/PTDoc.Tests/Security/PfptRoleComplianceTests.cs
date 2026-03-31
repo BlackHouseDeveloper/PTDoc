@@ -1358,7 +1358,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var userId = Guid.NewGuid();
         var patient = new Patient
         {
-            FirstName = "Test", LastName = "NoDx",
+            FirstName = "Test",
+            LastName = "NoDx",
             DateOfBirth = new DateTime(1980, 1, 1),
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -1434,7 +1435,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var userId = Guid.NewGuid();
         var patient = new Patient
         {
-            FirstName = "Test", LastName = "NullDx",
+            FirstName = "Test",
+            LastName = "NullDx",
             DateOfBirth = new DateTime(1980, 1, 1),
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -1476,7 +1478,8 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var userId = Guid.NewGuid();
         var patient = new Patient
         {
-            FirstName = "Test", LastName = "InvalidDx",
+            FirstName = "Test",
+            LastName = "InvalidDx",
             DateOfBirth = new DateTime(1980, 1, 1),
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,

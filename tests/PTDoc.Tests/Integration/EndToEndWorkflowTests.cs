@@ -1057,14 +1057,14 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
     /// </summary>
     private static Guid RoleToUserId(string role) => role switch
     {
-        Roles.PT          => new Guid("00000000-0000-0000-0001-000000000001"),
-        Roles.PTA         => new Guid("00000000-0000-0000-0001-000000000002"),
-        Roles.Admin       => new Guid("00000000-0000-0000-0001-000000000003"),
-        Roles.Owner       => new Guid("00000000-0000-0000-0001-000000000004"),
-        Roles.Billing     => new Guid("00000000-0000-0000-0001-000000000005"),
-        Roles.FrontDesk   => new Guid("00000000-0000-0000-0001-000000000006"),
-        Roles.Aide        => new Guid("00000000-0000-0000-0001-000000000007"),
-        Roles.Patient     => new Guid("00000000-0000-0000-0001-000000000008"),
-        _                 => Guid.NewGuid(),
+        Roles.PT => new Guid("00000000-0000-0000-0001-000000000001"),
+        Roles.PTA => new Guid("00000000-0000-0000-0001-000000000002"),
+        Roles.Admin => new Guid("00000000-0000-0000-0001-000000000003"),
+        Roles.Owner => new Guid("00000000-0000-0000-0001-000000000004"),
+        Roles.Billing => new Guid("00000000-0000-0000-0001-000000000005"),
+        Roles.FrontDesk => new Guid("00000000-0000-0000-0001-000000000006"),
+        Roles.Aide => new Guid("00000000-0000-0000-0001-000000000007"),
+        Roles.Patient => new Guid("00000000-0000-0000-0001-000000000008"),
+        _ => Guid.NewGuid(),
     };
 }

@@ -499,7 +499,7 @@ app.UseExceptionHandler(errorApp =>
         }
 
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
-            var statusCode = exception switch
+        var statusCode = exception switch
         {
             ProvisioningException => StatusCodes.Status403Forbidden,
             WibbiAuthenticationException => StatusCodes.Status502BadGateway,
