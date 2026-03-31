@@ -53,8 +53,21 @@ public class SignatureResult
 public class CoSignResult
 {
     public bool Success { get; set; }
+    public CoSignStatus Status { get; set; }
     public DateTime? CoSignedUtc { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Structured outcome of a co-sign attempt, enabling reliable status mapping without string matching.
+/// </summary>
+public enum CoSignStatus
+{
+    Success,
+    NotFound,
+    NotSigned,
+    DoesNotRequireCoSign,
+    AlreadyCoSigned,
 }
 
 public class AddendumResult

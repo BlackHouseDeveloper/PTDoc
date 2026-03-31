@@ -152,19 +152,14 @@ public static class ComplianceEndpoints
 
                 if (!result.Success)
                 {
-                    var errorMessage = result.ErrorMessage ?? string.Empty;
-
-                    // 404: Note not found
-                    if (errorMessage.Contains("not found", StringComparison.OrdinalIgnoreCase))
-                        return Results.NotFound(new { error = result.ErrorMessage });
-
-                    // 409: Note exists but is ineligible for co-sign (already co-signed, wrong state)
-                    if (errorMessage.Contains("already been co-signed", StringComparison.OrdinalIgnoreCase) ||
-                        errorMessage.Contains("does not require a co-sign", StringComparison.OrdinalIgnoreCase) ||
-                        errorMessage.Contains("not been signed yet", StringComparison.OrdinalIgnoreCase))
-                        return Results.Conflict(new { error = result.ErrorMessage });
-
-                    return Results.BadRequest(new { error = result.ErrorMessage });
+                    return result.Status switch
+                    {
+                        CoSignStatus.NotFound => Results.NotFound(new { error = result.ErrorMessage }),
+                        CoSignStatus.AlreadyCoSigned or
+                        CoSignStatus.DoesNotRequireCoSign or
+                        CoSignStatus.NotSigned => Results.Conflict(new { error = result.ErrorMessage }),
+                        _ => Results.BadRequest(new { error = result.ErrorMessage }),
+                    };
                 }
 
                 return Results.Ok(new

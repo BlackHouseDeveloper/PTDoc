@@ -23,17 +23,42 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
     public async Task StoreAsync(string refreshToken, RefreshTokenRecord record, CancellationToken cancellationToken)
     {
         var hash = ComputeHash(refreshToken);
+        var claimsJson = SerializeClaims(record.Claims);
         var stored = new StoredRefreshToken
         {
             TokenHash = hash,
             Subject = record.Subject,
-            ClaimsJson = SerializeClaims(record.Claims),
+            ClaimsJson = claimsJson,
             ExpiresAtUtc = record.ExpiresAtUtc,
             CreatedAtUtc = DateTimeOffset.UtcNow
         };
 
         db.StoredRefreshTokens.Add(stored);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
+        {
+            // Handle duplicate insert due to unique TokenHash constraint
+            // (e.g., a transient failure causing the caller to retry the same token issuance).
+            db.Entry(stored).State = EntityState.Detached;
+
+            var existing = await db.StoredRefreshTokens
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
+
+            // If no existing record matches what we tried to store, this is a genuine conflict — rethrow.
+            if (existing is null
+                || existing.Subject != record.Subject
+                || existing.ExpiresAtUtc != record.ExpiresAtUtc
+                || existing.ClaimsJson != claimsJson)
+            {
+                throw;
+            }
+
+            // Existing record matches; treat as idempotent success.
+        }
     }
 
     public async Task<RefreshTokenRecord?> GetAsync(string refreshToken, CancellationToken cancellationToken)
@@ -84,6 +109,20 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
     {
         var dtos = JsonSerializer.Deserialize<List<ClaimDto>>(json) ?? new List<ClaimDto>();
         return dtos.Select(d => new Claim(d.Type, d.Value)).ToList();
+    }
+
+    /// <summary>
+    /// Returns true when the exception is caused by a unique constraint violation.
+    /// Checks the inner exception message as a cross-provider heuristic (SQLite, SQL Server, Postgres
+    /// all include "UNIQUE" or "unique" in their constraint violation messages).
+    /// Other <see cref="DbUpdateException"/> types (deadlock, timeout, etc.) return false and propagate.
+    /// </summary>
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        var innerMessage = ex.InnerException?.Message ?? string.Empty;
+        return innerMessage.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+            || innerMessage.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+            || innerMessage.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class ClaimDto

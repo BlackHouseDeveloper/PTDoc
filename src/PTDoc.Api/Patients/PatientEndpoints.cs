@@ -30,7 +30,7 @@ public static class PatientEndpoints
         group.MapGet("/", ListPatients)
             .WithName("ListPatients")
             .WithSummary("List patients for clinician workflows")
-            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+            .RequireAuthorization(AuthorizationPolicies.PatientRead);
 
         group.MapGet("/{id:guid}", GetPatient)
             .WithName("GetPatient")
@@ -80,10 +80,11 @@ public static class PatientEndpoints
 
         if (!string.IsNullOrWhiteSpace(normalizedQuery))
         {
+            var likePattern = $"%{normalizedQuery}%";
             patientQuery = patientQuery.Where(p =>
-                (p.FirstName + " " + p.LastName).Contains(normalizedQuery) ||
-                (p.MedicalRecordNumber != null && p.MedicalRecordNumber.Contains(normalizedQuery)) ||
-                (p.Email != null && p.Email.Contains(normalizedQuery)));
+                EF.Functions.Like(p.FirstName + " " + p.LastName, likePattern) ||
+                (p.MedicalRecordNumber != null && EF.Functions.Like(p.MedicalRecordNumber, likePattern)) ||
+                (p.Email != null && EF.Functions.Like(p.Email, likePattern)));
         }
 
         var patients = await patientQuery
@@ -343,7 +344,16 @@ public static class PatientEndpoints
         if (patient is null)
             return Results.NotFound(new { error = $"Patient {id} not found." });
 
-        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        IReadOnlyList<PatientDiagnosisDto> diagnoses;
+        try
+        {
+            diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        }
+        catch (JsonException)
+        {
+            return Results.Problem("Stored diagnosis data is corrupted and cannot be read.", statusCode: 500);
+        }
+
         return Results.Ok(diagnoses);
     }
 
@@ -367,7 +377,15 @@ public static class PatientEndpoints
                 { nameof(request.IcdCode), ["IcdCode is required."] }
             });
 
-        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        IReadOnlyList<PatientDiagnosisDto> diagnoses;
+        try
+        {
+            diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        }
+        catch (JsonException)
+        {
+            return Results.Problem("Stored diagnosis data is corrupted and cannot be read.", statusCode: 500);
+        }
 
         // Avoid duplicates
         if (diagnoses.Any(d => string.Equals(d.IcdCode, request.IcdCode.Trim(), StringComparison.OrdinalIgnoreCase)))
@@ -420,7 +438,16 @@ public static class PatientEndpoints
         if (patient is null)
             return Results.NotFound(new { error = $"Patient {id} not found." });
 
-        var diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        IReadOnlyList<PatientDiagnosisDto> diagnoses;
+        try
+        {
+            diagnoses = DeserializeDiagnoses(patient.DiagnosisCodesJson);
+        }
+        catch (JsonException)
+        {
+            return Results.Problem("Stored diagnosis data is corrupted and cannot be read.", statusCode: 500);
+        }
+
         var updated = diagnoses.Where(d => !string.Equals(d.IcdCode, code, StringComparison.OrdinalIgnoreCase)).ToList();
 
         if (updated.Count == diagnoses.Count)
@@ -438,18 +465,18 @@ public static class PatientEndpoints
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
-    private static IReadOnlyList<PatientDiagnosisDto> DeserializeDiagnoses(string json)
+    private static IReadOnlyList<PatientDiagnosisDto> DeserializeDiagnoses(string? json)
     {
-        try
-        {
-            return JsonSerializer.Deserialize<List<PatientDiagnosisDto>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? new List<PatientDiagnosisDto>();
-        }
-        catch
+        if (string.IsNullOrWhiteSpace(json))
         {
             return new List<PatientDiagnosisDto>();
         }
+
+        // Allow JsonException to propagate — callers must handle and return an error response
+        // rather than silently treating corrupted diagnosis data as an empty list.
+        return JsonSerializer.Deserialize<List<PatientDiagnosisDto>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? new List<PatientDiagnosisDto>();
     }
 
     private static PatientResponse ToResponse(Patient p) => new()

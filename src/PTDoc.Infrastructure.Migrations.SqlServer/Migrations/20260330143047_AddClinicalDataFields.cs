@@ -80,7 +80,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 table: "ObjectiveMetrics",
                 type: "datetime2",
                 nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
+                defaultValueSql: "SYSUTCDATETIME()");
+
+            migrationBuilder.Sql(
+                "UPDATE [ObjectiveMetrics] " +
+                "SET [LastModifiedUtc] = SYSUTCDATETIME() " +
+                "WHERE [LastModifiedUtc] < CAST('1900-01-01' AS datetime2)");
 
             migrationBuilder.AddColumn<string>(
                 name: "Side",

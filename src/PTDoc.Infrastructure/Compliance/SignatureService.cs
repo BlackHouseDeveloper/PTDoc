@@ -157,22 +157,22 @@ public class SignatureService : ISignatureService
 
         if (note == null)
         {
-            return new CoSignResult { Success = false, ErrorMessage = "Note not found" };
+            return new CoSignResult { Success = false, Status = CoSignStatus.NotFound, ErrorMessage = "Note not found" };
         }
 
         if (string.IsNullOrEmpty(note.SignatureHash))
         {
-            return new CoSignResult { Success = false, ErrorMessage = "Note has not been signed yet" };
+            return new CoSignResult { Success = false, Status = CoSignStatus.NotSigned, ErrorMessage = "Note has not been signed yet" };
         }
 
         if (!note.RequiresCoSign)
         {
-            return new CoSignResult { Success = false, ErrorMessage = "Note does not require a co-sign" };
+            return new CoSignResult { Success = false, Status = CoSignStatus.DoesNotRequireCoSign, ErrorMessage = "Note does not require a co-sign" };
         }
 
         if (note.CoSignedByUserId.HasValue)
         {
-            return new CoSignResult { Success = false, ErrorMessage = "Note has already been co-signed" };
+            return new CoSignResult { Success = false, Status = CoSignStatus.AlreadyCoSigned, ErrorMessage = "Note has already been co-signed" };
         }
 
         note.CoSignedByUserId = ptUserId;
@@ -184,7 +184,7 @@ public class SignatureService : ISignatureService
         await _auditService.LogNoteSignedAsync(
             AuditEvent.NoteSigned(noteId, $"CoSign:{note.NoteType}", note.SignatureHash!, ptUserId), ct);
 
-        return new CoSignResult { Success = true, CoSignedUtc = note.CoSignedUtc };
+        return new CoSignResult { Success = true, Status = CoSignStatus.Success, CoSignedUtc = note.CoSignedUtc };
     }
 
     /// <summary>

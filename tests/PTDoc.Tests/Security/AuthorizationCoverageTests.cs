@@ -173,7 +173,7 @@ public class AuthorizationCoverageTests
 
         // ── Patients (Patients/PatientEndpoints.cs) ──────────────────────────
         new("POST", "/api/v1/patients",                    AuthorizationPolicies.PatientWrite),
-        new("GET",  "/api/v1/patients",                    AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/patients",                    AuthorizationPolicies.PatientRead),
         new("GET",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientRead),
         new("PUT",  "/api/v1/patients/{id:guid}",          AuthorizationPolicies.PatientWrite),
         new("GET",  "/api/v1/patients/{id:guid}/notes",    AuthorizationPolicies.NoteRead),
