@@ -139,12 +139,30 @@ jobs:
         dotnet workload list
 
     - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    - name: Verify Xcode environment
       run: |
-        sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
         xcode-select -p
+        xcodebuild -version
+        xcrun --find actool
+        xcrun --sdk iphonesimulator --show-sdk-path
 
     - name: Restore MAUI project
       run: dotnet restore src/PTDoc.Maui/PTDoc.csproj
 
     - name: Build MAUI iOS (simulator, no signing)
-      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:EnableCodeSigning=false -p:CodesignKey= -p:CodesignProvision= -p:BuildIpa=false -p:MtouchLink=None
+      run: |
+        SIMULATOR_SDK_ROOT="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+        dotnet build src/PTDoc.Maui/PTDoc.csproj \
+          --configuration Release \
+          --framework net8.0-ios \
+          -p:RuntimeIdentifier=iossimulator-arm64 \
+          -p:EnableCodeSigning=false \
+          -p:CodesignKey= \
+          -p:CodesignProvision= \
+          -p:BuildIpa=false \
+          -p:MtouchLink=None \
+          -p:SdkRoot="$SIMULATOR_SDK_ROOT"
