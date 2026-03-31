@@ -1,10 +1,15 @@
 ﻿using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using PTDoc.Infrastructure.Data;
 
 #nullable disable
 
 namespace PTDoc.Infrastructure.Data.Migrations
 {
+    [DbContext(typeof(ApplicationDbContext))]
+    [Migration("20260330035949_AddUserNotifications")]
     /// <inheritdoc />
     public partial class AddUserNotifications : Migration
     {
