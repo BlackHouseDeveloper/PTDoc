@@ -11,9 +11,13 @@
 @using PTDoc.UI.Components.Notes.Workspace.DischargeNote
 @using PTDoc.UI.Components.Notes.Workspace.DryNeedling
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
+@using PTDoc.Application.AI
 @using PTDoc.UI.Services
 @inject NavigationManager NavigationManager
 @inject INoteWorkspaceService NoteWorkspaceService
+@inject IPatientService PatientService
+@inject IAiClinicalGenerationService AiService
+@inject IJSRuntime JS
 
 <PageTitle>SOAP Workspace - PTDoc</PageTitle>
 
@@ -103,7 +107,7 @@
                     {
                         <FinalOutcomesSummaryCard />
                         <GoalAchievementSummaryCard />
-                        <AssessmentWorkspaceSection NoteId="@_currentNoteId"
+                        <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
                                                     Vm="@_note.Assessment"
                                                     VmChanged="HandleAssessmentChanged"
                                                     IsReadOnly="@_note.IsSubmitted"
@@ -113,7 +117,7 @@
                     }
                     else
                     {
-                        <AssessmentWorkspaceSection NoteId="@_currentNoteId"
+                        <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
                                                     Vm="@_note.Assessment"
                                                     VmChanged="HandleAssessmentChanged"
                                                     IsReadOnly="@_note.IsSubmitted"
@@ -138,10 +142,14 @@
                     }
                     else
                     {
-                        <PlanTab NoteId="@_currentNoteId"
+                        <PlanTab NoteId="@(_note.NoteId ?? Guid.Empty)"
                                  Vm="@_note.Plan"
                                  VmChanged="HandlePlanChanged"
-                                 IsReadOnly="@_note.IsSubmitted" />
+                                 IsReadOnly="@_note.IsSubmitted"
+                                 DiagnosisSummary="@GetDiagnosisSummary()"
+                                 AssessmentSummary="@GetAssessmentSummary()"
+                                 GoalsSummary="@GetGoalsSummary()"
+                                 PrecautionsSummary="@GetPrecautionsSummary()" />
                     }
                     break;
 
@@ -253,17 +261,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _currentNoteId = ResolveNoteId(NoteId);
+        var routeNoteId = ResolveRouteNoteId(NoteId);
+        _currentNoteId = routeNoteId ?? Guid.Empty;
         _patientGuid = Guid.TryParse(PatientId, out var parsedPatientId) ? parsedPatientId : null;
 
         _note = new SoapNoteVm
         {
-            NoteId = _currentNoteId,
+            NoteId = routeNoteId,
             PatientId = PatientId,
-            PatientName = $"Patient {PatientId}",
-            PatientDob = "1985-07-12",
+            PatientName = "Patient",
+            PatientDob = null,
             NoteType = "Progress Note",
-            Mode = string.IsNullOrWhiteSpace(NoteId) ? NoteMode.New : NoteMode.Existing,
+            Mode = routeNoteId.HasValue ? NoteMode.Existing : NoteMode.New,
             ActiveSection = SoapSection.Subjective,
             SaveState = NoteSaveState.Unsaved,
             IsDirty = false,
@@ -273,9 +282,14 @@
 
         _isDarkMode = false; // The CSS variable system handles the active theme; this tracks local toggle state.
 
-        if (_patientGuid.HasValue && !string.IsNullOrWhiteSpace(NoteId) && Guid.TryParse(NoteId, out var routeNoteId))
+        if (_patientGuid.HasValue)
         {
-            await LoadExistingNoteAsync(_patientGuid.Value, routeNoteId);
+            await LoadPatientContextAsync(_patientGuid.Value);
+        }
+
+        if (_patientGuid.HasValue && routeNoteId.HasValue)
+        {
+            await LoadExistingNoteAsync(_patientGuid.Value, routeNoteId.Value);
         }
 
         return;
@@ -283,9 +297,6 @@
 
     private async Task LoadExistingNoteAsync(Guid patientId, Guid noteId)
     {
-        // TODO: Load patient demographic data.
-        // TODO: Load session metadata.
-        // TODO: Load SOAP note content.
         var result = await NoteWorkspaceService.LoadAsync(patientId, noteId);
         if (!result.Success)
         {
@@ -312,14 +323,14 @@
         _validationMessage = null;
     }
 
-    private static Guid ResolveNoteId(string? routeNoteId)
+    private static Guid? ResolveRouteNoteId(string? routeNoteId)
     {
         if (!string.IsNullOrWhiteSpace(routeNoteId) && Guid.TryParse(routeNoteId, out var parsed))
         {
             return parsed;
         }
 
-        return Guid.NewGuid();
+        return null;
     }
 
     private Task HandleSectionChanged(SoapSection next)
@@ -447,15 +458,31 @@
 
     private async Task HandleRegenerateSummaryAsync()
     {
-        // TODO: Trigger AI summary generation.
         _isRegeneratingSummary = true;
         _validationMessage = null;
         StateHasChanged();
 
         try
         {
-            await Task.Delay(450);
-            SetValidationMessage("AI summary regeneration is not wired yet.", "info");
+            var result = await AiService.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
+            {
+                NoteId = _note.NoteId ?? Guid.Empty,
+                Diagnosis = GetDiagnosisSummary(),
+                AssessmentSummary = GetAssessmentSummary(),
+                Goals = GetGoalsSummary(),
+                Precautions = GetPrecautionsSummary(),
+                IsNoteSigned = _note.IsSubmitted
+            });
+
+            if (!result.Success)
+            {
+                SetValidationMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error");
+                return;
+            }
+
+            _note.Plan.ClinicalSummary = result.GeneratedText;
+            MarkUnsaved();
+            SetValidationMessage("Clinical summary regenerated. Save the note to keep the updated summary.", "success");
         }
         finally
         {
@@ -465,15 +492,45 @@
 
     private async Task HandleRegenerateGoalsAsync()
     {
-        // TODO: Trigger AI goals generation.
         _isRegeneratingGoals = true;
         _validationMessage = null;
         StateHasChanged();
 
         try
         {
-            await Task.Delay(450);
-            SetValidationMessage("AI treatment goal regeneration is not wired yet.", "info");
+            var result = await AiService.GenerateGoalNarrativesAsync(new GoalNarrativesGenerationRequest
+            {
+                NoteId = _note.NoteId ?? Guid.Empty,
+                Diagnosis = GetDiagnosisSummary(),
+                FunctionalLimitations = GetFunctionalLimitationsSummary(),
+                ShortTermGoals = GetGoalsSummary(),
+                LongTermGoals = GetGoalsSummary(),
+                IsNoteSigned = _note.IsSubmitted
+            });
+
+            if (!result.Success)
+            {
+                SetValidationMessage(result.ErrorMessage ?? "Unable to generate AI treatment goals.", "error");
+                return;
+            }
+
+            foreach (var description in ParseGoalSuggestions(result.GeneratedText))
+            {
+                if (_note.Assessment.Goals.Any(goal => string.Equals(goal.Description, description, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                _note.Assessment.Goals.Add(new SmartGoalEntry
+                {
+                    Description = description,
+                    IsAiSuggested = true,
+                    IsAccepted = false
+                });
+            }
+
+            MarkUnsaved();
+            SetValidationMessage("AI treatment goals regenerated. Review and accept the suggested goals before saving.", "success");
         }
         finally
         {
@@ -481,11 +538,24 @@
         }
     }
 
-    private Task HandleExportPdfAsync()
+    private async Task HandleExportPdfAsync()
     {
-        // TODO: Generate and download PDF.
-        SetValidationMessage("PDF export is not wired yet.", "info");
-        return Task.CompletedTask;
+        if (!_note.NoteId.HasValue)
+        {
+            SetValidationMessage("Save and submit the note before exporting PDF.", "error");
+            return;
+        }
+
+        var result = await NoteWorkspaceService.ExportPdfAsync(_note.NoteId.Value);
+        if (!result.Success)
+        {
+            SetValidationMessage(result.ErrorMessage ?? "Unable to export the note as PDF.", "error");
+            return;
+        }
+
+        var base64 = Convert.ToBase64String(result.Content);
+        await JS.InvokeVoidAsync("open", $"data:{result.ContentType};base64,{base64}", "_blank");
+        SetValidationMessage("PDF export opened in a new browser tab.", "success");
     }
 
     private async Task HandleSaveAsync()
@@ -571,7 +641,11 @@
             _note.IsSubmitted = true;
             _note.IsDirty = false;
             _note.MarkSaved();
-            SetValidationMessage("Note submitted successfully.", "success");
+            SetValidationMessage(
+                submitResult.RequiresCoSign
+                    ? "Note submitted. PT co-sign is still required before the documentation workflow is fully complete."
+                    : "Note submitted successfully.",
+                submitResult.RequiresCoSign ? "info" : "success");
         }
     }
 
@@ -605,7 +679,7 @@
             return _dryNeedling.DateOfTreatment.Value;
         }
 
-        return DateTime.UtcNow;
+        return _dateOfService == default ? DateTime.UtcNow : _dateOfService;
     }
 
     private string? ValidateForSubmit()
@@ -706,5 +780,74 @@
         }
 
         return string.Join(" | ", parts);
+    }
+
+    private async Task LoadPatientContextAsync(Guid patientId)
+    {
+        var patient = await PatientService.GetByIdAsync(patientId);
+        if (patient is null)
+        {
+            return;
+        }
+
+        _note.PatientName = $"{patient.FirstName} {patient.LastName}".Trim();
+        _note.PatientDob = patient.DateOfBirth.ToString("M/d/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private string GetDiagnosisSummary()
+    {
+        if (_note.Assessment.DiagnosisCodes.Count > 0)
+        {
+            return string.Join(", ", _note.Assessment.DiagnosisCodes.Select(code => $"{code.Code} {code.Description}".Trim()));
+        }
+
+        return string.IsNullOrWhiteSpace(_note.Assessment.AssessmentNarrative)
+            ? "Physical therapy plan of care"
+            : _note.Assessment.AssessmentNarrative;
+    }
+
+    private string GetAssessmentSummary() =>
+        string.IsNullOrWhiteSpace(_note.Assessment.AssessmentNarrative)
+            ? GetChiefComplaintText()
+            : _note.Assessment.AssessmentNarrative;
+
+    private string GetGoalsSummary() =>
+        _note.Assessment.Goals.Count == 0
+            ? string.Empty
+            : string.Join("; ", _note.Assessment.Goals.Select(goal => goal.Description).Where(description => !string.IsNullOrWhiteSpace(description)));
+
+    private string GetPrecautionsSummary() =>
+        string.IsNullOrWhiteSpace(_note.Plan.FollowUpInstructions)
+            ? string.Empty
+            : _note.Plan.FollowUpInstructions!;
+
+    private string GetFunctionalLimitationsSummary()
+    {
+        if (!string.IsNullOrWhiteSpace(_note.Assessment.FunctionalLimitations))
+        {
+            return _note.Assessment.FunctionalLimitations;
+        }
+
+        if (_note.Subjective.FunctionalLimitations.Count > 0)
+        {
+            return string.Join(", ", _note.Subjective.FunctionalLimitations.OrderBy(value => value));
+        }
+
+        return GetChiefComplaintText();
+    }
+
+    private static IReadOnlyList<string> ParseGoalSuggestions(string generatedText)
+    {
+        var parsed = generatedText
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Select(line => line.TrimStart('-', '*', '•', ' ', '\t'))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return parsed.Count == 0 && !string.IsNullOrWhiteSpace(generatedText)
+            ? [generatedText.Trim()]
+            : parsed;
     }
 }

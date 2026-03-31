@@ -30,7 +30,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
-builder.Services.AddScoped<ISyncService, SyncService>();
+builder.Services.AddScoped<ISyncService, HttpSyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
@@ -45,11 +45,8 @@ builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemograph
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
 
-// Register AI generation services
-builder.Services.AddScoped<PTDoc.Application.AI.IAiService, PTDoc.AI.Services.OpenAiService>();
-builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
-builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
-builder.Services.AddHttpClient("AzureOpenAI"); // Used by OpenAiService to avoid socket exhaustion
+// Register HTTP-backed AI generation for the shared UI workspace.
+builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, HttpAiClinicalGenerationService>();
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();

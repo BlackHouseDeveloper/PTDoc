@@ -1,11 +1,13 @@
 @page "/"
 @using PTDoc.Application.Services
 @using PTDoc.Application.Dashboard
+@using PTDoc.Application.DTOs
 @using PTDoc.UI.Components.Dashboard
-@inject IDashboardService DashboardService
-@inject IThemeService ThemeService
-@inject NavigationManager Navigation
+@using PTDoc.UI.Services
 @inject IPatientService PatientService
+@inject IAppointmentService AppointmentService
+@inject INoteService NoteService
+@inject INotificationCenterService NotificationCenterService
 @inject IIntakeService IntakeService
 @inject IToastService ToastService
 @rendermode InteractiveServer
@@ -60,15 +62,24 @@
     <div class="dashboard-main-content">
         <!-- Left Column: Dashboard Grid, Notifications & Appointments -->
         <div class="dashboard-left-column">
-            <OverviewSection />
-            <NotificationsSection />
+            <OverviewSection PatientsToday="@_patientsToday"
+                             Appointments="@_appointmentsToday"
+                             NotesDue="@_notesDue"
+                             Pending="@_pendingItems"
+                             Drafts="@_draftNotes"
+                             Unsigned="@_unsignedNotesNeedingSignature"
+                             Intakes="@_incompleteIntakes" />
+            <NotificationsSection Notifications="@_notificationItems"
+                                  UrgentCount="@_urgentNotificationCount" />
         </div>
 
         <!-- Right Column: Supplemental Cards -->
         <div class="dashboard-right-column">
-            <RecentNotesCard />
-            <RecentActivityCard />
-            <RecentlyEditedPOCsCard />
+            <RecentNotesCard Notes="@_recentNotes" />
+            <RecentActivityCard Activities="@_recentActivities"
+                                IsLoading="@_isDashboardLoading"
+                                HasError="@_dashboardLoadFailed"
+                                OnRetry="LoadDashboardSnapshotAsync" />
         </div>
     </div>
 
@@ -86,17 +97,28 @@
                  OnSubmit="@HandleIntakeSubmit" />
 
 @code {
-    private DashboardData? _dashboardData;
-    
     private bool isAddPatientModalOpen = false;
     private bool isSendIntakeModalOpen = false;
     private System.Timers.Timer? _autoRefreshTimer;
-    
+
+    private bool _isDashboardLoading;
+    private bool _dashboardLoadFailed;
+    private int _patientsToday;
+    private int _appointmentsToday;
+    private int _notesDue;
+    private int _pendingItems;
+    private int _draftNotes;
+    private int _unsignedNotesNeedingSignature;
+    private int _incompleteIntakes;
+    private int _urgentNotificationCount;
+    private List<NoteListItemApiResponse> _recentNotes = [];
+    private List<RecentActivity> _recentActivities = [];
+    private List<NotificationCenterItem> _notificationItems = [];
     private List<SendIntakeModal.PatientOption> availablePatients = new();
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadDashboardData(), LoadAvailablePatientsAsync());
+        await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
         SetupAutoRefresh();
     }
 
@@ -119,42 +141,58 @@
         }
     }
 
-    private async Task LoadDashboardData()
+    private async Task LoadDashboardSnapshotAsync()
     {
+        _isDashboardLoading = true;
+        _dashboardLoadFailed = false;
         StateHasChanged();
-        
-        try
-        {
-            _dashboardData = await DashboardService.GetDashboardDataAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
-        }
-        finally
-        {
-            StateHasChanged();
-        }
-    }
 
-    private async Task LoadRecentActivities()
-    {
-        StateHasChanged();
-        
         try
         {
-            var activities = await DashboardService.GetRecentActivitiesAsync(10);
-            if (_dashboardData != null)
-            {
-                _dashboardData = _dashboardData with { RecentActivities = activities };
-            }
+            var today = DateTime.UtcNow.Date;
+            var notesTask = NoteService.GetNotesAsync(take: 50);
+            var appointmentsTask = AppointmentService.GetOverviewAsync(today, today.AddDays(1).AddTicks(-1));
+            var notificationsTask = NotificationCenterService.GetStateAsync();
+
+            await Task.WhenAll(notesTask, appointmentsTask, notificationsTask);
+
+            var notes = (await notesTask)
+                .OrderByDescending(note => note.LastModifiedUtc)
+                .ToList();
+            var appointments = (await appointmentsTask).Appointments
+                .OrderBy(appointment => appointment.StartTimeUtc)
+                .ToList();
+            var notifications = (await notificationsTask).Notifications
+                .OrderByDescending(notification => notification.Timestamp)
+                .ToList();
+
+            _recentNotes = [.. notes.Take(5)];
+            _notificationItems = [.. notifications.Take(4)];
+
+            var unsignedNotes = notes.Where(note => !note.IsSigned).ToList();
+            _patientsToday = appointments
+                .Select(appointment => appointment.PatientRecordId)
+                .Distinct()
+                .Count();
+            _appointmentsToday = appointments.Count;
+            _notesDue = unsignedNotes.Count(note => note.DateOfService.Date == today);
+            _pendingItems = notifications.Count(notification => !notification.IsRead);
+            _draftNotes = unsignedNotes.Count;
+            _unsignedNotesNeedingSignature = unsignedNotes.Count(note => note.DateOfService.Date < today);
+            _incompleteIntakes = notifications.Count(notification =>
+                !notification.IsRead &&
+                string.Equals(notification.Type, "intake", StringComparison.OrdinalIgnoreCase));
+            _urgentNotificationCount = notifications.Count(notification => notification.IsUrgent && !notification.IsRead);
+            _recentActivities = BuildRecentActivities(notes, appointments);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading activities: {ex.Message}");
+            _dashboardLoadFailed = true;
+            Console.WriteLine($"Error loading dashboard snapshot: {ex.Message}");
         }
         finally
         {
+            _isDashboardLoading = false;
             StateHasChanged();
         }
     }
@@ -164,17 +202,9 @@
         _autoRefreshTimer = new System.Timers.Timer(5 * 60 * 1000); // 5 minutes
         _autoRefreshTimer.Elapsed += async (sender, e) =>
         {
-            await InvokeAsync(async () =>
-            {
-                await LoadDashboardData();
-            });
+            await InvokeAsync(LoadDashboardSnapshotAsync);
         };
         _autoRefreshTimer.Start();
-    }
-
-    private async Task ToggleTheme()
-    {
-        await ThemeService.ToggleAsync();
     }
 
     private void HandleAddPatient()
@@ -201,7 +231,7 @@
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
-            await Task.WhenAll(LoadDashboardData(), LoadAvailablePatientsAsync());
+            await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
         }
         catch (Exception ex)
         {
@@ -228,12 +258,50 @@
             };
             await IntakeService.SaveDraftAsync(draft);
             ToastService.ShowSuccess("Intake form created. Share the intake link with the patient to complete.");
+            await LoadDashboardSnapshotAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Dashboard] Error creating intake draft: {ex.Message}");
             ToastService.ShowError("Failed to create intake form. Please try again.");
         }
+    }
+
+    private static List<RecentActivity> BuildRecentActivities(
+        IReadOnlyList<NoteListItemApiResponse> notes,
+        IReadOnlyList<AppointmentListItemResponse> appointments)
+    {
+        var noteActivities = notes.Select(note => new RecentActivity
+        {
+            Id = note.Id.ToString("N"),
+            Type = note.IsSigned ? ActivityType.NoteCompleted : ActivityType.NoteUpdated,
+            Description = note.IsSigned
+                ? $"Signed {note.NoteType}"
+                : $"Updated {note.NoteType}",
+            PatientId = note.PatientId.ToString(),
+            PatientName = note.PatientName,
+            Timestamp = note.LastModifiedUtc
+        });
+
+        var appointmentActivities = appointments.Select(appointment => new RecentActivity
+        {
+            Id = appointment.Id.ToString("N"),
+            Type = string.Equals(appointment.AppointmentStatus, "checked in", StringComparison.OrdinalIgnoreCase)
+                ? ActivityType.AppointmentCheckedIn
+                : ActivityType.AppointmentScheduled,
+            Description = string.Equals(appointment.AppointmentStatus, "checked in", StringComparison.OrdinalIgnoreCase)
+                ? $"Checked in {appointment.AppointmentType} appointment"
+                : $"Scheduled {appointment.AppointmentType} appointment",
+            PatientId = appointment.PatientRecordId.ToString(),
+            PatientName = appointment.PatientName,
+            Timestamp = appointment.StartTimeUtc
+        });
+
+        return noteActivities
+            .Concat(appointmentActivities)
+            .OrderByDescending(activity => activity.Timestamp)
+            .Take(10)
+            .ToList();
     }
 
     public void Dispose()

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -23,6 +24,12 @@ namespace PTDoc.Api.Notes;
 /// </summary>
 public static class NoteEndpoints
 {
+    private static readonly JsonSerializerOptions WorkspaceContentSerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
     /// <summary>
     /// SOAP section names that are valid targets for AI-generated content acceptance.
     /// Sprint UC-Gamma: rejects any section name outside this canonical set.
@@ -606,6 +613,11 @@ public static class NoteEndpoints
     /// </summary>
     internal static string MergeAiContentIntoSection(string contentJson, string section, string generatedText)
     {
+        if (TryMergeIntoWorkspaceV2(contentJson, section, generatedText, out var workspaceJson))
+        {
+            return workspaceJson;
+        }
+
         Dictionary<string, object>? content;
         try
         {
@@ -633,6 +645,135 @@ public static class NoteEndpoints
         // Always store the target section key in lower-case, overwriting any prior value.
         normalized[section.ToLowerInvariant()] = generatedText;
         return JsonSerializer.Serialize(normalized);
+    }
+
+    private static bool TryMergeIntoWorkspaceV2(
+        string contentJson,
+        string section,
+        string generatedText,
+        out string mergedJson)
+    {
+        mergedJson = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return false;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(contentJson);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        using (document)
+        {
+            if (!TryReadSchemaVersion(document.RootElement, out var schemaVersion)
+                || schemaVersion != WorkspaceSchemaVersions.EvalReevalProgressV2)
+            {
+                return false;
+            }
+        }
+
+        NoteWorkspaceV2Payload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, WorkspaceContentSerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (payload is null)
+        {
+            return false;
+        }
+
+        switch (section.ToLowerInvariant())
+        {
+            case "subjective":
+                payload.Subjective.NarrativeContext.PatientHistorySummary = generatedText;
+                break;
+
+            case "objective":
+                payload.Objective.ClinicalObservationNotes = generatedText;
+                break;
+
+            case "assessment":
+                payload.Assessment.AssessmentNarrative = generatedText;
+                break;
+
+            case "plan":
+                payload.Plan.ClinicalSummary = generatedText;
+                if (string.IsNullOrWhiteSpace(payload.Plan.PlanOfCareNarrative))
+                {
+                    payload.Plan.PlanOfCareNarrative = generatedText;
+                }
+                break;
+
+            case "goals":
+                payload.Assessment.GoalSuggestions =
+                    ParseGoalSuggestions(generatedText)
+                        .Select(description => new WorkspaceGoalSuggestionV2
+                        {
+                            Description = description
+                        })
+                        .ToList();
+                break;
+
+            case "billing":
+                payload.Plan.FollowUpInstructions = generatedText;
+                break;
+
+            default:
+                return false;
+        }
+
+        mergedJson = JsonSerializer.Serialize(payload, WorkspaceContentSerializerOptions);
+        return true;
+    }
+
+    private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            schemaVersion = default;
+            return false;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out schemaVersion))
+            {
+                return true;
+            }
+
+            break;
+        }
+
+        schemaVersion = default;
+        return false;
+    }
+
+    private static IReadOnlyList<string> ParseGoalSuggestions(string generatedText)
+    {
+        return generatedText
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Select(line => line.TrimStart('-', '*', '•', ' ', '\t'))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -211,6 +212,32 @@ public class SoapGammaEnforcementTests : IDisposable
         Assert.Single(keys.Where(k => string.Equals(k, "assessment", StringComparison.OrdinalIgnoreCase)));
         Assert.True(doc.RootElement.TryGetProperty("assessment", out var a));
         Assert.Equal("new AI text", a.GetString());
+    }
+
+    [Fact]
+    public void MergeAiContentIntoSection_V2Payload_UpdatesTypedWorkspaceContent()
+    {
+        var initial = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            Assessment = new WorkspaceAssessmentV2
+            {
+                AssessmentNarrative = "old narrative"
+            }
+        }, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
+            initial, "assessment", "new assessment narrative");
+
+        var doc = JsonDocument.Parse(result);
+        Assert.True(doc.RootElement.TryGetProperty("schemaVersion", out var schemaVersion));
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, schemaVersion.GetInt32());
+        Assert.True(doc.RootElement.TryGetProperty("assessment", out var assessment));
+        Assert.Equal("new assessment narrative", assessment.GetProperty("assessmentNarrative").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("Assessment", out _));
     }
 
     [Fact]

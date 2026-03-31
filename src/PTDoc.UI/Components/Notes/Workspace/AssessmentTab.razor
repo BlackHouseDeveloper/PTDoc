@@ -2,6 +2,7 @@
 @using PTDoc.Application.AI
 
 @inject IAiClinicalGenerationService AiService
+@inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<AssessmentTab> Logger
 
 <section class="assessment-tab" data-testid="assessment-tab">
@@ -221,8 +222,24 @@
 
     private async Task OnNarrativeAcceptedAsync(string acceptedText)
     {
+        if (NoteId != Guid.Empty)
+        {
+            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                NoteId,
+                section: "assessment",
+                generatedText: acceptedText,
+                generationType: "Assessment");
+
+            if (!acceptance.Success)
+            {
+                _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated assessment content.";
+                return;
+            }
+        }
+
         _assessmentText = acceptedText;
         _generationWarnings.Clear();
+        _errorMessage = null;
         await AssessmentTextChanged.InvokeAsync(acceptedText);
         await OnAiAccepted.InvokeAsync(acceptedText);
     }

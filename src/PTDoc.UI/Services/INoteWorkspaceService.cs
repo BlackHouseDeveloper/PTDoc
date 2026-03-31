@@ -8,6 +8,13 @@ public interface INoteWorkspaceService
     Task<NoteWorkspaceLoadResult> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSaveResult> SaveDraftAsync(NoteWorkspaceDraft draft, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceAiAcceptanceResult> AcceptAiSuggestionAsync(
+        Guid noteId,
+        string section,
+        string generatedText,
+        string generationType,
+        CancellationToken cancellationToken = default);
+    Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
 }
 
 public sealed class NoteWorkspaceDraft
@@ -44,4 +51,20 @@ public sealed class NoteWorkspaceSubmitResult
 {
     public bool Success { get; init; }
     public string? ErrorMessage { get; init; }
+    public bool RequiresCoSign { get; init; }
+}
+
+public sealed class NoteWorkspaceAiAcceptanceResult
+{
+    public bool Success { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+
+public sealed class NoteWorkspacePdfExportResult
+{
+    public bool Success { get; init; }
+    public string? ErrorMessage { get; init; }
+    public string FileName { get; init; } = "note.pdf";
+    public string ContentType { get; init; } = "application/pdf";
+    public byte[] Content { get; init; } = [];
 }

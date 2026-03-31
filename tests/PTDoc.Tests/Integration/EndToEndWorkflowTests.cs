@@ -20,6 +20,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -378,6 +379,132 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var response = await client.PostAsync($"/api/v1/notes/{Guid.NewGuid()}/export/pdf", null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Export_Unsigned_Note_Returns_422()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        var body = JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            CptCodesJson = "[]"
+        });
+        using var createResponse = await client.PostAsync("/api/v1/notes", body);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(await createResponse.Content.ReadAsStringAsync(), JsonOpts);
+        var noteId = createPayload!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task PT_Can_Accept_Ai_Suggestion_Into_V2_Workspace_Note()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        var saveBody = JsonContent(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patientId,
+            DateOfService = DateTime.UtcNow,
+            NoteType = NoteType.ProgressNote,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Original narrative"
+                }
+            }
+        });
+
+        using var saveResponse = await client.PostAsync("/api/v2/notes/workspace/", saveBody);
+        Assert.Equal(HttpStatusCode.OK, saveResponse.StatusCode);
+
+        var savedWorkspace = JsonSerializer.Deserialize<NoteWorkspaceV2LoadResponse>(
+            await saveResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        var acceptBody = JsonContent(new AiSuggestionAcceptanceRequest
+        {
+            Section = "assessment",
+            GeneratedText = "Accepted assessment narrative",
+            GenerationType = "Assessment"
+        });
+        using var acceptResponse = await client.PostAsync(
+            $"/api/v1/notes/{savedWorkspace.NoteId}/accept-ai-suggestion",
+            acceptBody);
+
+        Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == savedWorkspace.NoteId);
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.True(storedJson.RootElement.TryGetProperty("assessment", out var assessment));
+        Assert.Equal("Accepted assessment narrative", assessment.GetProperty("assessmentNarrative").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Accept_Ai_Suggestion_On_Signed_Note_Returns_422()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = DateTime.UtcNow,
+                ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+                {
+                    NoteType = NoteType.ProgressNote
+                }, JsonOpts),
+                SignatureHash = "signed-hash",
+                SignedUtc = DateTime.UtcNow,
+                SignedByUserId = Guid.NewGuid(),
+                LastModifiedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var acceptBody = JsonContent(new AiSuggestionAcceptanceRequest
+        {
+            Section = "assessment",
+            GeneratedText = "Accepted assessment narrative",
+            GenerationType = "Assessment"
+        });
+        using var acceptResponse = await client.PostAsync($"/api/v1/notes/{noteId}/accept-ai-suggestion", acceptBody);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, acceptResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task PT_Can_Run_Sync_Returns_200_With_CompletedAt()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.PostAsync("/api/v1/sync/run", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = JsonSerializer.Deserialize<JsonDocument>(await response.Content.ReadAsStringAsync(), JsonOpts);
+        Assert.True(payload!.RootElement.GetProperty("success").GetBoolean());
+        Assert.True(payload.RootElement.TryGetProperty("completedAt", out _));
     }
 
     // ── Patient demographics ─────────────────────────────────────────────────

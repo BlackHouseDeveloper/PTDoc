@@ -2,6 +2,9 @@
 @using PTDoc.UI.Components.Notes.Models
 @using PTDoc.Application.AI
 
+@inject IAiClinicalGenerationService AiService
+@inject ILogger<AssessmentWorkspaceSection> Logger
+
 @* AssessmentWorkspaceSection: orchestrates all assessment cards per Blueprint.
    Embeds existing AssessmentTab for narrative/functional limitations (AI generation)
    and adds: Deficits, ICD-10, SMART Goals, Motivation, Support, Prognosis.
@@ -133,6 +136,11 @@
                     </li>
                 }
             </ul>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_goalGenerationError))
+        {
+            <p class="aws-card__empty-hint" role="alert">@_goalGenerationError</p>
         }
     </div>
     }
@@ -392,6 +400,7 @@
 @code {
     private bool _isGeneratingGoals;
     private string _icdSearchQuery = string.Empty;
+    private string? _goalGenerationError;
 
     // Placeholder deficit items populated by Auto-Generate.
     private List<(string Name, string Severity)> _deficitItems = new();
@@ -521,16 +530,93 @@
         if (IsReadOnly) return;
 
         _isGeneratingGoals = true;
+        _goalGenerationError = null;
         StateHasChanged();
 
         try
         {
-            // Placeholder generation path until IAiClinicalGenerationService integration is added.
-            await Task.Delay(100); // stub
+            var result = await AiService.GenerateGoalNarrativesAsync(new GoalNarrativesGenerationRequest
+            {
+                NoteId = NoteId,
+                Diagnosis = BuildDiagnosisSummary(),
+                FunctionalLimitations = BuildFunctionalLimitationsSummary(),
+                ShortTermGoals = string.Join("; ", Vm.Goals.Where(goal => goal.IsAccepted || !goal.IsAiSuggested).Select(goal => goal.Description)),
+                LongTermGoals = string.Join("; ", Vm.Goals.Where(goal => goal.IsAccepted || !goal.IsAiSuggested).Select(goal => goal.Description)),
+                IsNoteSigned = IsReadOnly
+            });
+
+            if (!result.Success)
+            {
+                _goalGenerationError = result.ErrorMessage ?? "Unable to generate AI goals.";
+                return;
+            }
+
+            Vm.Goals.RemoveAll(goal => goal.IsAiSuggested && !goal.IsAccepted);
+
+            foreach (var description in ParseGoalSuggestions(result.GeneratedText))
+            {
+                if (Vm.Goals.Any(goal => string.Equals(goal.Description, description, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                Vm.Goals.Add(new SmartGoalEntry
+                {
+                    Description = description,
+                    IsAiSuggested = true,
+                    IsAccepted = false
+                });
+            }
+
+            await VmChanged.InvokeAsync(Vm);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Goal generation failed for note {NoteId}", NoteId);
+            _goalGenerationError = "Unable to generate AI goals.";
         }
         finally
         {
             _isGeneratingGoals = false;
         }
+    }
+
+    private string BuildDiagnosisSummary()
+    {
+        if (Vm.DiagnosisCodes.Count > 0)
+        {
+            return string.Join(", ", Vm.DiagnosisCodes.Select(code => $"{code.Code} {code.Description}".Trim()));
+        }
+
+        return string.IsNullOrWhiteSpace(ChiefComplaint)
+            ? "Physical therapy goals"
+            : ChiefComplaint;
+    }
+
+    private string BuildFunctionalLimitationsSummary()
+    {
+        if (!string.IsNullOrWhiteSpace(Vm.FunctionalLimitations))
+        {
+            return Vm.FunctionalLimitations;
+        }
+
+        return string.IsNullOrWhiteSpace(ChiefComplaint)
+            ? "Functional limitations not yet documented."
+            : ChiefComplaint!;
+    }
+
+    private static IReadOnlyList<string> ParseGoalSuggestions(string generatedText)
+    {
+        var parsed = generatedText
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Select(line => line.TrimStart('-', '*', '•', ' ', '\t'))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return parsed.Count == 0 && !string.IsNullOrWhiteSpace(generatedText)
+            ? [generatedText.Trim()]
+            : parsed;
     }
 }
