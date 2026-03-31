@@ -4,6 +4,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      debug_mode:
+        description: 'Enable verbose/diagnostic output for troubleshooting'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -61,7 +68,9 @@ jobs:
       run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Run all tests
-      run: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      run: |
+        VERBOSITY=${{ inputs.debug_mode == true && 'detailed' || 'normal' }}
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity "$VERBOSITY" --logger "trx;LogFileName=test-results.trx"
 
     - name: Publish test results
       uses: dorny/test-reporter@v1
@@ -156,9 +165,11 @@ jobs:
     - name: Build MAUI iOS (simulator, no signing)
       run: |
         SIMULATOR_SDK_ROOT="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+        VERBOSITY=${{ inputs.debug_mode == true && 'detailed' || 'normal' }}
         dotnet build src/PTDoc.Maui/PTDoc.csproj \
           --configuration Release \
           --framework net8.0-ios \
+          --verbosity "$VERBOSITY" \
           -p:RuntimeIdentifier=iossimulator-arm64 \
           -p:EnableCodeSigning=false \
           -p:CodesignKey= \

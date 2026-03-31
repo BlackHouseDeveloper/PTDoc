@@ -4,6 +4,13 @@ on:
   push:
     branches: [ "main", "develop", "phase8-continue", "copilot/**" ]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      debug_mode:
+        description: 'Enable verbose/diagnostic output for troubleshooting'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   phase8-validation:
@@ -67,7 +74,9 @@ jobs:
       run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Run all tests (including Phase 8 integration tests)
-      run: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal
+      run: |
+        VERBOSITY=${{ inputs.debug_mode == true && 'detailed' || 'normal' }}
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity "$VERBOSITY"
 
     - name: Test Summary
       if: always()
