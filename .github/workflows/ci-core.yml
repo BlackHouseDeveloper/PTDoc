@@ -92,7 +92,12 @@ jobs:
 
   maui-ios-validation:
     name: Build MAUI iOS (macOS)
-    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    # Disabled: GitHub-hosted macOS runners (macos-15 and macos-latest) now ship Xcode 26.3
+    # with iOS SDK 26.2, which removed System.framework. The .NET 8 MAUI iOS SDK 18.0.x still
+    # generates linker commands that reference -framework System, causing: ld: framework 'System' not found
+    # TODO: re-enable once .NET 8 MAUI iOS SDK ships a fix, or migrate to .NET 9 MAUI.
+    # Tracked in: https://github.com/BlackHouseDeveloper/PTDoc/issues
+    if: false
     runs-on: macos-15
 
     steps:
