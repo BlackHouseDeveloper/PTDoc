@@ -41,7 +41,7 @@
 
     <!-- iOS linker: ensure the native System library is found when building for device or simulator -->
     <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-        <MtouchExtraArgs>$(MtouchExtraArgs) --gcc_flags="-lSystem"</MtouchExtraArgs>
+        <MtouchExtraArgs>$(MtouchExtraArgs) --gcc_flags=-lSystem</MtouchExtraArgs>
     </PropertyGroup>
 
     <ItemGroup>
