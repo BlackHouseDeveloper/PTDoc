@@ -68,9 +68,10 @@ jobs:
       run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Run all tests
+      env:
+        TEST_VERBOSITY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_mode == 'true' && 'detailed' || 'normal' }}
       run: |
-        VERBOSITY=${{ inputs.debug_mode == true && 'detailed' || 'normal' }}
-        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity "$VERBOSITY" --logger "trx;LogFileName=test-results.trx"
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity "$TEST_VERBOSITY" --logger "trx;LogFileName=test-results.trx"
 
     - name: Publish test results
       uses: dorny/test-reporter@v1
@@ -165,7 +166,7 @@ jobs:
     - name: Build MAUI iOS (simulator, no signing)
       run: |
         SIMULATOR_SDK_ROOT="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-        VERBOSITY=${{ inputs.debug_mode == true && 'detailed' || 'normal' }}
+        VERBOSITY=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_mode == 'true' && 'detailed' || 'normal' }}
         dotnet build src/PTDoc.Maui/PTDoc.csproj \
           --configuration Release \
           --framework net8.0-ios \
