@@ -278,12 +278,18 @@ public sealed class OpenAiService : IAiService
 
         await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
-        var choice = document.RootElement
-            .GetProperty("choices")
+        if (!document.RootElement.TryGetProperty("choices", out var choicesElement) ||
+            choicesElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Azure OpenAI response did not include a valid choices array.");
+        }
+
+        var choice = choicesElement
             .EnumerateArray()
             .FirstOrDefault();
 
-        if (!choice.TryGetProperty("message", out var messageElement))
+        if (choice.ValueKind != JsonValueKind.Object ||
+            !choice.TryGetProperty("message", out var messageElement))
         {
             throw new InvalidOperationException("Azure OpenAI response did not include a message payload.");
         }

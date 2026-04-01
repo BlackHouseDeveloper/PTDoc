@@ -81,7 +81,12 @@ Secrets are **never printed** and are stored in your OS user profile:
 | Project | Config key | User-secrets project |
 |---------|-----------|---------------------|
 | PTDoc.Api | `Jwt:SigningKey` | `src/PTDoc.Api/PTDoc.Api.csproj` |
+| PTDoc.Api | `IntakeInvite:SigningKey` | `src/PTDoc.Api/PTDoc.Api.csproj` |
 | PTDoc.Web | `IntakeInvite:SigningKey` | `src/PTDoc.Web/PTDoc.Web.csproj` |
+
+Both **PTDoc.Api** and **PTDoc.Web** validate intake invite tokens and require `IntakeInvite:SigningKey`
+to be present via `dotnet user-secrets`. In CI and production, inject this key via environment
+variables or the configured secrets manager.
 
 ### Manual secret setup (if not using the bootstrap script)
 
@@ -90,7 +95,11 @@ Secrets are **never printed** and are stored in your OS user profile:
 dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 64)" \
   --project src/PTDoc.Api/PTDoc.Api.csproj
 
-# Generate and set IntakeInvite signing key
+# Generate and set IntakeInvite signing key for PTDoc.Api
+dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
+  --project src/PTDoc.Api/PTDoc.Api.csproj
+
+# Generate and set IntakeInvite signing key for PTDoc.Web
 dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
   --project src/PTDoc.Web/PTDoc.Web.csproj
 ```

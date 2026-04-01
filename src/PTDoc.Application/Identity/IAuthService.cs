@@ -60,17 +60,30 @@ public interface IAuthService
 }
 
 /// <summary>
-/// Result of an authentication attempt
+/// Result of an authentication attempt.
+/// Fields other than <see cref="Status"/> are only populated when
+/// <see cref="Status"/> is <see cref="AuthStatus.Success"/>.
 /// </summary>
 public class AuthResult
 {
     public AuthStatus Status { get; init; } = AuthStatus.Success;
-    public required Guid UserId { get; init; }
-    public required string Username { get; init; }
-    public required string Token { get; init; }
-    public required DateTime ExpiresAt { get; init; }
-    public required string Role { get; init; }
-    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+
+    /// <summary>Identifier of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>Username of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Username { get; init; }
+
+    /// <summary>Session token issued for the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Token { get; init; }
+
+    /// <summary>Expiration timestamp of the issued session token. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public DateTime? ExpiresAt { get; init; }
+
+    /// <summary>Role of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Role { get; init; }
+
+    /// <summary>Clinic the user belongs to, or null for system accounts. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public Guid? ClinicId { get; init; }
 }
 

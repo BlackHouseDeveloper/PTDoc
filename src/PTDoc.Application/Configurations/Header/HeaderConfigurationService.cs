@@ -231,12 +231,14 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             };
         }
 
-        return stepValue.Trim() switch
+        var normalizedStep = stepValue.Trim().ToLowerInvariant();
+
+        return normalizedStep switch
         {
-            "Demographics" => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
-            "PainAssessment" => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
-            "PainDetails" => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
-            "Review" => SetSubtitle("Step 4 of 4: Review", out subtitle),
+            "demographics" => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
+            "painassessment" => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
+            "paindetails" => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
+            "review" => SetSubtitle("Step 4 of 4: Review", out subtitle),
             _ => false
         };
     }
