@@ -4,6 +4,20 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to add to CHANGELOG'
+        required: true
+        type: string
+      pr_title:
+        description: 'PR title for the CHANGELOG entry'
+        required: true
+        type: string
+      pr_author:
+        description: 'PR author GitHub login'
+        required: false
+        type: string
+        default: 'unknown'
 
 permissions:
   contents: write
@@ -12,7 +26,8 @@ permissions:
 jobs:
   preview-documentation-update:
     name: Preview Documentation Update (Pre-merge)
-    if: github.event.action != 'closed'
+    # Only meaningful for pull_request events; workflow_dispatch has no PR context.
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
 
     steps:
@@ -29,8 +44,12 @@ jobs:
 
   update-documentation:
     name: Update CHANGELOG and Documentation
-    # Only run if PR was actually merged (not just closed)
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    # Run when a PR is merged, OR when manually dispatched with a PR number.
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -50,11 +69,11 @@ jobs:
         id: pr_metadata
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_title || github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_author || github.event.pull_request.user.login }}
+          PR_LABELS: ${{ github.event_name == 'workflow_dispatch' && '' || join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event_name == 'workflow_dispatch' && '' || github.event.pull_request.body }}
         run: |
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
           UNIQUE_DELIM="EOF_PR_TITLE_${PR_NUMBER}_$(date +%s)_$RANDOM"
@@ -213,7 +232,7 @@ jobs:
           exit 1
 
       - name: Comment on PR
-        if: steps.update_changelog.outputs.updated == 'true'
+        if: steps.update_changelog.outputs.updated == 'true' && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
