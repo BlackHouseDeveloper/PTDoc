@@ -19,7 +19,7 @@ public static class Icd10Endpoints
         group.MapGet("/search", Search)
             .WithName("SearchIcd10Codes")
             .WithSummary("Search ICD-10 codes by code or description")
-            .WithDescription("Returns up to 20 matching codes from the bundled PT-relevant ICD-10 list.");
+            .WithDescription("Returns matching codes from the bundled PT-relevant ICD-10 list. Defaults to 20 results; configurable up to 100 via the maxResults parameter.");
     }
 
     private static IResult Search(

@@ -19,7 +19,7 @@ public sealed record RegistrationResult(
 {
     public bool IsPending => Status == RegistrationStatus.PendingApproval;
 
-    public bool Succeeded => Status == RegistrationStatus.PendingApproval || Status == RegistrationStatus.Succeeded;
+    public bool Succeeded => Status == RegistrationStatus.Succeeded;
 }
 
 public sealed record UserRegistrationRequest(

@@ -310,7 +310,9 @@ public sealed class OpenAiService : IAiService
                 var builder = new StringBuilder();
                 foreach (var part in contentElement.EnumerateArray())
                 {
-                    if (part.TryGetProperty("text", out var textElement) && textElement.ValueKind == JsonValueKind.String)
+                    if (part.ValueKind == JsonValueKind.Object &&
+                        part.TryGetProperty("text", out var textElement) &&
+                        textElement.ValueKind == JsonValueKind.String)
                     {
                         builder.Append(textElement.GetString());
                     }
