@@ -55,16 +55,24 @@ public static class PinAuthEndpoints
 
         if (result.Status == AuthStatus.AccountLocked)
         {
-            return Results.Json(
-                new { status = AuthStatus.AccountLocked.ToString(), error = "Account is locked." },
-                statusCode: StatusCodes.Status403Forbidden);
+            var problemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Account is locked."
+            };
+            problemDetails.Extensions["status"] = AuthStatus.AccountLocked.ToString();
+            return Results.Json(problemDetails, statusCode: problemDetails.Status);
         }
 
         if (result.Status == AuthStatus.PendingApproval)
         {
-            return Results.Json(
-                new { status = AuthStatus.PendingApproval.ToString(), error = "Account pending admin approval." },
-                statusCode: StatusCodes.Status403Forbidden);
+            var problemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Account pending admin approval."
+            };
+            problemDetails.Extensions["status"] = AuthStatus.PendingApproval.ToString();
+            return Results.Json(problemDetails, statusCode: problemDetails.Status);
         }
 
         // Status == Success: all identity fields are guaranteed non-null on the success path.

@@ -128,7 +128,6 @@ public static class KnownTimedCptCodes
         "97112", // Neuromuscular reeducation
         "97116", // Gait training
         "97140", // Manual therapy techniques
-        "97150", // Therapeutic procedure (group)
         "97530", // Therapeutic activities
         "97535", // Self-care/home management training
         "97542", // Wheelchair management/propulsion training

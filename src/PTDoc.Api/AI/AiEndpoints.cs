@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 
 namespace PTDoc.Api.AI;
@@ -60,7 +61,7 @@ public static class AiEndpoints
         var result = await aiService.GenerateAssessmentAsync(request, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
-        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userId = (httpContext.User.FindFirst(PTDocClaimTypes.InternalUserId) ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier))?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
             var auditEvent = AuditEvent.AiGenerationAttempt(
@@ -120,7 +121,7 @@ public static class AiEndpoints
         var result = await aiService.GeneratePlanAsync(request, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
-        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userId = (httpContext.User.FindFirst(PTDocClaimTypes.InternalUserId) ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier))?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
             var auditEvent = AuditEvent.AiGenerationAttempt(
@@ -209,7 +210,7 @@ public static class AiEndpoints
         var result = await clinicalService.GenerateGoalNarrativesAsync(guardedRequest, cancellationToken);
 
         // Audit logging (NO PHI - only metadata)
-        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userId = (httpContext.User.FindFirst(PTDocClaimTypes.InternalUserId) ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier))?.Value;
         if (userId != null && Guid.TryParse(userId, out var userGuid))
         {
             var model = result.Metadata?.Model ?? "unknown";
