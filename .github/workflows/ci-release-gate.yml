@@ -302,10 +302,14 @@ jobs:
         echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
     - name: Restore dependencies
-      run: dotnet restore PTDoc.sln
+      run: |
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
 
     - name: Build
-      run: dotnet build PTDoc.sln --no-restore --configuration Release
+      run: |
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Run E2E workflow integration tests
       run: |
