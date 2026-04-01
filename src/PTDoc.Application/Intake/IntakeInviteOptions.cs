@@ -20,6 +20,9 @@ public sealed class IntakeInviteOptions
     /// <summary>Minutes before an intake invite link expires and must be regenerated.</summary>
     public int InviteExpiryMinutes { get; init; } = 1440;
 
-    /// <summary>Public PTDoc.Web base URL used when constructing shareable intake invite links.</summary>
-    public string PublicWebBaseUrl { get; init; } = "http://localhost:5000";
+    /// <summary>Public PTDoc.Web base URL used when constructing shareable intake invite links.
+    /// Must be an absolute HTTPS URL in production (e.g., <c>https://app.example.com</c>).
+    /// HTTP is only permitted for localhost development URLs.
+    /// Leaving this empty will cause invite link generation to fail at runtime.</summary>
+    public string PublicWebBaseUrl { get; init; } = string.Empty;
 }

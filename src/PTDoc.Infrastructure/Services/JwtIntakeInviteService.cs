@@ -443,10 +443,29 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return "http://localhost:5000";
+            throw new InvalidOperationException(
+                "IntakeInvite:PublicWebBaseUrl is not configured. " +
+                "Set an absolute HTTPS URL (e.g., https://app.example.com) before generating invite links.");
         }
 
-        return value.TrimEnd('/');
+        var trimmed = value.TrimEnd('/');
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            throw new InvalidOperationException(
+                $"IntakeInvite:PublicWebBaseUrl '{trimmed}' is not a valid absolute URL.");
+        }
+
+        // Allow HTTP only for loopback hosts (development: localhost, 127.0.0.1, ::1).
+        // All non-loopback URLs must use HTTPS to protect patient data in transit.
+        if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
+        {
+            throw new InvalidOperationException(
+                $"IntakeInvite:PublicWebBaseUrl '{trimmed}' must use HTTPS for non-localhost hosts. " +
+                "HTTP invite links would expose patient data over an insecure channel.");
+        }
+
+        return trimmed;
     }
 
     private static string GenerateInviteSecret()

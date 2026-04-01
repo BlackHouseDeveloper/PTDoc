@@ -48,9 +48,16 @@ public static class PinAuthEndpoints
             ipAddress,
             userAgent);
 
-        if (result == null)
+        if (result == null || result.Status == AuthStatus.InvalidCredentials)
         {
             return Results.Unauthorized();
+        }
+
+        if (result.Status == AuthStatus.AccountLocked)
+        {
+            return Results.Json(
+                new { status = AuthStatus.AccountLocked.ToString(), error = "Account is locked." },
+                statusCode: StatusCodes.Status403Forbidden);
         }
 
         if (result.Status == AuthStatus.PendingApproval)
@@ -60,13 +67,21 @@ public static class PinAuthEndpoints
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        // Status == Success: all identity fields are guaranteed non-null on the success path.
+        // Guard defensively so a contract violation in the AuthService implementation fails fast.
+        if (result.UserId is null || result.Username is null || result.Token is null ||
+            result.ExpiresAt is null || result.Role is null)
+        {
+            return Results.Problem("Authentication service returned an incomplete success result.", statusCode: StatusCodes.Status500InternalServerError);
+        }
+
         return Results.Ok(new PinLoginResponse
         {
             Status = result.Status.ToString(),
-            UserId = result.UserId,
+            UserId = result.UserId.Value,
             Username = result.Username,
             Token = result.Token,
-            ExpiresAt = result.ExpiresAt,
+            ExpiresAt = result.ExpiresAt.Value,
             Role = result.Role,
             ClinicId = result.ClinicId
         });
