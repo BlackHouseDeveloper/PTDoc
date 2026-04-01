@@ -83,5 +83,14 @@
         </ItemGroup>
     </Target>
 
+    <Target Name="RemoveInvalidIosSystemFramework"
+            BeforeTargets="_ComputeLinkNativeExecutableInputs"
+            Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+        <ItemGroup>
+            <!-- Xcode 26's iPhoneSimulator SDK no longer provides System.framework. -->
+            <_LinkerFrameworks Remove="System" />
+        </ItemGroup>
+    </Target>
+
 
 </Project>

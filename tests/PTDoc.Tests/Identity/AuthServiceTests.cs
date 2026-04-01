@@ -60,12 +60,13 @@ public class AuthServiceTests
         var result = await authService.AuthenticateAsync("testuser", "1234", "127.0.0.1", "TestAgent");
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(user.Id, result.UserId);
-        Assert.Equal("testuser", result.Username);
-        Assert.Equal("PT", result.Role);
-        Assert.NotEmpty(result.Token);
-        Assert.True(result.ExpiresAt > DateTime.UtcNow);
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal("testuser", authResult.Username);
+        Assert.Equal("PT", authResult.Role);
+        var token = Assert.IsType<string>(authResult.Token);
+        Assert.NotEmpty(token);
+        Assert.True(authResult.ExpiresAt > DateTime.UtcNow);
 
         // Verify session was created
         var session = await context.Sessions.FirstOrDefaultAsync(s => s.UserId == user.Id);
