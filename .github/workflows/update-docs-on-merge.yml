@@ -20,7 +20,7 @@ on:
         default: 'unknown'
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 jobs:
@@ -195,41 +195,15 @@ jobs:
             rm docs/CHANGELOG.md.bak
           fi
 
-      - name: Commit and Push Changes
+      - name: Notice - push to main disabled
         if: steps.update_changelog.outputs.updated == 'true'
         env:
           PR_NUMBER: ${{ steps.pr_metadata.outputs.pr_number }}
         run: |
-          git add docs/CHANGELOG.md
-          
-          # Check if there are changes to commit
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          
-          git commit -m "docs: Update CHANGELOG for PR #${PR_NUMBER}
-
-          Automated documentation update triggered by merge of PR #${PR_NUMBER}.
-          
-          [skip ci]"
-          
-          # Push with retry logic
-          for i in {1..3}; do
-            if git push origin main; then
-              echo "Successfully pushed changes"
-              exit 0
-            else
-              echo "Push failed, attempt $i of 3"
-              if [ $i -lt 3 ]; then
-                sleep 2
-                git pull --rebase origin main
-              fi
-            fi
-          done
-          
-          echo "Failed to push changes after 3 attempts"
-          exit 1
+          echo "::notice::CHANGELOG entry for PR #${PR_NUMBER} was prepared locally but NOT pushed."
+          echo "Direct pushes to main are blocked by repository rules (GH013)."
+          echo "CHANGELOG updates must be included in the PR before merging (Option C)."
+          echo "Add the 'no-changelog' label to the PR to intentionally bypass the requirement."
 
       - name: Comment on PR
         if: steps.update_changelog.outputs.updated == 'true' && github.event_name == 'pull_request'
