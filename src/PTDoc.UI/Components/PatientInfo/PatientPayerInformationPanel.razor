@@ -1,0 +1,110 @@
+@* PatientPayerInformationPanel — patient identity and insurance/payer basics *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Patient &amp; Payer Information">
+    <PatientInfoFormGrid>
+
+        <PatientInfoField Label="Patient Name" ForId="pi-patient-name" Error="@GetError("patientName")">
+            <PatientInfoTextInput Id="pi-patient-name"
+                                  Value="@Model.PatientName"
+                                  ValueChanged="@(v => SetField(v, f => f.PatientName = v))"
+                                  HasError="@HasError("patientName")" />
+            @* Current behavior: editable in this panel and persisted via PatientInfoPage save. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Date of Birth" ForId="pi-dob" Error="@GetError("dob")">
+            <PatientInfoTextInput Id="pi-dob"
+                                  Value="@Model.DateOfBirthText"
+                                  ValueChanged="@(v => SetField(v, f => f.DateOfBirthText = v))"
+                                  HasError="@HasError("dob")" />
+            @* Date input currently accepts text to match existing page model storage format. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Insurance Company Name" ForId="pi-insurance-name" Error="@GetError("insuranceName")">
+            <PatientInfoTextInput Id="pi-insurance-name"
+                                  Value="@Model.InsuranceCompanyName"
+                                  ValueChanged="@(v => SetField(v, f => f.InsuranceCompanyName = v))"
+                                  Placeholder="e.g., Blue Cross Blue Shield"
+                                  HasError="@HasError("insuranceName")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Member ID / Policy Number" ForId="pi-member-id" Error="@GetError("memberId")">
+            <PatientInfoTextInput Id="pi-member-id"
+                                  Value="@Model.MemberIdPolicyNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.MemberIdPolicyNumber = v))"
+                                  HasError="@HasError("memberId")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Group Number" ForId="pi-group-number" Error="@GetError("groupNumber")">
+            <PatientInfoTextInput Id="pi-group-number"
+                                  Value="@Model.GroupNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.GroupNumber = v))"
+                                  HasError="@HasError("groupNumber")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Provider Type" ForId="pi-provider-type" Error="@GetError("providerType")">
+            <PatientInfoSelect Id="pi-provider-type"
+                               Value="@Model.ProviderType"
+                               ValueChanged="@(v => SetField(v, f => f.ProviderType = v))"
+                               Placeholder="Select payer type"
+                               Options="@ProviderTypeOptions"
+                               HasError="@HasError("providerType")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Primary vs Secondary Insurance" ForId="pi-insurance-priority" Error="@GetError("insurancePriority")">
+            <PatientInfoSelect Id="pi-insurance-priority"
+                               Value="@Model.InsurancePriority"
+                               ValueChanged="@(v => SetField(v, f => f.InsurancePriority = v))"
+                               Placeholder="Select insurance type"
+                               Options="@InsurancePriorityOptions"
+                               HasError="@HasError("insurancePriority")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Plan Year or Calendar Year" ForId="pi-year-type" Error="@GetError("yearType")">
+            <PatientInfoSelect Id="pi-year-type"
+                               Value="@Model.YearType"
+                               ValueChanged="@(v => SetField(v, f => f.YearType = v))"
+                               Placeholder="Select year type"
+                               Options="@YearTypeOptions"
+                               HasError="@HasError("yearType")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Effective Start Date" ForId="pi-effective-start" Error="@GetError("effectiveStart")">
+            <PatientInfoTextInput Id="pi-effective-start"
+                                  Value="@Model.EffectiveStartDate"
+                                  ValueChanged="@(v => SetField(v, f => f.EffectiveStartDate = v))"
+                                  HasError="@HasError("effectiveStart")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Effective End Date" ForId="pi-effective-end" Error="@GetError("effectiveEnd")">
+            <PatientInfoTextInput Id="pi-effective-end"
+                                  Value="@Model.EffectiveEndDate"
+                                  ValueChanged="@(v => SetField(v, f => f.EffectiveEndDate = v))"
+                                  HasError="@HasError("effectiveEnd")" />
+        </PatientInfoField>
+
+    </PatientInfoFormGrid>
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public PatientPayerInfoVm Model { get; set; } = null!;
+    [Parameter] public EventCallback<PatientPayerInfoVm> ModelChanged { get; set; }
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> ProviderTypeOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> InsurancePriorityOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> YearTypeOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private string GetError(string key) =>
+        FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
+
+    private bool HasError(string key) => FieldErrors.ContainsKey(key);
+
+    private async Task SetField(string value, Action<PatientPayerInfoVm> setter)
+    {
+        setter(Model);
+        await ModelChanged.InvokeAsync(Model);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+}

@@ -1,0 +1,211 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="discharge-plan" data-testid="discharge-plan-section" role="tabpanel" aria-label="Discharge plan section">
+    <article class="discharge-plan__card" data-testid="discharge-plan-card">
+        <header class="discharge-plan__card-header">
+            <h3 class="discharge-plan__card-title">Discharge Plan</h3>
+            <button type="button" class="discharge-plan__action-btn" disabled="@IsReadOnly" @onclick="GenerateFullNote">Generate Full Note</button>
+        </header>
+
+        <label class="discharge-plan__label" for="full-discharge-note">Discharge Summary &amp; Recommendations</label>
+        <textarea id="full-discharge-note"
+                  class="discharge-plan__textarea"
+                  rows="5"
+                  disabled="@IsReadOnly"
+                  @bind="Vm.FullDischargeSummary"
+                  @bind:after="HandleChangedAsync"
+                  placeholder="Click 'Generate Full Note' to populate ALL SOAP sections with comprehensive discharge documentation..."></textarea>
+
+        <label class="discharge-plan__label" for="post-discharge">Post-Discharge Instructions</label>
+        <textarea id="post-discharge"
+                  class="discharge-plan__textarea"
+                  rows="4"
+                  disabled="@IsReadOnly"
+                  @bind="Vm.PostDischargeInstructions"
+                  @bind:after="HandleChangedAsync"
+                  placeholder="Follow-up recommendations, home program maintenance, warning signs, when to seek medical attention..."></textarea>
+    </article>
+
+    <article class="discharge-plan__card" data-testid="clinical-summary-card">
+        <header class="discharge-plan__card-header">
+            <div>
+                <h3 class="discharge-plan__card-title">Clinical Summary (S.O.A.P)</h3>
+                <p class="discharge-plan__card-subtitle">AI-generated comprehensive summary of all SOAP sections</p>
+            </div>
+            <button type="button" class="discharge-plan__action-btn" disabled="@IsReadOnly" @onclick="GenerateClinicalSummary">Generate Summary</button>
+        </header>
+
+        <textarea class="discharge-plan__textarea"
+                  rows="4"
+                  disabled="@IsReadOnly"
+                  @bind="Vm.ClinicalSummary"
+                  @bind:after="HandleChangedAsync"
+                  placeholder="Click 'Generate Summary' to create an AI-powered comprehensive clinical summary..."></textarea>
+    </article>
+
+    <article class="discharge-plan__card" data-testid="discharge-recommendations-card">
+        <header class="discharge-plan__card-header">
+            <h3 class="discharge-plan__card-title">Discharge Summary &amp; Recommendations</h3>
+        </header>
+
+        <label class="discharge-plan__label" for="discharge-reason">Primary Discharge Reason *</label>
+        <select id="discharge-reason" class="discharge-plan__select" disabled="@IsReadOnly" @bind="Vm.PrimaryDischargeReason" @bind:after="HandleChangedAsync">
+            <option value="">Select discharge reason...</option>
+            @foreach (var option in _dischargeReasons)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+
+        <label class="discharge-plan__label" for="discharge-recommendations">Discharge Recommendations &amp; Follow-up Plan *</label>
+        <textarea id="discharge-recommendations"
+                  class="discharge-plan__textarea"
+                  rows="6"
+                  disabled="@IsReadOnly"
+                  @bind="Vm.DischargeRecommendations"
+                  @bind:after="HandleChangedAsync"
+                  placeholder="Document discharge reason, patient's final functional status, home exercise program provided, follow-up recommendations with physician or specialists, return-to-PT criteria, and any precautions or activity modifications..."></textarea>
+
+        <div class="discharge-plan__tips">
+            <p>Documentation Tips:</p>
+            <ul>
+                <li>Summarize patient's functional progress and current status</li>
+                <li>Note HEP provided and patient's understanding/compliance</li>
+                <li>Specify follow-up care and return-to-PT criteria</li>
+                <li>Document ongoing precautions or red flags</li>
+            </ul>
+        </div>
+    </article>
+
+    <article class="discharge-plan__card" data-testid="home-exercise-program-card">
+        <header class="discharge-plan__card-header">
+            <div>
+                <h3 class="discharge-plan__card-title">Home Exercise Program (HEP)</h3>
+                <p class="discharge-plan__card-subtitle">Export patient's home exercise program for continued self-management</p>
+            </div>
+            <button type="button" class="discharge-plan__secondary-btn" disabled="@IsReadOnly">Export HEP</button>
+        </header>
+
+        <div class="discharge-plan__empty-state">
+            <strong>0 Exercises</strong>
+            <p>No exercises have been added to this patient's HEP. Add exercises in the Objective or Plan sections to enable HEP export.</p>
+        </div>
+
+        <div class="discharge-plan__note">
+            <strong>Documentation Note:</strong>
+            Ensure patient has been educated on HEP compliance, proper exercise form, and progression criteria.
+        </div>
+    </article>
+
+    <article class="discharge-plan__card" data-testid="end-of-care-checklist-card">
+        <header class="discharge-plan__card-header">
+            <div>
+                <h3 class="discharge-plan__card-title">End-of-Care Checklist</h3>
+                <p class="discharge-plan__card-subtitle">Ensure all discharge requirements are completed before finalizing</p>
+            </div>
+            <span class="discharge-plan__status">0/8 Complete</span>
+        </header>
+
+        <div class="discharge-plan__progress-wrap">
+            <div class="discharge-plan__progress-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                <div class="discharge-plan__progress-fill" style="width: 0%"></div>
+            </div>
+            <p>All required items must be completed before note can be signed and submitted</p>
+        </div>
+
+        <ul class="discharge-plan__checklist">
+            @foreach (var item in _checklistItems)
+            {
+                <li>
+                    <label>
+                        <input type="checkbox"
+                               disabled="@IsReadOnly"
+                               checked="@item.IsComplete"
+                               @onchange="args => HandleChecklistChanged(item, args)" />
+                        <span>@item.Title</span>
+                    </label>
+                    <p>@item.Description</p>
+                </li>
+            }
+        </ul>
+    </article>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+
+    private readonly IReadOnlyList<string> _dischargeReasons =
+    [
+        "Goals met",
+        "Maximum benefit reached",
+        "Patient request",
+        "Medical hold / referral",
+        "Non-compliance / lost to follow-up"
+    ];
+
+    private readonly List<ChecklistItem> _checklistItems =
+    [
+        new("All goals reviewed and final status documented", "Each treatment goal marked as Met, Partially Met, or Not Met"),
+        new("Final outcome measures documented and compared to baseline", "ROM, strength, functional tests, and outcome scores recorded"),
+        new("Home Exercise Program provided to patient", "HEP exported and reviewed with patient"),
+        new("Patient education completed and documented", "Self-management strategies and red flags discussed"),
+        new("Discharge reason and recommendations documented", "Reason and follow-up plan clearly documented")
+    ];
+
+    protected override void OnParametersSet()
+    {
+        var completed = new HashSet<string>(Vm.CompletedDischargeChecklistItems, StringComparer.OrdinalIgnoreCase);
+        foreach (var item in _checklistItems)
+        {
+            item.IsComplete = completed.Contains(item.Title);
+        }
+    }
+
+    private async Task GenerateFullNote()
+    {
+        await HandleChangedAsync();
+    }
+
+    private async Task GenerateClinicalSummary()
+    {
+        await HandleChangedAsync();
+    }
+
+    private async Task HandleChangedAsync()
+    {
+        Vm.CompletedDischargeChecklistItems = _checklistItems
+            .Where(item => item.IsComplete)
+            .Select(item => item.Title)
+            .ToList();
+
+        await VmChanged.InvokeAsync(Vm);
+    }
+
+    private async Task HandleChecklistChanged(ChecklistItem item, ChangeEventArgs args)
+    {
+        item.IsComplete = args.Value switch
+        {
+            bool flag => flag,
+            string text when bool.TryParse(text, out var parsed) => parsed,
+            _ => false
+        };
+
+        await HandleChangedAsync();
+    }
+
+    private sealed class ChecklistItem
+    {
+        public ChecklistItem(string title, string description)
+        {
+            Title = title;
+            Description = description;
+        }
+
+        public string Title { get; }
+        public string Description { get; }
+        public bool IsComplete { get; set; }
+    }
+}

@@ -1,0 +1,69 @@
+@* VisitTrackingUtilizationPanel — visit counters, first-visit date, and notes *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Visit Tracking &amp; Utilization">
+    <PatientInfoFormGrid>
+
+        <PatientInfoField Label="Visits Used" ForId="pi-visits-used" Error="@GetError("visitsUsed")">
+            <PatientInfoTextInput Id="pi-visits-used"
+                                  Value="@Model.VisitsUsed"
+                                  ValueChanged="@(v => SetField(v, f => f.VisitsUsed = v))"
+                                  HasError="@HasError("visitsUsed")" />
+            @* Visits used and remaining are editable because payer rules vary by clinic workflow. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Visits Remaining" ForId="pi-visits-remaining" Error="@GetError("visitsRemaining")">
+            <PatientInfoTextInput Id="pi-visits-remaining"
+                                  Value="@Model.VisitsRemaining"
+                                  ValueChanged="@(v => SetField(v, f => f.VisitsRemaining = v))"
+                                  HasError="@HasError("visitsRemaining")" />
+        </PatientInfoField>
+
+        @* Full-width row: spans both grid columns *@
+        <PatientInfoField Label="Date of First Visit Under Authorization"
+                          ForId="pi-first-visit-date"
+                          Error="@GetError("firstVisitDate")"
+                          SpanFull="true">
+            <PatientInfoTextInput Id="pi-first-visit-date"
+                                  Value="@Model.DateOfFirstVisitUnderAuthorization"
+                                  ValueChanged="@(v => SetField(v, f => f.DateOfFirstVisitUnderAuthorization = v))"
+                                  HasError="@HasError("firstVisitDate")" />
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
+        </PatientInfoField>
+
+        @* Full-width row: notes textarea *@
+        <PatientInfoField Label="Notes / Comments"
+                          ForId="pi-notes"
+                          Error="@GetError("notes")"
+                          SpanFull="true">
+            <PatientInfoTextArea Id="pi-notes"
+                                 Value="@Model.NotesComments"
+                                 ValueChanged="@(v => SetField(v, f => f.NotesComments = v))"
+                                 Placeholder="Add any relevant notes about authorization, coverage limitations, or special instructions..."
+                                 Rows="5"
+                                 HasError="@HasError("notes")" />
+            @* Notes remain unconstrained here; backend limits apply during save validation. *@
+        </PatientInfoField>
+
+    </PatientInfoFormGrid>
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public UtilizationVm Model { get; set; } = null!;
+    [Parameter] public EventCallback<UtilizationVm> ModelChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private string GetError(string key) =>
+        FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
+
+    private bool HasError(string key) => FieldErrors.ContainsKey(key);
+
+    private async Task SetField(string value, Action<UtilizationVm> setter)
+    {
+        setter(Model);
+        await ModelChanged.InvokeAsync(Model);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+}

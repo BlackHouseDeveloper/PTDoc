@@ -8,6 +8,8 @@ namespace PTDoc.Application.Auth
     using System.Threading;
     using System.Threading.Tasks;
 
+    using PTDoc.Application.Identity;
+
     /// <summary>
     /// Service interface for user authentication and management.
     /// </summary>
@@ -17,6 +19,26 @@ namespace PTDoc.Application.Auth
         /// Gets a value indicating whether the user is currently authenticated.
         /// </summary>
         bool IsAuthenticated { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether login is handled by an external identity provider.
+        /// </summary>
+        bool UsesExternalIdentityProvider { get; }
+
+        /// <summary>
+        /// Gets the display name of the active identity provider.
+        /// </summary>
+        string IdentityProviderDisplayName { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether an external identity provider can be started from the current UI.
+        /// </summary>
+        bool SupportsExternalIdentityLogin { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether the current UI should allow self-service registration.
+        /// </summary>
+        bool SupportsSelfServiceRegistration { get; }
 
         /// <summary>
         /// Gets the current user's claims principal.
@@ -48,6 +70,16 @@ namespace PTDoc.Application.Auth
           CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Starts an external identity provider login flow when supported by the current platform.
+        /// </summary>
+        /// <param name="returnUrl">Optional return URL for browser-based flows.</param>
+        /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+        /// <returns>True if the external login flow was started, false otherwise.</returns>
+        Task<bool> BeginExternalLoginAsync(
+          string? returnUrl = null,
+          CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Registers a new user with the provided information.
         /// </summary>
         /// <param name="fullName">The user's full legal name.</param>
@@ -57,15 +89,31 @@ namespace PTDoc.Application.Auth
         /// <param name="licenseNumber">The user's license number.</param>
         /// <param name="licenseState">The state where the license was issued.</param>
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
-        /// <returns>True if registration was successful, false otherwise.</returns>
-        Task<bool> RegisterAsync(
+        /// <param name="roleKey">The staff role key (PT, PTA, Aide, Admin).</param>
+        /// <param name="clinicId">The clinic to associate with the user.</param>
+        /// <param name="pin">The user's 4-digit PIN.</param>
+        /// <returns>A status-aware registration result.</returns>
+        Task<RegistrationResult> RegisterAsync(
           string fullName,
           string email,
           DateTime dateOfBirth,
+          string roleKey,
+          Guid? clinicId,
+          string pin,
           string licenseType,
           string licenseNumber,
           string licenseState,
           CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets active clinics that users can choose during signup.
+        /// </summary>
+        Task<IReadOnlyList<ClinicSummary>> GetClinicsForSignupAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets registerable staff roles for signup.
+        /// </summary>
+        Task<IReadOnlyList<RoleSummary>> GetRolesForSignupAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Logs out the current user.

@@ -6,14 +6,27 @@
         <input type="checkbox" class="form-check-input" checked="@HipaaAcknowledged" @onchange="OnAcknowledgedChanged" data-testid="hipaa-ack-checkbox" />
         <span>I acknowledge this HIPAA Privacy Notice.</span>
     </label>
+
+    <label class="hipaa-card__checkbox">
+        <input type="checkbox" class="form-check-input" checked="@ConsentToTreatAcknowledged" @onchange="OnConsentToTreatChanged" data-testid="consent-to-treat-checkbox" />
+        <span>I consent to receive physical therapy treatment.</span>
+    </label>
 </section>
 
 @code {
     [Parameter] public bool HipaaAcknowledged { get; set; }
     [Parameter] public EventCallback<bool> HipaaAcknowledgedChanged { get; set; }
 
+    [Parameter] public bool ConsentToTreatAcknowledged { get; set; }
+    [Parameter] public EventCallback<bool> ConsentToTreatAcknowledgedChanged { get; set; }
+
     private Task OnAcknowledgedChanged(ChangeEventArgs args)
     {
         return HipaaAcknowledgedChanged.InvokeAsync((bool)(args.Value ?? false));
+    }
+
+    private Task OnConsentToTreatChanged(ChangeEventArgs args)
+    {
+        return ConsentToTreatAcknowledgedChanged.InvokeAsync((bool)(args.Value ?? false));
     }
 }

@@ -7,6 +7,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
 
 public sealed class JwtTokenIssuer
 {
@@ -43,7 +44,8 @@ public sealed class JwtTokenIssuer
         var accessToken = new JwtSecurityTokenHandler().WriteToken(jwt);
 
         var refreshToken = GenerateRefreshToken();
-        var subject = identity.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        var subject = identity.FindFirst(PTDocClaimTypes.InternalUserId)?.Value
+                  ?? identity.FindFirst(ClaimTypes.NameIdentifier)?.Value
                       ?? identity.FindFirst(ClaimTypes.Name)?.Value
                       ?? "unknown";
 

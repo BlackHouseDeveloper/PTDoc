@@ -14,11 +14,14 @@ public class PinLoginRequest
 /// </summary>
 public class PinLoginResponse
 {
+    public required string Status { get; init; }
     public required Guid UserId { get; init; }
     public required string Username { get; init; }
     public required string Token { get; init; }
     public required DateTime ExpiresAt { get; init; }
     public required string Role { get; init; }
+    /// <summary>Clinic the user belongs to. Null for system accounts without clinic assignment.</summary>
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>
@@ -32,4 +35,6 @@ public class CurrentUserResponse
     public required string LastName { get; init; }
     public required string Role { get; init; }
     public required bool IsActive { get; init; }
+    /// <summary>Clinic the user belongs to. Null for system accounts without clinic assignment.</summary>
+    public Guid? ClinicId { get; init; }
 }

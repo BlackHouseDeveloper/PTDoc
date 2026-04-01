@@ -16,6 +16,21 @@ public sealed class MockIntakeInviteService : IIntakeInviteService
     private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromHours(2);
     private static readonly TimeSpan OtpLifetime = TimeSpan.FromMinutes(10);
 
+    public Task<IntakeInviteLinkResult> CreateInviteAsync(Guid intakeId, CancellationToken cancellationToken = default)
+    {
+        var patientId = Guid.NewGuid();
+        var inviteToken = GenerateToken();
+        var expiry = DateTimeOffset.UtcNow.AddDays(1);
+
+        return Task.FromResult(new IntakeInviteLinkResult(
+            true,
+            intakeId,
+            patientId,
+            $"http://localhost:5000/intake/{patientId:D}?mode=patient&invite={Uri.EscapeDataString(inviteToken)}",
+            expiry,
+            null));
+    }
+
     public Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(inviteToken))

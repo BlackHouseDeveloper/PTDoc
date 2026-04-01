@@ -1,0 +1,163 @@
+.note-validation-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.note-validation-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+.note-validation-panel__title {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--foreground);
+    line-height: 20px;
+}
+
+.note-validation-panel__revalidate-btn {
+    padding: var(--spacing-1) var(--spacing-3);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    white-space: nowrap;
+}
+
+.note-validation-panel__revalidate-btn:hover:not(:disabled) {
+    background: var(--muted);
+}
+
+.note-validation-panel__revalidate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.note-validation-panel__revalidate-btn:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+.note-validation-panel__loading {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+.note-validation-panel__error {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--destructive);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: rgba(var(--destructive-rgb), 0.06);
+    border: 1px solid var(--destructive);
+    border-radius: var(--radius-md);
+}
+
+/* ── Sections ─────────────────────────────────────────────────────── */
+
+.note-validation-panel__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+}
+
+.note-validation-panel__section--blocking {
+    background: rgba(var(--destructive-rgb), 0.06);
+    border-color: var(--destructive);
+}
+
+.note-validation-panel__section--warnings {
+    background: rgba(var(--info-rgb), 0.06);
+    border-color: var(--info);
+}
+
+.note-validation-panel__section--compliance {
+    background: var(--muted);
+    border-color: var(--border);
+}
+
+.note-validation-panel__section-title {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.note-validation-panel__section--blocking .note-validation-panel__section-title {
+    color: var(--destructive);
+}
+
+.note-validation-panel__section--warnings .note-validation-panel__section-title {
+    color: var(--info);
+}
+
+.note-validation-panel__section--compliance .note-validation-panel__section-title {
+    color: var(--muted-foreground);
+}
+
+/* ── List items ───────────────────────────────────────────────────── */
+
+.note-validation-panel__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.note-validation-panel__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.note-validation-panel__rule-id {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    font-family: monospace;
+}
+
+.note-validation-panel__item--error .note-validation-panel__rule-id {
+    color: var(--destructive);
+}
+
+.note-validation-panel__item--warning .note-validation-panel__rule-id {
+    color: var(--info);
+}
+
+.note-validation-panel__item--info .note-validation-panel__rule-id {
+    color: var(--muted-foreground);
+}
+
+.note-validation-panel__message {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    line-height: 20px;
+}
+
+/* ── All-pass state ───────────────────────────────────────────────── */
+
+.note-validation-panel__pass {
+    font-size: var(--text-sm);
+    color: var(--success);
+    padding: var(--spacing-2) 0;
+}

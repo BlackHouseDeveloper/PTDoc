@@ -1,0 +1,430 @@
+name: "Release Gate (Sprint T / UC-Omega)"
+
+# Sprint T + UC-Omega: Release readiness validation.
+# This workflow forms the final CI gate suite, ensuring that all remediation
+# work from Sprints K–S and UC-Omega end-to-end validation is complete.
+#
+# Gates:
+#   rbac-gate         — RBAC policy enforcement tests ([Category=RBAC])
+#   tenant-gate       — Tenant isolation tests ([Category=Tenancy])
+#   offline-sync-gate — Offline sync and conflict resolution tests ([Category=OfflineSync])
+#   compliance-gate   — Medicare rules engine and clinical compliance tests ([Category=Compliance])
+#   e2e-workflow-gate — End-to-end HTTP API integration tests ([Category=EndToEnd])
+#                       Validates intake→SOAP→compliance→sync over the real HTTP pipeline.
+#   release-summary   — Aggregates gate results into a release readiness summary artifact
+#
+# Note: Migration gates are handled by ci-db.yml (db-sqlite/sqlserver/postgres,
+# db-migration-validate). Secret policy gates are handled by ci-secret-policy.yml.
+# Both of those workflows must also pass for a PR to merge.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate 1: RBAC policy enforcement
+  # Validates that role-based access control policies are correctly defined and
+  # that the policy matrix matches the intended PFPT access control model.
+  # ---------------------------------------------------------------------------
+  rbac-gate:
+    name: "Release Gate ▸ RBAC"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Application/PTDoc.Application.csproj
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Application/PTDoc.Application.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run RBAC tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=RBAC" \
+          --verbosity normal \
+          --logger "trx;LogFileName=rbac-results.trx"
+
+    - name: Publish RBAC test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "Release Gate — RBAC Test Results"
+        path: '**/rbac-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Upload RBAC results artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: rbac-gate-results
+        path: '**/rbac-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Gate 2: Tenant isolation
+  # Validates that EF global query filters prevent cross-clinic data leakage and
+  # that the ClinicId == null system-context path is strictly gated.
+  # ---------------------------------------------------------------------------
+  tenant-gate:
+    name: "Release Gate ▸ Tenant Isolation"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run tenant isolation tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=Tenancy" \
+          --verbosity normal \
+          --logger "trx;LogFileName=tenancy-results.trx"
+
+    - name: Publish tenant isolation test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "Release Gate — Tenant Isolation Test Results"
+        path: '**/tenancy-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Upload tenancy results artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: tenant-gate-results
+        path: '**/tenancy-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Gate 3: Offline sync and conflict resolution
+  # Validates the sync protocol (GetClientDeltaAsync / ReceiveClientPushAsync),
+  # conflict resolution rules (draft LWW, signed immutability, intake locking),
+  # and that encrypted local database does not break sync queue persistence.
+  # ---------------------------------------------------------------------------
+  offline-sync-gate:
+    name: "Release Gate ▸ Offline Sync"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Infrastructure.Migrations.Sqlite/PTDoc.Infrastructure.Migrations.Sqlite.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Infrastructure.Migrations.Sqlite/PTDoc.Infrastructure.Migrations.Sqlite.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run offline sync tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=OfflineSync" \
+          --verbosity normal \
+          --logger "trx;LogFileName=offlinesync-results.trx"
+
+    - name: Publish offline sync test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "Release Gate — Offline Sync Test Results"
+        path: '**/offlinesync-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Upload offline sync results artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: offline-sync-gate-results
+        path: '**/offlinesync-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Gate 4: Clinical compliance rules
+  # Validates the Medicare rules engine (PN frequency, eval/discharge timing),
+  # note immutability enforcement, and PTA domain restrictions.
+  # ---------------------------------------------------------------------------
+  compliance-gate:
+    name: "Release Gate ▸ Compliance"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --configuration Release
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run compliance tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=Compliance" \
+          --verbosity normal \
+          --logger "trx;LogFileName=compliance-results.trx"
+
+    - name: Publish compliance test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: "Release Gate — Compliance Test Results"
+        path: '**/compliance-results.trx'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Upload compliance results artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: compliance-gate-results
+        path: '**/compliance-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Gate 5 (UC-Omega): End-to-end HTTP API integration tests
+  # Validates the full intake → SOAP note → compliance → sync workflow over
+  # the real HTTP pipeline via WebApplicationFactory (not just policy layer).
+  # Every claim in the evidence pack must trace to a passing test in this gate.
+  # ---------------------------------------------------------------------------
+  e2e-workflow-gate:
+    name: "Release Gate ▸ E2E Workflow (UC-Omega)"
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore src/PTDoc.Api/PTDoc.Api.csproj
+        dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build
+      run: |
+        dotnet build src/PTDoc.Api/PTDoc.Api.csproj --no-restore --configuration Release
+        dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run E2E workflow integration tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=EndToEnd" \
+          --logger "trx;LogFileName=e2e-results.trx" \
+          --logger "console;verbosity=normal"
+
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-workflow-gate-results
+        path: '**/e2e-results.trx'
+        retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Release summary — requires all gates to pass, then uploads the release
+  # readiness checklist so that every run produces a timestamped artifact.
+  # ---------------------------------------------------------------------------
+  release-summary:
+    name: "Release Gate ▸ Summary"
+    needs: [rbac-gate, tenant-gate, offline-sync-gate, compliance-gate, e2e-workflow-gate]
+    if: always() && (github.event.action != 'closed' || github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Check all gate results
+      run: |
+        echo "## Release Gate Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Gate | Result |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| RBAC | ${{ needs.rbac-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Tenant Isolation | ${{ needs.tenant-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Offline Sync | ${{ needs.offline-sync-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Compliance | ${{ needs.compliance-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| E2E Workflow (UC-Omega) | ${{ needs.e2e-workflow-gate.result == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Note:** Migration gates (ci-db.yml) and secret policy gates (ci-secret-policy.yml)" >> $GITHUB_STEP_SUMMARY
+        echo "must also pass independently for full release readiness." >> $GITHUB_STEP_SUMMARY
+
+    - name: Generate release readiness checklist artifact
+      run: |
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        SHA="${{ github.sha }}"
+        REF="${{ github.ref }}"
+        RBAC_STATUS="${{ needs.rbac-gate.result }}"
+        TENANCY_STATUS="${{ needs.tenant-gate.result }}"
+        SYNC_STATUS="${{ needs.offline-sync-gate.result }}"
+        COMPLIANCE_STATUS="${{ needs.compliance-gate.result }}"
+        E2E_STATUS="${{ needs.e2e-workflow-gate.result }}"
+
+        cat > release-readiness-checklist.md << EOF
+        # PTDoc Release Readiness Checklist
+
+        **Generated:** ${TIMESTAMP}
+        **Commit:** ${SHA}
+        **Ref:** ${REF}
+
+        ## CI Gate Results (Sprint T)
+
+        | Gate | CI Workflow | Status |
+        |------|-------------|--------|
+        | RBAC enforcement | ci-release-gate.yml — rbac-gate | ${RBAC_STATUS} |
+        | Tenant isolation | ci-release-gate.yml — tenant-gate | ${TENANCY_STATUS} |
+        | Offline sync / conflict resolution | ci-release-gate.yml — offline-sync-gate | ${SYNC_STATUS} |
+        | Clinical compliance rules | ci-release-gate.yml — compliance-gate | ${COMPLIANCE_STATUS} |
+        | E2E workflow (intake→SOAP→sync) | ci-release-gate.yml — e2e-workflow-gate | ${E2E_STATUS} |
+        | SQLite migrations | ci-db.yml — db-sqlite | see ci-db workflow |
+        | SQL Server migrations | ci-db.yml — db-sqlserver | see ci-db workflow |
+        | PostgreSQL migrations | ci-db.yml — db-postgres | see ci-db workflow |
+        | Migration model drift | ci-db.yml — db-migration-validate | see ci-db workflow |
+        | Secret policy scan | ci-secret-policy.yml — secret-policy-scan | see ci-secret-policy workflow |
+        | Secret policy tests | ci-secret-policy.yml — SecretPolicy tests | see ci-secret-policy workflow |
+        | Core build + all tests | ci-core.yml — build-and-test | see ci-core workflow |
+
+        ## Release Readiness Criteria
+
+        - [ ] All CI gates listed above report success
+        - [ ] No critical CodeQL alerts open (see codeql.yml)
+        - [ ] docs/RELEASE_READINESS_REPORT.md reviewed and approved
+        - [ ] docs/ACCEPTANCE_EVIDENCE_MAP.md updated through Sprint UC-Omega
+        - [ ] docs/ROLE_CAPABILITY_VERIFICATION_MAP.md reviewed — every row traces to a passing test
+        - [ ] docs/SPRINT_COMPLETION_STATUS.md reflects actual verified state (no overclaims)
+        - [ ] CHANGELOG.md [Unreleased] section reviewed
+        - [ ] No PHI written to logs (verified by NoPHIIntegrationTests)
+        - [ ] Offline-first behavior preserved (verified by OfflineSync gate)
+        - [ ] Medicare rules enforced (verified by Compliance gate)
+        - [ ] Signed clinical records immutable (verified by Compliance gate)
+        - [ ] AI output not auto-persisted (verified by code review)
+        - [ ] Full intake→SOAP→sign→sync workflow validated (verified by E2E gate)
+        EOF
+
+        echo "✅ Release readiness checklist generated."
+
+    - name: Upload release readiness checklist
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-readiness-checklist-${{ github.run_number }}
+        path: release-readiness-checklist.md
+        retention-days: 90
+
+    - name: Fail if any gate did not pass
+      if: |
+        needs.rbac-gate.result != 'success' ||
+        needs.tenant-gate.result != 'success' ||
+        needs.offline-sync-gate.result != 'success' ||
+        needs.compliance-gate.result != 'success' ||
+        needs.e2e-workflow-gate.result != 'success'
+      run: |
+        echo "❌ One or more release gates failed. See gate job results above."
+        exit 1

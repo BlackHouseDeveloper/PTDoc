@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Sync;
@@ -15,12 +18,17 @@ public class SyncEngine : ISyncEngine
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
+    private readonly IIdentityContextAccessor? _identityContext;
     private DateTime? _lastSyncAt;
 
-    public SyncEngine(ApplicationDbContext context, ILogger<SyncEngine> logger)
+    public SyncEngine(
+        ApplicationDbContext context,
+        ILogger<SyncEngine> logger,
+        IIdentityContextAccessor? identityContext = null)
     {
         _context = context;
         _logger = logger;
+        _identityContext = identityContext;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
@@ -135,7 +143,7 @@ public class SyncEngine : ISyncEngine
         // For now, we'll return an empty result as this is the foundation
         _logger.LogInformation("Pulling changes since {SinceUtc}", sinceUtc);
 
-        // TODO: Implement actual server pull logic when server endpoints are available
+        // Server pull integration is intentionally deferred until endpoint contracts are finalized.
 
         return Task.FromResult(new PullResult
         {
@@ -203,18 +211,73 @@ public class SyncEngine : ISyncEngine
     }
 
     /// <summary>
-    /// Process a single queue item. In a real implementation, this would send to the server.
-    /// Returns true if successful, false otherwise.
+    /// Process a single queue item by marking the corresponding entity's SyncState as Synced.
+    /// The entity is already persisted in the server database; this step acknowledges that the
+    /// change has been fully processed and is safe to consider synchronised.
+    /// Returns true if the item was processed successfully, false otherwise.
     /// </summary>
     private async Task<bool> ProcessQueueItemAsync(SyncQueueItem item, CancellationToken cancellationToken)
     {
-        // In a real implementation, this would:
-        // 1. Fetch the entity from the database
-        // 2. Send it to the server API
-        // 3. Handle conflicts based on server response
+        switch (item.EntityType)
+        {
+            case "Patient":
+                var patient = await _context.Patients
+                    .FirstOrDefaultAsync(p => p.Id == item.EntityId, cancellationToken);
+                if (patient == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                patient.SyncState = SyncState.Synced;
+                break;
 
-        // For now, simulate success
-        await Task.Delay(10, cancellationToken); // Simulate network delay
+            case "Appointment":
+                var appointment = await _context.Appointments
+                    .FirstOrDefaultAsync(a => a.Id == item.EntityId, cancellationToken);
+                if (appointment == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                appointment.SyncState = SyncState.Synced;
+                break;
+
+            case "IntakeForm":
+                var intakeForm = await _context.IntakeForms
+                    .FirstOrDefaultAsync(i => i.Id == item.EntityId, cancellationToken);
+                if (intakeForm == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                intakeForm.SyncState = SyncState.Synced;
+                break;
+
+            case "ClinicalNote":
+                var clinicalNote = await _context.ClinicalNotes
+                    .FirstOrDefaultAsync(n => n.Id == item.EntityId, cancellationToken);
+                if (clinicalNote == null)
+                {
+                    _logger.LogWarning(
+                        "Sync queue: {EntityType} entity {EntityId} not found while processing.",
+                        item.EntityType, item.EntityId);
+                    return false;
+                }
+                clinicalNote.SyncState = SyncState.Synced;
+                break;
+
+            default:
+                _logger.LogWarning("Unknown entity type in sync queue: {EntityType}:{EntityId}",
+                    item.EntityType, item.EntityId);
+                return false;
+        }
+
         return true;
     }
 
@@ -291,9 +354,705 @@ public class SyncEngine : ISyncEngine
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ClientSyncPushResponse> ReceiveClientPushAsync(
+        ClientSyncPushRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        // Guard: treat null or empty items as an empty batch rather than throwing.
+        if (request.Items is not { Count: > 0 })
+        {
+            return new ClientSyncPushResponse();
+        }
+
+        var results = new List<ClientSyncPushItemResult>();
+        int acceptedCount = 0, conflictCount = 0, errorCount = 0;
+
+        foreach (var item in request.Items)
+        {
+            // Normalise entity type to PascalCase so conflict detection is case-insensitive.
+            var entityType = item.EntityType?.Trim() ?? string.Empty;
+            if (entityType.Length > 1)
+                entityType = char.ToUpperInvariant(entityType[0]) + entityType[1..];
+            else if (entityType.Length == 1)
+                entityType = char.ToUpperInvariant(entityType[0]).ToString();
+
+            try
+            {
+                // Resolve the server ID: new records arrive with Guid.Empty
+                var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+
+                // Check for conflict: does a more-recent server version already exist?
+                var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
+                if (existing.HasValue && existing.Value > item.LastModifiedUtc)
+                {
+                    _logger.LogWarning(
+                        "Client push conflict: server version is newer for {EntityType}:{ServerId}",
+                        entityType, serverId);
+
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        EntityType = entityType,
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = "Server version is newer",
+                        ServerModifiedUtc = existing.Value
+                    });
+                    continue;
+                }
+
+                // Check entity-specific immutability rules (signed notes, locked intake)
+                var entityConflictReason = await CheckEntitySpecificConflictAsync(entityType, serverId, cancellationToken);
+                if (entityConflictReason != null)
+                {
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        EntityType = entityType,
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = entityConflictReason,
+                        ServerModifiedUtc = existing
+                    });
+                    continue;
+                }
+
+                // Apply the entity change to the server database and record receipt in the sync queue.
+                // Sprint UC-Epsilon: entity changes are now applied immediately so the server database
+                // reflects the client's offline work when it reconnects.
+                var appliedAt = DateTime.UtcNow;
+                await ApplyEntityFromPayloadAsync(entityType, serverId, item, cancellationToken);
+
+                var queueItem = new SyncQueueItem
+                {
+                    EntityType = entityType,
+                    EntityId = serverId,
+                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
+                    EnqueuedAt = appliedAt,
+                    Status = SyncQueueStatus.Completed,
+                    CompletedAt = appliedAt,
+                    PayloadJson = item.DataJson
+                };
+                _context.SyncQueueItems.Add(queueItem);
+
+                acceptedCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    EntityType = entityType,
+                    LocalId = item.LocalId,
+                    ServerId = serverId,
+                    Status = "Accepted",
+                    ServerModifiedUtc = appliedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
+                    entityType, item.ServerId);
+                errorCount++;
+                results.Add(new ClientSyncPushItemResult
+                {
+                    EntityType = entityType,
+                    LocalId = item.LocalId,
+                    ServerId = item.ServerId,
+                    Status = "Error",
+                    Error = "Server error processing item"
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return new ClientSyncPushResponse
+        {
+            AcceptedCount = acceptedCount,
+            ConflictCount = conflictCount,
+            ErrorCount = errorCount,
+            Items = results
+        };
+    }
+
+    /// <inheritdoc/>
+    public async Task<ClientSyncPullResponse> GetClientDeltaAsync(
+        DateTime? sinceUtc,
+        string[]? entityTypes = null,
+        string[]? userRoles = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSince = sinceUtc ?? DateTime.MinValue;
+
+        // Sprint UC5: Role-based data scoping.
+        // Aide and FrontDesk roles must not receive clinical data.
+        // Patient role receives demographics and intake only (not full SOAP/ClinicalNote content).
+        var isRestrictedRole = userRoles is { Length: > 0 } &&
+            userRoles.Any(r => string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(r, Roles.FrontDesk, StringComparison.OrdinalIgnoreCase));
+        var isPatientRole = userRoles is { Length: > 0 } &&
+            userRoles.Any(r => string.Equals(r, Roles.Patient, StringComparison.OrdinalIgnoreCase));
+
+        // Clinical entity types excluded from restricted roles
+        var clinicalEntityTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "ClinicalNote", "ObjectiveMetric", "AuditLog" };
+
+        var effectiveTypes = entityTypes is { Length: > 0 }
+            ? entityTypes
+            : new[] { "Patient", "Appointment", "IntakeForm", "ClinicalNote", "ObjectiveMetric", "AuditLog" };
+
+        // Filter out clinical types for Aide/FrontDesk and Patient roles
+        if (isRestrictedRole || isPatientRole)
+        {
+            effectiveTypes = effectiveTypes
+                .Where(t => !clinicalEntityTypes.Contains(t))
+                .ToArray();
+        }
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = false
+        };
+
+        var items = new List<ClientSyncPullItem>();
+
+        if (effectiveTypes.Contains("Patient", StringComparer.OrdinalIgnoreCase))
+        {
+            var patients = await _context.Patients
+                .AsNoTracking()
+                .Where(p => p.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in patients)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Patient",
+                    ServerId = p.Id,
+                    Operation = p.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        p.Id,
+                        p.FirstName,
+                        p.LastName,
+                        p.DateOfBirth,
+                        p.Email,
+                        p.Phone,
+                        p.MedicalRecordNumber,
+                        p.IsArchived,
+                        p.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = p.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("Appointment", StringComparer.OrdinalIgnoreCase))
+        {
+            var appointments = await _context.Appointments
+                .AsNoTracking()
+                .Where(a => a.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in appointments)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "Appointment",
+                    ServerId = a.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id,
+                        a.PatientId,
+                        a.StartTimeUtc,
+                        a.EndTimeUtc,
+                        a.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = a.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("IntakeForm", StringComparer.OrdinalIgnoreCase))
+        {
+            var intakeForms = await _context.IntakeForms
+                .AsNoTracking()
+                .Where(i => i.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var i in intakeForms)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "IntakeForm",
+                    ServerId = i.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        i.Id,
+                        i.PatientId,
+                        i.IsLocked,
+                        i.ResponseJson,
+                        i.StructuredDataJson,
+                        i.PainMapData,
+                        i.Consents,
+                        i.TemplateVersion,
+                        i.SubmittedAt,
+                        i.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = i.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("ClinicalNote", StringComparer.OrdinalIgnoreCase))
+        {
+            var notes = await _context.ClinicalNotes
+                .AsNoTracking()
+                .Where(n => n.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var n in notes)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = n.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        n.Id,
+                        n.PatientId,
+                        n.NoteType,
+                        n.DateOfService,
+                        n.ContentJson,
+                        n.SignatureHash,
+                        n.SignedUtc,
+                        n.SignedByUserId,
+                        n.CptCodesJson,
+                        n.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = n.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("ObjectiveMetric", StringComparer.OrdinalIgnoreCase))
+        {
+            // ObjectiveMetric has no LastModifiedUtc; sync by parent note's LastModifiedUtc.
+            // Use a join to fetch only the note's timestamp — avoids loading the full ClinicalNote row.
+            var metrics = await _context.ObjectiveMetrics
+                .AsNoTracking()
+                .Join(
+                    _context.ClinicalNotes.Where(n => n.LastModifiedUtc > effectiveSince),
+                    m => m.NoteId,
+                    n => n.Id,
+                    (m, n) => new
+                    {
+                        m.Id,
+                        m.NoteId,
+                        m.BodyPart,
+                        m.MetricType,
+                        m.Value,
+                        m.IsWNL,
+                        NoteLastModifiedUtc = n.LastModifiedUtc
+                    })
+                .ToListAsync(cancellationToken);
+
+            foreach (var m in metrics)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "ObjectiveMetric",
+                    ServerId = m.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        m.Id,
+                        m.NoteId,
+                        m.BodyPart,
+                        m.MetricType,
+                        m.Value,
+                        m.IsWNL
+                    }, jsonOptions),
+                    LastModifiedUtc = m.NoteLastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("AuditLog", StringComparer.OrdinalIgnoreCase))
+        {
+            var auditLogs = await _context.AuditLogs
+                .AsNoTracking()
+                .Where(a => a.TimestampUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in auditLogs)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "AuditLog",
+                    ServerId = a.Id,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id,
+                        a.EventType,
+                        a.Severity,
+                        a.TimestampUtc,
+                        a.UserId,
+                        EntityType = a.EntityType,
+                        a.EntityId,
+                        a.CorrelationId,
+                        a.Success
+                    }, jsonOptions),
+                    LastModifiedUtc = a.TimestampUtc
+                });
+            }
+        }
+
+        _logger.LogInformation(
+            "Client pull returning {Count} item(s) since {SinceUtc}",
+            items.Count, effectiveSince);
+
+        return new ClientSyncPullResponse
+        {
+            Items = items,
+            SyncedAt = DateTime.UtcNow
+        };
+    }
+
     /// <summary>
-    /// Archive a conflicting version for later review.
+    /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
+    /// or <c>null</c> if the record does not exist on the server.
+    /// Uses case-insensitive comparison to handle varying client casing (e.g. "clinicalnote", "ClinicalNote").
     /// </summary>
+    private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
+        string entityType,
+        Guid serverId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase))
+            return await _context.Patients.AsNoTracking()
+                .Where(p => p.Id == serverId)
+                .Select(p => (DateTime?)p.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase))
+            return await _context.Appointments.AsNoTracking()
+                .Where(a => a.Id == serverId)
+                .Select(a => (DateTime?)a.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+            return await _context.IntakeForms.AsNoTracking()
+                .Where(i => i.Id == serverId)
+                .Select(i => (DateTime?)i.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+            return await _context.ClinicalNotes.AsNoTracking()
+                .Where(n => n.Id == serverId)
+                .Select(n => (DateTime?)n.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.Equals(entityType, "AuditLog", StringComparison.OrdinalIgnoreCase))
+            return await _context.AuditLogs.AsNoTracking()
+                .Where(a => a.Id == serverId)
+                .Select(a => (DateTime?)a.TimestampUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check entity-specific immutability constraints for a push item.
+    /// Returns a non-PHI conflict reason string if the push must be rejected, or null if the push is permitted.
+    /// </summary>
+    private async Task<string?> CheckEntitySpecificConflictAsync(
+        string entityType,
+        Guid serverId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+        {
+            var signatureHash = await _context.ClinicalNotes.AsNoTracking()
+                .Where(n => n.Id == serverId)
+                .Select(n => n.SignatureHash)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (signatureHash != null)
+            {
+                _logger.LogWarning(
+                    "Client push rejected: signed ClinicalNote {ServerId} is immutable", serverId);
+                return "Signed notes are immutable";
+            }
+        }
+        else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+        {
+            var isLocked = await _context.IntakeForms.AsNoTracking()
+                .Where(i => i.Id == serverId)
+                .Select(i => (bool?)i.IsLocked)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (isLocked == true)
+            {
+                _logger.LogWarning(
+                    "Client push rejected: IntakeForm {ServerId} is locked after evaluation", serverId);
+                return "Intake form is locked after evaluation";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Apply a client-pushed entity payload to the server database.
+    /// Only safe draft-writable fields are applied; signature/lock fields are never trusted from client.
+    /// New entities (ServerId was Guid.Empty on client) are inserted; existing ones are updated.
+    /// </summary>
+    private async Task ApplyEntityFromPayloadAsync(
+        string entityType,
+        Guid serverId,
+        ClientSyncPushItem item,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(item.DataJson) || item.DataJson == "{}")
+        {
+            _logger.LogWarning(
+                "Client push rejected: empty or blank DataJson payload for {EntityType} with ServerId {ServerId}",
+                entityType, serverId);
+            throw new InvalidOperationException("Client sync item has an empty DataJson payload.");
+        }
+
+        // Preserve the original author's identity for audit trail.
+        // Falls back to IIdentityContextAccessor.SystemUserId for background/unauthenticated contexts,
+        // and then Guid.Empty when no identity context is configured (e.g. some tests).
+        var actingUserId = _identityContext?.GetCurrentUserId()
+                           ?? _identityContext?.TryGetCurrentUserId()
+                           ?? IIdentityContextAccessor.SystemUserId;
+
+        using var doc = JsonDocument.Parse(item.DataJson);
+        var root = doc.RootElement;
+
+        if (string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await _context.Patients
+                .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+
+            if (existing is null)
+            {
+                var patient = new Patient
+                {
+                    Id = serverId,
+                    FirstName = root.TryGetProperty("firstName", out var fn) ? fn.GetString() ?? string.Empty
+                              : root.TryGetProperty("FirstName", out fn) ? fn.GetString() ?? string.Empty : string.Empty,
+                    LastName = root.TryGetProperty("lastName", out var ln) ? ln.GetString() ?? string.Empty
+                             : root.TryGetProperty("LastName", out ln) ? ln.GetString() ?? string.Empty : string.Empty,
+                    DateOfBirth = TryGetDateTime(root, "dateOfBirth") ?? TryGetDateTime(root, "DateOfBirth") ?? DateTime.MinValue,
+                    Email = TryGetString(root, "email") ?? TryGetString(root, "Email"),
+                    Phone = TryGetString(root, "phone") ?? TryGetString(root, "Phone"),
+                    MedicalRecordNumber = TryGetString(root, "medicalRecordNumber") ?? TryGetString(root, "MedicalRecordNumber"),
+                    LastModifiedUtc = item.LastModifiedUtc,
+                    ModifiedByUserId = actingUserId,
+                    SyncState = SyncState.Synced
+                };
+                _context.Patients.Add(patient);
+            }
+            else
+            {
+                existing.FirstName = root.TryGetProperty("firstName", out var fn) ? fn.GetString() ?? existing.FirstName
+                                   : root.TryGetProperty("FirstName", out fn) ? fn.GetString() ?? existing.FirstName : existing.FirstName;
+                existing.LastName = root.TryGetProperty("lastName", out var ln) ? ln.GetString() ?? existing.LastName
+                                  : root.TryGetProperty("LastName", out ln) ? ln.GetString() ?? existing.LastName : existing.LastName;
+                existing.DateOfBirth = TryGetDateTime(root, "dateOfBirth") ?? TryGetDateTime(root, "DateOfBirth") ?? existing.DateOfBirth;
+                existing.Email = TryGetString(root, "email") ?? TryGetString(root, "Email") ?? existing.Email;
+                existing.Phone = TryGetString(root, "phone") ?? TryGetString(root, "Phone") ?? existing.Phone;
+                existing.MedicalRecordNumber = TryGetString(root, "medicalRecordNumber") ?? TryGetString(root, "MedicalRecordNumber") ?? existing.MedicalRecordNumber;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+            }
+        }
+        else if (string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await _context.Appointments
+                .FirstOrDefaultAsync(a => a.Id == serverId, cancellationToken);
+
+            if (existing is null)
+            {
+                var patientServerId = TryGetGuid(root, "patientServerId") ?? TryGetGuid(root, "PatientServerId") ?? TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var clinicalId = TryGetGuid(root, "clinicalId") ?? TryGetGuid(root, "ClinicalId") ?? Guid.Empty;
+                var apptTypeRaw = TryGetInt(root, "appointmentType") ?? TryGetInt(root, "AppointmentType") ?? 0;
+                var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status") ?? 0;
+
+                var appt = new Appointment
+                {
+                    Id = serverId,
+                    PatientId = patientServerId,
+                    ClinicalId = clinicalId,
+                    AppointmentType = Enum.IsDefined(typeof(AppointmentType), apptTypeRaw)
+                        ? (AppointmentType)apptTypeRaw
+                        : AppointmentType.FollowUp,
+                    Status = Enum.IsDefined(typeof(AppointmentStatus), statusRaw)
+                        ? (AppointmentStatus)statusRaw
+                        : AppointmentStatus.Scheduled,
+                    StartTimeUtc = TryGetDateTime(root, "startTimeUtc") ?? TryGetDateTime(root, "StartTimeUtc") ?? DateTime.MinValue,
+                    EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? DateTime.MinValue,
+                    Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes"),
+                    LastModifiedUtc = item.LastModifiedUtc,
+                    ModifiedByUserId = actingUserId,
+                    SyncState = SyncState.Synced
+                };
+                _context.Appointments.Add(appt);
+            }
+            else
+            {
+                existing.StartTimeUtc = TryGetDateTime(root, "startTimeUtc") ?? TryGetDateTime(root, "StartTimeUtc") ?? existing.StartTimeUtc;
+                existing.EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? existing.EndTimeUtc;
+                existing.Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes") ?? existing.Notes;
+                var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status");
+                if (statusRaw.HasValue && Enum.IsDefined(typeof(AppointmentStatus), statusRaw.Value))
+                    existing.Status = (AppointmentStatus)statusRaw.Value;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+            }
+        }
+        else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+        {
+            // Only apply draft-safe fields; IsLocked is never set from client push
+            var existing = await _context.IntakeForms
+                .FirstOrDefaultAsync(i => i.Id == serverId, cancellationToken);
+
+            if (existing is null)
+            {
+                var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var form = new IntakeForm
+                {
+                    Id = serverId,
+                    PatientId = patientId,
+                    ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? "{}",
+                    StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson"),
+                    PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? "{}",
+                    Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? "{}",
+                    TemplateVersion = TryGetString(root, "templateVersion") ?? TryGetString(root, "TemplateVersion") ?? "1.0",
+                    // AccessToken stores canonical hashed invite state; use a non-shareable placeholder hash here.
+                    AccessToken = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())).ToLowerInvariant(),
+                    IsLocked = false, // Never trust IsLocked from client push
+                    LastModifiedUtc = item.LastModifiedUtc,
+                    ModifiedByUserId = actingUserId,
+                    SyncState = SyncState.Synced
+                };
+                _context.IntakeForms.Add(form);
+            }
+            else
+            {
+                // Only update unlocked forms (double-checked; already blocked by CheckEntitySpecificConflictAsync)
+                if (!existing.IsLocked)
+                {
+                    existing.ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? existing.ResponseJson;
+                    existing.StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson") ?? existing.StructuredDataJson;
+                    existing.PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? existing.PainMapData;
+                    existing.Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
+                    existing.LastModifiedUtc = item.LastModifiedUtc;
+                    existing.ModifiedByUserId = actingUserId;
+                    existing.SyncState = SyncState.Synced;
+                }
+            }
+        }
+        else if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+        {
+            // Only apply draft-safe content fields; SignatureHash/SignedUtc/SignedByUserId are never
+            // set from client push — signing only happens via the dedicated sign endpoint.
+            var existing = await _context.ClinicalNotes
+                .FirstOrDefaultAsync(n => n.Id == serverId, cancellationToken);
+
+            if (existing is null)
+            {
+                var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var noteTypeRaw = TryGetInt(root, "noteType") ?? TryGetInt(root, "NoteType") ?? 0;
+                var note = new ClinicalNote
+                {
+                    Id = serverId,
+                    PatientId = patientId,
+                    NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
+                        ? (NoteType)noteTypeRaw
+                        : NoteType.Daily,
+                    ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
+                    CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
+                    DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
+                    // SignatureHash, SignedUtc, SignedByUserId intentionally NOT set from client push
+                    LastModifiedUtc = item.LastModifiedUtc,
+                    ModifiedByUserId = actingUserId,
+                    SyncState = SyncState.Synced
+                };
+                _context.ClinicalNotes.Add(note);
+            }
+            else
+            {
+                // Only update unsigned (draft) notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
+                if (existing.SignatureHash is null)
+                {
+                    existing.ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? existing.ContentJson;
+                    existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
+                    existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
+                    existing.LastModifiedUtc = item.LastModifiedUtc;
+                    existing.ModifiedByUserId = actingUserId;
+                    existing.SyncState = SyncState.Synced;
+                }
+            }
+        }
+        else
+        {
+            _logger.LogDebug("ApplyEntityFromPayloadAsync: unhandled entity type {EntityType}", entityType);
+        }
+    }
+
+    // ── JSON parsing helpers ─────────────────────────────────────────────────────
+
+    private static string? TryGetString(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var el) && el.ValueKind == JsonValueKind.String)
+            return el.GetString();
+        return null;
+    }
+
+    private static DateTime? TryGetDateTime(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var el))
+        {
+            if (el.ValueKind == JsonValueKind.String && DateTime.TryParse(el.GetString(), out var dt))
+                return dt;
+        }
+        return null;
+    }
+
+    private static Guid? TryGetGuid(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var el))
+        {
+            if (el.ValueKind == JsonValueKind.String && Guid.TryParse(el.GetString(), out var g))
+                return g;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Reads an integer property, supporting both numeric JSON values and string-encoded integers.
+    /// Used for enum fields (NoteType, AppointmentType, AppointmentStatus) which are serialised
+    /// as their underlying integer by default in System.Text.Json.
+    /// </summary>
+    private static int? TryGetInt(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n)) return n;
+        if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
+        return null;
+    }
     private async Task ArchiveConflictVersionAsync<TEntity>(
         TEntity archivedVersion,
         TEntity chosenVersion,

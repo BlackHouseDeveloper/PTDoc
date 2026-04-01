@@ -1,0 +1,142 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DryNeedling
+
+<section class="dry-treatment" data-testid="dry-treatment-details" aria-label="Treatment details">
+    <div class="dry-treatment__grid">
+        <div class="dry-treatment__field">
+            <label for="dry-date">Date of Treatment *</label>
+            <input id="dry-date" type="date" disabled="@IsReadOnly" @bind="DateOfTreatment" @bind:after="NotifyChanged" />
+        </div>
+
+        <div class="dry-treatment__field">
+            <label for="dry-location">Location of Needling *</label>
+            <select id="dry-location" disabled="@IsReadOnly" @bind="Location" @bind:after="NotifyChanged">
+                <option value="">Select location...</option>
+                @foreach (var option in _locations)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+
+        <div class="dry-treatment__field">
+            <label for="dry-type">Type of Needling Performed *</label>
+            <select id="dry-type" disabled="@IsReadOnly" @bind="NeedlingType" @bind:after="NotifyChanged">
+                <option value="">Select needling type...</option>
+                @foreach (var option in _needlingTypes)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <h4 class="dry-treatment__section-title">Patient's Response</h4>
+
+    <div class="dry-treatment__field">
+        <label>Pain Level Before Treatment (0-10)</label>
+        <div class="dry-treatment__scale">
+            @for (var i = 0; i <= 10; i++)
+            {
+                <label class="dry-treatment__scale-cell">
+                    <input type="radio" name="pain-before" value="@i" disabled="@IsReadOnly" checked="@(PainBefore == i)" @onchange="() => SetPainBefore(i)" />
+                    <span>@i</span>
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="dry-treatment__field">
+        <label>Pain Level After Treatment (0-10)</label>
+        <div class="dry-treatment__scale">
+            @for (var i = 0; i <= 10; i++)
+            {
+                <label class="dry-treatment__scale-cell">
+                    <input type="radio" name="pain-after" value="@i" disabled="@IsReadOnly" checked="@(PainAfter == i)" @onchange="() => SetPainAfter(i)" />
+                    <span>@i</span>
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="dry-treatment__field">
+        <label for="dry-response">Response Description</label>
+        <textarea id="dry-response"
+                  rows="4"
+                  disabled="@IsReadOnly"
+                  @bind="ResponseDescription"
+                  @bind:after="NotifyChanged"
+                  placeholder="Document patient's response during and after treatment (e.g., relaxation, tension reduction, local twitch response, post-treatment soreness...)"></textarea>
+    </div>
+
+    <div class="dry-treatment__field">
+        <label for="dry-additional">Additional Notes (Optional)</label>
+        <textarea id="dry-additional"
+                  rows="3"
+                  disabled="@IsReadOnly"
+                  @bind="AdditionalNotes"
+                  @bind:after="NotifyChanged"
+                  placeholder="Any other observations, concerns, or notes relevant to this dry needling session..."></textarea>
+    </div>
+</section>
+
+@code {
+    private static readonly string[] _locations =
+    [
+        "Cervical",
+        "Thoracic",
+        "Lumbar",
+        "Shoulder",
+        "Hip",
+        "Knee",
+        "Lower extremity"
+    ];
+
+    private static readonly string[] _needlingTypes =
+    [
+        "Superficial dry needling",
+        "Deep dry needling",
+        "Pistoning technique",
+        "Static retention"
+    ];
+
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public DateTime? DateOfTreatment { get; set; }
+    [Parameter] public EventCallback<DateTime?> DateOfTreatmentChanged { get; set; }
+    [Parameter] public string Location { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> LocationChanged { get; set; }
+    [Parameter] public string NeedlingType { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> NeedlingTypeChanged { get; set; }
+    [Parameter] public int? PainBefore { get; set; }
+    [Parameter] public EventCallback<int?> PainBeforeChanged { get; set; }
+    [Parameter] public int? PainAfter { get; set; }
+    [Parameter] public EventCallback<int?> PainAfterChanged { get; set; }
+    [Parameter] public string ResponseDescription { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ResponseDescriptionChanged { get; set; }
+    [Parameter] public string AdditionalNotes { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> AdditionalNotesChanged { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private async Task SetPainBefore(int value)
+    {
+        PainBefore = value;
+        await PainBeforeChanged.InvokeAsync(value);
+        await NotifyChanged();
+    }
+
+    private async Task SetPainAfter(int value)
+    {
+        PainAfter = value;
+        await PainAfterChanged.InvokeAsync(value);
+        await NotifyChanged();
+    }
+
+    private async Task NotifyChanged()
+    {
+        await DateOfTreatmentChanged.InvokeAsync(DateOfTreatment);
+        await LocationChanged.InvokeAsync(Location);
+        await NeedlingTypeChanged.InvokeAsync(NeedlingType);
+        await ResponseDescriptionChanged.InvokeAsync(ResponseDescription);
+        await AdditionalNotesChanged.InvokeAsync(AdditionalNotes);
+        await OnChanged.InvokeAsync();
+    }
+}

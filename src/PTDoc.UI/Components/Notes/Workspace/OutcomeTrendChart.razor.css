@@ -1,0 +1,156 @@
+.trend-chart {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+.trend-chart__empty {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    text-align: center;
+    padding: var(--spacing-6) 0;
+}
+
+.trend-chart__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.trend-chart__measure-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.trend-chart__indicators {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.trend-chart__improvement {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+}
+
+.trend-chart__improvement--positive {
+    color: var(--success);
+    background: rgba(var(--success-rgb), 0.1);
+}
+
+.trend-chart__improvement--negative {
+    color: var(--destructive);
+    background: rgba(var(--destructive-rgb), 0.08);
+}
+
+.trend-chart__mcid-badge {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    background: var(--success);
+    color: var(--success-foreground);
+}
+
+.trend-chart__baseline-row {
+    display: flex;
+    gap: var(--spacing-2);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    align-items: baseline;
+}
+
+.trend-chart__baseline-label {
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.trend-chart__bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.trend-chart__bar-row {
+    display: grid;
+    grid-template-columns: 3rem 1fr auto;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.trend-chart__bar-row--latest .trend-chart__bar-date,
+.trend-chart__bar-row--latest .trend-chart__bar-score {
+    font-weight: 700;
+    color: var(--foreground);
+}
+
+.trend-chart__bar-date {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    text-align: right;
+}
+
+.trend-chart__bar-track {
+    background: var(--muted);
+    border-radius: var(--radius-sm);
+    height: 1.25rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.trend-chart__bar-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width var(--transition-slow);
+    min-width: 0.25rem;
+}
+
+.trend-chart__bar-fill--neutral {
+    background: var(--border);
+}
+
+.trend-chart__bar-fill--positive {
+    background: var(--success);
+}
+
+.trend-chart__bar-fill--negative {
+    background: var(--destructive);
+}
+
+.trend-chart__bar-score {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+}
+
+.trend-chart__baseline-tag {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    font-style: italic;
+}
+
+.trend-chart__legend {
+    display: flex;
+    gap: var(--spacing-4);
+    padding-top: var(--spacing-2);
+    border-top: 1px solid var(--border);
+}
+
+.trend-chart__legend-item {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}

@@ -39,8 +39,6 @@
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
     </PropertyGroup>
 
-
-
     <ItemGroup>
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
@@ -65,6 +63,9 @@
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.1" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+        <!-- Local encrypted SQLite database -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="8.0.1" />
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
     </ItemGroup>
 
     <ItemGroup>
@@ -79,6 +80,15 @@
             <ResolvedFileToPublish Update="$(NuGetPackageRoot)questpdf/*/LatoFont/*">
                 <PublishFolderType>Resource</PublishFolderType>
             </ResolvedFileToPublish>
+        </ItemGroup>
+    </Target>
+
+    <Target Name="RemoveInvalidIosSystemFramework"
+            BeforeTargets="_ComputeLinkNativeExecutableInputs"
+            Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+        <ItemGroup>
+            <!-- Xcode 26's iPhoneSimulator SDK no longer provides System.framework. -->
+            <_LinkerFrameworks Remove="System" />
         </ItemGroup>
     </Target>
 

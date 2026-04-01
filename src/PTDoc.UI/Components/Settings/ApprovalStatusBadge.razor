@@ -1,0 +1,19 @@
+<span class="approval-status-badge @GetClass(Status)" role="status" aria-label="@($"{Status} status")">
+    @Status
+</span>
+
+@code {
+    [Parameter]
+    public string Status { get; set; } = "Pending";
+
+    private static string GetClass(string status) => status.ToLowerInvariant() switch
+    {
+        "approved" => "is-approved",
+        "rejected" => "is-rejected",
+        "on hold" => "is-on-hold",
+        "cancelled" => "is-cancelled",
+        "expired" => "is-expired",
+        "revoked" => "is-revoked",
+        _ => "is-pending"
+    };
+}

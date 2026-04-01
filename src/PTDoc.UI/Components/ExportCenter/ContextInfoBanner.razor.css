@@ -1,0 +1,42 @@
+/* Context Info Banner Styles */
+
+.context-info-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-4);
+    background-color: rgba(34, 197, 94, 0.08);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.context-info-banner__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--spacing-5);
+    height: var(--spacing-5);
+    font-size: 1.25rem;
+}
+
+.context-info-banner__text {
+    flex: 1;
+    color: var(--foreground);
+}
+
+/* Dark mode */
+.dark {
+    .context-info-banner {
+        background-color: rgba(34, 197, 94, 0.12);
+        border-left-color: var(--primary);
+        color: var(--foreground);
+    }
+    
+    .context-info-banner__text {
+        color: var(--foreground);
+    }
+}

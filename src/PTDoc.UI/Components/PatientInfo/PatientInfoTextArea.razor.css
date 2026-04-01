@@ -1,0 +1,52 @@
+/* PatientInfoTextArea — token-styled textarea */
+
+.pi-textarea {
+    display: block;
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-3); /* 8px 12px */
+    background: var(--input-background);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    box-sizing: border-box;
+    outline: none;
+    resize: vertical;
+    min-height: 80px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.pi-textarea::placeholder {
+    color: var(--muted-foreground);
+}
+
+.pi-textarea:hover:not(:disabled):not([readonly]) {
+    border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.pi-textarea:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.15);
+}
+
+.pi-textarea--invalid {
+    border-color: var(--destructive);
+}
+
+.pi-textarea--invalid:focus-visible {
+    box-shadow: 0 0 0 3px rgba(var(--destructive-rgb), 0.15);
+}
+
+.pi-textarea--disabled,
+.pi-textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    resize: none;
+}
+
+/* Dark mode: handled automatically by token overrides in tokens.css. */

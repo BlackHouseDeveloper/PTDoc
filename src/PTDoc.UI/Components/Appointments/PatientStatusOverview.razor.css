@@ -1,5 +1,6 @@
 .patient-status-overview {
-    height: 442px;
+    min-height: 442px;
+    height: auto;
     background: var(--background);
     border: 2px solid var(--border);
     border-radius: calc(var(--radius-lg) + 4px);

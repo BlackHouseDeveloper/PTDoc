@@ -1,0 +1,239 @@
+.objective-tab {
+    padding: var(--spacing-6);
+}
+
+.objective-tab__layout {
+    display: flex;
+    gap: var(--spacing-6);
+    align-items: flex-start;
+}
+
+.objective-tab__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.objective-tab__sidebar {
+    flex-shrink: 0;
+}
+
+.objective-tab__title {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    margin: 0 0 var(--spacing-2) 0;
+}
+
+/* Sections */
+.objective-tab__section {
+    background: var(--card);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.objective-tab__section-heading {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    margin: 0;
+}
+
+.objective-tab__section-heading--inline {
+    margin: 0;
+}
+
+.objective-tab__section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+    flex-wrap: wrap;
+}
+
+.objective-tab__section-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    color: var(--foreground);
+}
+
+.objective-tab__count-badge {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    background: var(--muted);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+}
+
+.objective-tab__add-btn {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    min-height: var(--touch-target-desktop);
+    transition: opacity 0.15s ease;
+}
+
+.objective-tab__add-btn:hover {
+    opacity: 0.9;
+}
+
+.objective-tab__add-btn:focus-visible {
+    outline: calc(var(--spacing-1) / 2) solid var(--ring);
+    outline-offset: calc(var(--spacing-1) / 2);
+}
+
+/* Locked placeholder sections */
+.objective-tab__locked-section {
+    background: var(--card);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+}
+
+.objective-tab__locked-placeholder {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-2) 0;
+}
+
+.objective-tab__sub-heading {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--foreground);
+    margin: 0;
+}
+
+/* Gait radio list */
+.objective-tab__radio-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.objective-tab__radio-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.objective-tab__radio-item:has(input:checked) {
+    border-color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+.objective-tab__radio-item input[type="radio"] {
+    accent-color: var(--primary);
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    flex-shrink: 0;
+}
+
+.objective-tab__radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing-1) / 2);
+}
+
+.objective-tab__radio-label strong {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--foreground);
+}
+
+.objective-tab__radio-desc {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+/* Deviation grid */
+.objective-tab__deviation-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-2);
+}
+
+.objective-tab__checkbox-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    cursor: pointer;
+    background: var(--card);
+    transition: background 0.1s ease;
+}
+
+.objective-tab__checkbox-chip:has(input:checked) {
+    border-color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+.objective-tab__checkbox-chip input[type="checkbox"] {
+    accent-color: var(--primary);
+    width: calc(var(--spacing-4) - (var(--spacing-1) / 4));
+    height: calc(var(--spacing-4) - (var(--spacing-1) / 4));
+    flex-shrink: 0;
+}
+
+/* Textarea */
+.objective-tab__textarea {
+    width: 100%;
+    background: var(--input-background);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-3);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    resize: vertical;
+    font-family: inherit;
+}
+
+.objective-tab__textarea:focus {
+    outline: calc(var(--spacing-1) / 2) solid var(--ring);
+    outline-offset: calc(var(--spacing-1) / 2);
+}
+
+/* Empty hint */
+.objective-tab__empty-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    padding: var(--spacing-3) 0;
+    margin: 0;
+}
+
+.objective-tab__item-list {
+    margin: 0;
+    padding-left: var(--spacing-5);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}

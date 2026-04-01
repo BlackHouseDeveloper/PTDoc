@@ -39,7 +39,7 @@ options.Cookie.MaxAge = TimeSpan.FromHours(8);
 - **Cleanup**: Expired tokens automatically cleared on startup
 
 #### Configuration Location
-`src/PTDoc.Api/Auth/JwtOptions.cs` and `appsettings.json`
+`src/PTDoc.Api/Auth/JwtOptions.cs` — signing key supplied via user-secrets (dev) or env var (production), never committed to `appsettings.json`.
 
 ```json
 {
@@ -50,7 +50,153 @@ options.Cookie.MaxAge = TimeSpan.FromHours(8);
 }
 ```
 
-## HIPAA Compliance Considerations
+## Secrets Management
+
+### Overview
+No signing keys, API keys, or credentials are ever committed to tracked configuration files.
+All secrets are injected at runtime via:
+- **Development**: `dotnet user-secrets` (stored in OS user profile, never in the repo)
+- **CI**: Ephemeral secrets generated at workflow runtime (see `.github/workflows/`)
+- **Production**: Environment variables or a secrets manager (e.g., Azure Key Vault)
+
+### First-time local setup (required after cloning)
+
+Run the bootstrap script to generate and store dev secrets:
+
+```bash
+# macOS / Linux
+./setup-dev-secrets.sh
+
+# Windows (PowerShell)
+.\setup-dev-secrets.ps1
+```
+
+This generates cryptographically strong keys and stores them using `dotnet user-secrets`.
+Secrets are **never printed** and are stored in your OS user profile:
+- macOS/Linux: `~/.microsoft/usersecrets/`
+- Windows: `%APPDATA%\Microsoft\UserSecrets\`
+
+### Secrets required for local development
+
+| Project | Config key | User-secrets project |
+|---------|-----------|---------------------|
+| PTDoc.Api | `Jwt:SigningKey` | `src/PTDoc.Api/PTDoc.Api.csproj` |
+| PTDoc.Api | `IntakeInvite:SigningKey` | `src/PTDoc.Api/PTDoc.Api.csproj` |
+| PTDoc.Web | `IntakeInvite:SigningKey` | `src/PTDoc.Web/PTDoc.Web.csproj` |
+
+Both **PTDoc.Api** and **PTDoc.Web** validate intake invite tokens and require `IntakeInvite:SigningKey`
+to be present via `dotnet user-secrets`. In CI and production, inject this key via environment
+variables or the configured secrets manager.
+
+### Manual secret setup (if not using the bootstrap script)
+
+```bash
+# Generate and set JWT signing key
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 64)" \
+  --project src/PTDoc.Api/PTDoc.Api.csproj
+
+# Generate and set IntakeInvite signing key for PTDoc.Api
+dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
+  --project src/PTDoc.Api/PTDoc.Api.csproj
+
+# Generate and set IntakeInvite signing key for PTDoc.Web
+dotnet user-secrets set "IntakeInvite:SigningKey" "$(openssl rand -base64 32)" \
+  --project src/PTDoc.Web/PTDoc.Web.csproj
+```
+
+### Fail-fast startup validation
+Both PTDoc.Api and PTDoc.Web perform startup validation:
+- Missing keys → clear error with setup instructions
+- Placeholder values (e.g., `REPLACE_WITH_A_MIN_32_CHAR_SECRET`) → same error
+- Keys shorter than 32 characters → length error
+
+### Production secrets
+In production, supply secrets via environment variables using ASP.NET Core's `__` separator convention:
+```
+Jwt__SigningKey=<value>
+IntakeInvite__SigningKey=<value>
+```
+Or configure a secrets manager (Azure Key Vault, AWS Secrets Manager) and wire it into the configuration pipeline.
+
+### CI secrets
+CI workflows generate ephemeral signing keys at runtime using `openssl rand`. No committed secrets are needed for CI to pass.
+
+---
+
+## Sprint G — Security Hardening and Compliance Guardrails
+
+Sprint G (March 2026) added the following security controls.
+
+### Security Response Headers (`SecurityHeadersMiddleware`)
+
+Every HTTP response from the API now includes:
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `X-Content-Type-Options` | `nosniff` | Prevents MIME-type sniffing |
+| `X-Frame-Options` | `DENY` | Blocks clickjacking via iframe embedding |
+| `Referrer-Policy` | `no-referrer` | Suppresses Referer header leakage |
+| `Content-Security-Policy` | `default-src 'none'` | Disallows all embedded resources (API only) |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | Disables browser features |
+
+The Web application also applies a subset of these headers (excluding CSP to preserve Blazor Server compatibility):
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+
+**Implementation:** `src/PTDoc.Infrastructure/Security/SecurityHeadersMiddleware.cs`
+
+### Safe Exception Handling (API)
+
+`PTDoc.Api` now includes a global exception handler (`app.UseExceptionHandler`) that:
+- Returns a generic `500` JSON response (no stack traces, no internal details)
+- Logs the exception internally using structured logging (method + path, no PHI)
+- Includes a `correlationId` (ASP.NET Core `TraceIdentifier`) in the response for support tracing
+
+```json
+{
+  "error": "An unexpected error occurred. Please try again later.",
+  "correlationId": "<trace-id>"
+}
+```
+
+### Authentication Audit Trail
+
+Authentication events are now written to the `AuditLogs` database table via `IAuditService.LogAuthEventAsync` in addition to the structured application logger.
+
+Audit event types:
+
+| Event | Severity | Notes |
+|-------|----------|-------|
+| `LoginSuccess` | Info | Records `UserId` and IP address. No username. |
+| `LoginFailed` | Warning | Records IP address and reason code only. No PIN, password, or username. |
+| `Logout` | Info | Records `UserId`. |
+| `TokenValidationFailed` | Warning | Records IP address and exception type. No raw token value. |
+
+**CRITICAL constraint:** Auth audit metadata must **never** contain:
+- PIN or password values
+- Raw bearer token strings
+- Patient names or other PHI
+
+### JWT Bearer Token Validation Failures
+
+The JWT bearer middleware now fires an `OnAuthenticationFailed` event that writes a `TokenValidationFailed` audit record when a bearer token is rejected. Only the exception type and IP address are recorded — the raw token is never logged.
+
+**Implementation:** `src/PTDoc.Api/Program.cs` (`AddJwtBearer` → `options.Events`)
+
+### PHI Safety Rules (Logging)
+
+The following rules apply across all logging and telemetry:
+
+1. **No PHI in application logs** — Patient names, DOB, clinical note content, or contact info must not appear in `ILogger<T>` output.
+2. **Audit metadata is ID-only** — Audit records use entity IDs and event type codes, never PHI field values.
+3. **Auth events use reason codes** — Failure reasons are terse codes (e.g., `InvalidCredentials`, `UserNotFound`) not raw user input.
+4. **Exception messages are suppressed** — The global exception handler returns a generic message to clients; full exception details go to the logger only.
+
+---
+
+## Session Management
 
 ### Automatic Session Termination
 - Web sessions automatically terminate after 15 minutes of inactivity
@@ -154,11 +300,11 @@ Production should use stricter timeouts as configured in the code defaults.
 
 ### Logging
 All authentication events are logged:
-- User login attempts (success/failure)
-- Token refresh operations
-- Session expirations
-- Logout events
-- Token validation failures
+- User login attempts (success/failure) — to `AuditLogs` table and `ILogger`
+- Token refresh operations — to `ILogger`
+- Session expirations — to `ILogger`
+- Logout events — to `AuditLogs` table and `ILogger`
+- Token validation failures — to `AuditLogs` table
 
 ### Monitoring
 Implement monitoring for:
@@ -176,6 +322,8 @@ Implement monitoring for:
 6. **Enable MFA** for administrative access
 7. **Regular security audits** of authentication flow
 8. **HIPAA audit trail** for all patient data access
+9. **Security response headers** on all HTTP responses (Sprint G)
+10. **Generic error responses** to prevent information leakage (Sprint G)
 
 ## Troubleshooting
 

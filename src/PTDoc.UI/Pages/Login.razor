@@ -31,15 +31,29 @@
                 @onclick="() => SwitchMode(AuthMode.Login)">
           Login
         </button>
-        <button type="button"
-                role="tab"
-                class="auth-tab @(authMode == AuthMode.SignUp ? "active" : "")"
-                aria-selected="@(authMode == AuthMode.SignUp ? "true" : "false")"
-                @onclick="() => SwitchMode(AuthMode.SignUp)">
-          Sign Up
-        </button>
+        @if (UserService.SupportsSelfServiceRegistration)
+        {
+          <button type="button"
+                  role="tab"
+                  class="auth-tab @(authMode == AuthMode.SignUp ? "active" : "")"
+                  aria-selected="@(authMode == AuthMode.SignUp ? "true" : "false")"
+                  @onclick="() => SwitchMode(AuthMode.SignUp)">
+            Sign Up
+          </button>
+        }
       </div>
     </header>
+
+    @if (isPendingApprovalNotice)
+    {
+      <div class="auth-info-alert" role="status" aria-live="polite">
+        <span class="auth-info-icon">⏳</span>
+        <div class="auth-info-content">
+          <strong>Account pending approval</strong>
+          <p>Your registration is awaiting admin approval. You will be able to sign in once your clinic administrator activates your account.</p>
+        </div>
+      </div>
+    }
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
@@ -53,6 +67,17 @@
     {
       <EditForm FormName="LoginForm" Model="loginModel" OnValidSubmit="HandleLogin" class="auth-form" aria-busy="@isLoading">
         <DataAnnotationsValidator />
+
+        @if (supportsExternalIdentityLogin)
+        {
+          <div class="auth-info-alert">
+            <span class="auth-info-icon">ℹ️</span>
+            <div class="auth-info-content">
+              <strong>Single sign-on available</strong>
+              <p>You can sign in with your PT Docs+ credentials or continue with @UserService.IdentityProviderDisplayName.</p>
+            </div>
+          </div>
+        }
 
         <div class="auth-field">
           <label for="username">Username</label>
@@ -90,10 +115,39 @@
             <span>Login</span>
           }
         </button>
+
+        @if (supportsExternalIdentityLogin)
+        {
+          <button type="button" class="auth-primary auth-secondary" disabled="@isLoading" @onclick="HandleExternalLogin">
+            @if (isLoading)
+            {
+              <span>Redirecting...</span>
+            }
+            else
+            {
+              <span>Continue with @UserService.IdentityProviderDisplayName</span>
+            }
+          </button>
+        }
       </EditForm>
     }
     else
     {
+      @if (showPendingConfirmation)
+      {
+        <div class="auth-info-alert" role="status">
+          <span class="auth-info-icon">ℹ️</span>
+          <div class="auth-info-content">
+            <strong>Registration submitted</strong>
+            <p>Your account is pending admin approval. You can sign in once your clinic administrator activates access.</p>
+          </div>
+        </div>
+        <button type="button" class="auth-primary" @onclick="() => SwitchMode(AuthMode.Login)">
+          Return to Login
+        </button>
+      }
+      else
+      {
       <EditForm FormName="SignUpForm" Model="signUpModel" OnValidSubmit="HandleSignUp" class="auth-form" aria-busy="@isLoading">
         <DataAnnotationsValidator />
 
@@ -139,51 +193,119 @@
         </div>
 
         <div class="auth-field">
-          <label for="licenseType">
-            License Type
+          <label for="roleKey">
+            Role
             <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="Select PT (Physical Therapist) or PTA (Physical Therapist Assistant)">ⓘ</span>
+            <span class="auth-info-icon" title="Select your role for clinic onboarding">ⓘ</span>
           </label>
-          <InputSelect id="licenseType"
+          <InputSelect id="roleKey"
                        class="auth-input auth-select"
-                       @bind-Value="signUpModel.LicenseType">
-            <option value="">Select license type</option>
-            <option value="PT">PT (Physical Therapist)</option>
-            <option value="PTA">PTA (Physical Therapist Assistant)</option>
-          </InputSelect>
-          <ValidationMessage For="@(() => signUpModel.LicenseType)" class="auth-validation" />
-        </div>
-
-        <div class="auth-field">
-          <label for="licenseNumber">
-            License Number
-            <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="Enter your PT/PTA license number exactly as shown on your license">ⓘ</span>
-          </label>
-          <InputText id="licenseNumber"
-                     class="auth-input"
-                     placeholder="e.g., PT123456 or PTA-2024-001234"
-                     @bind-Value="signUpModel.LicenseNumber" />
-          <ValidationMessage For="@(() => signUpModel.LicenseNumber)" class="auth-validation" />
-        </div>
-
-        <div class="auth-field">
-          <label for="licenseState">
-            License State
-            <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="Select the U.S. state where your PT/PTA license was issued">ⓘ</span>
-          </label>
-          <InputSelect id="licenseState"
-                       class="auth-input auth-select"
-                       @bind-Value="signUpModel.LicenseState">
-            <option value="">Select state</option>
-            @foreach (var state in UsStates)
+                       @bind-Value="signUpModel.RoleKey"
+                       @bind-Value:after="OnRoleChangedAfterBind">
+            <option value="">Select role</option>
+            @foreach (var role in roles)
             {
-              <option value="@state.Code">@state.Name</option>
+              <option value="@role.Key">@role.DisplayName</option>
             }
           </InputSelect>
-          <ValidationMessage For="@(() => signUpModel.LicenseState)" class="auth-validation" />
+          <ValidationMessage For="@(() => signUpModel.RoleKey)" class="auth-validation" />
         </div>
+
+        <div class="auth-field">
+          <label for="clinicId">
+            Clinic
+            <span class="auth-required" aria-label="required">*</span>
+          </label>
+          <InputSelect id="clinicId"
+                       class="auth-input auth-select"
+                       @bind-Value="signUpModel.ClinicId">
+            <option value="">Select clinic</option>
+            @foreach (var clinic in clinics)
+            {
+              <option value="@clinic.Id">@clinic.Name</option>
+            }
+          </InputSelect>
+          <ValidationMessage For="@(() => signUpModel.ClinicId)" class="auth-validation" />
+        </div>
+
+        <div class="auth-field">
+          <label for="pinSignup">
+            4-Digit PIN
+            <span class="auth-required" aria-label="required">*</span>
+          </label>
+          <InputText id="pinSignup"
+                     type="password"
+                     class="auth-input"
+                     placeholder="Enter 4-digit PIN"
+                     maxlength="4"
+                     autocomplete="new-password"
+                     @bind-Value="signUpModel.Pin" />
+          <ValidationMessage For="@(() => signUpModel.Pin)" class="auth-validation" />
+        </div>
+
+        <div class="auth-field">
+          <label for="confirmPinSignup">
+            Confirm PIN
+            <span class="auth-required" aria-label="required">*</span>
+          </label>
+          <InputText id="confirmPinSignup"
+                     type="password"
+                     class="auth-input"
+                     placeholder="Confirm 4-digit PIN"
+                     maxlength="4"
+                     autocomplete="new-password"
+                     @bind-Value="signUpModel.ConfirmPin" />
+          <ValidationMessage For="@(() => signUpModel.ConfirmPin)" class="auth-validation" />
+        </div>
+
+        @if (isPtaFieldsActive)
+        {
+          <div class="auth-field">
+            <label for="licenseType">
+              License Type
+              <span class="auth-required" aria-label="required">*</span>
+              <span class="auth-info-icon" title="Select PT (Physical Therapist) or PTA (Physical Therapist Assistant)">ⓘ</span>
+            </label>
+            <InputSelect id="licenseType"
+                         class="auth-input auth-select"
+                         @bind-Value="signUpModel.LicenseType">
+              <option value="">Select license type</option>
+              <option value="PT">PT (Physical Therapist)</option>
+              <option value="PTA">PTA (Physical Therapist Assistant)</option>
+            </InputSelect>
+          </div>
+
+          <div class="auth-field">
+            <label for="licenseNumber">
+              License Number
+              <span class="auth-required" aria-label="required">*</span>
+              <span class="auth-info-icon" title="Enter your PT/PTA license number exactly as shown on your license">ⓘ</span>
+            </label>
+            <InputText id="licenseNumber"
+                       class="auth-input"
+                       placeholder="e.g., PT123456 or PTA-2024-001234"
+                       @bind-Value="signUpModel.LicenseNumber" />
+            <ValidationMessage For="@(() => signUpModel.LicenseNumber)" class="auth-validation" />
+          </div>
+
+          <div class="auth-field">
+            <label for="licenseState">
+              License State
+              <span class="auth-required" aria-label="required">*</span>
+              <span class="auth-info-icon" title="Select the U.S. state where your PT/PTA license was issued">ⓘ</span>
+            </label>
+            <InputSelect id="licenseState"
+                         class="auth-input auth-select"
+                         @bind-Value="signUpModel.LicenseState">
+              <option value="">Select state</option>
+              @foreach (var state in UsStates)
+              {
+                <option value="@state.Code">@state.Name</option>
+              }
+            </InputSelect>
+            <ValidationMessage For="@(() => signUpModel.LicenseState)" class="auth-validation" />
+          </div>
+        }
 
         <div class="auth-info-alert">
           <span class="auth-info-icon">ℹ️</span>
@@ -193,7 +315,7 @@
           </div>
         </div>
 
-        <button type="submit" class="auth-primary" disabled="@isLoading">
+        <button type="submit" class="auth-primary" disabled="@(isLoading || isSubmitting)">
           @if (isLoading)
           {
             <span>Creating Account...</span>
@@ -208,6 +330,7 @@
           By creating an account, you agree to maintain HIPAA compliance and professional standards.
         </p>
       </EditForm>
+      }
     }
   </div>
 

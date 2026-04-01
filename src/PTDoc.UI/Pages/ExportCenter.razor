@@ -1,10 +1,68 @@
 @page "/export-center"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "ClinicalStaff")]
+@rendermode InteractiveServer
 
 <PageTitle>Export Center - PTDoc</PageTitle>
 
-<div class="page-container">
-    <GlobalPageHeader />
+<div class="export-center-page">
+    <div class="page-container">
+        <GlobalPageHeader />
 
-    <p>Export patient data and reports.</p>
+        <ExportTypeTabController
+            @bind-SelectedTab="CurrentState.SelectedTab"
+            OnTabSwitched="@HandleTabSwitch" />
+
+        <ContextInfoBanner SelectedTab="@CurrentState.SelectedTab" />
+
+        <div class="export-center-grid">
+            <div class="export-center-left">
+                <FiltersPanel
+                    SelectedTab="@CurrentState.SelectedTab"
+                    State="@CurrentState" />
+
+                <ExportFormatSelector
+                    @bind-SelectedFormat="CurrentState.SelectedFormat" />
+
+                <ExportOptionsPanel
+                    SelectedFormat="@CurrentState.SelectedFormat"
+                    State="@CurrentState" />
+            </div>
+
+            <div class="export-center-right">
+                <ExportPreviewPanel
+                    SelectedTab="@CurrentState.SelectedTab"
+                    SelectedFormat="@CurrentState.SelectedFormat"
+                    State="@CurrentState"
+                    OnGeneratePreview="@HandleGeneratePreview"
+                    OnDownload="@HandleDownload" />
+
+                <RecentActivityPanel />
+            </div>
+        </div>
+    </div>
 </div>
+
+@code {
+    private ExportDraftState CurrentState { get; set; } = new();
+
+    protected override void OnInitialized()
+    {
+        CurrentState = new ExportDraftState();
+    }
+
+    private void HandleTabSwitch()
+    {
+        CurrentState.ResetForTabSwitch();
+        StateHasChanged();
+    }
+
+    private async Task HandleGeneratePreview()
+    {
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleDownload()
+    {
+        await Task.CompletedTask;
+    }
+}

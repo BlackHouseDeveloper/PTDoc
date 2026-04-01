@@ -22,32 +22,32 @@
 .quick-actions-section {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: var(--spacing-4);
+    gap: var(--spacing-6);
     padding: var(--spacing-6);
-    max-width: 1200px;
-    margin: 0 auto var(--spacing-6) auto;
+    width: 100%;
+    margin: 0 0 var(--spacing-8) 0;
 }
 
 .action-btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--spacing-2);
-    padding: var(--spacing-1);
+    gap: var(--action-btn-gap);
+    padding: var(--action-btn-padding);
     border: 2px solid;
-    border-radius: var(--radius-lg);
+    border-radius: var(--action-btn-border-radius);
     box-shadow: var(--shadow-lg);
     cursor: pointer;
     transition: all var(--transition-fast);
     font-family: var(--font-family-base);
     text-align: left;
-    min-height: 56px;
+    min-height: var(--action-btn-min-height);
 }
 
 .action-btn-primary {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--primary-foreground);
+    background: var(--action-btn-primary-bg);
+    border-color: var(--action-btn-primary-border);
+    color: var(--action-btn-primary-text);
 }
 
 .action-btn-primary:hover {
@@ -62,9 +62,9 @@
 }
 
 .action-btn-info {
-    background: var(--info);
-    border-color: var(--info);
-    color: var(--info-foreground);
+    background: var(--action-btn-info-bg);
+    border-color: var(--action-btn-info-border);
+    color: var(--action-btn-info-text);
 }
 
 .action-btn-info:hover {
@@ -89,24 +89,28 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-lg);
+    width: var(--action-icon-container-size);
+    height: var(--action-icon-container-size);
+    border-radius: var(--action-icon-container-radius);
+    background: var(--action-icon-container-bg);
     flex-shrink: 0;
 }
 
 .action-icon-primary {
-    background: rgba(255, 255, 255, 0.2);
+    /* Inherited from .action-icon-container */
 }
 
 .action-icon-info {
-    background: rgba(255, 255, 255, 0.2);
+    /* Inherited from .action-icon-container */
 }
 
 .action-icon {
-    width: 16px;
-    height: 16px;
-    color: currentColor;
+    width: var(--action-icon-size);
+    height: var(--action-icon-size);
+    color: var(--secondary-foreground);
+    display: block;
+    flex-shrink: 0;
+}
 }
 
 .action-text-container {
@@ -117,25 +121,27 @@
 }
 
 .action-title {
-    font-size: var(--text-lg);
-    font-weight: var(--font-weight-normal);
-    line-height: 1.56;
-    color: currentColor;
+    font-size: var(--action-title-size);
+    font-weight: var(--action-title-weight);
+    line-height: 1.4;
+    color: var(--secondary-foreground);
+    margin: 0;
 }
 
 .action-description {
-    font-size: var(--text-sm);
-    font-weight: var(--font-weight-normal);
-    line-height: 1.43;
-    opacity: 0.9;
-    color: currentColor;
+    font-size: var(--action-description-size);
+    font-weight: var(--action-description-weight);
+    line-height: 1.4;
+    opacity: 0.85;
+    color: var(--secondary-foreground);
+    margin: 0;
 }
 
 .action-arrow {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    color: currentColor;
+    color: var(--secondary-foreground);
 }
 
 .dashboard-header-content {

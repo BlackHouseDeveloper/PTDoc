@@ -449,6 +449,47 @@ PTDoc.UI/
 - Attribute-based access control (ABAC) for clinical roles
 - Minimum necessary access principle
 
+## Production Database Configuration
+
+### Provider Selection
+
+The API selects the database provider at startup via the `Database:Provider`
+configuration key (or its environment variable equivalent `Database__Provider`):
+
+| Value | Provider | Use Case |
+|-------|----------|----------|
+| `Sqlite` | SQLite | Local development (default) |
+| `SqlServer` | Microsoft SQL Server | Production / staging |
+| `Postgres` | PostgreSQL | Production / staging |
+
+For non-SQLite providers, also supply `ConnectionStrings:PTDocsServer`
+(`ConnectionStrings__PTDocsServer` as an environment variable).
+
+### Migration Safety
+
+The `Database:AutoMigrate` setting controls whether EF Core migrations run
+automatically at startup:
+
+| Environment | Default | Recommended |
+|-------------|---------|-------------|
+| `Development` | `true` (auto-migrate) | Default is fine |
+| `Production` | `false` (no auto-migrate) | Run migrations via CLI |
+
+Override the default by setting `Database:AutoMigrate` (`Database__AutoMigrate`
+as an env var) to `true` or `false` explicitly.
+
+### Required Environment Variables for Production
+
+```bash
+ASPNETCORE_ENVIRONMENT=Production
+Database__Provider=SqlServer           # or Postgres
+ConnectionStrings__PTDocsServer=...    # full connection string (from secrets manager)
+Jwt__SigningKey=...                     # ≥ 32-char secret (from secrets manager)
+```
+
+> **Security:** Never commit production connection strings or signing keys.
+> See `docs/SECURITY.md` and `docs/EF_MIGRATIONS.md` for deployment guidance.
+
 ## Technology Stack
 
 ### Backend
@@ -580,6 +621,257 @@ Developer Machine
 - **iOS:** App Store (requires Apple Developer account)
 - **Android:** Google Play Store (requires Google Play Console)
 - **macOS:** Direct distribution or Mac App Store
+
+## Observability & Health Monitoring (Sprint F)
+
+### Health Endpoints
+
+The API exposes two standard health check endpoints for deployment platforms and
+load balancers. Both endpoints are publicly accessible (no authentication required)
+and never return sensitive configuration data.
+
+| Endpoint | Purpose | HTTP Status |
+|----------|---------|-------------|
+| `GET /health/live` | Liveness — confirms the process is running | 200 OK |
+| `GET /health/ready` | Readiness — confirms DB connectivity + migration state | 200 / 503 |
+
+**Readiness response format (JSON):**
+```json
+{
+  "status": "Healthy",
+  "checks": [
+    { "name": "database",   "status": "Healthy", "description": "Database is reachable.", "durationMs": 12.3 },
+    { "name": "migrations", "status": "Healthy", "description": "All migrations are applied.", "durationMs": 4.1 }
+  ]
+}
+```
+
+When `status` is `"Unhealthy"`, the response uses HTTP 503. `"Degraded"` (pending
+migrations) returns 200 so the service continues to receive traffic while an
+operator investigates.
+
+### Diagnostics Endpoint
+
+`GET /diagnostics/db` — requires authentication (Bearer token). Returns:
+
+| Field | Description |
+|-------|-------------|
+| `provider` | Active database provider (`Sqlite`, `SqlServer`, or `Postgres`) |
+| `connectivity` | `"Connected"` or `"Unreachable"` |
+| `migrationStatus` | `"Current"` or `"PendingMigrations"` |
+| `appliedMigrationCount` | Number of migrations applied to the database |
+| `pendingMigrationCount` | Number of migrations not yet applied |
+| `pendingMigrations` | Names of pending migrations (empty list when current) |
+
+> **Security:** Connection strings and encryption keys are never included in
+> diagnostics responses. The endpoint always requires a valid JWT Bearer token.
+
+### Migration State Logging
+
+At startup the API logs:
+
+- Selected database provider (`Information` level).
+- Whether auto-migrate is enabled (`Information` level).
+- Names of pending migrations before applying them (`Information` level).
+- Successful migration application (`Information` level).
+
+If the `MigrationStateHealthCheck` detects drift at runtime, it logs a `Warning`
+with the list of pending migration names.
+
+### Migration Safety
+
+See [EF_MIGRATIONS.md](EF_MIGRATIONS.md) for deployment migration commands.
+
+The CI `db-migration-validate` job (Sprint F) validates:
+
+1. **No pending model changes** — `dotnet ef migrations has-pending-model-changes`
+   exits non-zero if the EF model has diverged from the last snapshot.
+2. **Migration state tests** — `[Category=Observability]` tests verify that
+   `GetPendingMigrationsAsync()` returns an empty list after `MigrateAsync()`.
+
+## Background Jobs & Async Processing (Sprint I)
+
+PTDoc uses native .NET hosted services (`BackgroundService`) for periodic maintenance tasks.
+No external job queue or scheduler is required for current workloads.
+
+### Services
+
+| Service | Project | Default Interval | Purpose |
+|---------|---------|-----------------|---------|
+| `SyncRetryBackgroundService` | Infrastructure | 30 s | Resets eligible failed sync queue items to `Pending` and triggers a push cycle |
+| `SessionCleanupBackgroundService` | Infrastructure | 5 min | Revokes expired user sessions via `IAuthService.CleanupExpiredSessionsAsync` |
+
+### Configuration
+
+Options are read from `appsettings.json` (or environment variables):
+
+```json
+{
+  "BackgroundJobs": {
+    "SyncRetry": {
+      "Interval": "00:00:30",
+      "MinRetryDelay": "00:01:00"
+    },
+    "SessionCleanup": {
+      "Interval": "00:05:00"
+    }
+  }
+}
+```
+
+- **`BackgroundJobs:SyncRetry:Interval`** — how often the retry sweep runs (default 30 s).
+- **`BackgroundJobs:SyncRetry:MinRetryDelay`** — minimum age of `LastAttemptAt` before an item is eligible for retry (default 60 s, prevents hot-retry loops).
+- **`BackgroundJobs:SessionCleanup:Interval`** — how often expired sessions are swept (default 5 min).
+
+### Design Principles
+
+- Each hosted service is registered as a **singleton** (standard for `IHostedService`).
+- Scoped services (`ApplicationDbContext`, `ISyncEngine`, `IAuthService`) are consumed
+  via **`IServiceScopeFactory`** — a fresh scope is created per execution cycle.
+- Jobs are **idempotent**: running them multiple times produces the same result.
+- A failure in one cycle is logged and the service continues to the next interval —
+  a transient error never kills the background host.
+- **No items beyond `MaxRetries`** are ever reset — permanent failures stay `Failed`.
+- **`MinRetryDelay`** prevents hot-retry of items that just failed.
+
+### Adding a New Background Job
+
+1. Add configuration options to `PTDoc.Application/BackgroundJobs/IBackgroundJobService.cs`.
+2. Implement `BackgroundService` + `IBackgroundJobService` in `PTDoc.Infrastructure/BackgroundJobs/`.
+3. Register in `PTDoc.Api/Program.cs`:
+   ```csharp
+   builder.Services.Configure<YourJobOptions>(
+       builder.Configuration.GetSection(YourJobOptions.SectionName));
+   builder.Services.AddHostedService<YourBackgroundService>();
+   ```
+4. Add unit tests in `tests/PTDoc.Tests/BackgroundJobs/`.
+
+## Multi-Tenant / Multi-Clinic Architecture (Sprint J)
+
+PTDoc is designed to operate in a multi-clinic (multi-tenant) environment where each clinic's data is completely isolated from others.
+
+### Tenancy Model
+
+PTDoc uses a **shared-database, shared-schema** tenancy model with row-level filtering. All clinics share the same database tables. Each row in tenant-scoped tables carries a `ClinicId` foreign key that identifies its owning clinic.
+
+This model was chosen because:
+- It avoids the operational complexity of database-per-tenant
+- It matches the current infrastructure and EF Core capabilities
+- Row-level filtering can be enforced at the ORM layer via global query filters
+
+### Tenant Entity
+
+```csharp
+// PTDoc.Core/Models/Clinic.cs
+public class Clinic
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; }    // Display name
+    public string Slug { get; set; }    // URL-friendly identifier (unique)
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+```
+
+### Tenant-Scoped Entities
+
+The following entities carry `ClinicId` and are subject to tenant filtering:
+
+| Entity           | ClinicId | Notes                                        |
+|------------------|----------|----------------------------------------------|
+| `Patient`        | ✓        | Root aggregate; all related data inherits scope |
+| `Appointment`    | ✓        | Denormalized from Patient for query efficiency |
+| `ClinicalNote`   | ✓        | Denormalized from Patient for query efficiency |
+| `IntakeForm`     | ✓        | Denormalized from Patient for query efficiency |
+| `User`           | ✓        | Clinicians belong to one clinic              |
+
+Non-clinical entities (`AuditLog`, `SyncQueueItem`, `Session`, etc.) are **not** tenant-scoped — they are system-level or user-level.
+
+### Data Access Isolation
+
+Tenant isolation is enforced via **EF Core global query filters** on `ApplicationDbContext`:
+
+```csharp
+// Applied automatically to every query on tenant-scoped entities
+modelBuilder.Entity<Patient>()
+    .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
+```
+
+- If a tenant scope is active (`clinic_id` claim present — set by either the JWT handler or `SessionTokenAuthHandler`), queries automatically add `WHERE ClinicId = @current` to every query.
+- If no tenant scope exists (system-level background jobs, unauthenticated requests), the filter is bypassed and all rows are visible.
+- Legacy rows with `ClinicId = NULL` (pre-Sprint J data) remain visible to all clinics for backward compatibility.
+
+To intentionally bypass filters for admin/migration operations:
+```csharp
+context.Set<Patient>().IgnoreQueryFilters().Where(...);
+```
+
+### Tenant Context Flow
+
+PTDoc has two independent authentication paths. Both activate the same tenant query filters by populating `HttpContext.User` with a `ClaimsPrincipal` that includes the `clinic_id` claim.
+
+**JWT auth flow** (`POST /auth/token` → legacy endpoint):
+```
+Bearer JWT → JwtBearerDefaults.AuthenticationScheme
+    ↓ ASP.NET Core JWT middleware validates and sets HttpContext.User
+    ↓ (clinic_id claim must be embedded in JWT during token issuance)
+HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
+    ↓
+ApplicationDbContext._tenantContext?.GetCurrentClinicId()
+    ↓
+EF Core global query filter evaluation per query
+```
+
+**PIN / session-token auth flow** (`POST /api/v1/auth/pin-login`):
+```
+Bearer session-token → SessionTokenAuthHandler (registered as "SessionToken" scheme)
+    ↓ AuthService.ValidateSessionAsync resolves session → user → ClinicId
+    ↓ Handler sets HttpContext.User with clinic_id claim
+HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
+    ↓
+ApplicationDbContext._tenantContext?.GetCurrentClinicId()
+    ↓
+EF Core global query filter evaluation per query
+```
+
+A `"Combined"` policy scheme (registered in `Program.cs`) automatically routes Bearer tokens to the correct handler based on token shape: JWTs have exactly 3 dot-separated parts; session tokens are opaque base64 strings without dots.
+
+### Identity Integration
+
+The `clinic_id` is surfaced through both auth flows:
+
+```
+POST /auth/token → ClaimsIdentity includes: Claim("clinic_id", user.ClinicId.ToString())
+POST /api/v1/auth/pin-login → AuthResult.ClinicId (returned to client); also
+    embedded in HttpContext.User via SessionTokenAuthHandler on subsequent requests
+GET /api/v1/auth/me → CurrentUserResponse.ClinicId
+```
+
+The `ITenantContextAccessor` interface (in `PTDoc.Application/Identity`) abstracts tenant-resolution. `HttpTenantContextAccessor` reads the `clinic_id` claim from `HttpContext.User` — this works for both JWT and session-token auth because both set `HttpContext.User` via their respective authentication handlers.
+
+### Backward Compatibility
+
+Existing deployments are preserved:
+- `ClinicId` is **nullable** on all entities — existing rows without a clinic assignment continue to work.
+- Legacy patients (null ClinicId) are visible to any tenant context.
+- New patients/appointments created by a clinic-scoped user automatically receive that clinic's ID (set at the service/API layer when creating records).
+
+### Development Default Clinic
+
+The `DatabaseSeeder` seeds a default development clinic (idempotent — safe to run on upgraded databases):
+- **ID:** `DatabaseSeeder.DefaultClinicId` = `00000000-0000-0000-0000-000000000100`
+- **Name:** `PTDoc Development Clinic`
+- **Slug:** `ptdoc-dev`
+- The `testuser` is assigned to this clinic (updated if already exists without a clinic assignment).
+- The demo `CredentialValidator` references `DatabaseSeeder.DefaultClinicId` (single source of truth).
+
+### Adding a New Clinic (Future)
+
+When implementing full clinic management:
+1. Create a `POST /api/v1/admin/clinics` endpoint
+2. Assign users to the new clinic via `User.ClinicId`
+3. New clinical records created by those users automatically inherit the clinic scope
+4. No data migration required for existing records (they remain `null`-scoped)
 
 ## Related Documentation
 

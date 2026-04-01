@@ -1,7 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
+using PTDoc.Application.Services;
+using System.Security.Cryptography;
 
 namespace PTDoc.Api.Integrations;
 
@@ -13,6 +17,7 @@ public static class IntegrationEndpoints
 {
     public static void MapIntegrationEndpoints(this WebApplication app)
     {
+        var hepOptions = app.Configuration.GetSection(WibbiHepOptions.SectionName).Get<WibbiHepOptions>() ?? new WibbiHepOptions();
         var group = app.MapGroup("/api/v1/integrations")
             .RequireAuthorization()
             .WithTags("Integrations");
@@ -20,26 +25,47 @@ public static class IntegrationEndpoints
         // Payment endpoints
         group.MapPost("/payment/process", ProcessPaymentAsync)
             .WithName("ProcessPayment")
-            .WithSummary("Process a payment using tokenized payment data");
+            .WithSummary("Process a payment using tokenized payment data")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // Fax endpoints
         group.MapPost("/fax/send", SendFaxAsync)
             .WithName("SendFax")
-            .WithSummary("Send a fax to an external provider");
+            .WithSummary("Send a fax to an external provider")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         // HEP endpoints
-        group.MapPost("/hep/assign", AssignHepProgramAsync)
-            .WithName("AssignHepProgram")
-            .WithSummary("Assign a home exercise program to a patient");
+        if (hepOptions.Enabled && hepOptions.ClinicianAssignmentEnabled)
+        {
+            group.MapPost("/hep/assign", AssignHepProgramAsync)
+                .WithName("AssignHepProgram")
+                .WithSummary("Assign a home exercise program to a patient")
+                .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
+        }
+
+        if (hepOptions.Enabled && hepOptions.PatientLaunchEnabled)
+        {
+            group.MapGet("/hep/patient-launch", LaunchPatientHepAsync)
+                .WithName("LaunchPatientHep")
+                .WithSummary("Launch the current authenticated patient's Wibbi HEP portal")
+                .RequireAuthorization(AuthorizationPolicies.PatientHepAccess);
+
+            group.MapGet("/hep/patient-launch/{launchToken}", CompletePatientLaunchAsync)
+                .AllowAnonymous()
+                .WithName("CompletePatientHepLaunch")
+                .WithSummary("Complete a one-time brokered patient HEP launch");
+        }
 
         // External system mapping endpoints
         group.MapPost("/mappings/{patientId:guid}", GetOrCreateMappingAsync)
             .WithName("GetOrCreateMapping")
-            .WithSummary("Get or create external system mapping for patient");
+            .WithSummary("Get or create external system mapping for patient")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
 
         group.MapGet("/mappings/patient/{patientId:guid}", GetPatientMappingsAsync)
             .WithName("GetPatientMappings")
-            .WithSummary("Get all external system mappings for a patient");
+            .WithSummary("Get all external system mappings for a patient")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
     }
 
     private static async Task<IResult> ProcessPaymentAsync(
@@ -133,6 +159,89 @@ public static class IntegrationEndpoints
         return Results.Ok(result);
     }
 
+    private static async Task<IResult> LaunchPatientHepAsync(
+        HttpContext httpContext,
+        [FromServices] IPatientContextAccessor patientContext,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IHomeExerciseProgramService hepService,
+        [FromServices] IAuditService auditService,
+        [FromServices] IMemoryCache memoryCache)
+    {
+        var patientId = patientContext.GetCurrentPatientId();
+        if (!patientId.HasValue)
+        {
+            return Results.Forbid();
+        }
+
+        var result = await hepService.GetPatientProgramAsync(patientId.Value, httpContext.RequestAborted);
+        await auditService.LogRuleEvaluationAsync(new AuditEvent
+        {
+            EventType = "PatientHepLaunchAttempted",
+            UserId = identityContext.TryGetCurrentUserId(),
+            Success = result.Success,
+            ErrorMessage = result.Success ? null : result.ErrorMessage,
+            Metadata = new Dictionary<string, object>
+            {
+                ["PatientId"] = patientId.Value,
+                ["Success"] = result.Success,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        }, httpContext.RequestAborted);
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.PatientPortalUrl))
+        {
+            return Results.BadRequest(new
+            {
+                error = result.ErrorMessage ?? "Unable to launch HEP portal."
+            });
+        }
+
+        var launchToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        memoryCache.Set(GetLaunchCacheKey(launchToken), result.PatientPortalUrl, TimeSpan.FromMinutes(1));
+
+        httpContext.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
+        httpContext.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+
+        return Results.Redirect($"/api/v1/integrations/hep/patient-launch/{launchToken}", permanent: false);
+    }
+
+    private static IResult CompletePatientLaunchAsync(
+        string launchToken,
+        HttpContext httpContext,
+        [FromServices] IMemoryCache memoryCache)
+    {
+        // Validate the route parameter before using it as a cache key.
+        // Generated tokens are 32-char lowercase hex strings; reject anything
+        // oversized or containing non-hex characters to prevent cache-key abuse.
+        if (string.IsNullOrEmpty(launchToken) ||
+            launchToken.Length > 64 ||
+            !launchToken.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+        {
+            return Results.BadRequest();
+        }
+
+        if (!memoryCache.TryGetValue<string>(GetLaunchCacheKey(launchToken), out var patientPortalUrl) ||
+            string.IsNullOrWhiteSpace(patientPortalUrl))
+        {
+            return Results.NotFound();
+        }
+
+        memoryCache.Remove(GetLaunchCacheKey(launchToken));
+
+        // Validate the URL before redirecting to prevent open redirects or unsafe navigation.
+        if (!Uri.TryCreate(patientPortalUrl, UriKind.Absolute, out var patientPortalUri) ||
+            !string.Equals(patientPortalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest();
+        }
+
+        httpContext.Response.Headers.CacheControl = "no-store, no-cache, max-age=0";
+        httpContext.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+        return Results.Redirect(patientPortalUri.ToString(), permanent: false);
+    }
+
     private static async Task<IResult> GetOrCreateMappingAsync(
         Guid patientId,
         [FromBody] CreateMappingRequest request,
@@ -153,6 +262,8 @@ public static class IntegrationEndpoints
         var mappings = await mappingService.GetPatientMappingsAsync(patientId);
         return Results.Ok(mappings);
     }
+
+    private static string GetLaunchCacheKey(string launchToken) => $"PTDoc:HepLaunch:{launchToken}";
 }
 
 /// <summary>

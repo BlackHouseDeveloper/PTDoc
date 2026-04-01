@@ -1,0 +1,21 @@
+::deep .dry-required {
+    display: grid;
+    gap: var(--spacing-1);
+    padding: var(--spacing-3) var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--warning);
+    border-radius: var(--radius-md);
+    background: rgba(var(--warning-rgb), 0.12);
+}
+
+::deep .dry-required__title {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--warning);
+}
+
+::deep .dry-required__message {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--foreground);
+}

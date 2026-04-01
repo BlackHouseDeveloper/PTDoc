@@ -4,6 +4,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      debug_mode:
+        description: 'Enable verbose/diagnostic output for troubleshooting'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,6 +30,11 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.417'
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
     - name: Restore dependencies
       run: |
@@ -56,7 +68,10 @@ jobs:
       run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
 
     - name: Run all tests
-      run: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      env:
+        TEST_VERBOSITY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_mode == 'true' && 'detailed' || 'normal' }}
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity "$TEST_VERBOSITY" --logger "trx;LogFileName=test-results.trx"
 
     - name: Publish test results
       uses: dorny/test-reporter@v1
@@ -77,8 +92,13 @@ jobs:
 
   maui-ios-validation:
     name: Build MAUI iOS (macOS)
-    if: github.event.action != 'closed' || github.event.pull_request.merged == true
-    runs-on: macos-latest
+    # Disabled: GitHub-hosted macOS runners (macos-15 and macos-latest) now ship Xcode 26.3
+    # with iOS SDK 26.2, which removed System.framework. The .NET 8 MAUI iOS SDK 18.0.x still
+    # generates linker commands that reference -framework System, causing: ld: framework 'System' not found
+    # TODO: re-enable once .NET 8 MAUI iOS SDK ships a fix, or migrate to .NET 9 MAUI.
+    # Tracked in: https://github.com/BlackHouseDeveloper/PTDoc/issues
+    if: false
+    runs-on: macos-15
 
     steps:
     - name: Checkout
@@ -133,8 +153,33 @@ jobs:
         fi
         dotnet workload list
 
+    - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    - name: Verify Xcode environment
+      run: |
+        xcode-select -p
+        xcodebuild -version
+        xcrun --find actool
+        xcrun --sdk iphonesimulator --show-sdk-path
+
     - name: Restore MAUI project
       run: dotnet restore src/PTDoc.Maui/PTDoc.csproj
 
     - name: Build MAUI iOS (simulator, no signing)
-      run: dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:EnableCodeSigning=false -p:CodesignKey= -p:CodesignProvision= -p:BuildIpa=false
+      run: |
+        SIMULATOR_SDK_ROOT="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+        VERBOSITY=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_mode == 'true' && 'detailed' || 'normal' }}
+        dotnet build src/PTDoc.Maui/PTDoc.csproj \
+          --configuration Release \
+          --framework net8.0-ios \
+          --verbosity "$VERBOSITY" \
+          -p:RuntimeIdentifier=iossimulator-arm64 \
+          -p:EnableCodeSigning=false \
+          -p:CodesignKey= \
+          -p:CodesignProvision= \
+          -p:BuildIpa=false \
+          -p:MtouchLink=None \
+          -p:SdkRoot="$SIMULATOR_SDK_ROOT"

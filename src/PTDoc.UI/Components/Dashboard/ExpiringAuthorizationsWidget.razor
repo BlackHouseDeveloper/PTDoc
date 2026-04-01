@@ -1,4 +1,5 @@
 @using PTDoc.Application.Dashboard
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
 @* Expiring Authorizations Widget *@
 
@@ -102,14 +103,12 @@
     
     private void HandleViewAll()
     {
-        // TODO: Navigate to authorizations page
-        Console.WriteLine("Navigate to authorizations");
+        Navigation.NavigateTo("/patients");
     }
     
     private void HandleUpdate(string authId)
     {
-        // TODO: Open update modal or navigate to update page
-        Console.WriteLine($"Update authorization: {authId}");
+        Navigation.NavigateTo($"/patients/{Uri.EscapeDataString(authId)}/info");
     }
     
     private double GetProgressPercentage(ExpiringAuthorization auth)

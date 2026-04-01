@@ -1,0 +1,38 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<div class="checkbox-grid checkbox-grid--@Columns">
+    @foreach (var option in Options)
+    {
+        var isChecked = Selected.Contains(option);
+        <label class="checkbox-grid__item @(isChecked ? "checkbox-grid__item--checked" : string.Empty)">
+            <input type="checkbox"
+                   checked="@isChecked"
+                   disabled="@IsReadOnly"
+                   @onchange="e => HandleToggle(option, (bool)e.Value!)" />
+            <span>@option</span>
+        </label>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Options { get; set; } = Array.Empty<string>();
+    [Parameter] public HashSet<string> Selected { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    [Parameter] public EventCallback<HashSet<string>> SelectedChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public int Columns { get; set; } = 2;
+
+    private Task HandleToggle(string value, bool isChecked)
+    {
+        var next = new HashSet<string>(Selected, StringComparer.OrdinalIgnoreCase);
+        if (isChecked)
+        {
+            next.Add(value);
+        }
+        else
+        {
+            next.Remove(value);
+        }
+
+        return SelectedChanged.InvokeAsync(next);
+    }
+}

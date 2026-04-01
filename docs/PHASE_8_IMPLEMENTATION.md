@@ -119,24 +119,24 @@ Phase 8 delivers platform-specific integrations and end-to-end testing for the o
 
 ## Hard Constraints (Enforced)
 
-✅ **NO UI changes** - Backend/infrastructure only
-✅ **Clean Architecture boundaries** - EF packages ONLY in Infrastructure
-✅ **All 59 existing tests passing** - No regressions
-✅ **NO PHI in logs/telemetry** - Metadata only
-✅ **PDF export immutable** - Does NOT modify note or SyncState
-✅ **Encrypted key validated** - 32+ characters required
+- **NO UI changes** - Backend/infrastructure only
+- **Clean Architecture boundaries** - EF packages ONLY in Infrastructure
+- **NO PHI in logs/telemetry** - Metadata only
+- **PDF export immutable** - Does NOT modify note or SyncState
+- **Encrypted key validated** - 32+ characters required
+- **Regression expectation** - existing automated tests should remain green after each increment
 
 ---
 
 ## Success Criteria
 
 **Phase 8 Complete When:**
-1. ✅ SQLCipher end-to-end wiring complete (API + MAUI hosts)
-2. ✅ MAUI SecureStorageDbKeyProvider implemented with fail-closed behavior
-3. ✅ QuestPDF renderer replaces MockPdfRenderer
-4. ✅ All integration tests passing (migrations, RBAC, NO PHI, sync)
-5. ✅ Platform builds succeed (Android, iOS, macOS)
-6. ✅ All 59+ tests passing (no regressions)
+1. [ ] SQLCipher end-to-end wiring complete (API + MAUI hosts)
+2. [ ] MAUI SecureStorageDbKeyProvider implemented with fail-closed behavior
+3. [ ] QuestPDF renderer replaces MockPdfRenderer
+4. [ ] Integration tests pass (migrations, RBAC, NO PHI, sync)
+5. [ ] Platform builds succeed (Android, iOS, macOS)
+6. [ ] No regression failures in existing automated tests
 
 ---
 

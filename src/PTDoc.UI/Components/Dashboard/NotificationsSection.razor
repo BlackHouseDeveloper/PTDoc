@@ -1,3 +1,6 @@
+@using PTDoc.UI.Services
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
+
 @* Notifications & Alerts Section *@
 
 <div class="notifications-section">
@@ -11,24 +14,94 @@
                 <h2 class="notifications-title">Notifications & Alerts</h2>
                 <span class="urgent-badge">@UrgentCount Urgent</span>
             </div>
-            <button type="button" class="icon-btn" aria-label="More options">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8 9.33333C8.73638 9.33333 9.33333 8.73638 9.33333 8C9.33333 7.26362 8.73638 6.66667 8 6.66667C7.26362 6.66667 6.66667 7.26362 6.66667 8C6.66667 8.73638 7.26362 9.33333 8 9.33333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M8 4C8.73638 4 9.33333 3.40305 9.33333 2.66667C9.33333 1.93029 8.73638 1.33333 8 1.33333C7.26362 1.33333 6.66667 1.93029 6.66667 2.66667C6.66667 3.40305 7.26362 4 8 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M8 14.6667C8.73638 14.6667 9.33333 14.0697 9.33333 13.3333C9.33333 12.597 8.73638 12 8 12C7.26362 12 6.66667 12.597 6.66667 13.3333C6.66667 14.0697 7.26362 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </button>
         </div>
         <div class="notifications-content">
-            <!-- Notification items will be populated here -->
-            <div class="empty-state">
-                <p class="empty-state-text">No new notifications</p>
-            </div>
+            @if (Notifications.Count == 0)
+            {
+                <div class="empty-state">
+                    <p class="empty-state-text">No new notifications</p>
+                </div>
+            }
+            else
+            {
+                <div class="activity-list">
+                    @foreach (var notification in Notifications)
+                    {
+                        <div class="activity-item">
+                            <div class="activity-indicator" style="background: @(notification.IsUrgent ? "var(--destructive)" : "var(--info)")"></div>
+                            <div class="activity-content">
+                                <p class="activity-text">
+                                    <strong>@notification.Title</strong>
+                                    @if (!string.IsNullOrWhiteSpace(notification.Message))
+                                    {
+                                        <text> @notification.Message</text>
+                                    }
+                                </p>
+                                <span class="activity-time">@FormatTimestamp(notification.Timestamp)</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(ResolveNavigationTarget(notification)))
+                            {
+                                <button type="button"
+                                        class="view-all-link"
+                                        aria-label="@($"Open {notification.Title}")"
+                                        @onclick="() => HandleNotificationClick(notification)">
+                                    Open
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         </div>
     </div>
 </div>
 
 @code {
-    [Parameter]
-    public int UrgentCount { get; set; } = 2;
+    [Parameter] public int UrgentCount { get; set; }
+    [Parameter] public IReadOnlyList<NotificationCenterItem> Notifications { get; set; } = Array.Empty<NotificationCenterItem>();
+
+    private void HandleNotificationClick(NotificationCenterItem notification)
+    {
+        var target = ResolveNavigationTarget(notification);
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            Navigation.NavigateTo(target);
+        }
+    }
+
+    private static string? ResolveNavigationTarget(NotificationCenterItem notification)
+    {
+        if (!string.IsNullOrWhiteSpace(notification.TargetUrl))
+        {
+            return notification.TargetUrl;
+        }
+
+        return notification.Type.ToLowerInvariant() switch
+        {
+            "note" => "/notes",
+            "appointment" => "/appointments",
+            _ => null
+        };
+    }
+
+    private static string FormatTimestamp(DateTimeOffset timestamp)
+    {
+        var elapsed = DateTimeOffset.UtcNow - timestamp;
+        if (elapsed.TotalMinutes < 1)
+        {
+            return "Just now";
+        }
+
+        if (elapsed.TotalHours < 1)
+        {
+            return $"{Math.Max(1, (int)elapsed.TotalMinutes)}m ago";
+        }
+
+        if (elapsed.TotalDays < 1)
+        {
+            return $"{Math.Max(1, (int)elapsed.TotalHours)}h ago";
+        }
+
+        return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
+    }
 }

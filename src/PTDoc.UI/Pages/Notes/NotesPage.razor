@@ -3,6 +3,13 @@
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 @using PTDoc.Application.Configurations.Header
+@using PTDoc.Application.Services
+@using PTDoc.Application.DTOs
+@using PTDoc.UI.Components.Notes.Models
+@using System.Text.Json
+@inject INoteService NoteService
+@inject IToastService ToastService
+@implements IDisposable
 
 <PageTitle>Clinical Notes - PTDoc</PageTitle>
 
@@ -62,133 +69,63 @@
 
     private List<NoteListItemVm> notesNeedingAttention = new();
     private List<NoteListItemVm> regularRecentNotes = new();
+    private CancellationTokenSource _cts = new();
 
     private static DateTime RecentCutoff => DateTime.UtcNow.Date.AddDays(-30);
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        LoadSampleData();
+        await LoadNotesAsync();
         BuildFilterOptions();
         ApplyFilters();
     }
 
-    private void LoadSampleData()
+    private async Task LoadNotesAsync()
     {
-        // TODO: Replace with INoteService query + offline cache synchronization.
-        notes.Clear();
-        notes.AddRange(new[]
+        try
         {
-            new NoteListItemVm
-            {
-                Id = "1",
-                PatientName = "Sarah Johnson",
-                PatientId = "PT001",
-                NoteType = "Initial Evaluation",
-                Status = "Draft",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-2),
-                LastModified = DateTime.UtcNow.Date.AddDays(-1),
-                CreatedBy = "Dr. Smith",
-                Summary = "Lower back pain evaluation, limited ROM L4-L5",
-                CptCodes = new[] { "97110", "97140" },
-                AttentionReason = "Missing signature",
-                IsUnsigned = true
-            },
-            new NoteListItemVm
-            {
-                Id = "2",
-                PatientName = "Michael Chen",
-                PatientId = "PT002",
-                NoteType = "Progress Note",
-                Status = "Draft",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-3),
-                LastModified = DateTime.UtcNow.Date.AddDays(-2),
-                CreatedBy = "Dr. Smith",
-                Summary = "Shoulder mobility improvements, pain reduced to 4/10",
-                CptCodes = new[] { "97110", "97112", "97116" }
-            },
-            new NoteListItemVm
-            {
-                Id = "3",
-                PatientName = "Emily Rodriguez",
-                PatientId = "PT003",
-                NoteType = "Progress Note",
-                Status = "Submitted",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-4),
-                LastModified = DateTime.UtcNow.Date.AddDays(-4),
-                CreatedBy = "Dr. Smith",
-                Summary = "Knee rehabilitation progressing well, functional improvements",
-                CptCodes = new[] { "97110", "97530" }
-            },
-            new NoteListItemVm
-            {
-                Id = "4",
-                PatientName = "James Wilson",
-                PatientId = "PT004",
-                NoteType = "Re-evaluation",
-                Status = "In Review",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-5),
-                LastModified = DateTime.UtcNow.Date.AddDays(-4),
-                CreatedBy = "Dr. Thompson",
-                Summary = "4-week re-eval, significant progress in ankle mobility",
-                CptCodes = new[] { "97110", "97140", "97530" }
-            },
-            new NoteListItemVm
-            {
-                Id = "5",
-                PatientName = "Lisa Thompson",
-                PatientId = "PT005",
-                NoteType = "Initial Evaluation",
-                Status = "Draft",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-6),
-                LastModified = DateTime.UtcNow.Date.AddDays(-5),
-                CreatedBy = "Dr. Johnson",
-                Summary = "Cervical spine evaluation post-MVA",
-                CptCodes = new[] { "97110" },
-                AttentionReason = "Incomplete assessment section",
-                IsIncomplete = true
-            },
-            new NoteListItemVm
-            {
-                Id = "6",
-                PatientName = "David Kim",
-                PatientId = "PT006",
-                NoteType = "Discharge Summary",
-                Status = "Submitted",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-8),
-                LastModified = DateTime.UtcNow.Date.AddDays(-8),
-                CreatedBy = "Dr. Smith",
-                Summary = "Successful completion of PT program, goals achieved",
-                CptCodes = new[] { "97110", "97112" }
-            },
-            new NoteListItemVm
-            {
-                Id = "7",
-                PatientName = "Sarah Johnson",
-                PatientId = "PT001",
-                NoteType = "Progress Note",
-                Status = "Submitted",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-20),
-                LastModified = DateTime.UtcNow.Date.AddDays(-20),
-                CreatedBy = "Dr. Smith",
-                Summary = "Week 2 progress, pain decreased, improved function",
-                CptCodes = new[] { "97110", "97140", "97530" }
-            },
-            new NoteListItemVm
-            {
-                Id = "8",
-                PatientName = "Robert Miles",
-                PatientId = "PT008",
-                NoteType = "Progress Note",
-                Status = "Draft",
-                CreatedDate = DateTime.UtcNow.Date.AddDays(-45),
-                LastModified = DateTime.UtcNow.Date.AddDays(-44),
-                CreatedBy = "Dr. Smith",
-                Summary = "Older note outside recent window",
-                CptCodes = new[] { "97110" },
-                HasErrors = true,
-                AttentionReason = "Coding validation error"
-            }
-        });
+            var result = await NoteService.GetNotesAsync(
+                patientId: null,
+                noteType: null,
+                status: null,
+                take: 200,
+                cancellationToken: _cts.Token);
+
+            notes.Clear();
+            notes.AddRange(result.Select(ToVm));
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Failed to load notes. Please refresh and try again.");
+        }
+    }
+
+    private static NoteListItemVm ToVm(NoteListItemApiResponse dto)
+    {
+        string[] cptCodes;
+        try
+        {
+            cptCodes = JsonSerializer.Deserialize<string[]>(dto.CptCodesJson) ?? Array.Empty<string>();
+        }
+        catch
+        {
+            cptCodes = Array.Empty<string>();
+        }
+
+        return new NoteListItemVm
+        {
+            Id = dto.Id.ToString(),
+            PatientId = dto.PatientId.ToString(),
+            PatientName = dto.PatientName,
+            NoteType = dto.NoteType,
+            Status = dto.IsSigned ? "Submitted" : "Draft",
+            CreatedDate = dto.DateOfService,
+            LastModified = dto.LastModifiedUtc,
+            CreatedBy = string.Empty,
+            Summary = string.Empty,
+            CptCodes = cptCodes,
+            IsUnsigned = !dto.IsSigned
+        };
     }
 
     private void BuildFilterOptions()
@@ -284,8 +221,20 @@
 
     private void HandleOpenNote(NoteListItemVm note)
     {
-        // TODO: Confirm canonical route between /notes/{id} and /soap/{id} when note editor route is finalized.
-        NavigationManager.NavigateTo($"/notes/{note.Id}");
+        if (string.IsNullOrWhiteSpace(note.PatientId))
+        {
+            return;
+        }
+
+        // Existing note context: go to note workspace with patient + note identifiers.
+        if (!string.IsNullOrWhiteSpace(note.Id))
+        {
+            NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/note/{Uri.EscapeDataString(note.Id)}");
+            return;
+        }
+
+        // No note id: route to patient-scoped new-note flow (draft is created on arrival).
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/new-note");
     }
 
     private void HandleViewNote(NoteListItemVm note)
@@ -300,7 +249,14 @@
 
     private void HandleDownloadPdf(NoteListItemVm note)
     {
-        _ = note;
-        // TODO: Wire to PDF export endpoint once INoteService is integrated.
+        // PDF export is handled in the note workspace. Navigate there to download.
+        HandleOpenNote(note);
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }
+

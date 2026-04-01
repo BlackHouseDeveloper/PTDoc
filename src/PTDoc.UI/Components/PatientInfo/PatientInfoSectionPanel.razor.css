@@ -1,0 +1,41 @@
+/* PatientInfoSectionPanel — card shell for each page section */
+
+.pi-section-panel {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl); /* ~14px per Figma */
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.pi-section-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--muted); /* muted token approximates the translucent header treatment */
+    border-bottom: 2px solid var(--border);
+    padding: var(--spacing-6) var(--spacing-6) var(--spacing-2) var(--spacing-6); /* 24px top, 8px bottom */
+    min-height: 48px;
+}
+
+.pi-section-panel-title {
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1;
+    color: var(--foreground);
+    margin: 0;
+}
+
+.pi-section-panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.pi-section-panel-body {
+    padding: var(--spacing-6);
+}
+
+/* Dark mode: handled automatically by token overrides in tokens.css.
+   --border → rgba(34,197,94,0.2) (emerald), --card → #2e2e2e, --muted → #3a3a3a */

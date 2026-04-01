@@ -1,0 +1,75 @@
+@* PatientInfoActionRow — bottom action bar: Save Changes (left) + Back to Patient Profile (right) *@
+
+<div class="pi-action-row" data-testid="patient-info-action-row">
+
+    @* Primary: Save Changes *@
+    <button type="button"
+            class="pi-action-row-save"
+            disabled="@(!CanSave)"
+            aria-disabled="@(!CanSave)"
+            aria-label="Save Changes"
+            @onclick="HandleSave">
+        @if (IsSaving)
+        {
+            <span class="pi-action-row-spinner" role="status" aria-label="Saving...">
+                <svg class="pi-action-row-spinner-icon" viewBox="0 0 24 24" fill="none"
+                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+                </svg>
+            </span>
+            <span>Saving…</span>
+        }
+        else
+        {
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M13.3333 14H2.66667C2.31305 14 1.97391 13.8595 1.72386 13.6095C1.47381 13.3594 1.33333 13.0203 1.33333 12.6667V3.33333C1.33333 2.97971 1.47381 2.64057 1.72386 2.39052C1.97391 2.14048 2.31305 2 2.66667 2H10.6667L14.6667 6V12.6667C14.6667 13.0203 14.5262 13.3594 14.2761 13.6095C14.0261 13.8595 13.6869 14 13.3333 14Z"
+                      stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M11.3333 14V8.66667H4.66667V14" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M4.66667 2V5.33333H10.0000" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Save Changes</span>
+        }
+    </button>
+
+    @* Secondary: Back to Patient Profile *@
+    <button type="button"
+            class="pi-action-row-back"
+            aria-label="Back to Patient Profile"
+            @onclick="HandleBack">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span>Back to Patient Profile</span>
+    </button>
+
+</div>
+
+@code {
+    [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public bool IsSaving { get; set; }
+    [Parameter] public bool HasValidationErrors { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private bool CanSave => IsDirty && !IsSaving && !HasValidationErrors;
+
+    private async Task HandleSave()
+    {
+        if (CanSave)
+        {
+            await OnSave.InvokeAsync();
+        }
+    }
+
+    private async Task HandleBack()
+    {
+        await OnBack.InvokeAsync();
+    }
+}

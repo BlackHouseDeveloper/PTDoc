@@ -1,0 +1,29 @@
+@* PatientInfoField — label + control wrapper with validation message slot *@
+
+<div class="pi-field @(SpanFull ? "pi-field--span-2" : "")">
+    <label class="pi-field-label" for="@ForId">@Label</label>
+    <div class="pi-field-control">
+        @ChildContent
+    </div>
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <p id="@(ForId + "-error")" class="pi-field-error" role="alert">@Error</p>
+    }
+</div>
+
+@code {
+    /// <summary>The label text shown above the control.</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    /// <summary>The id of the form control; used for label association and aria-describedby.</summary>
+    [Parameter, EditorRequired] public string ForId { get; set; } = string.Empty;
+
+    /// <summary>The form control(s) to render inside the field.</summary>
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+
+    /// <summary>When true, field spans both grid columns (full-width).</summary>
+    [Parameter] public bool SpanFull { get; set; }
+
+    /// <summary>Inline validation error message. Empty string hides the error slot.</summary>
+    [Parameter] public string Error { get; set; } = string.Empty;
+}

@@ -1,0 +1,73 @@
+/* Export Center Page Styles */
+
+.export-center-page {
+    width: 100%;
+    min-height: 100vh;
+    background-color: var(--background);
+    color: var(--foreground);
+}
+
+.page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--spacing-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
+}
+
+.export-center-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--spacing-5);
+}
+
+.export-center-left {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
+}
+
+.export-center-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
+}
+
+.dark .export-center-page {
+    background-color: var(--background);
+    color: var(--foreground);
+}
+
+@media (max-width: 1199px) {
+    .page-container {
+        padding: var(--spacing-6);
+    }
+
+    .export-center-grid {
+        gap: var(--spacing-4);
+    }
+
+    .export-center-left,
+    .export-center-right {
+        gap: var(--spacing-4);
+    }
+}
+
+@media (max-width: 767px) {
+    .page-container {
+        padding: var(--spacing-4);
+        gap: var(--spacing-4);
+    }
+
+    .export-center-grid {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-4);
+    }
+
+    .export-center-left,
+    .export-center-right {
+        gap: var(--spacing-4);
+    }
+}

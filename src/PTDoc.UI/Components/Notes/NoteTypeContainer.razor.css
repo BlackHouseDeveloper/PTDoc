@@ -1,0 +1,65 @@
+.note-type-container {
+    padding: var(--spacing-4) var(--spacing-6);
+    background: var(--card);
+    border-bottom: calc(var(--spacing-1) / 4) solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.note-type-container__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+    flex-wrap: wrap;
+}
+
+.note-type-container__label-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.note-type-container__label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    margin: 0;
+}
+
+.note-type-container__sublabel {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
+.note-type-container__selector {
+    position: relative;
+}
+
+.note-type-container__select {
+    appearance: none;
+    background: var(--card);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-8) var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    cursor: pointer;
+    min-width: calc(var(--spacing-16) * 2.5);
+}
+
+.note-type-container__select:focus {
+    outline: calc(var(--spacing-1) / 2) solid var(--ring);
+    outline-offset: calc(var(--spacing-1) / 2);
+}
+
+.note-type-container__description {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    margin: 0;
+    padding: var(--spacing-2) var(--spacing-3);
+    background: var(--muted);
+    border-radius: var(--radius-sm);
+}

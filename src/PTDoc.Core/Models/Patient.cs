@@ -28,14 +28,44 @@ public class Patient : ISyncTrackedEntity
     // Clinical
     public string? MedicalRecordNumber { get; set; }
 
+    // Referring physician
+    public string? ReferringPhysician { get; set; }
+    public string? PhysicianNpi { get; set; }
+
+    // Clinical onset and authorization
+    public DateTime? DateOfOnset { get; set; }
+    public string? AuthorizationNumber { get; set; }
+
+    // Emergency contact
+    public string? EmergencyContactName { get; set; }
+    public string? EmergencyContactPhone { get; set; }
+
+    // Consent
+    public bool ConsentSigned { get; set; }
+    public DateTime? ConsentSignedDate { get; set; }
+
+    // Diagnosis codes (JSON array of PatientDiagnosisDto)
+    public string DiagnosisCodesJson { get; set; } = "[]";
+
     // Insurance (JSON blob)
     public string PayerInfoJson { get; set; } = "{}";
 
+    // Retention policy override (null = use system default of 7 years)
+    public int? RetentionYears { get; set; }
+
     // Soft delete
     public bool IsArchived { get; set; }
+
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic that owns this patient record. Null for legacy records pre-Sprint J migration.
+    /// All queries are automatically filtered to the current user's clinic.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
 
     // Navigation properties
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
     public ICollection<ClinicalNote> ClinicalNotes { get; set; } = new List<ClinicalNote>();
     public ICollection<IntakeForm> IntakeForms { get; set; } = new List<IntakeForm>();
+    public Clinic? Clinic { get; set; }
 }

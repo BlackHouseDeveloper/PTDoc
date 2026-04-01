@@ -1,0 +1,198 @@
+/* Recent Activity Panel Styles */
+
+.recent-activity-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4) var(--spacing-5);
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+
+.recent-activity-panel__header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.recent-activity-panel__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.recent-activity-panel__title {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--foreground);
+    line-height: var(--line-height-tight);
+}
+
+.recent-activity-panel__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+/* Empty State */
+.recent-activity-empty {
+    padding: var(--spacing-4) var(--spacing-3);
+    text-align: center;
+    color: var(--foreground);
+    opacity: 0.6;
+}
+
+.empty-state-icon {
+    display: block;
+    font-size: 2rem;
+    margin-bottom: var(--spacing-2);
+}
+
+.empty-state-text {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+/* Activity List */
+.recent-activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Activity Item */
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-md);
+    background-color: rgba(22, 163, 74, 0.04);
+    transition: var(--transition-fast);
+    cursor: default;
+    
+    &:hover {
+        background-color: rgba(22, 163, 74, 0.08);
+    }
+}
+
+.activity-item__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.activity-success {
+    color: var(--success, #34a853);
+}
+
+.activity-error {
+    color: var(--destructive, #d93025);
+}
+
+.activity-item__content {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-item__title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--foreground);
+    margin: 0;
+    line-height: var(--line-height-tight);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-item__meta {
+    font-size: var(--text-xs);
+    color: var(--foreground);
+    opacity: 0.7;
+    margin-top: var(--spacing-1);
+    line-height: var(--line-height-tight);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-item__time {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    color: var(--foreground);
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* Scrollbar styling for activity list */
+.recent-activity-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.recent-activity-list::-webkit-scrollbar-track {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+}
+
+.recent-activity-list::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    
+    &:hover {
+        background-color: rgba(0, 0, 0, 0.3);
+    }
+}
+
+/* Dark mode */
+.dark {
+    .recent-activity-panel {
+        background-color: var(--card);
+        border-color: var(--border);
+    }
+    
+    .recent-activity-panel__title {
+        color: var(--foreground);
+    }
+    
+    .recent-activity-empty {
+        color: var(--foreground);
+    }
+    
+    .activity-item {
+        background-color: rgba(34, 197, 94, 0.08);
+        
+        &:hover {
+            background-color: rgba(34, 197, 94, 0.12);
+        }
+    }
+    
+    .activity-item__title,
+    .activity-item__meta,
+    .activity-item__time {
+        color: var(--foreground);
+    }
+    
+    .recent-activity-list::-webkit-scrollbar-track {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .recent-activity-list::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.2);
+        
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+    }
+}

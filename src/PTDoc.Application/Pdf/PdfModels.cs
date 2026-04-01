@@ -31,7 +31,9 @@ public class NoteExportDto
 {
     public Guid NoteId { get; set; }
     public DateTime DateOfService { get; set; }
+    public string NoteTypeDisplayName { get; set; } = string.Empty;
     public string ContentJson { get; set; } = string.Empty;
+    public string CptCodesJson { get; set; } = "[]";
 
     // Patient information (NO PHI in logs - only for PDF rendering)
     public string PatientFirstName { get; set; } = string.Empty;
@@ -42,6 +44,8 @@ public class NoteExportDto
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
+    public string ClinicianDisplayName { get; set; } = string.Empty;
+    public string ClinicianCredentials { get; set; } = string.Empty;
 
     // Export options
     public bool IncludeMedicareCompliance { get; set; }

@@ -1,0 +1,44 @@
+@* PatientInfoPageHeader — back navigation + page title block *@
+@inject NavigationManager Navigation
+
+<div class="pi-page-header" data-testid="patient-info-page-header">
+    <button type="button"
+            class="pi-page-header-back-btn"
+            @onclick="HandleBack"
+            aria-label="@BackAriaLabel">
+        <svg class="pi-page-header-back-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span>@BackLabel</span>
+    </button>
+
+    <div class="pi-page-header-title-group">
+        <h1 class="pi-page-header-title">@Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p class="pi-page-header-subtitle">@Subtitle</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Subtitle { get; set; } = string.Empty;
+    [Parameter] public string BackLabel { get; set; } = "Back to Patient Profile";
+    [Parameter] public string BackAriaLabel { get; set; } = "Back to Patient Profile";
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private async Task HandleBack()
+    {
+        if (OnBack.HasDelegate)
+        {
+            await OnBack.InvokeAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo("/patients");
+        }
+    }
+}

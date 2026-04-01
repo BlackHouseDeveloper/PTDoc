@@ -1,0 +1,47 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<div class="editable-text-area">
+    @if (!string.IsNullOrWhiteSpace(Label))
+    {
+        <label class="editable-text-area__label" for="@Id">
+            @Label
+            @if (IsRequired)
+            {
+                <span class="editable-text-area__required">*</span>
+            }
+        </label>
+    }
+
+    <textarea id="@Id"
+              class="editable-text-area__input"
+              rows="@Rows"
+              placeholder="@Placeholder"
+              disabled="@IsReadOnly"
+              @bind="Value"
+              @bind:event="oninput"></textarea>
+
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <p class="editable-text-area__hint">@Hint</p>
+    }
+
+    @if (ShowValidation)
+    {
+        <p class="editable-text-area__error">@ValidationMessage</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = $"eta-{Guid.NewGuid():N}";
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public bool IsRequired { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public int Rows { get; set; } = 4;
+    [Parameter] public bool ShowValidation { get; set; }
+    [Parameter] public string ValidationMessage { get; set; } = "This field is required.";
+
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+}

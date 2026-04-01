@@ -27,9 +27,27 @@ public class IntakeForm : ISyncTrackedEntity
     // Response data (JSON blob)
     public string ResponseJson { get; set; } = "{}";
 
+    // Server-owned typed intake selections persisted separately from the legacy response payload.
+    public string? StructuredDataJson { get; set; }
+
+    // TDD §5.2 IntakeResponse contract alignment
+    /// <summary>Body region pain map data (JSON). Maps to TDD PainMapData field.</summary>
+    public string PainMapData { get; set; } = "{}";
+
+    /// <summary>Patient consents (HIPAA, treatment authorization) as JSON. Maps to TDD Consents field.</summary>
+    public string Consents { get; set; } = "{}";
+
     // Submission
     public DateTime? SubmittedAt { get; set; }
 
+    // Tenant / clinic scoping (Sprint J)
+    /// <summary>
+    /// The clinic that owns this intake form. Null for legacy records pre-Sprint J migration.
+    /// Denormalized from Patient for efficient query filtering.
+    /// </summary>
+    public Guid? ClinicId { get; set; }
+
     // Navigation properties
     public Patient? Patient { get; set; }
+    public Clinic? Clinic { get; set; }
 }

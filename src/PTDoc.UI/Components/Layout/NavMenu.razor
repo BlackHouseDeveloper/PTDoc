@@ -4,7 +4,7 @@
 
 <div class="ptdoc-nav-container">
     <div class="ptdoc-nav-brand">
-        <NavBarBrand />
+        <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
     </div>
     
     <div class="ptdoc-nav-scrollable">
@@ -57,31 +57,28 @@
                 </NavLink>
             </div>
 
-            <!-- Admin Section -->
-            <div class="ptdoc-nav-section">
-                <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
-                
-                <NavLink class="ptdoc-nav-item" href="export-center">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Export Center</span>
-                    </div>
-                </NavLink>
+            <!-- Admin Section: visible to ClinicalStaff for Export/Settings -->
+            <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
+                <Authorized Context="staffCtx">
+                    <div class="ptdoc-nav-section">
+                        <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
 
-                <NavLink class="ptdoc-nav-item" href="reports">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-reports.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Reports</span>
-                    </div>
-                </NavLink>
+                        <NavLink class="ptdoc-nav-item" href="export-center">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Export Center</span>
+                            </div>
+                        </NavLink>
 
-                <NavLink class="ptdoc-nav-item" href="settings">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Settings</span>
+                        <NavLink class="ptdoc-nav-item" href="settings">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Settings</span>
+                            </div>
+                        </NavLink>
                     </div>
-                </NavLink>
-            </div>
+                </Authorized>
+            </AuthorizeView>
         </nav>
     </div>
 
@@ -97,4 +94,9 @@
         </Authorized>
     </AuthorizeView>
 </div>
+
+@code {
+    [Parameter]
+    public EventCallback OnNotificationsClick { get; set; }
+}
 

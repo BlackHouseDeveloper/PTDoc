@@ -1,0 +1,28 @@
+@* PatientInfoTextArea — token-styled multiline textarea *@
+
+<textarea id="@Id"
+          class="pi-textarea @(HasError ? "pi-textarea--invalid" : "") @(IsDisabled ? "pi-textarea--disabled" : "")"
+          placeholder="@Placeholder"
+          disabled="@IsDisabled"
+          readonly="@IsReadOnly"
+          rows="@Rows"
+          aria-describedby="@(HasError ? Id + "-error" : null)"
+          aria-invalid="@(HasError ? "true" : null)"
+          @oninput="HandleInput">@Value</textarea>
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public int Rows { get; set; } = 4;
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool HasError { get; set; }
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

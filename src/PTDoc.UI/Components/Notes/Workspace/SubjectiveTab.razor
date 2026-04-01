@@ -1,0 +1,477 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="subjective-tab" data-testid="subjective-tab" role="tabpanel" aria-label="Subjective section">
+    <h2 class="subjective-tab__title">Subjective</h2>
+
+    <!-- Q1 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">1. What problem are you currently experiencing? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid">
+            @foreach (var item in _problems)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="problems"
+                           checked="@_vm.Problems.Contains(item)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.Problems, item, (bool)e.Value!)" />
+                    @item
+                </label>
+            }
+        </div>
+        <div class="subjective-tab__other-row">
+            <label class="subjective-tab__other-label" for="q1-other">Other:</label>
+            <input id="q1-other" type="text" class="subjective-tab__text-input"
+                   placeholder="Specify other problem"
+                   value="@_vm.OtherProblem"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherProblem = e.Value?.ToString())" />
+        </div>
+    </div>
+
+    <!-- Q2 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">2. Where is the issue located? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
+            @foreach (var item in _locations)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="locations"
+                           checked="@_vm.Locations.Contains(item)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.Locations, item, (bool)e.Value!)" />
+                    @item
+                </label>
+            }
+        </div>
+        <div class="subjective-tab__other-row">
+            <label class="subjective-tab__other-label" for="q2-other">Other:</label>
+            <input id="q2-other" type="text" class="subjective-tab__text-input"
+                   placeholder="Specify other location"
+                   value="@_vm.OtherLocation"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherLocation = e.Value?.ToString())" />
+        </div>
+    </div>
+
+    <!-- Q3 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">3. How would you rate your symptoms on a scale of 0–10?</p>
+        <div class="subjective-tab__pain-scale-row">
+            <div class="subjective-tab__pain-scale-field">
+                <label class="subjective-tab__field-label" for="q3-current">Current</label>
+                <input id="q3-current" type="number" min="0" max="10"
+                       class="subjective-tab__number-input"
+                       value="@_vm.CurrentPainScore"
+                       disabled="@IsReadOnly"
+                       @onchange="e => SetAndNotify(v => v.CurrentPainScore = ParseInt(e.Value))" />
+            </div>
+            <div class="subjective-tab__pain-scale-field">
+                <label class="subjective-tab__field-label" for="q3-best">Best</label>
+                <input id="q3-best" type="number" min="0" max="10"
+                       class="subjective-tab__number-input"
+                       value="@_vm.BestPainScore"
+                       disabled="@IsReadOnly"
+                       @onchange="e => SetAndNotify(v => v.BestPainScore = ParseInt(e.Value))" />
+            </div>
+            <div class="subjective-tab__pain-scale-field">
+                <label class="subjective-tab__field-label" for="q3-worst">Worst</label>
+                <input id="q3-worst" type="number" min="0" max="10"
+                       class="subjective-tab__number-input"
+                       value="@_vm.WorstPainScore"
+                       disabled="@IsReadOnly"
+                       @onchange="e => SetAndNotify(v => v.WorstPainScore = ParseInt(e.Value))" />
+            </div>
+        </div>
+    </div>
+
+    <!-- Q3a -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">3a. Frequency of pain:</p>
+        @foreach (var freq in _frequencies)
+        {
+            <label class="subjective-tab__radio-item">
+                <input type="radio"
+                       name="pain-frequency"
+                       value="@freq"
+                       checked="@(_vm.PainFrequency == freq)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.PainFrequency = freq)" />
+                @freq
+            </label>
+        }
+    </div>
+
+    <!-- Q4 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">4. When did the issue begin?</p>
+        <input type="date" id="onset-date" name="onset-date" class="subjective-tab__date-input"
+               value="@(_vm.OnsetDate?.ToString("yyyy-MM-dd") ?? string.Empty)"
+               disabled="@IsReadOnly"
+               @onchange="e => SetAndNotify(v => v.OnsetDate = ParseDate(e.Value?.ToString()))" />
+        <label class="subjective-tab__checkbox-item">
+            <input type="checkbox"
+                   name="onset-over-a-year"
+                   checked="@_vm.OnsetOverAYearAgo"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OnsetOverAYearAgo = (bool)e.Value!)" />
+            Over a year ago
+        </label>
+    </div>
+
+    <!-- Q5 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">5. What caused the issue?</p>
+        <label class="subjective-tab__checkbox-item">
+            <input type="checkbox"
+                   name="cause-unknown"
+                   checked="@_vm.CauseUnknown"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.CauseUnknown = (bool)e.Value!)" />
+            Unknown
+        </label>
+        <p class="subjective-tab__field-label">Known cause (please describe):</p>
+        <textarea id="known-cause"
+                  name="known-cause"
+                  class="subjective-tab__textarea"
+                  rows="2"
+                  placeholder="Describe the cause of injury or onset..."
+                  disabled="@(IsReadOnly || _vm.CauseUnknown)"
+                  value="@_vm.KnownCause"
+                  @onchange="e => SetAndNotify(v => v.KnownCause = e.Value?.ToString())"></textarea>
+    </div>
+
+    <!-- Prior functional level -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">What was your level of function prior to the onset of your current condition/injury? (Select all that apply)</p>
+        @foreach (var level in _functionalLevels)
+        {
+            <label class="subjective-tab__checkbox-item">
+                <input type="checkbox"
+                       name="prior-functional-level"
+                       checked="@_vm.PriorFunctionalLevel.Contains(level)"
+                       disabled="@IsReadOnly"
+                       @onchange="e => ToggleSet(_vm.PriorFunctionalLevel, level, (bool)e.Value!)" />
+                @level
+            </label>
+        }
+    </div>
+
+    <!-- Q6 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">6. What functional activities are limited due to the issue you are being seen for?</p>
+        @foreach (var category in _functionalLimitationCategories)
+        {
+            <details class="subjective-tab__accordion">
+                <summary class="subjective-tab__accordion-summary">@category</summary>
+                <div class="subjective-tab__accordion-content">
+                    @foreach (var item in GetFunctionalLimitationItems(category))
+                    {
+                        <label class="subjective-tab__checkbox-item">
+                            <input type="checkbox"
+                                   name="functional-limitations"
+                                   checked="@_vm.FunctionalLimitations.Contains(item)"
+                                   disabled="@IsReadOnly"
+                                   @onchange="e => ToggleSet(_vm.FunctionalLimitations, item, (bool)e.Value!)" />
+                            @item
+                        </label>
+                    }
+                </div>
+            </details>
+        }
+        <p class="subjective-tab__field-label">Additional functional limitations:</p>
+        <textarea id="additional-functional-limitations"
+                  name="additional-functional-limitations"
+                  class="subjective-tab__textarea"
+                  rows="2"
+                  placeholder="Describe any other limitations..."
+                  disabled="@IsReadOnly"
+                  value="@_vm.AdditionalFunctionalLimitations"
+                  @onchange="e => SetAndNotify(v => v.AdditionalFunctionalLimitations = e.Value?.ToString())"></textarea>
+    </div>
+
+    <!-- Q7 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">7. Have you had imaging for this concern?</p>
+        <div class="subjective-tab__yn-row">
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="imaging" value="true"
+                       checked="@(_vm.HasImaging == true)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.HasImaging = true)" /> Yes
+            </label>
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="imaging" value="false"
+                       checked="@(_vm.HasImaging == false)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.HasImaging = false)" /> No
+            </label>
+        </div>
+    </div>
+
+    <!-- Q8 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">8. Are you currently using an assistive device (AD)?</p>
+        <div class="subjective-tab__yn-row">
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="assistive-device" value="true"
+                       checked="@(_vm.UsesAssistiveDevice == true)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.UsesAssistiveDevice = true)" /> Yes
+            </label>
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="assistive-device" value="false"
+                       checked="@(_vm.UsesAssistiveDevice == false)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.UsesAssistiveDevice = false)" /> No
+            </label>
+        </div>
+    </div>
+
+    <!-- Q9 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">9. What is your employment status?</p>
+        <select id="employment-status" name="employment-status" class="subjective-tab__select"
+                value="@_vm.EmploymentStatus"
+                disabled="@IsReadOnly"
+                @onchange="e => SetAndNotify(v => v.EmploymentStatus = e.Value?.ToString() ?? string.Empty)">
+            <option value="">Select employment status ↓</option>
+            @foreach (var status in _employmentStatuses)
+            {
+                <option value="@status" selected="@(_vm.EmploymentStatus == status)">@status</option>
+            }
+        </select>
+    </div>
+
+    <!-- Q10 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">10. What is your living situation? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid">
+            @foreach (var item in _livingSituations)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="living-situation"
+                           checked="@_vm.LivingSituation.Contains(item)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.LivingSituation, item, (bool)e.Value!)" />
+                    @item
+                </label>
+            }
+        </div>
+        <div class="subjective-tab__other-row">
+            <label class="subjective-tab__other-label" for="q10-other">Other:</label>
+            <input id="q10-other" type="text" class="subjective-tab__text-input"
+                   placeholder="Specify other living situation"
+                   value="@_vm.OtherLivingSituation"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherLivingSituation = e.Value?.ToString())" />
+        </div>
+    </div>
+
+    <!-- Q11 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">11. Do you have a support system to help with daily needs?</p>
+        @foreach (var item in _supportOptions)
+        {
+            <label class="subjective-tab__checkbox-item">
+                <input type="checkbox"
+                       name="support-system"
+                       checked="@_vm.SupportSystem.Contains(item)"
+                       disabled="@IsReadOnly"
+                       @onchange="e => ToggleSet(_vm.SupportSystem, item, (bool)e.Value!)" />
+                @item
+            </label>
+        }
+        <div class="subjective-tab__other-row">
+            <label class="subjective-tab__other-label" for="q11-other">Other:</label>
+            <input id="q11-other" type="text" class="subjective-tab__text-input"
+                   placeholder="Specify other support"
+                   value="@_vm.OtherSupport"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherSupport = e.Value?.ToString())" />
+        </div>
+    </div>
+
+    <!-- Q12 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">12. Do you have any other health conditions (comorbidities)? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
+            @foreach (var item in _comorbidities)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="comorbidities"
+                           checked="@_vm.Comorbidities.Contains(item)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.Comorbidities, item, (bool)e.Value!)" />
+                    @item
+                </label>
+            }
+        </div>
+    </div>
+
+    <!-- Q13 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">13. Have you received other treatment for this issue?</p>
+        @foreach (var item in _priorTreatments)
+        {
+            <label class="subjective-tab__checkbox-item">
+                <input type="checkbox"
+                       name="prior-treatments"
+                       checked="@_vm.PriorTreatments.Contains(item)"
+                       disabled="@IsReadOnly"
+                       @onchange="e => ToggleSet(_vm.PriorTreatments, item, (bool)e.Value!)" />
+                @item
+            </label>
+        }
+        <div class="subjective-tab__other-row">
+            <label class="subjective-tab__other-label" for="q13-other">Other:</label>
+            <input id="q13-other" type="text" class="subjective-tab__text-input"
+                   placeholder="Specify other treatment"
+                   value="@_vm.OtherTreatment"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherTreatment = e.Value?.ToString())" />
+        </div>
+    </div>
+
+    <!-- Q14 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">14. Are you currently taking any medications?</p>
+        <div class="subjective-tab__yn-row">
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="medications" value="false"
+                       checked="@(_vm.TakingMedications == false)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.TakingMedications = false)" /> No
+            </label>
+            <label class="subjective-tab__radio-item">
+                <input type="radio" name="medications" value="true"
+                       checked="@(_vm.TakingMedications == true)"
+                       disabled="@IsReadOnly"
+                       @onchange="_ => SetAndNotify(v => v.TakingMedications = true)" /> Yes
+            </label>
+        </div>
+        @if (_vm.TakingMedications == true)
+        {
+            <textarea id="medication-details"
+                      name="medication-details"
+                      class="subjective-tab__textarea"
+                      rows="2"
+                      placeholder="List current medications..."
+                      disabled="@IsReadOnly"
+                      value="@_vm.MedicationDetails"
+                      @onchange="e => SetAndNotify(v => v.MedicationDetails = e.Value?.ToString())"></textarea>
+        }
+    </div>
+</section>
+
+@code {
+    private SubjectiveVm _vm = new();
+
+    [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Never mutate the parameter; work from an internal copy
+        _vm = Vm;
+    }
+
+    // ── Static option lists ──────────────────────────────────────────
+    private static readonly string[] _problems =
+    [
+        "Pain", "Numbness", "Tingling", "Loss of balance",
+        "Dizziness", "Weakness", "Stiffness"
+    ];
+
+    private static readonly string[] _locations =
+    [
+        "Neck", "Back", "Right shoulder", "Left shoulder",
+        "Right arm", "Left arm", "Right leg", "Left leg"
+    ];
+
+    private static readonly string[] _frequencies =
+    [
+        "Constant", "Intermittent", "Only with specific activities", "Resolved"
+    ];
+
+    private static readonly string[] _functionalLevels =
+    [
+        "Independent",
+        "Independent with assistive device (e.g., walker, cane, grab bars, bed rail)",
+        "Required assistance with transfers (e.g., sit-to-stand, sit-to-supine, supine-to-sit)",
+        "Required verbal cues or supervision",
+        "Dependent for mobility or self-care"
+    ];
+
+    private static readonly string[] _functionalLimitationCategories =
+    [
+        "Self Care", "Mobility", "Household Activities", "Community Activities", "Sleep"
+    ];
+
+    private static readonly Dictionary<string, string[]> _functionalLimitationItems = new()
+    {
+        ["Self Care"]             = ["Bathing", "Dressing", "Grooming", "Toileting"],
+        ["Mobility"]              = ["Walking", "Stairs", "Stand from chair", "Transfers"],
+        ["Household Activities"]  = ["Cooking", "Cleaning", "Laundry", "Yard work"],
+        ["Community Activities"]  = ["Driving", "Shopping", "Social activities", "Work/school tasks"],
+        ["Sleep"]                 = ["Unable to find comfortable position", "Woken by pain", "Difficulty falling asleep"]
+    };
+
+    private static readonly string[] _employmentStatuses =
+    [
+        "Employed full-time", "Employed part-time", "Self-employed",
+        "Unemployed – seeking work", "Unable to work due to disability",
+        "Retired", "Student", "Homemaker"
+    ];
+
+    private static readonly string[] _livingSituations =
+    [
+        "Lives alone", "Lives with family", "Lives with roommate/caregiver",
+        "Home has stairs", "Bedroom on second floor", "Bathroom on second floor"
+    ];
+
+    private static readonly string[] _supportOptions =
+    [
+        "Yes – Family", "Yes – Friends", "Yes – Paid caregiver", "No"
+    ];
+
+    private static readonly string[] _comorbidities =
+    [
+        "Diabetes", "Hypertension", "Heart Disease", "COPD/Asthma",
+        "Osteoporosis", "Arthritis", "Cancer History", "Depression/Anxiety",
+        "Obesity", "Chronic Pain", "Neurological Disorder", "None"
+    ];
+
+    private static readonly string[] _priorTreatments =
+    [
+        "No", "Yes – Chiropractor", "Yes – Massage therapy",
+        "Yes – Acupuncture", "Yes – Injection", "Yes – Surgery"
+    ];
+
+    // ── Helpers ──────────────────────────────────────────────────────
+    private IEnumerable<string> GetFunctionalLimitationItems(string category) =>
+        _functionalLimitationItems.TryGetValue(category, out var items) ? items : Array.Empty<string>();
+
+    private Task ToggleSet(HashSet<string> set, string item, bool add)
+    {
+        if (add) set.Add(item); else set.Remove(item);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task SetAndNotify(Action<SubjectiveVm> update)
+    {
+        update(_vm);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private static int ParseInt(object? value) =>
+        int.TryParse(value?.ToString(), out var i) ? Math.Clamp(i, 0, 10) : 0;
+
+    private static DateTime? ParseDate(string? value) =>
+        DateTime.TryParse(value, out var d) ? d : null;
+}

@@ -1,0 +1,24 @@
+@* PatientInfoSectionPanel — reusable card wrapper for each section *@
+
+<div class="pi-section-panel" data-testid="patient-info-section-panel">
+    <div class="pi-section-panel-header">
+        <h2 class="pi-section-panel-title">@Title</h2>
+        @if (HeaderActions != null)
+        {
+            <div class="pi-section-panel-header-actions">
+                @HeaderActions
+            </div>
+        }
+    </div>
+    <div class="pi-section-panel-body">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+
+    /// <summary>Optional slot for header-level actions (e.g., an edit or info button).</summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+}

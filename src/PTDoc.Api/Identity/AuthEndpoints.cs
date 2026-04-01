@@ -48,18 +48,50 @@ public static class PinAuthEndpoints
             ipAddress,
             userAgent);
 
-        if (result == null)
+        if (result == null || result.Status == AuthStatus.InvalidCredentials)
         {
             return Results.Unauthorized();
         }
 
+        if (result.Status == AuthStatus.AccountLocked)
+        {
+            var problemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Account is locked."
+            };
+            problemDetails.Extensions["status"] = AuthStatus.AccountLocked.ToString();
+            return Results.Json(problemDetails, statusCode: problemDetails.Status);
+        }
+
+        if (result.Status == AuthStatus.PendingApproval)
+        {
+            var problemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Account pending admin approval."
+            };
+            problemDetails.Extensions["status"] = AuthStatus.PendingApproval.ToString();
+            return Results.Json(problemDetails, statusCode: problemDetails.Status);
+        }
+
+        // Status == Success: all identity fields are guaranteed non-null on the success path.
+        // Guard defensively so a contract violation in the AuthService implementation fails fast.
+        if (result.UserId is null || result.Username is null || result.Token is null ||
+            result.ExpiresAt is null || result.Role is null)
+        {
+            return Results.Problem("Authentication service returned an incomplete success result.", statusCode: StatusCodes.Status500InternalServerError);
+        }
+
         return Results.Ok(new PinLoginResponse
         {
-            UserId = result.UserId,
+            Status = result.Status.ToString(),
+            UserId = result.UserId.Value,
             Username = result.Username,
             Token = result.Token,
-            ExpiresAt = result.ExpiresAt,
-            Role = result.Role
+            ExpiresAt = result.ExpiresAt.Value,
+            Role = result.Role,
+            ClinicId = result.ClinicId
         });
     }
 
@@ -100,7 +132,8 @@ public static class PinAuthEndpoints
             FirstName = user.FirstName,
             LastName = user.LastName,
             Role = user.Role,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            ClinicId = user.ClinicId
         });
     }
 

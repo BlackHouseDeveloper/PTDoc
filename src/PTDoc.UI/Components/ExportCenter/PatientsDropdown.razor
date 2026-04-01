@@ -1,0 +1,137 @@
+@* Patients Dropdown (Multi-select)
+    Label "Patients"
+    Multi-select dropdown
+    Default display: "All patients" when none selected
+    When multiple: display "N selected"
+    Searchable dropdown recommended (UI stub only)
+    Current version uses a local sample list to support UX development.
+*@
+
+<div class="patients-dropdown">
+    <label for="@DropdownId" class="patients-dropdown__label">Patients</label>
+    
+    <button
+        id="@DropdownId"
+        class="patients-dropdown__trigger"
+        @onclick="ToggleOpen"
+        type="button"
+        aria-expanded="@IsOpen"
+        aria-haspopup="listbox">
+        
+        <span class="patients-dropdown__display">
+            @if (SelectedPatientIds.Count == 0)
+            {
+                <span>All patients</span>
+            }
+            else if (SelectedPatientIds.Count == 1)
+            {
+                <span>@GetPatientLabel(SelectedPatientIds[0])</span>
+            }
+            else
+            {
+                <span>@SelectedPatientIds.Count selected</span>
+            }
+        </span>
+        
+        <span class="patients-dropdown__icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3.5 5.5L7 9L10.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </span>
+    </button>
+    
+    @if (IsOpen)
+    {
+        <div class="patients-dropdown__menu" role="listbox">
+            <div class="patients-dropdown__search">
+                <input
+                    type="text"
+                    class="patients-dropdown__search-input"
+                    placeholder="Search patients..."
+                    @bind="SearchQuery"
+                    @bind:event="oninput"
+                    aria-label="Search patients" />
+            </div>
+            
+            <div class="patients-dropdown__list">
+                @foreach (var (id, name) in GetFilteredPatients())
+                {
+                    var isSelected = SelectedPatientIds.Contains(id);
+                    <label class="patients-dropdown__option">
+                        <input
+                            type="checkbox"
+                            class="patients-dropdown__checkbox"
+                            checked="@isSelected"
+                            @onchange="@((ChangeEventArgs e) => TogglePatient(id, (bool)e!.Value!))"
+                            aria-label="@name" />
+                        <span class="patients-dropdown__option-label">@name</span>
+                    </label>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<int> SelectedPatientIds { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<List<int>> SelectedPatientIdsChanged { get; set; }
+
+    private string DropdownId { get; } = $"patients-dropdown-{Guid.NewGuid()}";
+    private bool IsOpen { get; set; } = false;
+    private string SearchQuery { get; set; } = string.Empty;
+
+    private void ToggleOpen()
+    {
+        IsOpen = !IsOpen;
+    }
+
+    private void TogglePatient(int patientId, bool isSelected)
+    {
+        if (isSelected && !SelectedPatientIds.Contains(patientId))
+        {
+            SelectedPatientIds.Add(patientId);
+        }
+        else if (!isSelected && SelectedPatientIds.Contains(patientId))
+        {
+            SelectedPatientIds.Remove(patientId);
+        }
+
+        SelectedPatientIdsChanged.InvokeAsync(SelectedPatientIds);
+    }
+
+    private IEnumerable<(int, string)> GetFilteredPatients()
+    {
+        // Local sample list for UI behavior until export filters are connected to services.
+        var allPatients = new List<(int, string)>
+        {
+            (1, "John Smith"),
+            (2, "Jane Doe"),
+            (3, "Michael Johnson"),
+            (4, "Sarah Williams"),
+            (5, "David Brown"),
+        };
+
+        if (string.IsNullOrWhiteSpace(SearchQuery))
+            return allPatients;
+
+        var query = SearchQuery.ToLower();
+        return allPatients.Where(p => p.Item2.ToLower().Contains(query));
+    }
+
+    private string GetPatientLabel(int patientId)
+    {
+        // Mirrors the local sample list above.
+        return patientId switch
+        {
+            1 => "John Smith",
+            2 => "Jane Doe",
+            3 => "Michael Johnson",
+            4 => "Sarah Williams",
+            5 => "David Brown",
+            _ => "Unknown Patient"
+        };
+    }
+}

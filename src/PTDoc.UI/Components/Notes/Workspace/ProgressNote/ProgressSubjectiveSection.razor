@@ -1,0 +1,250 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.ProgressNote
+@using PTDoc.UI.Components.Notes.Models
+@using Microsoft.AspNetCore.Components.Forms
+
+<section class="progress-subjective" data-testid="progress-subjective-section" role="tabpanel" aria-label="Progress Note Subjective section">
+    <div class="progress-subjective__stack">
+        <article class="progress-subjective__card progress-subjective__card--overall" aria-labelledby="progress-overall-title">
+            <h3 id="progress-overall-title" class="progress-subjective__card-title">Overall Progress</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">1. Since the initial evaluation how would you describe your overall condition?</label>
+                <InputRadioGroup @bind-Value="_overallCondition" @bind-Value:after="NotifyChanged" Name="overall-condition" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Improved significantly")" disabled="@IsReadOnly" />Improved significantly</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Improved slightly")" disabled="@IsReadOnly" />Improved slightly</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("No change")" disabled="@IsReadOnly" />No change</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Worse slightly")" disabled="@IsReadOnly" />Worse slightly</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Worse significantly")" disabled="@IsReadOnly" />Worse significantly</label>
+                </InputRadioGroup>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">2. Are you making progress toward your therapy goals?</label>
+                <InputRadioGroup @bind-Value="_goalProgress" @bind-Value:after="NotifyChanged" Name="goal-progress" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Yes")" disabled="@IsReadOnly" />Yes</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Somewhat")" disabled="@IsReadOnly" />Somewhat</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("No")" disabled="@IsReadOnly" />No</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Unsure")" disabled="@IsReadOnly" />Unsure</label>
+                </InputRadioGroup>
+            </div>
+        </article>
+
+        <article class="progress-subjective__card progress-subjective__card--pain" aria-labelledby="progress-pain-title">
+            <h3 id="progress-pain-title" class="progress-subjective__card-title">Pain/Symptom Changes</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">3. How would you rate your current pain level (0-10)?</label>
+                <InputRadioGroup TValue="int" @bind-Value="_vm.CurrentPainScore" @bind-Value:after="NotifyChanged" Name="current-pain" class="progress-subjective__scale-grid">
+                    @for (var i = 0; i <= 10; i++)
+                    {
+                        <label class="progress-subjective__scale-cell">
+                            <InputRadio TValue="int" Value="@i" disabled="@IsReadOnly" />
+                            <span>@i</span>
+                        </label>
+                    }
+                </InputRadioGroup>
+
+                <div class="progress-subjective__two-col">
+                    <label class="progress-subjective__field">
+                        <span>Best</span>
+                        <input type="number" min="0" max="10" @bind="_vm.BestPainScore" @bind:after="NotifyChanged" disabled="@IsReadOnly" />
+                    </label>
+                    <label class="progress-subjective__field">
+                        <span>Worst</span>
+                        <input type="number" min="0" max="10" @bind="_vm.WorstPainScore" @bind:after="NotifyChanged" disabled="@IsReadOnly" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">4. Since your last visit, has your pain:</label>
+                <InputRadioGroup @bind-Value="_painChange" @bind-Value:after="NotifyChanged" Name="pain-change" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Decreased")" disabled="@IsReadOnly" />Decreased</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Stayed the same")" disabled="@IsReadOnly" />Stayed the same</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Increased")" disabled="@IsReadOnly" />Increased</label>
+                </InputRadioGroup>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">5. Frequency of pain:</label>
+                <InputRadioGroup @bind-Value="_vm.PainFrequency" @bind-Value:after="NotifyChanged" Name="pain-frequency" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Constant")" disabled="@IsReadOnly" />Constant</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Intermittent")" disabled="@IsReadOnly" />Intermittent</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Only with specific activities")" disabled="@IsReadOnly" />Only with specific activities</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Resolved")" disabled="@IsReadOnly" />Resolved</label>
+                </InputRadioGroup>
+            </div>
+        </article>
+
+        <article class="progress-subjective__card progress-subjective__card--function" aria-labelledby="progress-function-title">
+            <h3 id="progress-function-title" class="progress-subjective__card-title">Functional Tolerance</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">6. Are you able to perform daily activities with:</label>
+                <InputRadioGroup @bind-Value="_dailyActivityEase" @bind-Value:after="NotifyChanged" Name="daily-activities" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("More ease")" disabled="@IsReadOnly" />More ease</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("The same level of difficulty")" disabled="@IsReadOnly" />The same level of difficulty</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("More difficulty")" disabled="@IsReadOnly" />More difficulty</label>
+                </InputRadioGroup>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">7. Which of these have improved since your last visit? (Check all that apply)</label>
+                <div class="progress-subjective__check-grid">
+                    @foreach (var option in _improvedOptions)
+                    {
+                        <label class="progress-subjective__check-item">
+                            <input type="checkbox" checked="@_improvedAreas.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_improvedAreas, option, e)" />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </div>
+        </article>
+
+        <article class="progress-subjective__card progress-subjective__card--impact" aria-labelledby="progress-impact-title">
+            <h3 id="progress-impact-title" class="progress-subjective__card-title">Impact on Daily Life</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">8. Does your condition continue to affect your ability to: (Check all that apply)</label>
+                <div class="progress-subjective__check-grid">
+                    @foreach (var option in _impactOptions)
+                    {
+                        <label class="progress-subjective__check-item">
+                            <input type="checkbox" checked="@_impactAreas.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_impactAreas, option, e)" />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">9. Have you returned to any activities you were avoiding?</label>
+                <InputRadioGroup @bind-Value="_returnedActivities" @bind-Value:after="NotifyChanged" Name="returned-activities" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Yes - Fully")" disabled="@IsReadOnly" />Yes - Fully</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Yes - Partially")" disabled="@IsReadOnly" />Yes - Partially</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Not yet")" disabled="@IsReadOnly" />Not yet</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Not applicable")" disabled="@IsReadOnly" />Not applicable</label>
+                </InputRadioGroup>
+            </div>
+        </article>
+
+        <article class="progress-subjective__card progress-subjective__card--hep" aria-labelledby="progress-hep-title">
+            <h3 id="progress-hep-title" class="progress-subjective__card-title">Home Exercise Program (HEP)</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">10. Are you performing your home exercise program as prescribed?</label>
+                <InputRadioGroup @bind-Value="_hepAdherence" @bind-Value:after="NotifyChanged" Name="hep-adherence" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Daily")" disabled="@IsReadOnly" />Daily</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("A few times per week")" disabled="@IsReadOnly" />A few times per week</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Rarely")" disabled="@IsReadOnly" />Rarely</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Not at all")" disabled="@IsReadOnly" />Not at all</label>
+                </InputRadioGroup>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">11. Has the home program been:</label>
+                <InputRadioGroup @bind-Value="_hepResponse" @bind-Value:after="NotifyChanged" Name="hep-response" class="progress-subjective__radio-list">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Helpful")" disabled="@IsReadOnly" />Helpful</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Too easy")" disabled="@IsReadOnly" />Too easy</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Too difficult")" disabled="@IsReadOnly" />Too difficult</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Causing discomfort")" disabled="@IsReadOnly" />Causing discomfort</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Not applicable")" disabled="@IsReadOnly" />Not applicable</label>
+                </InputRadioGroup>
+            </div>
+        </article>
+
+        <article class="progress-subjective__card progress-subjective__card--setbacks" aria-labelledby="progress-setbacks-title">
+            <h3 id="progress-setbacks-title" class="progress-subjective__card-title">Setbacks or Red Flags</h3>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">12. Have you experienced any setbacks or new symptoms?</label>
+                <InputRadioGroup @bind-Value="_hasSetbacks" @bind-Value:after="NotifyChanged" Name="setbacks" class="progress-subjective__radio-row">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Yes")" disabled="@IsReadOnly" />Yes</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("No")" disabled="@IsReadOnly" />No</label>
+                </InputRadioGroup>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">13. Have you had any falls, ER visits, or other medical changes?</label>
+                <InputRadioGroup @bind-Value="_hasMedicalChanges" @bind-Value:after="NotifyChanged" Name="medical-changes" class="progress-subjective__radio-row">
+                    <label class="progress-subjective__choice"><InputRadio Value="@("Yes")" disabled="@IsReadOnly" />Yes</label>
+                    <label class="progress-subjective__choice"><InputRadio Value="@("No")" disabled="@IsReadOnly" />No</label>
+                </InputRadioGroup>
+            </div>
+        </article>
+    </div>
+</section>
+
+@code {
+    private SubjectiveVm _vm = new();
+
+    [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+
+    private string _overallCondition = string.Empty;
+    private string _goalProgress = string.Empty;
+    private string _painChange = string.Empty;
+    private string _dailyActivityEase = string.Empty;
+    private string _returnedActivities = string.Empty;
+    private string _hepAdherence = string.Empty;
+    private string _hepResponse = string.Empty;
+    private string _hasSetbacks = string.Empty;
+    private string _hasMedicalChanges = string.Empty;
+
+    private readonly HashSet<string> _improvedAreas = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _impactAreas = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] _improvedOptions =
+    [
+        "Walking",
+        "Stairs",
+        "Transfers (e.g., sit-to-stand)",
+        "Reaching",
+        "Lifting",
+        "Balance",
+        "Endurance",
+        "None"
+    ];
+
+    private static readonly string[] _impactOptions =
+    [
+        "Work",
+        "Household chores",
+        "Sleep",
+        "Exercise",
+        "Social activities",
+        "Driving",
+        "Not applicable"
+    ];
+
+    protected override void OnParametersSet()
+    {
+        // Parent supplies the latest persisted VM snapshot for this section.
+        _vm = Vm;
+    }
+
+    private void ToggleSetItem(HashSet<string> set, string value, ChangeEventArgs args)
+    {
+        if (args.Value is bool isChecked)
+        {
+            if (isChecked)
+            {
+                set.Add(value);
+            }
+            else
+            {
+                set.Remove(value);
+            }
+        }
+
+        _ = NotifyChanged();
+    }
+
+    private async Task NotifyChanged()
+    {
+        // Persist is handled by the parent note workspace save flow.
+        await VmChanged.InvokeAsync(_vm);
+    }
+}

@@ -429,7 +429,7 @@
 
 .poc-item {
     padding: var(--spacing-4);
-    background: var(--secondary);
+    background: var(--muted);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     transition: all var(--transition-fast);

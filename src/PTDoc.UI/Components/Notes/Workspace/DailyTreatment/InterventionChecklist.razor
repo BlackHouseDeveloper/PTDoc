@@ -1,0 +1,75 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+<section class="intervention-checklist" data-testid="@TestId">
+    <header class="intervention-checklist__header">
+        <div>
+            <h4>@Title</h4>
+            <p>@Items.Count @CountLabel</p>
+        </div>
+
+        @if (!IsReadOnly)
+        {
+            <button type="button" class="intervention-checklist__add" @onclick="AddItem">@AddButtonText</button>
+        }
+    </header>
+
+    @if (Items.Count == 0)
+    {
+        <div class="intervention-checklist__empty">@EmptyMessage</div>
+    }
+    else
+    {
+        <ul class="intervention-checklist__list">
+            @for (var i = 0; i < Items.Count; i++)
+            {
+                var index = i;
+                <li>
+                    <input type="text"
+                           value="@Items[index]"
+                           disabled="@IsReadOnly"
+                           @oninput="e => UpdateItem(index, e.Value?.ToString())" />
+
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" class="intervention-checklist__remove" @onclick="() => RemoveItem(index)">✕</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Interventions";
+    [Parameter] public string CountLabel { get; set; } = "items";
+    [Parameter] public string EmptyMessage { get; set; } = "No interventions added yet.";
+    [Parameter] public string AddButtonText { get; set; } = "+ Add";
+    [Parameter] public string? TestId { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+
+    [Parameter] public List<string> Items { get; set; } = new();
+    [Parameter] public EventCallback<List<string>> ItemsChanged { get; set; }
+
+    private async Task AddItem()
+    {
+        Items.Add("New intervention");
+        await ItemsChanged.InvokeAsync(Items);
+    }
+
+    private async Task UpdateItem(int index, string? value)
+    {
+        Items[index] = value ?? string.Empty;
+        await ItemsChanged.InvokeAsync(Items);
+    }
+
+    private async Task RemoveItem(int index)
+    {
+        if (index < 0 || index >= Items.Count)
+        {
+            return;
+        }
+
+        Items.RemoveAt(index);
+        await ItemsChanged.InvokeAsync(Items);
+    }
+}

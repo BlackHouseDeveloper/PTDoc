@@ -1,0 +1,55 @@
+::deep .note-workspace {
+    --soap-footer-height: calc(var(--touch-target-desktop) * 2 + var(--spacing-1));
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    max-width: calc(var(--breakpoint-desktop) + var(--spacing-16) + var(--spacing-4));
+    margin: 0 auto;
+}
+
+::deep .note-workspace__panel {
+    min-height: calc(var(--touch-target-desktop) * 10);
+}
+
+::deep .note-workspace__alert {
+    border-radius: var(--radius);
+    padding: var(--spacing-3) var(--spacing-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+::deep .note-workspace__alert--error {
+    background: rgba(var(--destructive-rgb), 0.1);
+    border: calc(var(--spacing-1) / 4) solid rgba(var(--destructive-rgb), 0.35);
+    color: var(--destructive);
+}
+
+::deep .note-workspace__alert--info {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border: calc(var(--spacing-1) / 4) solid color-mix(in srgb, var(--info) 28%, var(--border));
+    color: var(--foreground);
+}
+
+::deep .note-workspace__alert--success {
+    background: color-mix(in srgb, var(--success) 10%, var(--card));
+    border: calc(var(--spacing-1) / 4) solid color-mix(in srgb, var(--success) 28%, var(--border));
+    color: var(--foreground);
+}
+
+@media (max-width: 1024px) {
+    ::deep .note-workspace {
+        padding: var(--spacing-3);
+    }
+}
+
+@media (max-width: 768px) {
+    ::deep .note-workspace {
+        gap: var(--spacing-3);
+    }
+
+    ::deep .note-workspace__panel {
+        min-height: calc(var(--touch-target-desktop) * 8);
+    }
+}

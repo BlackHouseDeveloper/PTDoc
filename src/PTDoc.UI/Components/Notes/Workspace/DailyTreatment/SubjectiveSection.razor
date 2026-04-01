@@ -1,0 +1,242 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="daily-subjective @(IsDarkMode ? "daily-subjective--dark" : string.Empty)" data-testid="daily-subjective-section">
+    <div class="daily-grid">
+        <div class="daily-col-12">
+            <FormSection Title="Chief Complaint &amp; Pain Location" Subtitle="Select body part(s) with pain">
+                <CheckboxGrid Options="_bodyParts"
+                              Selected="_vm.Locations"
+                              SelectedChanged="UpdateLocations"
+                              IsReadOnly="IsReadOnly"
+                              Columns="2" />
+
+                <EditableTextArea Label="Additional Details / Elaboration"
+                                  Value="@(_vm.OtherProblem ?? string.Empty)"
+                                  ValueChanged="UpdateOtherProblem"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Add specific details about onset, mechanism of injury, symptoms not captured above..."
+                                  Rows="3" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <div class="daily-subjective__progress-note">
+                <strong>Progress Note</strong>
+                <p>Document changes since last visit and compare to baseline.</p>
+            </div>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Pain Level Comparison">
+                <div class="daily-subjective__comparison">
+                    <div class="daily-subjective__comparison-card">
+                        <span>Baseline (Initial Eval)</span>
+                        <strong>@(_baselinePainLevel == 0 ? "--/10" : $"{_baselinePainLevel}/10")</strong>
+                    </div>
+                    <div class="daily-subjective__comparison-card daily-subjective__comparison-card--current">
+                        <span>Current (Today)</span>
+                        <strong>@_vm.CurrentPainScore/10</strong>
+                    </div>
+                </div>
+
+                <label class="daily-subjective__label" for="current-pain">Current Pain Level (0-10)</label>
+                <input id="current-pain"
+                       class="daily-subjective__range"
+                       type="range"
+                       min="0"
+                       max="10"
+                       disabled="@IsReadOnly"
+                       @bind="_vm.CurrentPainScore"
+                       @bind:event="oninput" />
+
+                <div class="daily-subjective__range-legend">
+                    <span>No Pain (0)</span>
+                    <span>@_vm.CurrentPainScore</span>
+                    <span>Severe (10)</span>
+                </div>
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Pain Details">
+                <div class="daily-subjective__field">
+                    <label for="pain-location">Pain Location *</label>
+                    <input id="pain-location"
+                           type="text"
+                           placeholder="e.g., Lower back, Right shoulder..."
+                           disabled="@IsReadOnly"
+                           @bind="_painLocation"
+                           @bind:event="oninput" />
+                    @if (string.IsNullOrWhiteSpace(_painLocation))
+                    {
+                        <p class="daily-subjective__validation">Pain location is required.</p>
+                    }
+                </div>
+
+                <EditableTextArea Label="Pain Description"
+                                  Value="@(_vm.KnownCause ?? string.Empty)"
+                                  ValueChanged="UpdateKnownCause"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Describe the quality, onset, duration, aggravating/relieving factors..."
+                                  Rows="3" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Associated Symptoms">
+                <CheckboxGrid Options="_associatedSymptomOptions"
+                              Selected="_associatedSymptoms"
+                              SelectedChanged="UpdateAssociatedSymptoms"
+                              IsReadOnly="IsReadOnly"
+                              Columns="2" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Functional Limitations">
+                <EditableTextArea Value="@(_vm.AdditionalFunctionalLimitations ?? string.Empty)"
+                                  ValueChanged="UpdateAdditionalFunctionalLimitations"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Activities patient is unable to perform or finds difficult..."
+                                  Rows="3" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Previous Treatment">
+                <EditableTextArea Value="@_previousTreatment"
+                                  ValueChanged="v => _previousTreatment = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Prior therapy, medications, surgeries, etc..."
+                                  Rows="3" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Progress Since Last Visit">
+                <EditableTextArea Label="Changes Since Last Visit *"
+                                  Value="@_changesSinceLastVisit"
+                                  ValueChanged="v => _changesSinceLastVisit = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="What has changed? Better, worse, or same?"
+                                  Rows="3"
+                                  IsRequired="true"
+                                  ShowValidation="@string.IsNullOrWhiteSpace(_changesSinceLastVisit)" />
+
+                <EditableTextArea Label="Pain Level Changes"
+                                  Value="@_painLevelChanges"
+                                  ValueChanged="v => _painLevelChanges = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Compare current pain to baseline and previous visit."
+                                  Rows="3" />
+
+                <div class="daily-subjective__field">
+                    <label for="hep-adherence">Home Exercise Program Adherence *</label>
+                    <select id="hep-adherence" disabled="@IsReadOnly" @bind="_homeExerciseAdherence">
+                        <option value="">Select adherence level</option>
+                        <option>Excellent (&gt;90%)</option>
+                        <option>Good (70-90%)</option>
+                        <option>Fair (50-69%)</option>
+                        <option>Poor (&lt;50%)</option>
+                    </select>
+                    @if (string.IsNullOrWhiteSpace(_homeExerciseAdherence))
+                    {
+                        <p class="daily-subjective__validation">Adherence level is required.</p>
+                    }
+                </div>
+
+                <EditableTextArea Label="Functional Improvements"
+                                  Value="@_functionalImprovements"
+                                  ValueChanged="v => _functionalImprovements = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="What activities can patient now do that they couldn't before?"
+                                  Rows="3" />
+
+                <EditableTextArea Label="New or Changed Symptoms"
+                                  Value="@_newSymptoms"
+                                  ValueChanged="v => _newSymptoms = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Any new pain areas, increased/decreased symptoms..."
+                                  Rows="3" />
+
+                <EditableTextArea Label="Barriers to Progress"
+                                  Value="@_barriersToProgress"
+                                  ValueChanged="v => _barriersToProgress = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Work schedule conflicts, equipment access, pain flare-ups..."
+                                  Rows="3" />
+            </FormSection>
+        </div>
+    </div>
+</section>
+
+@code {
+    private SubjectiveVm _vm = new();
+    private int _baselinePainLevel = 0;
+    private string _painLocation = string.Empty;
+    private string _previousTreatment = string.Empty;
+    private string _changesSinceLastVisit = string.Empty;
+    private string _painLevelChanges = string.Empty;
+    private string _homeExerciseAdherence = string.Empty;
+    private string _functionalImprovements = string.Empty;
+    private string _newSymptoms = string.Empty;
+    private string _barriersToProgress = string.Empty;
+    private HashSet<string> _associatedSymptoms = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] _bodyParts =
+    [
+        "Shoulder Pain", "Elbow Pain", "Wrist/Hand Pain", "Neck Pain",
+        "Back Pain", "Hip Pain", "Knee Pain", "Ankle/Foot Pain"
+    ];
+
+    private static readonly string[] _associatedSymptomOptions =
+    [
+        "Sharp Pain", "Dull Ache", "Stiffness", "Weakness", "Numbness", "Tingling", "Swelling", "Instability"
+    ];
+
+    [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _vm = Vm;
+        if (_vm.BestPainScore > 0)
+        {
+            _baselinePainLevel = _vm.BestPainScore;
+        }
+    }
+
+    private Task UpdateLocations(HashSet<string> value)
+    {
+        _vm.Locations = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateAssociatedSymptoms(HashSet<string> value)
+    {
+        _associatedSymptoms = value;
+        // Stored locally until SubjectiveVm adds a dedicated associated-symptoms field.
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateOtherProblem(string value)
+    {
+        _vm.OtherProblem = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateKnownCause(string value)
+    {
+        _vm.KnownCause = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateAdditionalFunctionalLimitations(string value)
+    {
+        _vm.AdditionalFunctionalLimitations = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+}

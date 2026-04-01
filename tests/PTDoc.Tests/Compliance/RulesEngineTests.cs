@@ -7,6 +7,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Compliance;
 
+[Xunit.Trait("Category", "Compliance")]
 public class RulesEngineTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
@@ -60,7 +61,7 @@ public class RulesEngineTests : IDisposable
         await _context.SaveChangesAsync();
 
         // Act
-        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
 
         // Assert
         Assert.False(result.IsValid);

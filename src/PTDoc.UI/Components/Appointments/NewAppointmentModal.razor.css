@@ -162,6 +162,19 @@
     min-height: 80px;
 }
 
+.submit-feedback {
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.submit-feedback--error {
+    background: color-mix(in srgb, var(--destructive) 12%, var(--background));
+    color: var(--destructive);
+    border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border));
+}
+
 /* Modal Footer (Buttons Container) */
 .modal-footer {
     display: flex;
@@ -229,6 +242,14 @@
 .btn-primary:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+}
+
+.btn-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none;
+    box-shadow: none;
+    filter: none;
 }
 
 .btn-icon {

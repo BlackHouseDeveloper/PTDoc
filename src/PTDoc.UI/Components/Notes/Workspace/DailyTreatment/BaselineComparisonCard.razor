@@ -1,0 +1,98 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+
+@{
+    var improvedCount = Rows.Count(r => r.Trend == ComparisonTrend.Improvement);
+    var summaryMessage = improvedCount == Rows.Count && Rows.Count > 0
+        ? $"Patient has shown significant improvement since initial evaluation with {improvedCount} out of {Rows.Count} key measures improving. Progress is consistent with established treatment goals."
+        : $"{improvedCount} out of {Rows.Count} key measures have improved since initial evaluation.";
+}
+
+<div class="bvc-card @(IsDarkMode ? "bvc-card--dark" : string.Empty)" data-testid="baseline-comparison-card">
+    <div class="bvc-card__header">
+        <div class="bvc-card__title-block">
+            <div class="bvc-card__title">
+                <svg class="bvc-card__title-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M3 14L7.5 9L10.5 12L14 7L17 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Baseline vs. Current Comparison</span>
+            </div>
+            <p class="bvc-card__subtitle">Key objective measures from initial evaluation to today</p>
+        </div>
+        @if (Rows.Count > 0)
+        {
+            <span class="bvc-card__badge">@improvedCount/@Rows.Count Improved</span>
+        }
+    </div>
+
+    <div class="bvc-card__content">
+        <table class="bvc-table" aria-label="Baseline versus current objective comparison">
+            <thead>
+                <tr>
+                    <th class="bvc-table__col--measure">Measurement</th>
+                    <th class="bvc-table__col--value">Initial Eval</th>
+                    <th class="bvc-table__col--value">Today</th>
+                    <th class="bvc-table__col--change">Change</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Rows)
+                {
+                    <tr>
+                        <td class="bvc-table__measure">@row.Measure</td>
+                        <td class="bvc-table__initial">@row.Initial</td>
+                        <td class="bvc-table__today">@row.Today</td>
+                        <td class="bvc-table__change bvc-table__change--@row.Trend.ToString().ToLowerInvariant()">
+                            <span class="bvc-table__change-arrow" aria-hidden="true">@GetArrow(row.Trend)</span>
+                            <span>@row.Change</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (Rows.Count > 0)
+        {
+            <div class="bvc-card__summary @(improvedCount == Rows.Count ? "bvc-card__summary--all" : string.Empty)" role="status" aria-live="polite">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M2 10L5.5 6.5L7.5 8.5L10 5L14 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div>
+                    <strong>Patient has shown @(improvedCount == Rows.Count ? "significant" : "notable") improvement</strong><br />
+                    <span>@summaryMessage</span>
+                </div>
+            </div>
+        }
+
+        <div class="bvc-card__legend" aria-label="Chart legend">
+            <span class="bvc-card__legend-item bvc-card__legend-item--improvement">↑ Improvement</span>
+            <span class="bvc-card__legend-item bvc-card__legend-item--regression">↓ Regression</span>
+            <span class="bvc-card__legend-item bvc-card__legend-item--nochange">— No Change</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    public enum ComparisonTrend { Improvement, Regression, NoChange }
+
+    public record ComparisonRow(string Measure, string Initial, string Today, string Change, ComparisonTrend Trend);
+
+    [Parameter] public IReadOnlyList<ComparisonRow> Rows { get; set; } = DefaultRows;
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    private static string GetArrow(ComparisonTrend trend) => trend switch
+    {
+        ComparisonTrend.Improvement => "↑",
+        ComparisonTrend.Regression  => "↓",
+        _                           => "—"
+    };
+
+    // Placeholder data matching Figma spec; replaced when real data is injected.
+    public static readonly IReadOnlyList<ComparisonRow> DefaultRows =
+    [
+        new("Knee Flexion ROM",            "100°",  "120°",  "+20°",      ComparisonTrend.Improvement),
+        new("Quadriceps Strength (MMT)",   "4/5",   "5/5",   "+1 grade",  ComparisonTrend.Improvement),
+        new("Oswestry Disability Index",   "40%",   "20%",   "-20%",      ComparisonTrend.Improvement),
+        new("Pain Level (at rest)",        "7/10",  "5/10",  "-2/10",     ComparisonTrend.Improvement),
+        new("Gait Distance (without pain)","100 ft","500 ft","+400 ft",   ComparisonTrend.Improvement),
+    ];
+}

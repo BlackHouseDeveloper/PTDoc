@@ -1,0 +1,9 @@
+@* PatientInfoFormGrid — two-column responsive form grid wrapper *@
+
+<div class="pi-form-grid">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+}

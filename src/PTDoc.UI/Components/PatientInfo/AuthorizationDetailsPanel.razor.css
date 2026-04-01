@@ -1,0 +1,8 @@
+/* AuthorizationDetailsPanel — date range error message */
+
+.pi-auth-date-range-error {
+    margin: var(--spacing-4) var(--spacing-6) 0 var(--spacing-6);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    color: var(--destructive);
+}

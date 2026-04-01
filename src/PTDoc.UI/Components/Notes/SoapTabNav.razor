@@ -1,0 +1,45 @@
+@namespace PTDoc.UI.Components.Notes
+@using PTDoc.UI.Components.Notes.Models
+
+<nav class="soap-tab-nav" role="tablist" aria-label="SOAP note sections" data-testid="soap-tab-nav">
+    @for (var index = 0; index < _sections.Length; index++)
+    {
+        var soapSection = _sections[index];
+        var isActive = soapSection == ActiveSection;
+        var isCompleted = index < ActiveIndex;
+
+        <button type="button"
+                role="tab"
+                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty)"
+                aria-selected="@isActive"
+                aria-controls="soap-tab-panel"
+                data-testid="@($"soap-tab-{soapSection.ToString().ToLower()}")"
+                @onclick="() => HandleTabClickAsync(soapSection)">
+            <span class="soap-tab-nav__indicator" aria-hidden="true">
+                @if (isCompleted || isActive)
+                {
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="7" cy="7" r="5.25" stroke="currentColor" stroke-width="1.2" />
+                        <path d="M4.91675 7.08317L6.41675 8.58317L9.33341 5.6665" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                }
+                else
+                {
+                    <span class="soap-tab-nav__dot"></span>
+                }
+            </span>
+            <span class="soap-tab-nav__label">@soapSection.ToString()</span>
+        </button>
+    }
+</nav>
+
+@code {
+    private static readonly SoapSection[] _sections = Enum.GetValues<SoapSection>();
+    private int ActiveIndex => Array.IndexOf(_sections, ActiveSection);
+
+    [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
+    [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
+
+    private Task HandleTabClickAsync(SoapSection section) =>
+        ActiveSectionChanged.InvokeAsync(section);
+}

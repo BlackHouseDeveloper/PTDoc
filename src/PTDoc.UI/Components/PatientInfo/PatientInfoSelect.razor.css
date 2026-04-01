@@ -1,0 +1,69 @@
+/* PatientInfoSelect — wrapper, native select + chevron */
+
+.pi-select-wrapper {
+    position: relative;
+    display: block;
+}
+
+.pi-select {
+    display: block;
+    width: 100%;
+    height: var(--touch-target-tablet); /* 48px */
+    padding: var(--spacing-1) calc(var(--spacing-6) + var(--spacing-4)) var(--spacing-1) var(--spacing-3); /* right-pad for chevron */
+    background: var(--input-background);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    box-sizing: border-box;
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.pi-select option[value=""] {
+    color: var(--muted-foreground);
+}
+
+/* Show placeholder color when nothing is selected */
+.pi-select:invalid,
+.pi-select[value=""] {
+    color: var(--muted-foreground);
+}
+
+.pi-select:hover:not(:disabled) {
+    border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.pi-select:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.15);
+}
+
+.pi-select-wrapper--invalid .pi-select {
+    border-color: var(--destructive);
+}
+
+.pi-select-wrapper--disabled .pi-select,
+.pi-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pi-select-chevron {
+    position: absolute;
+    right: var(--spacing-3);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    color: var(--muted-foreground);
+}
+
+/* Dark mode: handled automatically by token overrides in tokens.css. */

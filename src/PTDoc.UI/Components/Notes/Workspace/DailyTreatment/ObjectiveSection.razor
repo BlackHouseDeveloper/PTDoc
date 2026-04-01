@@ -1,0 +1,287 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="daily-objective @(IsDarkMode ? "daily-objective--dark" : string.Empty)" data-testid="daily-objective-section">
+    <div class="daily-grid">
+        <div class="daily-col-12">
+            <FormSection Title="Baseline vs. Current Comparison" Subtitle="Key objective measures from initial evaluation to today">
+                <span class="daily-objective__improved-badge">5/5 Improved</span>
+
+                <div class="daily-objective__comparison-table" role="table" aria-label="Baseline versus current objective comparison">
+                    @foreach (var item in _comparisonRows)
+                    {
+                        <div class="daily-objective__comparison-row" role="row">
+                            <span role="cell">@item.Measure</span>
+                            <span role="cell">@item.Initial</span>
+                            <span role="cell">@item.Today</span>
+                            <span role="cell" class="daily-objective__delta">@item.Change</span>
+                        </div>
+                    }
+                </div>
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12 daily-col-lg-8">
+            <FormSection Title="Objective">
+                <DataTable Columns="_romColumns"
+                           Rows="_romRows"
+                           RowsChanged="rows => _romRows = rows"
+                           IsReadOnly="IsReadOnly"
+                           AddLabel="+ Add ROM"
+                           TestId="daily-rom-table"
+                           EmptyMessage="No ROM rows added yet." />
+
+                <DataTable Columns="_mmtColumns"
+                           Rows="_mmtRows"
+                           RowsChanged="rows => _mmtRows = rows"
+                           IsReadOnly="IsReadOnly"
+                           AddLabel="+ Add MMT"
+                           TestId="daily-mmt-table"
+                           EmptyMessage="No MMT rows added yet." />
+
+                <FormSection Title="Standardized Outcome Measures">
+                    <div class="daily-objective__empty-panel">No outcome measures selected.</div>
+                </FormSection>
+
+                <EditableTextArea Label="Special Tests"
+                                  Value="@_specialTests"
+                                  ValueChanged="v => _specialTests = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Orthopedic tests performed and results..."
+                                  Rows="3" />
+
+                <EditableTextArea Label="Clinical Observations"
+                                  Value="@_vm.ClinicalObservationNotes"
+                                  ValueChanged="UpdateClinicalObservation"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Visual inspection, palpation findings, swelling, bruising..."
+                                  Rows="3" />
+
+                <EditableTextArea Label="Measurements"
+                                  Value="@_measurements"
+                                  ValueChanged="v => _measurements = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Circumferential measurements, leg length, etc..."
+                                  Rows="3" />
+            </FormSection>
+
+            <FormSection Title="Gait Assessment">
+                <CheckboxGrid Options="_gaitDeviationOptions"
+                              Selected="_vm.GaitDeviations"
+                              SelectedChanged="UpdateGaitDeviations"
+                              IsReadOnly="IsReadOnly"
+                              Columns="3" />
+
+                <div class="daily-objective__field-grid">
+                    <div>
+                        <label for="gait-speed">Gait Speed</label>
+                        <input id="gait-speed" type="text" disabled="@IsReadOnly" @bind="_gaitSpeed" @bind:event="oninput" placeholder="e.g., 0.8 m/s" />
+                    </div>
+                    <div>
+                        <label for="assistive-device">Assistive Device</label>
+                        <input id="assistive-device" type="text" disabled="@IsReadOnly" @bind="_assistiveDevice" @bind:event="oninput" placeholder="e.g., Cane, Walker" />
+                    </div>
+                </div>
+
+                <EditableTextArea Label="Additional Notes"
+                                  Value="@(_vm.AdditionalGaitObservations ?? string.Empty)"
+                                  ValueChanged="UpdateGaitNotes"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Distance ambulated, endurance, safety concerns..."
+                                  Rows="3" />
+            </FormSection>
+
+            <FormSection Title="Posture Assessment">
+                <CheckboxGrid Options="_posturalFindings"
+                              Selected="_posturalSelections"
+                              SelectedChanged="v => _posturalSelections = v"
+                              IsReadOnly="IsReadOnly"
+                              Columns="3" />
+
+                <EditableTextArea Label="Additional Observations"
+                                  Value="@_postureNotes"
+                                  ValueChanged="v => _postureNotes = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Detailed postural analysis..."
+                                  Rows="3" />
+            </FormSection>
+
+            <FormSection Title="Palpation Findings">
+                <CheckboxGrid Options="_palpationOptions"
+                              Selected="_palpationSelections"
+                              SelectedChanged="v => _palpationSelections = v"
+                              IsReadOnly="IsReadOnly"
+                              Columns="3" />
+
+                <EditableTextArea Label="Specific Location"
+                                  Value="@_palpationLocation"
+                                  ValueChanged="v => _palpationLocation = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="e.g., Left lumbar paraspinals L3-L5..."
+                                  Rows="2" />
+
+                <EditableTextArea Label="Additional Details"
+                                  Value="@_palpationDetails"
+                                  ValueChanged="v => _palpationDetails = v"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Severity, distribution, patient response..."
+                                  Rows="3" />
+            </FormSection>
+
+            <InterventionChecklist Title="Therapeutic Exercises"
+                                   CountLabel="exercises"
+                                   Items="_vm.TherapeuticExercises"
+                                   ItemsChanged="UpdateExercises"
+                                   IsReadOnly="IsReadOnly"
+                                   AddButtonText="+ Add Exercise"
+                                   EmptyMessage="No exercises added yet. Click 'Add Exercise' to get started."
+                                   TestId="daily-ther-ex" />
+
+            <InterventionChecklist Title="Manual Work Techniques"
+                                   CountLabel="techniques"
+                                   Items="_vm.ManualTechniques"
+                                   ItemsChanged="UpdateManualTechniques"
+                                   IsReadOnly="IsReadOnly"
+                                   AddButtonText="+ Add Technique"
+                                   EmptyMessage="No manual techniques added yet. Click 'Add Technique' to get started."
+                                   TestId="daily-manual-tech" />
+        </div>
+
+        <aside class="daily-col-12 daily-col-lg-4">
+            <FormSection Title="Patient Goals" Subtitle="Overall progress">
+                <div class="daily-objective__goal-summary">
+                    <div><span>Short-Term</span><strong>@ShortTermGoalCount</strong></div>
+                    <div><span>Long-Term</span><strong>@LongTermGoalCount</strong></div>
+                </div>
+
+                @foreach (var goal in GoalItems)
+                {
+                    <GoalCard Type="@goal.Type"
+                              Status="@(goal.ProgressPercent >= 100 ? "Met" : "Ongoing")"
+                              Title="@goal.Name"
+                              Measure="@goal.TargetDescription"
+                              Timeline="@goal.Timeline"
+                              ProgressPercent="@goal.ProgressPercent" />
+                }
+
+                <div class="daily-objective__hint">
+                    <strong>Reference while documenting objective findings</strong>
+                    <ul>
+                        @foreach (var hint in GoalHints)
+                        {
+                            <li>@hint</li>
+                        }
+                    </ul>
+                </div>
+            </FormSection>
+        </aside>
+    </div>
+</section>
+
+@code {
+    private ObjectiveVm _vm = new();
+    private string _specialTests = string.Empty;
+    private string _measurements = string.Empty;
+    private string _gaitSpeed = string.Empty;
+    private string _assistiveDevice = string.Empty;
+    private string _postureNotes = string.Empty;
+    private string _palpationLocation = string.Empty;
+    private string _palpationDetails = string.Empty;
+    private HashSet<string> _posturalSelections = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _palpationSelections = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<Dictionary<string, string>> _romRows =
+    [
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Movement"] = "Shoulder Flexion",
+            ["Baseline"] = "100°",
+            ["Current"] = "120°",
+            ["Trend"] = "Improved",
+            ["Notes"] = string.Empty
+        }
+    ];
+
+    private List<Dictionary<string, string>> _mmtRows =
+    [
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Muscle"] = "Shoulder Flexors",
+            ["Baseline"] = "3/5",
+            ["Current"] = "4/5",
+            ["Trend"] = "Improved",
+            ["Notes"] = string.Empty
+        }
+    ];
+
+    private static readonly string[] _romColumns = ["Movement", "Baseline", "Current", "Trend", "Notes"];
+    private static readonly string[] _mmtColumns = ["Muscle", "Baseline", "Current", "Trend", "Notes"];
+
+    private readonly (string Measure, string Initial, string Today, string Change)[] _comparisonRows =
+    [
+        ("Knee Flexion ROM", "100°", "120°", "+20°"),
+        ("Quadriceps Strength (MMT)", "4/5", "5/5", "+1 grade"),
+        ("Oswestry Disability Index", "40%", "28%", "-12%"),
+        ("Pain Level", "7/10", "5/10", "-2/10"),
+        ("Gait Distance", "200 ft", "500 ft", "+300 ft")
+    ];
+
+    private static readonly string[] _gaitDeviationOptions =
+    [
+        "Antalgic gait", "Trendelenburg gait", "Steppage gait", "Ataxic gait", "Decreased stride length", "Decreased step width",
+        "Reduced arm swing", "Forward trunk lean", "Lateral trunk lean", "Knee hyperextension", "Foot drop", "Hip hiking", "Circumduction", "Normal gait pattern"
+    ];
+
+    private static readonly string[] _posturalFindings =
+    [
+        "Forward head posture", "Rounded shoulders", "Increased thoracic kyphosis", "Increased lumbar lordosis",
+        "Decreased lumbar lordosis", "Lateral shift (left/right)", "Pelvic tilt", "Leg length discrepancy", "Scoliosis", "Normal postural alignment"
+    ];
+
+    private static readonly string[] _palpationOptions =
+    [
+        "Tenderness", "Muscle spasm", "Trigger points", "Swelling/edema",
+        "Warmth", "Crepitus", "Muscle guarding", "Decreased tissue mobility", "No abnormalities noted"
+    ];
+
+    [Parameter, EditorRequired] public ObjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<ObjectiveVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+    [Parameter] public int ShortTermGoalCount { get; set; }
+    [Parameter] public int LongTermGoalCount { get; set; }
+    [Parameter] public IReadOnlyList<PatientGoalItem> GoalItems { get; set; } = Array.Empty<PatientGoalItem>();
+    [Parameter] public IReadOnlyList<string> GoalHints { get; set; } = Array.Empty<string>();
+
+    protected override void OnParametersSet() => _vm = Vm;
+
+    private Task UpdateClinicalObservation(string value)
+    {
+        _vm.ClinicalObservationNotes = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateGaitDeviations(HashSet<string> value)
+    {
+        _vm.GaitDeviations = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateGaitNotes(string value)
+    {
+        _vm.AdditionalGaitObservations = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateExercises(List<string> value)
+    {
+        _vm.TherapeuticExercises = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateManualTechniques(List<string> value)
+    {
+        _vm.ManualTechniques = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+}

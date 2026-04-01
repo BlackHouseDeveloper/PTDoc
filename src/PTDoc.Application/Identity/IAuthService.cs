@@ -1,5 +1,13 @@
 namespace PTDoc.Application.Identity;
 
+public enum AuthStatus
+{
+    Success,
+    InvalidCredentials,
+    PendingApproval,
+    AccountLocked
+}
+
 /// <summary>
 /// Service for authentication operations.
 /// Handles PIN-based login, session management, and audit logging.
@@ -52,15 +60,31 @@ public interface IAuthService
 }
 
 /// <summary>
-/// Result of an authentication attempt
+/// Result of an authentication attempt.
+/// Fields other than <see cref="Status"/> are only populated when
+/// <see cref="Status"/> is <see cref="AuthStatus.Success"/>.
 /// </summary>
 public class AuthResult
 {
-    public required Guid UserId { get; init; }
-    public required string Username { get; init; }
-    public required string Token { get; init; }
-    public required DateTime ExpiresAt { get; init; }
-    public required string Role { get; init; }
+    public AuthStatus Status { get; init; } = AuthStatus.Success;
+
+    /// <summary>Identifier of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>Username of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Username { get; init; }
+
+    /// <summary>Session token issued for the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Token { get; init; }
+
+    /// <summary>Expiration timestamp of the issued session token. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public DateTime? ExpiresAt { get; init; }
+
+    /// <summary>Role of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public string? Role { get; init; }
+
+    /// <summary>Clinic the user belongs to, or null for system accounts. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>
@@ -73,6 +97,8 @@ public class SessionInfo
     public required string Role { get; init; }
     public required DateTime ExpiresAt { get; init; }
     public required DateTime LastActivityAt { get; init; }
+    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>
@@ -86,4 +112,6 @@ public class UserInfo
     public required string LastName { get; init; }
     public required string Role { get; init; }
     public required bool IsActive { get; init; }
+    /// <summary>Clinic the user belongs to, or null for system accounts.</summary>
+    public Guid? ClinicId { get; init; }
 }

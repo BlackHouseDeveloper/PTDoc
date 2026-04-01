@@ -1,0 +1,264 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.AI
+
+@inject IAiClinicalGenerationService AiService
+@inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
+@inject ILogger<AssessmentTab> Logger
+
+<section class="assessment-tab" data-testid="assessment-tab">
+
+    <div class="assessment-tab__header">
+        <h2 class="assessment-tab__title">Assessment</h2>
+
+        <div class="assessment-tab__actions">
+            <AiGenerateButton
+                ButtonLabel="Generate Assessment"
+                IsGenerating="@_isGenerating"
+                IsDisabled="@IsNoteSigned"
+                DisabledReason="@(IsNoteSigned ? "AI generation is not available on signed notes." : null)"
+                OnGenerate="GenerateAssessmentAsync"
+                TestId="assessment-generate-btn" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="assessment-tab__error" role="alert" aria-live="assertive" data-testid="assessment-tab-error">
+            <p>@_errorMessage</p>
+            <button type="button" class="assessment-tab__error-dismiss" @onclick="DismissErrorAsync" aria-label="Dismiss error">✕</button>
+        </div>
+    }
+
+    @if (_generationWarnings.Count > 0)
+    {
+        <ul class="assessment-tab__warnings" role="list" data-testid="assessment-tab-warnings">
+            @foreach (var warning in _generationWarnings)
+            {
+                <li class="assessment-tab__warning-item">⚠ @warning</li>
+            }
+        </ul>
+    }
+
+    <div class="assessment-tab__fields">
+        <EditableNarrativeBox @ref="_narrativeBox"
+                              Label="Clinical Assessment Narrative"
+                              Placeholder="Enter or generate the assessment narrative…"
+                              Value="@_assessmentText"
+                              ValueChanged="OnNarrativeChangedAsync"
+                              OnAccepted="OnNarrativeAcceptedAsync"
+                              OnDiscarded="OnNarrativeDiscardedAsync"
+                              IsReadOnly="@IsNoteSigned"
+                              Rows="10"
+                              TestId="assessment-narrative-box" />
+
+        <EditableNarrativeBox @ref="_limitationsBox"
+                              Label="Functional Limitations"
+                              Placeholder="Describe identified functional limitations…"
+                              Value="@_functionalLimitations"
+                              ValueChanged="OnLimitationsChangedAsync"
+                              IsReadOnly="@IsNoteSigned"
+                              Rows="4"
+                              TestId="assessment-limitations-box" />
+    </div>
+
+</section>
+
+@code {
+    private EditableNarrativeBox? _narrativeBox;
+    private EditableNarrativeBox? _limitationsBox;
+    private bool _isGenerating = false;
+    private string? _errorMessage;
+    private List<string> _generationWarnings = new();
+    private string _assessmentText = string.Empty;
+    private string _functionalLimitations = string.Empty;
+
+    // ──────────────────────────────────────────────────────────────
+    // Parameters
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The note ID being authored.
+    /// Required so the generation service can apply safety rules.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Guid NoteId { get; set; }
+
+    /// <summary>
+    /// When true, the note is signed. AI generation is blocked.
+    /// </summary>
+    [Parameter]
+    public bool IsNoteSigned { get; set; } = false;
+
+    /// <summary>
+    /// Current assessment narrative text.
+    /// </summary>
+    [Parameter]
+    public string AssessmentText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Raised when the assessment narrative text changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> AssessmentTextChanged { get; set; }
+
+    /// <summary>
+    /// Current functional limitations text.
+    /// </summary>
+    [Parameter]
+    public string FunctionalLimitations { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Raised when the functional limitations text changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> FunctionalLimitationsChanged { get; set; }
+
+    /// <summary>
+    /// Chief complaint to use as AI generation input (typically from the Subjective tab).
+    /// </summary>
+    [Parameter]
+    public string? ChiefComplaint { get; set; }
+
+    /// <summary>
+    /// Examination findings to use as AI generation input (from the Objective tab).
+    /// </summary>
+    [Parameter]
+    public string? ExaminationFindings { get; set; }
+
+    /// <summary>
+    /// Current symptoms to use as AI generation input.
+    /// </summary>
+    [Parameter]
+    public string? CurrentSymptoms { get; set; }
+
+    /// <summary>
+    /// Raised when clinician explicitly accepts AI-generated content.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnAiAccepted { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Sync backing fields from parameters so we never mutate parameters directly
+        _assessmentText = AssessmentText;
+        _functionalLimitations = FunctionalLimitations;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Generation flow: Generate → Review → Accept
+    // ──────────────────────────────────────────────────────────────
+
+    private async Task GenerateAssessmentAsync()
+    {
+        // Safety check: reject on signed notes
+        if (IsNoteSigned)
+        {
+            _errorMessage = "AI generation is not permitted on signed notes.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ChiefComplaint))
+        {
+            _errorMessage = "A chief complaint is required before generating an assessment. Please complete the Subjective section first.";
+            return;
+        }
+
+        _isGenerating = true;
+        _errorMessage = null;
+        _generationWarnings.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var request = new AssessmentGenerationRequest
+            {
+                NoteId = NoteId,
+                ChiefComplaint = ChiefComplaint!,
+                CurrentSymptoms = CurrentSymptoms,
+                ExaminationFindings = ExaminationFindings,
+                FunctionalLimitations = _functionalLimitations,
+                IsNoteSigned = IsNoteSigned
+            };
+
+            var result = await AiService.GenerateAssessmentAsync(request);
+
+            if (!result.Success)
+            {
+                _errorMessage = result.ErrorMessage ?? "AI generation failed.";
+                Logger.LogWarning("Assessment generation failed for note {NoteId}: {Error}", NoteId, result.ErrorMessage);
+                return;
+            }
+
+            // Collect any non-blocking warnings
+            _generationWarnings.AddRange(result.Warnings);
+
+            // Load the result into the narrative box for clinician review
+            if (_narrativeBox is not null)
+            {
+                await _narrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error during assessment generation for note {NoteId}", NoteId);
+            _errorMessage = "An unexpected error occurred. Please try again.";
+        }
+        finally
+        {
+            _isGenerating = false;
+            StateHasChanged();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Event handlers
+    // ──────────────────────────────────────────────────────────────
+
+    private Task OnNarrativeChangedAsync(string value)
+    {
+        _assessmentText = value;
+        return AssessmentTextChanged.InvokeAsync(value);
+    }
+
+    private async Task OnNarrativeAcceptedAsync(string acceptedText)
+    {
+        if (NoteId != Guid.Empty)
+        {
+            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                NoteId,
+                section: "assessment",
+                generatedText: acceptedText,
+                generationType: "Assessment");
+
+            if (!acceptance.Success)
+            {
+                _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated assessment content.";
+                return;
+            }
+        }
+
+        _assessmentText = acceptedText;
+        _generationWarnings.Clear();
+        _errorMessage = null;
+        await AssessmentTextChanged.InvokeAsync(acceptedText);
+        await OnAiAccepted.InvokeAsync(acceptedText);
+    }
+
+    private Task OnNarrativeDiscardedAsync()
+    {
+        _generationWarnings.Clear();
+        return Task.CompletedTask;
+    }
+
+    private Task OnLimitationsChangedAsync(string value)
+    {
+        _functionalLimitations = value;
+        return FunctionalLimitationsChanged.InvokeAsync(value);
+    }
+
+    private Task DismissErrorAsync()
+    {
+        _errorMessage = null;
+        return Task.CompletedTask;
+    }
+}

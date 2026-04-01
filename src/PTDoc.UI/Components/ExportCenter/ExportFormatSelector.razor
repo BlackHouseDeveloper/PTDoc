@@ -1,0 +1,164 @@
+@* Export Format Selector Panel
+    Purpose: Single-select format cards (PDF, CSV, Excel, JSON)
+    Placement: Left column, below FiltersPanel
+    Visual: Horizontal group of 4 cards, each includes icon + label + description
+    States: Selected (emerald border + light fill), Unselected, Hover
+    Interaction: Clicking a format selects immediately (single-select)
+    On tab switch reset to PDF
+    Descriptions currently use concise, generic format guidance.
+*@
+
+<div class="export-format-selector">
+    <h3 class="export-format-selector__title">Export Format</h3>
+    
+    <div class="export-format-selector__grid" role="radiogroup" aria-label="Export Format">
+        @foreach (var format in Enum.GetValues<ExportFormat>())
+        {
+            var isSelected = SelectedFormat == format;
+            <label class="export-format-selector__card @(isSelected ? "export-format-selector__card--selected" : "")">
+                <input
+                    type="radio"
+                    name="export-format"
+                    class="export-format-selector__radio"
+                    checked="@isSelected"
+                    @onchange="@((ChangeEventArgs e) => OnFormatSelected(format))"
+                    aria-label="@GetFormatLabel(format)" />
+                
+                <span class="export-format-selector__icon" aria-hidden="true">
+                    @GetFormatIcon(format)
+                </span>
+                
+                <span class="export-format-selector__label">
+                    @GetFormatLabel(format)
+                </span>
+                
+                <span class="export-format-selector__description">
+                    @GetFormatDescription(format)
+                </span>
+            </label>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public ExportFormat SelectedFormat { get; set; } = ExportFormat.PDF;
+
+    [Parameter]
+    public EventCallback<ExportFormat> SelectedFormatChanged { get; set; }
+
+    private async Task OnFormatSelected(ExportFormat format)
+    {
+        if (SelectedFormat != format)
+        {
+            SelectedFormat = format;
+            await SelectedFormatChanged.InvokeAsync(format);
+        }
+    }
+
+    private static string GetFormatLabel(ExportFormat format) => format switch
+    {
+        ExportFormat.PDF => "PDF",
+        ExportFormat.CSV => "CSV",
+        ExportFormat.Excel => "Excel",
+        ExportFormat.JSON => "JSON",
+        _ => "Unknown"
+    };
+
+    private static string GetFormatDescription(ExportFormat format) => format switch
+    {
+        ExportFormat.PDF => "Formatted, print-ready",
+        ExportFormat.CSV => "Structured raw data",
+        ExportFormat.Excel => "Formatted spreadsheet",
+        ExportFormat.JSON => "For integrations",
+        _ => string.Empty
+    };
+
+    private static RenderFragment GetFormatIcon(ExportFormat format) => builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "class", "format-icon");
+        builder.AddAttribute(2, "width", "20");
+        builder.AddAttribute(3, "height", "20");
+        builder.AddAttribute(4, "viewBox", "0 0 20 20");
+        builder.AddAttribute(5, "fill", "none");
+        builder.AddAttribute(6, "stroke", "currentColor");
+        builder.AddAttribute(7, "stroke-width", "1.66667");
+        builder.AddAttribute(8, "stroke-linecap", "round");
+        builder.AddAttribute(9, "stroke-linejoin", "round");
+        builder.AddAttribute(10, "aria-hidden", "true");
+
+        switch (format)
+        {
+            case ExportFormat.PDF:
+                builder.OpenElement(11, "path");
+                builder.AddAttribute(12, "d", "M12.5 1.66667H5C4.55797 1.66667 4.13405 1.84226 3.82149 2.15482C3.50893 2.46738 3.33333 2.89131 3.33333 3.33333V16.6667C3.33333 17.1087 3.50893 17.5326 3.82149 17.8452C4.13405 18.1577 4.55797 18.3333 5 18.3333H15C15.442 18.3333 15.866 18.1577 16.1785 17.8452C16.4911 17.5326 16.6667 17.1087 16.6667 16.6667V5.83333L12.5 1.66667Z");
+                builder.CloseElement();
+                builder.OpenElement(13, "path");
+                builder.AddAttribute(14, "d", "M11.6667 1.66667V5C11.6667 5.44203 11.8423 5.86595 12.1548 6.17851C12.4674 6.49107 12.8913 6.66667 13.3333 6.66667H16.6667");
+                builder.CloseElement();
+                break;
+            case ExportFormat.CSV:
+                builder.OpenElement(15, "path");
+                builder.AddAttribute(16, "d", "M12.5 1.66667H5C4.55797 1.66667 4.13405 1.84226 3.82149 2.15482C3.50893 2.46738 3.33333 2.89131 3.33333 3.33333V16.6667C3.33333 17.1087 3.50893 17.5326 3.82149 17.8452C4.13405 18.1577 4.55797 18.3333 5 18.3333H15C15.442 18.3333 15.866 18.1577 16.1785 17.8452C16.4911 17.5326 16.6667 17.1087 16.6667 16.6667V5.83333L12.5 1.66667Z");
+                builder.CloseElement();
+                builder.OpenElement(21, "path");
+                builder.AddAttribute(22, "d", "M11.6667 1.66667V5C11.6667 5.44203 11.8423 5.86595 12.1548 6.17851C12.4674 6.49107 12.8913 6.66667 13.3333 6.66667H16.6667");
+                builder.CloseElement();
+                builder.OpenElement(23, "path");
+                builder.AddAttribute(24, "d", "M8.33333 7.5H6.66667");
+                builder.CloseElement();
+                builder.OpenElement(25, "path");
+                builder.AddAttribute(26, "d", "M13.3333 10.8333H6.66667");
+                builder.CloseElement();
+                builder.OpenElement(27, "path");
+                builder.AddAttribute(28, "d", "M13.3333 14.1667H6.66667");
+                builder.CloseElement();
+                break;
+            case ExportFormat.Excel:
+                builder.OpenElement(29, "path");
+                builder.AddAttribute(30, "d", "M12.5 1.66667H5C4.55797 1.66667 4.13405 1.84226 3.82149 2.15482C3.50893 2.46738 3.33333 2.89131 3.33333 3.33333V16.6667C3.33333 17.1087 3.50893 17.5326 3.82149 17.8452C4.13405 18.1577 4.55797 18.3333 5 18.3333H15C15.442 18.3333 15.866 18.1577 16.1785 17.8452C16.4911 17.5326 16.6667 17.1087 16.6667 16.6667V5.83333L12.5 1.66667Z");
+                builder.CloseElement();
+                builder.OpenElement(31, "path");
+                builder.AddAttribute(32, "d", "M11.6667 1.66667V5C11.6667 5.44203 11.8423 5.86595 12.1548 6.17851C12.4674 6.49107 12.8913 6.66667 13.3333 6.66667H16.6667");
+                builder.CloseElement();
+                builder.OpenElement(33, "path");
+                builder.AddAttribute(34, "d", "M6.66667 10.8333H8.33333");
+                builder.CloseElement();
+                builder.OpenElement(35, "path");
+                builder.AddAttribute(36, "d", "M11.6667 10.8333H13.3333");
+                builder.CloseElement();
+                builder.OpenElement(37, "path");
+                builder.AddAttribute(38, "d", "M6.66667 14.1667H8.33333");
+                builder.CloseElement();
+                builder.OpenElement(39, "path");
+                builder.AddAttribute(40, "d", "M11.6667 14.1667H13.3333");
+                builder.CloseElement();
+                break;
+            case ExportFormat.JSON:
+                builder.OpenElement(41, "path");
+                builder.AddAttribute(42, "d", "M12.5 1.66667H5C4.55797 1.66667 4.13405 1.84226 3.82149 2.15482C3.50893 2.46738 3.33333 2.89131 3.33333 3.33333V16.6667C3.33333 17.1087 3.50893 17.5326 3.82149 17.8452C4.13405 18.1577 4.55797 18.3333 5 18.3333H15C15.442 18.3333 15.866 18.1577 16.1785 17.8452C16.4911 17.5326 16.6667 17.1087 16.6667 16.6667V5.83333L12.5 1.66667Z");
+                builder.CloseElement();
+                builder.OpenElement(43, "path");
+                builder.AddAttribute(44, "d", "M11.6667 1.66667V5C11.6667 5.44203 11.8423 5.86595 12.1548 6.17851C12.4674 6.49107 12.8913 6.66667 13.3333 6.66667H16.6667");
+                builder.CloseElement();
+                builder.OpenElement(45, "path");
+                builder.AddAttribute(46, "d", "M8.33333 10C8.11232 10 7.90036 10.0878 7.74408 10.2441C7.5878 10.4004 7.5 10.6123 7.5 10.8333V11.6667C7.5 11.8877 7.4122 12.0996 7.25592 12.2559C7.09964 12.4122 6.88768 12.5 6.66667 12.5C6.88768 12.5 7.09964 12.5878 7.25592 12.7441C7.4122 12.9004 7.5 13.1123 7.5 13.3333V14.1667C7.5 14.3877 7.5878 14.5996 7.74408 14.7559C7.90036 14.9122 8.11232 15 8.33333 15");
+                builder.CloseElement();
+                builder.OpenElement(47, "path");
+                builder.AddAttribute(48, "d", "M11.6667 15C11.8877 15 12.0996 14.9122 12.2559 14.7559C12.4122 14.5996 12.5 14.3877 12.5 14.1667V13.3333C12.5 13.1123 12.5878 12.9004 12.7441 12.7441C12.9004 12.5878 13.1123 12.5 13.3333 12.5C13.1123 12.5 12.9004 12.4122 12.7441 12.2559C12.5878 12.0996 12.5 11.8877 12.5 11.6667V10.8333C12.5 10.6123 12.4122 10.4004 12.2559 10.2441C12.0996 10.0878 11.8877 10 11.6667 10");
+                builder.CloseElement();
+                break;
+            default:
+                builder.OpenElement(49, "circle");
+                builder.AddAttribute(50, "cx", "10");
+                builder.AddAttribute(51, "cy", "10");
+                builder.AddAttribute(52, "r", "7");
+                builder.CloseElement();
+                break;
+        }
+
+        builder.CloseElement();
+    };
+}

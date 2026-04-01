@@ -1,10 +1,50 @@
 @page "/settings"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Owner")]
+@rendermode InteractiveServer
 
 <PageTitle>Settings - PTDoc</PageTitle>
 
-<div class="page-container">
+<div class="settings-page-container">
     <GlobalPageHeader />
 
-    <p>Configure application settings and preferences.</p>
+    <div class="settings-shell" aria-label="Settings center">
+        <SettingsSidebarNav
+            ActiveSection="@activeSection"
+            OnSectionSelected="HandleSectionSelected" />
+
+        <main class="settings-main-content" aria-live="polite">
+            @if (activeSection == "approvals")
+            {
+                <ApprovalsDashboard />
+            }
+            else
+            {
+                <section class="settings-section-placeholder" aria-labelledby="placeholder-title">
+                    <h1 id="placeholder-title">@GetSectionTitle(activeSection)</h1>
+                    <p>
+                        This section is scaffolded for future backend integration and detailed settings controls.
+                    </p>
+                </section>
+            }
+        </main>
+    </div>
 </div>
+
+@code {
+    private string activeSection = "approvals";
+
+    private void HandleSectionSelected(string sectionKey)
+    {
+        activeSection = sectionKey;
+    }
+
+    private static string GetSectionTitle(string sectionKey) => sectionKey switch
+    {
+        "scheduling" => "Scheduling & Visit Types",
+        "documentation" => "Documentation and Compliance",
+        "billing" => "Billing and Coding",
+        "ai-outcomes" => "AI & Outcome Measures",
+        "notifications" => "Notifications and Messaging",
+        _ => "Approvals"
+    };
+}

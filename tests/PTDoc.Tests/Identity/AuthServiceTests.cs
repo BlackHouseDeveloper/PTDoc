@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -23,12 +24,22 @@ public class AuthServiceTests
         return new ApplicationDbContext(options);
     }
 
+    /// <summary>
+    /// Creates a no-op IAuditService mock so AuthService can be constructed in tests
+    /// without needing a real database-backed AuditService.
+    /// </summary>
+    private static IAuditService CreateAuditServiceMock()
+    {
+        var mock = new Mock<IAuditService>();
+        return mock.Object;
+    }
+
     [Fact]
     public async Task AuthenticateAsync_ValidPin_ReturnsAuthResult()
     {
         // Arrange
         var context = CreateInMemoryContext();
-        var authService = new AuthService(context, NullLogger<AuthService>.Instance);
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
 
         var user = new User
         {
@@ -49,12 +60,13 @@ public class AuthServiceTests
         var result = await authService.AuthenticateAsync("testuser", "1234", "127.0.0.1", "TestAgent");
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(user.Id, result.UserId);
-        Assert.Equal("testuser", result.Username);
-        Assert.Equal("PT", result.Role);
-        Assert.NotEmpty(result.Token);
-        Assert.True(result.ExpiresAt > DateTime.UtcNow);
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal("testuser", authResult.Username);
+        Assert.Equal("PT", authResult.Role);
+        var token = Assert.IsType<string>(authResult.Token);
+        Assert.NotEmpty(token);
+        Assert.True(authResult.ExpiresAt > DateTime.UtcNow);
 
         // Verify session was created
         var session = await context.Sessions.FirstOrDefaultAsync(s => s.UserId == user.Id);
@@ -73,7 +85,7 @@ public class AuthServiceTests
     {
         // Arrange
         var context = CreateInMemoryContext();
-        var authService = new AuthService(context, NullLogger<AuthService>.Instance);
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
 
         var user = new User
         {
@@ -101,6 +113,37 @@ public class AuthServiceTests
         Assert.NotNull(loginAttempt);
         Assert.False(loginAttempt.Success);
         Assert.Equal("Invalid PIN", loginAttempt.FailureReason);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_InactiveUser_ReturnsPendingApprovalStatus()
+    {
+        // Arrange
+        var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "pendinguser",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Pending",
+            LastName = "User",
+            Role = "PT",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        // Act
+        var result = await authService.AuthenticateAsync("pendinguser", "1234", "127.0.0.1", "TestAgent");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(AuthStatus.PendingApproval, result.Status);
+        Assert.Equal(user.Id, result.UserId);
     }
 
     [Fact]

@@ -1,0 +1,52 @@
+@namespace PTDoc.UI.Components.Notes
+
+<div class="note-type-container" data-testid="note-type-container">
+    <div class="note-type-container__row">
+        <div class="note-type-container__label-group">
+            <p class="note-type-container__label">Note Type</p>
+            <p class="note-type-container__sublabel">Select the type of note you're creating</p>
+        </div>
+
+        <div class="note-type-container__selector">
+            <select class="note-type-container__select"
+                    id="note-type-select"
+                    value="@NoteType"
+                    @onchange="HandleChange"
+                    aria-label="Note type"
+                    data-testid="note-type-select">
+                @foreach (var type in NoteTypes)
+                {
+                    <option value="@type" selected="@(type == NoteType)">@type</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(GetDescription()))
+    {
+        <p class="note-type-container__description">@GetDescription()</p>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyDictionary<string, string> Descriptions = new Dictionary<string, string>
+    {
+        ["Evaluation Note"]          = "Initial assessment, diagnosis, and baseline findings",
+        ["Progress Note"]            = "Ongoing treatment updates and functional status changes",
+        ["Discharge Note"]           = "Final session summary and discharge disposition",
+        ["Dry Needling Note"]        = "Dry needling procedure details and treatment response",
+        ["Daily Treatment Note"]     = "Session-level documentation of interventions performed",
+    };
+
+    private static readonly IReadOnlyList<string> DefaultNoteTypes = Descriptions.Keys.ToArray();
+
+    [Parameter, EditorRequired] public string NoteType { get; set; } = "Evaluation Note";
+    [Parameter] public IReadOnlyList<string> NoteTypes { get; set; } = DefaultNoteTypes;
+    [Parameter, EditorRequired] public EventCallback<string> NoteTypeChanged { get; set; }
+
+    private string? GetDescription() =>
+        Descriptions.TryGetValue(NoteType, out var d) ? d : null;
+
+    private Task HandleChange(ChangeEventArgs e) =>
+        NoteTypeChanged.InvokeAsync(e.Value?.ToString() ?? NoteType);
+}

@@ -5,9 +5,11 @@
     <ProjectReference Include="..\PTDoc.UI\PTDoc.UI.csproj" />
     <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     <ProjectReference Include="..\PTDoc.Application\PTDoc.Application.csproj" />
+    <ProjectReference Include="..\PTDoc.AI\PTDoc.AI.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.1" />
     <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
   </ItemGroup>
 
@@ -17,6 +19,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>ptdoc-web-1a2b3c4d-5e6f-7890-bcde-f01234567890</UserSecretsId>
   </PropertyGroup>
 
 </Project>

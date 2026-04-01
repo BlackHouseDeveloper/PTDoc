@@ -3,6 +3,13 @@
     flex-direction: column;
     gap: var(--spacing-8);
     width: 220.25px;
+    min-height: fit-content;
+}
+
+@media (max-width: 1199px) {
+    .appointments-left-column {
+        width: 100%;
+    }
 }
 
 .filters-button {

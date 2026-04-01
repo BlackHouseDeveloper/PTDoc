@@ -1,0 +1,29 @@
+/* PatientInfoField — label + control + error container */
+
+.pi-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.pi-field-label {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    color: var(--foreground);
+}
+
+.pi-field-control {
+    /* Control wrapper — allows future icon or suffix injection */
+    position: relative;
+}
+
+.pi-field-error {
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--destructive);
+    margin: 0;
+}

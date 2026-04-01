@@ -1,0 +1,65 @@
+@* AdditionalAuthorizationSettingsPanel — status/type dropdowns and alerting fields *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Additional Authorization Settings">
+    <PatientInfoFormGrid>
+
+        <PatientInfoField Label="Authorization Status" ForId="pi-auth-status" Error="@GetError("authStatus")">
+            <PatientInfoSelect Id="pi-auth-status"
+                               Value="@Model.AuthorizationStatus"
+                               ValueChanged="@(v => SetField(v, f => f.AuthorizationStatus = v))"
+                               Placeholder="Select status"
+                               Options="@AuthorizationStatusOptions"
+                               HasError="@HasError("authStatus")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Authorization Type" ForId="pi-auth-type" Error="@GetError("authType")">
+            <PatientInfoSelect Id="pi-auth-type"
+                               Value="@Model.AuthorizationType"
+                               ValueChanged="@(v => SetField(v, f => f.AuthorizationType = v))"
+                               Placeholder="Select authorization type"
+                               Options="@AuthorizationTypeOptions"
+                               HasError="@HasError("authType")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Re-Authorization Due Date" ForId="pi-reauth-date" Error="@GetError("reauthDate")">
+            <PatientInfoTextInput Id="pi-reauth-date"
+                                  Value="@Model.ReAuthorizationDueDate"
+                                  ValueChanged="@(v => SetField(v, f => f.ReAuthorizationDueDate = v))"
+                                  HasError="@HasError("reauthDate")" />
+            @* Text date input retained for consistency with existing JSON-backed model fields. *@
+        </PatientInfoField>
+
+        <PatientInfoField Label="Visit Alert Threshold" ForId="pi-alert-threshold" Error="@GetError("alertThreshold")">
+            <PatientInfoTextInput Id="pi-alert-threshold"
+                                  Value="@Model.VisitAlertThreshold"
+                                  ValueChanged="@(v => SetField(v, f => f.VisitAlertThreshold = v))"
+                                  Placeholder="e.g., 2 (alert when 2 visits remain)"
+                                  HasError="@HasError("alertThreshold")" />
+            @* Threshold is stored as entered and interpreted by downstream alerting workflows. *@
+        </PatientInfoField>
+
+    </PatientInfoFormGrid>
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public AdditionalAuthorizationSettingsVm Model { get; set; } = null!;
+    [Parameter] public EventCallback<AdditionalAuthorizationSettingsVm> ModelChanged { get; set; }
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationStatusOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationTypeOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private string GetError(string key) =>
+        FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
+
+    private bool HasError(string key) => FieldErrors.ContainsKey(key);
+
+    private async Task SetField(string value, Action<AdditionalAuthorizationSettingsVm> setter)
+    {
+        setter(Model);
+        await ModelChanged.InvokeAsync(Model);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+}

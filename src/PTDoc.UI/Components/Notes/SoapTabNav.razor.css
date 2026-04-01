@@ -1,0 +1,87 @@
+.soap-tab-nav {
+    align-items: end;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: var(--spacing-2);
+    overflow-x: auto;
+    padding: var(--spacing-3) var(--spacing-4) var(--spacing-2);
+    scrollbar-width: none;
+}
+
+.soap-tab-nav::-webkit-scrollbar {
+    display: none;
+}
+
+.soap-tab-nav__tab {
+    align-items: center;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 1 0 0;
+    gap: var(--spacing-2);
+    justify-content: center;
+    min-height: var(--touch-target-desktop);
+    min-width: max-content;
+    padding: var(--spacing-2) var(--spacing-3);
+    text-align: center;
+    transition: color var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.soap-tab-nav__indicator {
+    align-items: center;
+    color: inherit;
+    display: inline-flex;
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.soap-tab-nav__dot {
+    background: currentColor;
+    border-radius: 50%;
+    display: inline-flex;
+    height: 6px;
+    opacity: 0.45;
+    width: 6px;
+}
+
+.soap-tab-nav__label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.soap-tab-nav__tab--completed,
+.soap-tab-nav__tab--active {
+    color: var(--primary);
+}
+
+.soap-tab-nav__tab--completed {
+    border-bottom-color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.soap-tab-nav__tab--active {
+    border-bottom-color: var(--primary);
+}
+
+.soap-tab-nav__tab:hover {
+    opacity: 0.85;
+}
+
+.soap-tab-nav__tab:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+    .soap-tab-nav {
+        padding-inline: var(--spacing-3);
+    }
+
+    .soap-tab-nav__tab {
+        flex: 0 0 auto;
+        justify-content: flex-start;
+    }
+}

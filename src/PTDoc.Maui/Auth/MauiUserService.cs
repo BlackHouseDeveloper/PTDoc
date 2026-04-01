@@ -4,6 +4,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Services;
 
 public sealed class MauiUserService : IUserService
@@ -28,6 +29,14 @@ public sealed class MauiUserService : IUserService
     }
 
     public bool IsAuthenticated => currentUser?.Identity?.IsAuthenticated ?? false;
+
+    public bool UsesExternalIdentityProvider => false;
+
+    public string IdentityProviderDisplayName => "PTDoc";
+
+    public bool SupportsExternalIdentityLogin => false;
+
+    public bool SupportsSelfServiceRegistration => false;
 
     public ClaimsPrincipal? CurrentUser => currentUser;
 
@@ -69,17 +78,37 @@ public sealed class MauiUserService : IUserService
         }
     }
 
-    public Task<bool> RegisterAsync(
+    public Task<bool> BeginExternalLoginAsync(
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("External identity login is not available in the current MAUI flow.");
+        return Task.FromResult(false);
+    }
+
+    public Task<RegistrationResult> RegisterAsync(
         string fullName,
         string email,
         DateTime dateOfBirth,
+        string roleKey,
+        Guid? clinicId,
+        string pin,
         string licenseType,
         string licenseNumber,
         string licenseState,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(true);
+        return Task.FromResult(new RegistrationResult(
+            RegistrationStatus.ServerError,
+            null,
+            "Self-service registration is not supported on MAUI."));
     }
+
+    public Task<IReadOnlyList<ClinicSummary>> GetClinicsForSignupAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ClinicSummary>>([]);
+
+    public Task<IReadOnlyList<RoleSummary>> GetRolesForSignupAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<RoleSummary>>([]);
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
