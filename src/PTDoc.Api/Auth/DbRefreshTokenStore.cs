@@ -114,6 +114,9 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         ClaimTypes.Email,
         "sub",
         "oid",
+        // Tenant and patient context claims must be preserved across refresh.
+        "clinic_id",
+        "patient_id",
     };
 
     private static string ComputeHash(string token)

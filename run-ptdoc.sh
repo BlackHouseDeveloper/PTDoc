@@ -198,12 +198,19 @@ start_api() {
       echo -n "."
     done
 
+    # Health-wait timed out. Kill the stalled process so the port is freed
+    # before the next attempt starts (or before we exit on the final attempt).
+    echo " ${YELLOW}Timed out${RESET}"
+    kill "$API_PID" 2>/dev/null || true
+    wait "$API_PID" 2>/dev/null || true
+
     if [[ "$attempt" -eq 2 ]]; then
-      echo " ${RED}Failed${RESET}"
       echo "${RED}❌ API failed to become healthy. Check $API_LOG_FILE for details${RESET}"
       tail -n 40 "$API_LOG_FILE" || true
       exit 1
     fi
+
+    echo "${YELLOW}⚠️  API did not become healthy within 30s — retrying...${RESET}"
   done
 }
 

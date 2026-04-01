@@ -25,7 +25,7 @@ public static class Icd10Endpoints
     private static IResult Search(
         [FromQuery] string? q,
         [FromQuery(Name = "maxResults")] int maxResults = 20,
-        [FromServices] IIcd10Service icd10Service = null!)
+        [FromServices] IIcd10Service icd10Service)
     {
         if (string.IsNullOrWhiteSpace(q))
             return Results.Ok(Array.Empty<Icd10Code>());

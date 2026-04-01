@@ -189,7 +189,15 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
                 continue;
             }
 
-            var stepValue = Uri.UnescapeDataString(keyValuePair[1]);
+            string stepValue;
+            try
+            {
+                stepValue = Uri.UnescapeDataString(keyValuePair[1]);
+            }
+            catch (UriFormatException)
+            {
+                return false;
+            }
             if (TryMapIntakeStepToSubtitle(stepValue, out subtitle))
             {
                 return true;
