@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Option C: CHANGELOG Enforcement Gate
+
+#### CI Workflow: `changelog-required.yml`
+- **`changelog-required.yml`** — New PR gate that fails if `docs/CHANGELOG.md` is not modified in the pull request. Passes when the `no-changelog` label is present (explicit bypass). Runs on `pull_request` events (opened, synchronize, reopened, ready_for_review, labeled, unlabeled) with minimal `pull-requests: read` permissions.
+
+#### CI Workflow: `update-docs-on-merge.yml` (disabled push)
+- **Removed `git push origin main` step** from the "Update CHANGELOG and Documentation" workflow. The step was causing `GH013` failures because repository rules require changes through a pull request. The step is replaced by a notice. CHANGELOG entries must now be included in the PR itself (see above gate).
+
 ### Added - Sprint K: Audit Closure and Release Blocker Triage
 
 #### Secret Management Policy (CI Enforcement)

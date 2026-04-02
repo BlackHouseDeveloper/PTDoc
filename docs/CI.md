@@ -50,6 +50,18 @@ Runs on every pull request against `main`. Enforces the PFPT secret management p
 
 See [Secret Policy CI (Sprint K)](#secret-policy-ci-sprint-k) below.
 
+### `changelog-required.yml` – CHANGELOG Gate (Option C)
+Runs on every pull request (opened, synchronize, reopened, ready_for_review, labeled, unlabeled).
+- **Fails** if `docs/CHANGELOG.md` is not modified in the PR.
+- **Passes** if the PR carries the `no-changelog` label (explicit bypass).
+- Permissions: `pull-requests: read` only (no repo write access).
+
+Add this check as a **required status check** in your branch protection / ruleset for `main` so that PRs cannot be merged without a CHANGELOG entry.
+
+**Process for contributors:**
+- Add an entry under `## [Unreleased]` in `docs/CHANGELOG.md` as part of every PR.
+- If the change genuinely needs no changelog entry (e.g., a typo fix, CI-only change), apply the `no-changelog` label to the PR to bypass the gate.
+
 ### `ci-release-gate.yml` – Release Gate Suite (Sprint T)
 Runs on every pull request against `main` and on every push to `main`. The final CI gate
 suite required for release readiness. See [Release Gate CI (Sprint T)](#release-gate-ci-sprint-t) below.
