@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: write
 
 jobs:
   preview-documentation-update:
@@ -214,5 +215,8 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: '✅ Documentation automatically updated:\n- CHANGELOG.md entry added\n\nCommit: https://github.com/${{ github.repository }}/commit/' + context.sha
+              body: '⚠️ **CHANGELOG reminder:** This PR did not include a `docs/CHANGELOG.md` update.\n\n' +
+                    'Please add an entry under `## [Unreleased]` in `docs/CHANGELOG.md` before merging, ' +
+                    'or apply the `no-changelog` label to intentionally bypass the requirement.\n\n' +
+                    '> Direct pushes to `main` are blocked by repository rules, so automated post-merge updates are no longer possible.'
             });
