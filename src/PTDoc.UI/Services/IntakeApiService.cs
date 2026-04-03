@@ -172,7 +172,10 @@ public sealed class IntakeApiService(
             existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
             if (existing is null)
             {
-                return;
+                throw new HttpRequestException(
+                    "The intake form is not available.",
+                    inner: null,
+                    statusCode: HttpStatusCode.NotFound);
             }
         }
 

@@ -10,6 +10,7 @@
 @inject INoteService NoteService
 @inject INotificationCenterService NotificationCenterService
 @inject IToastService ToastService
+@inject ILogger<Dashboard> Logger
 @rendermode InteractiveServer
 @implements IDisposable
 
@@ -142,7 +143,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dashboard] Error loading patient list: {ex.Message}");
+            Logger.LogWarning(ex, "[Dashboard] Error loading patient list");
         }
     }
 
@@ -191,7 +192,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading dashboard snapshot: {ex.Message}");
+            Logger.LogWarning(ex, "[Dashboard] Error loading dashboard snapshot");
         }
 
         await LoadRecentActivityAsync();
@@ -242,7 +243,7 @@
         {
             _recentActivityLoadFailed = true;
             _recentActivityErrorMessage = "Recent activity could not be refreshed. Check the API connection and try again.";
-            Console.WriteLine($"Error loading recent activity: {ex.Message}");
+            Logger.LogWarning(ex, "[Dashboard] Error loading recent activity");
         }
         finally
         {
@@ -289,7 +290,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dashboard] Error creating patient: {ex.Message}");
+            Logger.LogWarning(ex, "[Dashboard] Error creating patient");
             ToastService.ShowError("Failed to create patient. Please try again.");
         }
     }
@@ -302,7 +303,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dashboard] Error refreshing intake state: {ex.Message}");
+            Logger.LogWarning(ex, "[Dashboard] Error refreshing intake state");
         }
     }
 

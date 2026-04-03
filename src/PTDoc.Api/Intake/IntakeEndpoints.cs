@@ -228,6 +228,42 @@ public static class IntakeEndpoints
         [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
         CancellationToken cancellationToken)
     {
+        // Validate override fields upfront so callers get a 400 before a draft is created,
+        // consistent with CreateIntake/UpdateIntake, and to avoid orphaned drafts with partial data.
+        string? resolvedPainMapData = null;
+        string? resolvedStructuredDataJson = null;
+        string? resolvedConsents = null;
+
+        if (request is not null)
+        {
+            if (!TryResolveStructuredData(
+                    request.StructuredData,
+                    request.PainMapData,
+                    existingStructuredDataJson: null,
+                    intakeReferenceData,
+                    out var painMapData,
+                    out var structuredDataJson,
+                    out var structuredDataValidationProblem))
+            {
+                return structuredDataValidationProblem!;
+            }
+
+            resolvedPainMapData = painMapData;
+            resolvedStructuredDataJson = structuredDataJson;
+
+            if (!TryNormalizeConsents(
+                    request.Consents,
+                    requireHipaaAcknowledgement: false,
+                    out var consents,
+                    out _,
+                    out var consentsValidationProblem))
+            {
+                return consentsValidationProblem!;
+            }
+
+            resolvedConsents = consents;
+        }
+
         var seedDraft = ToSeedDraft(request, patientId);
         var result = await intakeService.EnsureDraftAsync(patientId, seedDraft, cancellationToken);
 
@@ -247,8 +283,7 @@ public static class IntakeEndpoints
             return Results.Problem("Intake draft was ensured but no intake identifier was returned.", statusCode: 500);
         }
 
-        // For a newly created draft, apply override fields from the request that ToSeedDraft
-        // cannot set on IntakeResponseDraft (PainMapData, Consents, StructuredData, TemplateVersion).
+        // For a newly created draft, apply the pre-validated override fields.
         if (result.Status == IntakeEnsureDraftStatus.Created && request is not null)
         {
             var newIntake = await db.IntakeForms
@@ -256,33 +291,17 @@ public static class IntakeEndpoints
 
             if (newIntake is not null)
             {
-                if (TryResolveStructuredData(
-                        request.StructuredData,
-                        request.PainMapData,
-                        newIntake.StructuredDataJson,
-                        intakeReferenceData,
-                        out var painMapData,
-                        out var structuredDataJson,
-                        out _))
-                {
-                    newIntake.PainMapData = painMapData;
-                    newIntake.StructuredDataJson = structuredDataJson;
-                }
+                if (resolvedPainMapData is not null)
+                    newIntake.PainMapData = resolvedPainMapData;
 
-                if (TryNormalizeConsents(
-                        request.Consents,
-                        requireHipaaAcknowledgement: false,
-                        out var consents,
-                        out _,
-                        out _))
-                {
-                    newIntake.Consents = consents;
-                }
+                if (resolvedStructuredDataJson is not null)
+                    newIntake.StructuredDataJson = resolvedStructuredDataJson;
+
+                if (resolvedConsents is not null)
+                    newIntake.Consents = resolvedConsents;
 
                 if (!string.IsNullOrWhiteSpace(request.TemplateVersion))
-                {
                     newIntake.TemplateVersion = request.TemplateVersion;
-                }
 
                 newIntake.LastModifiedUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync(cancellationToken);

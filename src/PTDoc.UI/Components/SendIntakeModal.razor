@@ -280,16 +280,9 @@
             }
             catch (Exception ex)
             {
-                _errorMessage = ex.Message;
+                _errorMessage = "Unable to prepare the intake draft. Please try again.";
+                Console.WriteLine($"[SendIntakeModal] EnsureDraft error: {ex.Message}");
             }
-            finally
-            {
-                _isBusy = false;
-            }
-        }
-    }
-
-    private async Task GenerateLinkAsync()
     {
         _errorMessage = null;
 
@@ -303,7 +296,8 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = "Unable to generate an intake link. Please try again.";
+            Console.WriteLine($"[SendIntakeModal] GenerateLink error: {ex.Message}");
         }
         finally
         {
@@ -335,7 +329,8 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = "Unable to copy the intake link. Please try again.";
+            Console.WriteLine($"[SendIntakeModal] CopyLink error: {ex.Message}");
         }
         finally
         {
@@ -406,7 +401,8 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = "Unable to send the intake invitation. Please try again.";
+            Console.WriteLine($"[SendIntakeModal] Submit error: {ex.Message}");
         }
         finally
         {

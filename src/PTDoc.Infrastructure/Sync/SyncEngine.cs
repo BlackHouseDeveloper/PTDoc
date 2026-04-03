@@ -948,6 +948,13 @@ public class SyncEngine : ISyncEngine
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+                if (patientId == Guid.Empty || clinicId is null)
+                {
+                    throw new InvalidOperationException(
+                        $"IntakeForm push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                }
+
                 var form = new IntakeForm
                 {
                     Id = serverId,
@@ -993,6 +1000,13 @@ public class SyncEngine : ISyncEngine
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+                if (patientId == Guid.Empty || clinicId is null)
+                {
+                    throw new InvalidOperationException(
+                        $"ClinicalNote push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                }
+
                 var noteType = TryGetEnumValue<NoteType>(root, "noteType")
                     ?? TryGetEnumValue<NoteType>(root, "NoteType")
                     ?? NoteType.Daily;
