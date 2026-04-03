@@ -1221,15 +1221,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task UC4_PTASignedNote_RequiresCoSign_IsSetTrue()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var ptaUserId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PTA, ptaUserId);
         var patient = CreateTestPatient();
         _db.Patients.Add(patient);
 
@@ -1246,30 +1240,27 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        // PTA signs (signerIsPta = true)
-        var result = await signatureService.SignNoteAsync(note.Id, ptaUserId, signerIsPta: true);
+        var result = await signatureService.SignNoteAsync(note.Id, ptaUserId, Roles.PTA, true, true);
 
         Assert.True(result.Success);
         Assert.True(result.RequiresCoSign, "PTA-signed note must require PT co-sign");
+        Assert.Equal(NoteStatus.PendingCoSign, result.Status);
 
         var savedNote = await _db.ClinicalNotes.FindAsync(note.Id);
         Assert.True(savedNote!.RequiresCoSign);
         Assert.Null(savedNote.CoSignedByUserId);
+        Assert.Null(savedNote.SignatureHash);
+        Assert.Single(await _db.Signatures.Where(s => s.NoteId == note.Id).ToListAsync());
     }
 
     [Fact]
     public async Task UC4_PTASignedNote_PT_CanCoSign()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var ptaUserId = Guid.NewGuid();
         var ptUserId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PTA, ptaUserId);
+        await CreateClinicianAsync(Roles.PT, ptUserId);
 
         var patient = CreateTestPatient();
         _db.Patients.Add(patient);
@@ -1287,13 +1278,11 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        // PTA signs first
-        var signResult = await signatureService.SignNoteAsync(note.Id, ptaUserId, signerIsPta: true);
+        var signResult = await signatureService.SignNoteAsync(note.Id, ptaUserId, Roles.PTA, true, true);
         Assert.True(signResult.Success);
         Assert.True(signResult.RequiresCoSign);
 
-        // PT co-signs
-        var coSignResult = await signatureService.CoSignNoteAsync(note.Id, ptUserId);
+        var coSignResult = await signatureService.CoSignNoteAsync(note.Id, ptUserId, true, true);
 
         Assert.True(coSignResult.Success, $"PT co-sign failed: {coSignResult.ErrorMessage}");
         Assert.NotNull(coSignResult.CoSignedUtc);
@@ -1301,20 +1290,17 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var savedNote = await _db.ClinicalNotes.FindAsync(note.Id);
         Assert.Equal(ptUserId, savedNote!.CoSignedByUserId);
         Assert.NotNull(savedNote.CoSignedUtc);
+        Assert.Equal(NoteStatus.Signed, savedNote.NoteStatus);
+        Assert.NotNull(savedNote.SignatureHash);
+        Assert.Equal(2, await _db.Signatures.CountAsync(s => s.NoteId == note.Id));
     }
 
     [Fact]
     public async Task UC4_NoteNotSignedByPTA_CoSignFails_NotRequiresCoSign()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var ptUserId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PT, ptUserId);
         var patient = CreateTestPatient();
         _db.Patients.Add(patient);
 
@@ -1331,13 +1317,11 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        // PT signs (signerIsPta = false)
-        var signResult = await signatureService.SignNoteAsync(note.Id, ptUserId, signerIsPta: false);
+        var signResult = await signatureService.SignNoteAsync(note.Id, ptUserId, Roles.PT, true, true);
         Assert.True(signResult.Success);
         Assert.False(signResult.RequiresCoSign, "PT-signed note should NOT require co-sign");
 
-        // Co-sign attempt on a note that doesn't require co-sign should fail
-        var coSignResult = await signatureService.CoSignNoteAsync(note.Id, ptUserId);
+        var coSignResult = await signatureService.CoSignNoteAsync(note.Id, ptUserId, true, true);
         Assert.False(coSignResult.Success);
         Assert.Contains("does not require a co-sign", coSignResult.ErrorMessage);
     }
@@ -1347,15 +1331,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task RQ033_SignNote_BlockedWhenPatientHasNoDiagnoses()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PT, userId);
         var patient = new Patient
         {
             FirstName = "Test",
@@ -1381,7 +1359,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        var result = await signatureService.SignNoteAsync(note.Id, userId);
+        var result = await signatureService.SignNoteAsync(note.Id, userId, Roles.PT, true, true);
 
         Assert.False(result.Success);
         Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
@@ -1390,15 +1368,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task RQ033_SignNote_SucceedsWhenPatientHasDiagnosis()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PT, userId);
         var patient = CreateTestPatient(); // has DiagnosisCodesJson with M54.5
         _db.Patients.Add(patient);
 
@@ -1415,7 +1387,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        var result = await signatureService.SignNoteAsync(note.Id, userId);
+        var result = await signatureService.SignNoteAsync(note.Id, userId, Roles.PT, true, true);
 
         Assert.True(result.Success, $"Expected signing to succeed but got: {result.ErrorMessage}");
         Assert.NotNull(result.SignatureHash);
@@ -1424,15 +1396,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonIsNull()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PT, userId);
         var patient = new Patient
         {
             FirstName = "Test",
@@ -1458,7 +1424,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        var result = await signatureService.SignNoteAsync(note.Id, userId);
+        var result = await signatureService.SignNoteAsync(note.Id, userId, Roles.PT, true, true);
 
         Assert.False(result.Success);
         Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
@@ -1467,15 +1433,9 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     [Fact]
     public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonInvalid()
     {
-        var auditService = new AuditService(_db);
-        var identityMock = new Mock<IIdentityContextAccessor>();
-        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
-        clinicalRulesMock.Setup(e => e.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
-
-        var signatureService = new SignatureService(_db, auditService, identityMock.Object, clinicalRulesMock.Object);
-
+        var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
+        await CreateClinicianAsync(Roles.PT, userId);
         var patient = new Patient
         {
             FirstName = "Test",
@@ -1501,7 +1461,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         _db.ClinicalNotes.Add(note);
         await _db.SaveChangesAsync();
 
-        var result = await signatureService.SignNoteAsync(note.Id, userId);
+        var result = await signatureService.SignNoteAsync(note.Id, userId, Roles.PT, true, true);
 
         Assert.False(result.Success);
         Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
@@ -1650,6 +1610,36 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
+
+    private SignatureService CreateSignatureService()
+    {
+        var auditService = new AuditService(_db);
+        var clinicalRulesMock = new Mock<IClinicalRulesEngine>();
+        clinicalRulesMock
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        return new SignatureService(_db, auditService, clinicalRulesMock.Object, new HashService());
+    }
+
+    private async Task<User> CreateClinicianAsync(string role, Guid userId)
+    {
+        var user = new User
+        {
+            Id = userId,
+            Username = $"{role.ToLowerInvariant()}-{userId:N}",
+            PinHash = "hash",
+            FirstName = role,
+            LastName = "Clinician",
+            Role = role,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+        return user;
+    }
 
     private static Patient CreateTestPatient() => new()
     {

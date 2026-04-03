@@ -22,6 +22,16 @@ public interface IAuditService
     Task LogNoteSignedAsync(AuditEvent auditEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Logs a legal signature event.
+    /// </summary>
+    Task LogSignatureEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs a signature verification event.
+    /// </summary>
+    Task LogSignatureVerificationAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Logs an addendum creation event.
     /// </summary>
     Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
@@ -114,6 +124,25 @@ public class AuditEvent
                 ["NoteId"] = noteId,
                 ["NoteType"] = noteType,
                 ["SignatureHash"] = signatureHash,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent SignatureAction(string eventType, Guid noteId, Guid? userId, bool success = true, string? errorMessage = null)
+    {
+        return new AuditEvent
+        {
+            EventType = eventType,
+            UserId = userId,
+            Success = success,
+            ErrorMessage = errorMessage,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["Action"] = eventType,
+                ["NoteId"] = noteId,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

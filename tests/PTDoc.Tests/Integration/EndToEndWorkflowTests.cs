@@ -546,8 +546,48 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var noteId = noteDoc!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
 
         // Sign note — Daily notes have no blocking compliance violations, so expect 200 OK.
-        using var signResp = await client.PostAsync($"/api/v1/notes/{noteId}/sign", null);
+        using var signResp = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
         Assert.Equal(HttpStatusCode.OK, signResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PT_Can_Verify_Signed_Note_Using_Both_Verify_Routes()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResp = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"subjective\":\"Patient reports progress.\"}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+
+        var createContent = await createResp.Content.ReadAsStringAsync();
+        var createDoc = JsonSerializer.Deserialize<JsonDocument>(createContent, JsonOpts);
+        var noteId = createDoc!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var signResp = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
+        Assert.Equal(HttpStatusCode.OK, signResp.StatusCode);
+
+        using var verifyResp = await client.GetAsync($"/api/v1/notes/{noteId}/verify");
+        Assert.Equal(HttpStatusCode.OK, verifyResp.StatusCode);
+        var verifyDoc = JsonSerializer.Deserialize<JsonDocument>(await verifyResp.Content.ReadAsStringAsync(), JsonOpts);
+        Assert.True(verifyDoc!.RootElement.GetProperty("isValid").GetBoolean());
+        Assert.Equal("Verified", verifyDoc.RootElement.GetProperty("message").GetString());
+
+        using var verifyAliasResp = await client.GetAsync($"/api/v1/notes/{noteId}/verify-signature");
+        Assert.Equal(HttpStatusCode.OK, verifyAliasResp.StatusCode);
+        var verifyAliasDoc = JsonSerializer.Deserialize<JsonDocument>(await verifyAliasResp.Content.ReadAsStringAsync(), JsonOpts);
+        Assert.True(verifyAliasDoc!.RootElement.GetProperty("isValid").GetBoolean());
+        Assert.Equal("Verified", verifyAliasDoc.RootElement.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -556,7 +596,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
 
-        using var signResp = await client.PostAsync($"/api/v1/notes/{Guid.NewGuid()}/sign", null);
+        using var signResp = await client.PostAsync(
+            $"/api/v1/notes/{Guid.NewGuid()}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
 
         Assert.Equal(HttpStatusCode.Forbidden, signResp.StatusCode);
     }
@@ -568,7 +610,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         // Co-sign is PT-only (NoteCoSign policy).
         using var client = _factory.CreateClientWithRole(Roles.PTA);
 
-        using var coSignResp = await client.PostAsync($"/api/v1/notes/{Guid.NewGuid()}/co-sign", null);
+        using var coSignResp = await client.PostAsync(
+            $"/api/v1/notes/{Guid.NewGuid()}/co-sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
 
         Assert.Equal(HttpStatusCode.Forbidden, coSignResp.StatusCode);
     }
@@ -680,7 +724,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             JsonOpts)!;
         var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
 
-        using var signResponse = await client.PostAsync($"/api/v1/notes/{noteId}/sign", null);
+        using var signResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
         Assert.Equal(HttpStatusCode.OK, signResponse.StatusCode);
 
         using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
@@ -1044,6 +1090,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
         await using var scope = Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.MigrateAsync();
+        await SeedTestUsersAsync(db);
     }
 
     /// <summary>Returns an <see cref="HttpClient"/> that sends no authentication headers.</summary>
@@ -1078,6 +1125,45 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
             services.Remove(existing);
 
         services.AddScoped(_ => instance);
+    }
+
+    private static async Task SeedTestUsersAsync(ApplicationDbContext db)
+    {
+        var roles = new[]
+        {
+            Roles.PT,
+            Roles.PTA,
+            Roles.Admin,
+            Roles.Owner,
+            Roles.Billing,
+            Roles.FrontDesk,
+            Roles.Aide,
+            Roles.Patient
+        };
+
+        foreach (var role in roles)
+        {
+            var userId = TestRoleAuthHandler.GetUserIdForRole(role);
+            var exists = await db.Users.AnyAsync(user => user.Id == userId);
+            if (exists)
+            {
+                continue;
+            }
+
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Username = $"integration-{role.ToLowerInvariant()}",
+                PinHash = "integration-test-pin-hash",
+                FirstName = "Integration",
+                LastName = role,
+                Role = role,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
 
     public new async Task DisposeAsync()
@@ -1124,8 +1210,8 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
             // Use a deterministic but valid Guid so PrincipalRecordResolver.EnsureProvisioned
             // treats this as an already-provisioned internal user without a DB lookup.
             // PTDocClaimTypes.InternalUserIdAliases() includes ClaimTypes.NameIdentifier.
-            new(PTDocClaimTypes.InternalUserId, RoleToUserId(role).ToString()),
-            new(ClaimTypes.NameIdentifier, RoleToUserId(role).ToString()),
+            new(PTDocClaimTypes.InternalUserId, GetUserIdForRole(role).ToString()),
+            new(ClaimTypes.NameIdentifier, GetUserIdForRole(role).ToString()),
             new(ClaimTypes.Name, $"Test User ({role})"),
             new(ClaimTypes.Role, role),
             // Auth type claim prevents ProvisioningGuardMiddleware from triggering a
@@ -1144,7 +1230,7 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
     /// Maps a role name to a deterministic Guid for use as the internal user ID.
     /// Each role gets a stable Guid so tests can rely on consistent identity across requests.
     /// </summary>
-    private static Guid RoleToUserId(string role) => role switch
+    internal static Guid GetUserIdForRole(string role) => role switch
     {
         Roles.PT => new Guid("00000000-0000-0000-0001-000000000001"),
         Roles.PTA => new Guid("00000000-0000-0000-0001-000000000002"),

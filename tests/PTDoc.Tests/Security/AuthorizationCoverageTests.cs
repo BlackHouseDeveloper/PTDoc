@@ -259,6 +259,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/notes/{noteId:guid}/sign",             AuthorizationPolicies.NoteWrite),
         new("POST", "/api/v1/notes/{noteId:guid}/co-sign",          AuthorizationPolicies.NoteCoSign),
         new("POST", "/api/v1/notes/{noteId:guid}/addendum",         AuthorizationPolicies.NoteWrite),
+        new("GET",  "/api/v1/notes/{noteId:guid}/verify",           AuthorizationPolicies.NoteRead),
         new("GET",  "/api/v1/notes/{noteId:guid}/verify-signature", AuthorizationPolicies.NoteRead),
 
         // ── Sync (Sync/SyncEndpoints.cs) ──────────────────────────────────────

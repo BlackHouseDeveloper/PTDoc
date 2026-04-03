@@ -10,8 +10,8 @@ using PTDoc.Infrastructure.Data;
 namespace PTDoc.Api.Notes;
 
 /// <summary>
-/// CRUD endpoints for objective metrics on draft clinical notes.
-/// Mutations are guarded: the parent note must be in Draft status.
+/// CRUD endpoints for objective metrics on editable clinical notes.
+/// Mutations are guarded: the parent note must not be finalized.
 /// Sprint O: TDD §5.4 ObjectiveMetric
 /// </summary>
 public static class ObjectiveMetricEndpoints
@@ -32,15 +32,15 @@ public static class ObjectiveMetricEndpoints
 
         writeGroup.MapPost("/", AddMetric)
             .WithName("AddObjectiveMetric")
-            .WithSummary("Add an objective metric to a draft note");
+            .WithSummary("Add an objective metric to an editable note");
 
         writeGroup.MapPut("/{metricId:guid}", UpdateMetric)
             .WithName("UpdateObjectiveMetric")
-            .WithSummary("Update an objective metric on a draft note");
+            .WithSummary("Update an objective metric on an editable note");
 
         writeGroup.MapDelete("/{metricId:guid}", DeleteMetric)
             .WithName("DeleteObjectiveMetric")
-            .WithSummary("Delete an objective metric from a draft note");
+            .WithSummary("Delete an objective metric from an editable note");
     }
 
     // GET /api/v1/notes/{noteId}/objective-metrics
@@ -79,8 +79,8 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be added to draft notes." });
+        if (note.NoteStatus == NoteStatus.Signed || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
+            return Results.UnprocessableEntity(new { error = "Objective metrics can only be changed before the note is finalized." });
 
         if (string.IsNullOrWhiteSpace(request.Value))
             return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -131,8 +131,8 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be modified on draft notes." });
+        if (note.NoteStatus == NoteStatus.Signed || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
+            return Results.UnprocessableEntity(new { error = "Objective metrics can only be changed before the note is finalized." });
 
         var metric = await db.ObjectiveMetrics
             .FirstOrDefaultAsync(m => m.Id == metricId && m.NoteId == noteId, cancellationToken);
@@ -193,8 +193,8 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be deleted from draft notes." });
+        if (note.NoteStatus == NoteStatus.Signed || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
+            return Results.UnprocessableEntity(new { error = "Objective metrics can only be changed before the note is finalized." });
 
         var metric = await db.ObjectiveMetrics
             .FirstOrDefaultAsync(m => m.Id == metricId && m.NoteId == noteId, cancellationToken);

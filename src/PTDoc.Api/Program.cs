@@ -116,6 +116,7 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infr
 builder.Services.AddScoped<PTDoc.Application.Compliance.INoteSaveValidationService, PTDoc.Infrastructure.Compliance.NoteSaveValidationService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IHashService, PTDoc.Infrastructure.Compliance.HashService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
@@ -154,7 +155,6 @@ builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingS
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
-builder.Services.AddScoped<IIntakeService, PTDoc.Infrastructure.Services.IntakeService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty

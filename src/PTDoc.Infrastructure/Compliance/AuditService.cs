@@ -34,6 +34,16 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogSignatureEventAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
+    public async Task LogSignatureVerificationAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     public async Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
