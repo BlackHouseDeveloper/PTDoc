@@ -91,7 +91,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 name: "IX_AuditLogs_EntityId",
                 table: "AuditLogs",
                 column: "EntityId",
-                filter: "EntityId IS NOT NULL");
+                filter: "\"EntityId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_RuleOverrides_TimestampUtc",
