@@ -225,6 +225,7 @@ public static class IntakeEndpoints
         [FromBody] EnsureIntakeDraftRequest? request,
         [FromServices] IIntakeService intakeService,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
         CancellationToken cancellationToken)
     {
         var seedDraft = ToSeedDraft(request, patientId);
@@ -244,6 +245,48 @@ public static class IntakeEndpoints
         if (!intakeId.HasValue)
         {
             return Results.Problem("Intake draft was ensured but no intake identifier was returned.", statusCode: 500);
+        }
+
+        // For a newly created draft, apply override fields from the request that ToSeedDraft
+        // cannot set on IntakeResponseDraft (PainMapData, Consents, StructuredData, TemplateVersion).
+        if (result.Status == IntakeEnsureDraftStatus.Created && request is not null)
+        {
+            var newIntake = await db.IntakeForms
+                .FirstOrDefaultAsync(form => form.Id == intakeId.Value, cancellationToken);
+
+            if (newIntake is not null)
+            {
+                if (TryResolveStructuredData(
+                        request.StructuredData,
+                        request.PainMapData,
+                        newIntake.StructuredDataJson,
+                        intakeReferenceData,
+                        out var painMapData,
+                        out var structuredDataJson,
+                        out _))
+                {
+                    newIntake.PainMapData = painMapData;
+                    newIntake.StructuredDataJson = structuredDataJson;
+                }
+
+                if (TryNormalizeConsents(
+                        request.Consents,
+                        requireHipaaAcknowledgement: false,
+                        out var consents,
+                        out _,
+                        out _))
+                {
+                    newIntake.Consents = consents;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.TemplateVersion))
+                {
+                    newIntake.TemplateVersion = request.TemplateVersion;
+                }
+
+                newIntake.LastModifiedUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         var intake = await db.IntakeForms

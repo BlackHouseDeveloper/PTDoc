@@ -149,7 +149,10 @@ public sealed class IntakeApiService(
         {
             if (await TryGetStandaloneAccessTokenAsync(cancellationToken) is not null)
             {
-                return;
+                throw new HttpRequestException(
+                    "The intake form is not available.",
+                    inner: null,
+                    statusCode: HttpStatusCode.NotFound);
             }
 
             var ensured = await EnsureDraftAsync(state.PatientId.Value, state, cancellationToken);

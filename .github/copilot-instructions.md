@@ -339,7 +339,7 @@ A feature is considered **complete and mergeable** only when all of the followin
 - [ ] Signed clinical records cannot be silently overwritten by the change
 - [ ] StyleCop formatting passes (`dotnet format --verify-no-changes`)
 - [ ] CodeQL security scan reports no new high/critical alerts
-- [ ] `CHANGELOG.md` `[Unreleased]` section updated — **mandatory for every session** except as permitted by the bypass in [Mandatory Changelog Rule](#mandatory-changelog-rule)
+- [ ] `docs/CHANGELOG.md` `[Unreleased]` section updated — **mandatory for every session** except as permitted by the bypass in [Mandatory Changelog Rule](#mandatory-changelog-rule)
 
 ---
 
