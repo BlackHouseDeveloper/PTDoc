@@ -25,7 +25,7 @@ public static class ComplianceEndpoints
         complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}",
             async (Guid patientId, IRulesEngine rulesEngine) =>
             {
-                var result = await rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+                var result = await rulesEngine.CheckProgressNoteDueAsync(patientId, DateTime.UtcNow.Date);
                 return Results.Ok(result);
             })
             .WithName("EvaluateProgressNoteFrequency");
@@ -33,9 +33,7 @@ public static class ComplianceEndpoints
         complianceGroup.MapPost("/evaluate/8-minute-rule",
             async ([FromBody] EightMinuteRuleRequest request, IRulesEngine rulesEngine) =>
             {
-                var result = await rulesEngine.ValidateEightMinuteRuleAsync(
-                    request.TotalMinutes,
-                    request.CptCodes);
+                var result = await rulesEngine.ValidateTimedUnitsAsync(request.CptCodes);
                 return Results.Ok(result);
             })
             .WithName("EvaluateEightMinuteRule");
@@ -210,5 +208,5 @@ public static class ComplianceEndpoints
     }
 }
 
-public record EightMinuteRuleRequest(int TotalMinutes, List<CptCodeEntry> CptCodes);
+public record EightMinuteRuleRequest(List<CptCodeEntry> CptCodes);
 public record AddendumRequest(string Content);

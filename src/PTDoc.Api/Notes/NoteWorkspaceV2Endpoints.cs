@@ -77,15 +77,25 @@ public static class NoteWorkspaceV2Endpoints
         try
         {
             var saved = await service.SaveAsync(request, cancellationToken);
-            return Results.Ok(saved);
+            return saved.IsValid
+                ? Results.Ok(saved)
+                : Results.UnprocessableEntity(saved);
         }
         catch (KeyNotFoundException ex)
         {
-            return Results.NotFound(new { error = ex.Message });
+            return Results.NotFound(new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = [ex.Message]
+            });
         }
         catch (InvalidOperationException ex)
         {
-            return Results.Conflict(new { error = ex.Message });
+            return Results.Conflict(new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = [ex.Message]
+            });
         }
     }
 

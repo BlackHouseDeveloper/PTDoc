@@ -7,6 +7,17 @@ namespace PTDoc.Application.Compliance;
 public interface IRulesEngine
 {
     /// <summary>
+    /// Determines whether a Progress Note is due for a Medicare patient on the supplied service date.
+    /// Warnings surface at 8 visits / 25 days; hard-stop errors surface at 10 visits / 30 days.
+    /// </summary>
+    Task<ValidationResult> CheckProgressNoteDueAsync(Guid patientId, DateTime referenceDate, CancellationToken ct = default);
+
+    /// <summary>
+    /// Validates timed CPT entries against Medicare 8-minute rule requirements.
+    /// </summary>
+    Task<ValidationResult> ValidateTimedUnitsAsync(List<CptCodeEntry> entries, CancellationToken ct = default);
+
+    /// <summary>
     /// Validates Progress Note frequency requirements.
     /// Medicare: ≥10 visits OR ≥30 days since last PN/Eval.
     /// Commercial/Unknown payer: ≥30 days only (no visit threshold).
@@ -107,6 +118,7 @@ public class CptCodeEntry
 {
     public string Code { get; set; } = string.Empty;
     public int Units { get; set; }
+    public int? Minutes { get; set; }
     public bool IsTimed { get; set; } // Timed codes subject to 8-minute rule
 }
 
