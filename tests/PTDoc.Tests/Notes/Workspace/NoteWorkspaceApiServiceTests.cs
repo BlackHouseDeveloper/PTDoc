@@ -32,17 +32,19 @@ public sealed class NoteWorkspaceApiServiceTests
             Assert.Equal("/api/v2/notes/workspace/", request.RequestUri!.AbsolutePath);
             requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
 
-            var response = new NoteWorkspaceV2LoadResponse
+            var response = new NoteWorkspaceV2SaveResponse
             {
-                NoteId = noteId,
-                PatientId = patientId,
-                DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
-                NoteType = NoteType.ProgressNote,
-                NoteStatus = NoteStatus.Draft,
-                IsSigned = false,
-                Payload = new NoteWorkspaceV2Payload
+                Workspace = new NoteWorkspaceV2LoadResponse
                 {
-                    NoteType = NoteType.ProgressNote
+                    NoteId = noteId,
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.ProgressNote,
+                    IsSigned = false,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.ProgressNote
+                    }
                 }
             };
 
@@ -75,7 +77,6 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(noteId, result.NoteId);
-        Assert.Equal(NoteStatus.Draft, result.Status);
         Assert.NotNull(requestBody);
 
         using var document = JsonDocument.Parse(requestBody!);
@@ -99,6 +100,52 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.Equal(new[] { 2 }, frequencyDays);
         Assert.Equal(new[] { 6 }, durationWeeks);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_ComplianceFailure_ReturnsStructuredValidationPayload()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = ["Progress Note required"],
+                Warnings = ["Minutes fall below standard 8-minute threshold"],
+                RequiresOverride = true
+            };
+
+            return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(response, JsonOptions),
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            PatientId = Guid.NewGuid(),
+            WorkspaceNoteType = "Progress Note",
+            DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Progress Note",
+                Subjective = new SubjectiveVm(),
+                Objective = new ObjectiveVm(),
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm()
+            }
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("Progress Note required", result.ErrorMessage);
+        Assert.Collection(result.Errors, error => Assert.Equal("Progress Note required", error));
+        Assert.Collection(result.Warnings, warning => Assert.Equal("Minutes fall below standard 8-minute threshold", warning));
+        Assert.True(result.RequiresOverride);
     }
 
     [Fact]

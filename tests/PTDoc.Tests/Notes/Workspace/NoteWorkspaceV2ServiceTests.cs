@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
@@ -26,10 +28,14 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
 
         var registry = new OutcomeMeasureRegistry();
         var catalogs = new WorkspaceReferenceCatalogService(registry);
+        var auditService = new AuditService(_context);
+        var rulesEngine = new RulesEngine(_context, auditService);
+        var validationService = new NoteSaveValidationService(rulesEngine);
         _service = new NoteWorkspaceV2Service(
             _context,
             new TestIdentityContextAccessor(),
             new TestTenantContextAccessor(),
+            validationService,
             new PlanOfCareCalculator(),
             new AssessmentCompositionService(),
             new GoalManagementService(catalogs),
@@ -150,17 +156,21 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         };
 
         var saved = await _service.SaveAsync(saveRequest);
-        var reloaded = await _service.LoadAsync(patient.Id, saved.NoteId);
+        Assert.True(saved.IsValid);
+        Assert.NotNull(saved.Workspace);
+
+        var workspace = saved.Workspace!;
+        var reloaded = await _service.LoadAsync(patient.Id, workspace.NoteId);
 
         Assert.NotNull(reloaded);
-        Assert.NotEqual(Guid.Empty, saved.NoteId);
-        Assert.Single(_context.OutcomeMeasureResults.Where(result => result.NoteId == saved.NoteId));
+        Assert.NotEqual(Guid.Empty, workspace.NoteId);
+        Assert.Single(_context.OutcomeMeasureResults.Where(result => result.NoteId == workspace.NoteId));
         Assert.Single(_context.PatientGoals.Where(goal => goal.PatientId == patient.Id));
 
-        var persistedNote = await _context.ClinicalNotes.FirstAsync(note => note.Id == saved.NoteId);
+        var persistedNote = await _context.ClinicalNotes.FirstAsync(note => note.Id == workspace.NoteId);
         Assert.Contains("97110", persistedNote.CptCodesJson);
         Assert.Contains("\"schemaVersion\":2", persistedNote.ContentJson);
-        Assert.False(string.IsNullOrWhiteSpace(saved.Payload.Plan.PlanOfCareNarrative));
+        Assert.False(string.IsNullOrWhiteSpace(workspace.Payload.Plan.PlanOfCareNarrative));
 
         var currentMetric = Assert.Single(reloaded!.Payload.Objective.Metrics);
         Assert.Equal("40 degrees", currentMetric.PreviousValue);
@@ -173,47 +183,46 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_RejectsPendingNote()
+    public async Task SaveAsync_MissingTimedMinutes_ReturnsWarningAndPersistsWorkspace()
     {
         var patient = new Patient
         {
             Id = Guid.NewGuid(),
-            FirstName = "Pending",
+            FirstName = "Test",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            ClinicId = Guid.NewGuid()
+            ClinicId = Guid.NewGuid(),
+            PayerInfoJson = """{"PayerType":"Medicare"}"""
         };
         _context.Patients.Add(patient);
-
-        var pendingNote = new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = patient.Id,
-            NoteType = NoteType.ProgressNote,
-            NoteStatus = NoteStatus.PendingCoSign,
-            DateOfService = new DateTime(2026, 4, 1),
-            ContentJson = "{}",
-            LastModifiedUtc = DateTime.UtcNow
-        };
-        _context.ClinicalNotes.Add(pendingNote);
-
         await _context.SaveChangesAsync();
 
-        var request = new NoteWorkspaceV2SaveRequest
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
         {
-            NoteId = pendingNote.Id,
             PatientId = patient.Id,
-            DateOfService = pendingNote.DateOfService,
+            DateOfService = new DateTime(2026, 3, 30),
             NoteType = NoteType.ProgressNote,
             Payload = new NoteWorkspaceV2Payload
             {
-                NoteType = NoteType.ProgressNote
+                NoteType = NoteType.ProgressNote,
+                Plan = new WorkspacePlanV2
+                {
+                    SelectedCptCodes =
+                    [
+                        new PlannedCptCodeV2
+                        {
+                            Code = "97110",
+                            Description = "Therapeutic exercises",
+                            Units = 2
+                        }
+                    ]
+                }
             }
-        };
+        });
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(request));
-
-        Assert.Equal("Only draft notes can be modified through the workspace API.", exception.Message);
+        Assert.True(result.IsValid);
+        Assert.NotNull(result.Workspace);
+        Assert.Contains(result.Warnings, warning => warning.Contains("Timed CPT minutes are missing", StringComparison.OrdinalIgnoreCase));
     }
 
     public void Dispose()
