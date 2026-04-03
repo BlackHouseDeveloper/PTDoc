@@ -140,9 +140,17 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
 
     public async Task<NoteWorkspaceSubmitResult> SubmitAsync(
         Guid noteId,
+        bool consentAccepted,
+        bool intentConfirmed,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", content: null, cancellationToken);
+        var request = JsonContent.Create(new SubmitNoteRequest
+        {
+            ConsentAccepted = consentAccepted,
+            IntentConfirmed = intentConfirmed
+        });
+
+        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", request, cancellationToken);
         if (response.IsSuccessStatusCode)
         {
             var payload = await response.Content.ReadFromJsonAsync<SubmitNoteResponse>(SerializerOptions, cancellationToken);
@@ -955,5 +963,11 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
     {
         public bool Success { get; set; }
         public bool RequiresCoSign { get; set; }
+    }
+
+    private sealed class SubmitNoteRequest
+    {
+        public bool ConsentAccepted { get; set; }
+        public bool IntentConfirmed { get; set; }
     }
 }

@@ -176,6 +176,33 @@ public sealed class NoteWorkspaceApiServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_PostsConsentAndIntentPayload()
+    {
+        var noteId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/notes/{noteId}/sign", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return StubHttpMessageHandler.JsonResponse("""{"success":true,"requiresCoSign":false}""");
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SubmitAsync(noteId, consentAccepted: true, intentConfirmed: true);
+
+        Assert.True(result.Success);
+        Assert.False(result.RequiresCoSign);
+        Assert.NotNull(requestBody);
+
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.True(document.RootElement.GetProperty("consentAccepted").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("intentConfirmed").GetBoolean());
+    }
+
+    [Fact]
     public async Task ExportPdfAsync_ReturnsPdfBytesAndHeaders()
     {
         var noteId = Guid.NewGuid();

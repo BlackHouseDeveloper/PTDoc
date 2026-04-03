@@ -7,7 +7,7 @@ public interface INoteWorkspaceService
 {
     Task<NoteWorkspaceLoadResult> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSaveResult> SaveDraftAsync(NoteWorkspaceDraft draft, CancellationToken cancellationToken = default);
-    Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, bool consentAccepted, bool intentConfirmed, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceAiAcceptanceResult> AcceptAiSuggestionAsync(
         Guid noteId,
         string section,

@@ -186,6 +186,38 @@
     }
 </div>
 
+@if (_showSignatureConsent)
+{
+    <div class="signature-consent-overlay" role="dialog" aria-modal="true" aria-labelledby="sig-consent-title" data-testid="signature-consent-dialog">
+        <div class="signature-consent-dialog">
+            <h2 id="sig-consent-title" class="signature-consent-dialog__title">Electronic Signature — Consent &amp; Intent</h2>
+            <p class="signature-consent-dialog__body">
+                By signing this clinical note electronically you attest that the documentation and billing
+                accurately reflect medically necessary services rendered and that the recorded time and units
+                are correct to the best of your knowledge.
+            </p>
+            <label class="signature-consent-dialog__checkbox-label">
+                <input type="checkbox" @bind="_consentAccepted" data-testid="sig-consent-checkbox" />
+                I consent to the use of an electronic signature and understand it carries the same legal
+                weight as a handwritten signature.
+            </label>
+            <label class="signature-consent-dialog__checkbox-label">
+                <input type="checkbox" @bind="_intentConfirmed" data-testid="sig-intent-checkbox" />
+                I confirm my intent to sign this clinical note.
+            </label>
+            <div class="signature-consent-dialog__actions">
+                <button class="btn btn--secondary"
+                        @onclick="HandleConsentCancelAsync"
+                        data-testid="sig-consent-cancel">Cancel</button>
+                <button class="btn btn--primary"
+                        disabled="@(!_consentAccepted || !_intentConfirmed)"
+                        @onclick="HandleConsentConfirmAsync"
+                        data-testid="sig-consent-confirm">Sign Note</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter, EditorRequired] public string PatientId { get; set; } = string.Empty;
     [Parameter] public string? NoteId { get; set; }
@@ -248,6 +280,9 @@
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
     private SoapSection _lastEditableSection = SoapSection.Plan;
+    private bool _showSignatureConsent;
+    private bool _consentAccepted;
+    private bool _intentConfirmed;
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
@@ -614,7 +649,6 @@
 
     private async Task HandleSubmitAsync()
     {
-        // TODO: Submit and lock note.
         _validationMessage = ValidateForSubmit();
         if (!string.IsNullOrWhiteSpace(_validationMessage))
         {
@@ -633,23 +667,50 @@
                 return;
             }
 
-            var submitResult = await NoteWorkspaceService.SubmitAsync(_note.NoteId.Value);
-            if (!submitResult.Success)
-            {
-                _note.MarkSaveError();
-                SetValidationMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error");
-                return;
-            }
-
-            _note.IsSubmitted = true;
-            _note.IsDirty = false;
-            _note.MarkSaved();
-            SetValidationMessage(
-                submitResult.RequiresCoSign
-                    ? "Note submitted. PT co-sign is still required before the documentation workflow is fully complete."
-                    : "Note submitted successfully.",
-                submitResult.RequiresCoSign ? "info" : "success");
+            // Show the consent/intent dialog; actual submission happens in HandleConsentConfirmAsync.
+            _consentAccepted = false;
+            _intentConfirmed = false;
+            _showSignatureConsent = true;
         }
+    }
+
+    private Task HandleConsentCancelAsync()
+    {
+        _showSignatureConsent = false;
+        _consentAccepted = false;
+        _intentConfirmed = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleConsentConfirmAsync()
+    {
+        if (!_consentAccepted || !_intentConfirmed || !_note.NoteId.HasValue)
+        {
+            return;
+        }
+
+        _showSignatureConsent = false;
+
+        var submitResult = await NoteWorkspaceService.SubmitAsync(
+            _note.NoteId.Value,
+            consentAccepted: _consentAccepted,
+            intentConfirmed: _intentConfirmed);
+
+        if (!submitResult.Success)
+        {
+            _note.MarkSaveError();
+            SetValidationMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error");
+            return;
+        }
+
+        _note.IsSubmitted = true;
+        _note.IsDirty = false;
+        _note.MarkSaved();
+        SetValidationMessage(
+            submitResult.RequiresCoSign
+                ? "Note submitted. PT co-sign is still required before the documentation workflow is fully complete."
+                : "Note submitted successfully.",
+            submitResult.RequiresCoSign ? "info" : "success");
     }
 
     private NoteWorkspaceDraft BuildDraft(Guid patientId)
