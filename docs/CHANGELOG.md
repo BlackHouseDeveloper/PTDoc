@@ -28,6 +28,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Verification
 - **Compliance test coverage** - Added deterministic hash tests, legal signature service tests, verification/tamper detection tests, endpoint authorization inventory coverage for `GET /api/v1/notes/{noteId:guid}/verify`, workspace submit payload coverage, and end-to-end sign/verify route coverage.
 - **Integration auth harness** - Seeded deterministic internal users for the role-based integration auth handler so stricter signer-to-user binding remains active in end-to-end tests.
+### Added - Sprint 2: Rules Engine Enforcement
+
+#### Centralized Compliance Validation
+- **`ValidationResult` / `ValidatedOperationResponse`** - Added a shared compliance validation envelope with `isValid`, `errors`, `warnings`, and `requiresOverride` for note save and evaluation flows.
+- **`INoteSaveValidationService`** - Added a service-layer validation orchestrator that merges Progress Note and 8-minute rule results before persistence.
+- **`INoteWriteService` / `NoteWriteService`** - Added a dedicated note write service so `/api/v1/notes` create/update enforcement runs outside controllers/endpoints.
+
+#### Rules Engine Enforcement
+- **`IRulesEngine.CheckProgressNoteDueAsync`** - Added Medicare-specific Progress Note due evaluation with warning thresholds at 8 visits / 25 days and hard stops at 10 visits / 30 days.
+- **`IRulesEngine.ValidateTimedUnitsAsync`** - Added timed CPT enforcement for missing CPT data, mixed timed/untimed entries, `<5` minute hard stops, `5-7` minute warning+override cases, and overbilled timed-unit warning+override cases.
+- **Progress Note reset behavior** - Signed Evaluation and signed Progress Note records now reset PN visit/day counters for server-side enforcement.
+- **Shared timed-unit calculation path** - `CalculateCptTime` now uses the same aggregate timed-unit helper as save validation to avoid drift between helper output and enforced billing logic.
+
+#### Note Save and API Behavior
+- **Daily note draft saves** - `DailyNoteService.SaveDraftAsync` now validates compliance before `SaveChangesAsync` and returns a typed save envelope instead of a tuple result.
+- **Workspace saves** - `NoteWorkspaceV2Service.SaveAsync` now returns a typed validation envelope and surfaces warnings/override flags for timed CPT rule checks.
+- **Structured save responses** - Note create/update, daily note saves, and workspace saves now return top-level `isValid`, `errors`, `warnings`, and `requiresOverride`, with `422 Unprocessable Entity` for compliance hard stops.
+- **Compliance evaluate endpoints** - `/api/v1/compliance/evaluate/pn-frequency/*` and `/api/v1/compliance/evaluate/8-minute-rule` now return `ValidationResult`.
+- **DTO contract updates** - Daily note and workspace CPT models now carry `Units` and `Minutes` so timed-unit enforcement can run server-side from note payloads.
+
+#### Client and Test Coverage
+- **Workspace client handling** - The note workspace API client now preserves structured compliance errors, warnings, and override requirements from `422` save responses.
+- **Compliance and integration tests** - Updated rules-engine, note-save, workspace, and end-to-end coverage for PN warnings/hard stops, 8-minute rule blocks/warnings, combined validation results, and structured save envelopes.
 
 ### Added - Sprint 2: Compliance Schema Foundation
 

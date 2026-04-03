@@ -44,7 +44,9 @@ public sealed class NoteWorkspaceSaveResult
     public string? ErrorMessage { get; init; }
     public Guid NoteId { get; init; }
     public bool IsSubmitted { get; init; }
-    public ComplianceWarning? ComplianceWarning { get; init; }
+    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+    public bool RequiresOverride { get; init; }
 }
 
 public sealed class NoteWorkspaceSubmitResult

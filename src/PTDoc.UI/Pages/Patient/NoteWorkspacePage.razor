@@ -583,7 +583,10 @@
             if (!saveResult.Success)
             {
                 _note.MarkSaveError();
-                SetValidationMessage(saveResult.ErrorMessage ?? "Unable to save draft right now. Please retry.", "error");
+                var complianceMessage = saveResult.Errors.Count > 0
+                    ? string.Join(" ", saveResult.Errors)
+                    : saveResult.ErrorMessage;
+                SetValidationMessage(complianceMessage ?? "Unable to save draft right now. Please retry.", "error");
                 return;
             }
 
@@ -593,9 +596,9 @@
             _note.IsSubmitted = saveResult.IsSubmitted;
             _note.MarkSaved();
 
-            if (!string.IsNullOrWhiteSpace(saveResult.ComplianceWarning?.Message))
+            if (saveResult.Warnings.Count > 0)
             {
-                SetValidationMessage(saveResult.ComplianceWarning.Message, "info");
+                SetValidationMessage(string.Join(" ", saveResult.Warnings), "info");
             }
             else
             {
