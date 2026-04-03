@@ -600,6 +600,21 @@ public class ApplicationDbContext : DbContext
         // NoteTaxonomySelection is accessed via ClinicalNote; filter via the parent note's ClinicId.
         modelBuilder.Entity<NoteTaxonomySelection>()
             .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
+
+        // Signature is accessed via ClinicalNote; filter via the parent note's ClinicId to prevent
+        // cross-tenant signature visibility.
+        modelBuilder.Entity<Signature>()
+            .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
+
+        // RuleOverride is tied to a specific user/clinic; filter via the user's ClinicId to prevent
+        // cross-tenant override visibility.
+        modelBuilder.Entity<RuleOverride>()
+            .HasQueryFilter(r => CurrentClinicId == null || r.User!.ClinicId == CurrentClinicId);
+
+        // Addendum is associated with a ClinicalNote; filter via the parent note's ClinicId to
+        // prevent cross-tenant addendum leakage.
+        modelBuilder.Entity<Addendum>()
+            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicalNote!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>
