@@ -152,6 +152,7 @@ builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingS
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
+builder.Services.AddScoped<IIntakeService, PTDoc.Infrastructure.Services.IntakeService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty

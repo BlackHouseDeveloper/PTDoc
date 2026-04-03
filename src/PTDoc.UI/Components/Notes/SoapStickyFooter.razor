@@ -81,7 +81,7 @@
     <div class="soap-sticky-footer__actions">
         <button type="button"
                 class="soap-sticky-footer__save-btn @(SaveState == NoteSaveState.Saving ? "soap-sticky-footer__save-btn--saving" : "")"
-                disabled="@(SaveState == NoteSaveState.Saving)"
+                disabled="@(IsReadOnly || SaveState == NoteSaveState.Saving)"
                 @onclick="() => OnSave.InvokeAsync()"
                 aria-label="Save draft"
                 data-testid="footer-save">
@@ -104,6 +104,7 @@
 
         <button type="button"
                 class="soap-sticky-footer__submit-btn"
+                disabled="@IsReadOnly"
                 @onclick="() => OnSubmit.InvokeAsync()"
                 data-testid="footer-submit">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
@@ -123,6 +124,7 @@
     [Parameter, EditorRequired] public string NoteType { get; set; } = "Evaluation Note";
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public NoteSaveState SaveState { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
 
     [Parameter, EditorRequired] public EventCallback OnBack { get; set; }
     [Parameter, EditorRequired] public EventCallback OnPrevSection { get; set; }

@@ -57,9 +57,9 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("The requested note does not belong to the supplied patient.");
         }
 
-        if (note is not null && note.SignatureHash is not null)
+        if (note is not null && note.NoteStatus != NoteStatus.Draft)
         {
-            throw new InvalidOperationException("Signed notes cannot be modified through the workspace API.");
+            throw new InvalidOperationException("Only draft notes can be modified through the workspace API.");
         }
 
         var currentUserId = identityContext.GetCurrentUserId();
@@ -241,6 +241,7 @@ public sealed class NoteWorkspaceV2Service(
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
+            NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };

@@ -28,6 +28,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected string? errorMessage;
     protected bool isPendingApprovalNotice;
     protected bool isLoading;
+    protected bool isExternalLoginRedirecting;
     protected bool isSubmitting;
     protected bool isPtaFieldsActive;
     protected bool showPendingConfirmation;
@@ -104,7 +105,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     protected async Task HandleExternalLogin()
     {
-        isLoading = true;
+        isExternalLoginRedirecting = true;
         errorMessage = null;
         StateHasChanged();
 
@@ -114,7 +115,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             if (!started)
             {
                 errorMessage = "External sign-in is not available right now.";
-                isLoading = false;
+                isExternalLoginRedirecting = false;
                 StateHasChanged();
             }
         }
@@ -122,7 +123,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             Logger.LogError(ex, "External login failed to start");
             errorMessage = "We couldn't start external sign-in. Please try again.";
-            isLoading = false;
+            isExternalLoginRedirecting = false;
             StateHasChanged();
         }
     }
@@ -145,6 +146,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         authMode = mode;
         errorMessage = null;
         showPendingConfirmation = false;
+        isExternalLoginRedirecting = false;
 
         // Update URL without navigation
         var targetUrl = mode == AuthMode.Login ? "/login" : "/signup";

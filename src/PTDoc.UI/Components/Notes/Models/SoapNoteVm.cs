@@ -1,3 +1,5 @@
+using PTDoc.Core.Models;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -16,12 +18,15 @@ public class SoapNoteVm
     public NoteMode Mode { get; set; } = NoteMode.New;
     public SoapSection ActiveSection { get; set; } = SoapSection.Subjective;
     public NoteSaveState SaveState { get; set; } = NoteSaveState.Unsaved;
+    public NoteStatus Status { get; set; } = NoteStatus.Draft;
+    public int? LocalDraftId { get; set; }
 
     /// <summary>True when any section contains unsaved edits.</summary>
     public bool IsDirty { get; set; }
 
     /// <summary>True once the note has been finalized (submitted). Blocks further edits.</summary>
-    public bool IsSubmitted { get; set; }
+    public bool IsSubmitted => Status != NoteStatus.Draft;
+    public bool IsEditable => Status == NoteStatus.Draft;
 
     public SubjectiveVm Subjective { get; set; } = new();
     public ObjectiveVm Objective { get; set; } = new();
@@ -61,7 +66,7 @@ public class SoapNoteVm
 
     public void MarkDirty()
     {
-        if (IsSubmitted)
+        if (!IsEditable)
         {
             return;
         }
@@ -88,6 +93,12 @@ public class SoapNoteVm
 
     public bool CanSubmit(out string? message)
     {
+        if (!IsEditable)
+        {
+            message = "Only draft notes can be submitted from the workspace.";
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(Plan.TreatmentFrequency))
         {
             message = "Treatment Frequency is required before submit.";

@@ -38,6 +38,7 @@ public sealed class NoteWorkspaceApiServiceTests
                 PatientId = patientId,
                 DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
                 NoteType = NoteType.ProgressNote,
+                NoteStatus = NoteStatus.Draft,
                 IsSigned = false,
                 Payload = new NoteWorkspaceV2Payload
                 {
@@ -74,6 +75,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(noteId, result.NoteId);
+        Assert.Equal(NoteStatus.Draft, result.Status);
         Assert.NotNull(requestBody);
 
         using var document = JsonDocument.Parse(requestBody!);
