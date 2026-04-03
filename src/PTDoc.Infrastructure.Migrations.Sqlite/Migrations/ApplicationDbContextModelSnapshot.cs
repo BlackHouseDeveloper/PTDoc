@@ -42,6 +42,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid>("ModifiedByUserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SignatureHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SyncState")
                         .HasColumnType("INTEGER");
 
@@ -167,6 +171,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CorrelationId");
+
+                    b.HasIndex("EntityId")
+                        .HasFilter("EntityId IS NOT NULL");
 
                     b.HasIndex("EventType");
 
@@ -309,6 +316,34 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("SignedUtc");
 
                     b.ToTable("ClinicalNotes");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ComplianceSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AllowOverrideTypes")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<int>("MinJustificationLength")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(20);
+
+                    b.Property<string>("OverrideAttestationText")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("I acknowledge this override and attest that the justification is accurate and clinically necessary.");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ComplianceSettings");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ExternalIdentityMapping", b =>
@@ -844,6 +879,40 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("PatientGoals");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AttestationText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Justification")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RuleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RuleOverrides");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
                 {
                     b.Property<Guid>("Id")
@@ -885,6 +954,60 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("IsRevoked", "ExpiresAt");
 
                     b.ToTable("Sessions");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Signature", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AttestationText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ConsentAccepted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeviceInfo")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IntentConfirmed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SignatureHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SignedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("SignedByUserId");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.ToTable("Signatures");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.StoredRefreshToken", b =>
@@ -1231,7 +1354,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("ClinicalNote");
+
+                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
@@ -1402,6 +1533,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
@@ -1411,6 +1553,25 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Signature", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", "SignedByUser")
+                        .WithMany()
+                        .HasForeignKey("SignedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("SignedByUser");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.User", b =>

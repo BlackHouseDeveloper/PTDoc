@@ -194,6 +194,9 @@ public class DatabaseProviderMigrationTests : IDisposable
         _ = await context.Sessions.CountAsync();
         _ = await context.LoginAttempts.CountAsync();
         _ = await context.AuditLogs.CountAsync();
+        _ = await context.Signatures.CountAsync();
+        _ = await context.RuleOverrides.CountAsync();
+        _ = await context.ComplianceSettings.CountAsync();
         _ = await context.SyncQueueItems.CountAsync();
         _ = await context.SyncConflictArchives.CountAsync();
         _ = await context.ExternalSystemMappings.CountAsync();
