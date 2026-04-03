@@ -254,8 +254,23 @@ public class SignatureService : ISignatureService
         }
 
         var latestSignature = await GetLatestSignatureAsync(noteId, ct);
+
+        // Fall back to the legacy SignatureHash field when no Signature rows exist yet
+        // (e.g. notes signed before the Signatures table was introduced).
         if (latestSignature is null)
         {
+            if (!string.IsNullOrWhiteSpace(note.SignatureHash))
+            {
+                var currentHashLegacy = _hashService.GenerateHash(note);
+                var isValidLegacy = string.Equals(currentHashLegacy, note.SignatureHash, StringComparison.Ordinal);
+                return new SignatureVerificationResult
+                {
+                    Exists = true,
+                    IsValid = isValidLegacy,
+                    Message = isValidLegacy ? "Verified (legacy)" : "Document has been altered"
+                };
+            }
+
             return new SignatureVerificationResult
             {
                 Exists = true,

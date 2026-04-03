@@ -116,7 +116,7 @@ public sealed class HashService : IHashService
 
             WriteCanonicalJsonElement(writer, document.RootElement);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
             writer.WriteStringValue(NormalizeString(payload));
         }

@@ -191,7 +191,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         var service = CreateService(handler);
 
-        var result = await service.SubmitAsync(noteId);
+        var result = await service.SubmitAsync(noteId, consentAccepted: true, intentConfirmed: true);
 
         Assert.True(result.Success);
         Assert.False(result.RequiresCoSign);

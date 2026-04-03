@@ -10,9 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added - Sprint 2: Legal eSignature Workflow and Document Hashing
 
 #### Legal eSignature Backend
-- **`IHashService` / `HashService`** - Added deterministic SHA-256 uppercase hex hashing over canonical note state, including persisted note fields, canonicalized content JSON, sorted CPT payloads, and sorted objective metrics, with malformed-JSON fallback behavior.
+- **`IHashService` / `HashService`** - Added deterministic SHA-256 uppercase hex hashing over canonical note state, including persisted note fields, canonicalized content JSON, sorted CPT payloads, and sorted objective metrics, with malformed-JSON fallback behavior for both `JsonException` and `ArgumentException`.
 - **`SignatureService` legal signature flow** - Extended the existing signature pipeline to require explicit consent and intent, bind signatures to authenticated PT/PTA users, persist one `Signature` row per legal signing event, and distinguish PTA `PendingCoSign` workflow from final PT signature completion.
-- **Tamper verification** - Added latest-signature verification by recomputing the note hash and returning structured valid/tampered outcomes instead of a bare boolean.
+- **Tamper verification with legacy fallback** - Added latest-signature verification by recomputing the note hash; when no `Signature` rows exist, falls back to the legacy `ClinicalNotes.SignatureHash` field so pre-upgrade notes remain verifiable.
 - **Default attestation text** - Stored the default legal attestation on each persisted signature record without introducing new schema.
 - **Audit hooks for signatures** - Added `SIGN` and `VERIFY` audit events with note/user/timestamp metadata only and no PHI-bearing payloads.
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`POST /api/v1/notes/{noteId}/sign`** - Now requires `{ consentAccepted, intentConfirmed }`, derives the signer role from the authenticated principal, captures IP/user-agent metadata when present, and returns explicit note status plus co-sign requirement.
 - **`POST /api/v1/notes/{noteId}/co-sign`** - Kept as the PT-only compatibility alias while requiring the same consent/intent request contract and finalizing PTA daily notes through the shared legal signature flow.
 - **`GET /api/v1/notes/{noteId}/verify`** - Added canonical verification endpoint returning `{ isValid, message }` while preserving `GET /verify-signature` as a compatibility alias.
-- **Workspace submit compatibility** - Updated the note workspace API client to send the new consent/intent payload required by the legal signature endpoint.
+- **Explicit consent/intent on signature** - `SubmitAsync` in `NoteWorkspaceApiService` now accepts `consentAccepted` and `intentConfirmed` as parameters instead of hardcoding `true`, and `NoteWorkspacePage` presents a dedicated consent/intent dialog that requires the clinician to explicitly check both boxes before the API call is made.
 
 #### Changed
 - **Objective metric mutability** - Objective metrics are now editable until the note is truly finalized so PTA-signed `PendingCoSign` notes remain modifiable before the final PT signature, matching the deferred immutability scope of the next PR.

@@ -140,12 +140,14 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
 
     public async Task<NoteWorkspaceSubmitResult> SubmitAsync(
         Guid noteId,
+        bool consentAccepted,
+        bool intentConfirmed,
         CancellationToken cancellationToken = default)
     {
         var request = JsonContent.Create(new SubmitNoteRequest
         {
-            ConsentAccepted = true,
-            IntentConfirmed = true
+            ConsentAccepted = consentAccepted,
+            IntentConfirmed = intentConfirmed
         });
 
         var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", request, cancellationToken);
