@@ -115,7 +115,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -178,17 +178,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("CorrelationId");
 
                     b.HasIndex("EntityId")
-                        .HasFilter("EntityId IS NOT NULL");
+                        .HasFilter("\"EntityId\" IS NOT NULL");
 
                     b.HasIndex("EventType");
 
                     b.HasIndex("TimestampUtc");
 
                     b.HasIndex("UserId")
-                        .HasFilter("UserId IS NOT NULL");
+                        .HasFilter("\"UserId\" IS NOT NULL");
 
                     b.HasIndex("EntityType", "EntityId")
-                        .HasFilter("EntityType IS NOT NULL AND EntityId IS NOT NULL");
+                        .HasFilter("\"EntityType\" IS NOT NULL AND \"EntityId\" IS NOT NULL");
 
                     b.ToTable("AuditLogs");
                 });
@@ -310,7 +310,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("AppointmentId");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("DateOfService");
 
@@ -389,7 +389,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("IsActive");
 
                     b.HasIndex("TenantId")
-                        .HasFilter("TenantId IS NOT NULL");
+                        .HasFilter("\"TenantId\" IS NOT NULL");
 
                     b.HasIndex("PrincipalType", "InternalEntityId");
 
@@ -504,7 +504,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -550,7 +550,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("AttemptedAt");
 
                     b.HasIndex("UserId")
-                        .HasFilter("UserId IS NOT NULL");
+                        .HasFilter("\"UserId\" IS NOT NULL");
 
                     b.HasIndex("Username");
 
@@ -675,7 +675,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("DateRecorded");
 
@@ -791,16 +791,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("Email")
-                        .HasFilter("Email IS NOT NULL");
+                        .HasFilter("\"Email\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
                     b.HasIndex("MedicalRecordNumber")
                         .IsUnique()
-                        .HasFilter("MedicalRecordNumber IS NOT NULL");
+                        .HasFilter("\"MedicalRecordNumber\" IS NOT NULL");
 
                     b.HasIndex("FirstName", "LastName");
 
@@ -871,7 +871,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("ArchivedByNoteId");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("MetByNoteId");
 
@@ -1246,11 +1246,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasFilter("Email IS NOT NULL");
+                        .HasFilter("\"Email\" IS NOT NULL");
 
                     b.HasIndex("IsActive");
 

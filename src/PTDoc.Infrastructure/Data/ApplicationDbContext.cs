@@ -74,8 +74,8 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.LastModifiedUtc);
             entity.HasIndex(e => new { e.FirstName, e.LastName });
-            entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter("MedicalRecordNumber IS NOT NULL");
-            entity.HasIndex(e => e.Email).HasFilter("Email IS NOT NULL");
+            entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter(IsNotNullFilter("MedicalRecordNumber"));
+            entity.HasIndex(e => e.Email).HasFilter(IsNotNullFilter("Email"));
 
             entity.Property(e => e.FirstName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.LastName).HasMaxLength(100).IsRequired();
@@ -157,7 +157,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username).IsUnique();
-            entity.HasIndex(e => e.Email).IsUnique().HasFilter("Email IS NOT NULL");
+            entity.HasIndex(e => e.Email).IsUnique().HasFilter(IsNotNullFilter("Email"));
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Username).HasMaxLength(100).IsRequired();
@@ -181,7 +181,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.Provider, e.ExternalSubject }).IsUnique();
             entity.HasIndex(e => new { e.PrincipalType, e.InternalEntityId });
-            entity.HasIndex(e => e.TenantId).HasFilter("TenantId IS NOT NULL");
+            entity.HasIndex(e => e.TenantId).HasFilter(IsNotNullFilter("TenantId"));
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
@@ -206,7 +206,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username);
-            entity.HasIndex(e => e.UserId).HasFilter("UserId IS NOT NULL");
+            entity.HasIndex(e => e.UserId).HasFilter(IsNotNullFilter("UserId"));
             entity.HasIndex(e => e.AttemptedAt);
             entity.HasIndex(e => new { e.Success, e.AttemptedAt });
 
@@ -222,10 +222,10 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.TimestampUtc);
             entity.HasIndex(e => e.EventType);
-            entity.HasIndex(e => e.EntityId).HasFilter("EntityId IS NOT NULL");
-            entity.HasIndex(e => e.UserId).HasFilter("UserId IS NOT NULL");
+            entity.HasIndex(e => e.EntityId).HasFilter(IsNotNullFilter("EntityId"));
+            entity.HasIndex(e => e.UserId).HasFilter(IsNotNullFilter("UserId"));
             entity.HasIndex(e => e.CorrelationId);
-            entity.HasIndex(e => new { e.EntityType, e.EntityId }).HasFilter("EntityType IS NOT NULL AND EntityId IS NOT NULL");
+            entity.HasIndex(e => new { e.EntityType, e.EntityId }).HasFilter(IsNotNullFilter("EntityType", "EntityId"));
 
             entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Severity).HasMaxLength(20).IsRequired();
@@ -379,7 +379,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.Status });
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
 
             entity.Property(e => e.Description).HasMaxLength(2000).IsRequired();
             entity.Property(e => e.Category).HasMaxLength(200);
@@ -432,7 +432,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.MeasureType });
             entity.HasIndex(e => e.DateRecorded);
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
 
             // Relationship to Patient
             entity.HasOne(e => e.Patient)
@@ -477,14 +477,14 @@ public class ApplicationDbContext : DbContext
         // Sprint J: Configure ClinicId FK on tenant-scoped entities
         modelBuilder.Entity<Patient>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
         });
 
         // Appointment, ClinicalNote, and IntakeForm carry ClinicId as a true FK to Clinic.
         // Denormalized from Patient for efficient per-clinic query filtering.
         modelBuilder.Entity<Appointment>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -493,7 +493,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<ClinicalNote>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -502,7 +502,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<IntakeForm>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -511,7 +511,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter("ClinicId IS NOT NULL");
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
         });
 
         // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
@@ -622,4 +622,40 @@ public class ApplicationDbContext : DbContext
     /// Evaluated at query execution time, not at model creation time.
     /// </summary>
     private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
+
+    /// <summary>
+    /// Returns a partial-index filter predicate appropriate for the configured database provider.
+    /// PostgreSQL requires double-quoted identifiers for mixed-case column names in partial-index
+    /// predicates (e.g. <c>"EntityId" IS NOT NULL</c>); SQL Server and SQLite are case-insensitive.
+    /// Using this helper ensures future migrations scaffold correctly without manual edits.
+    /// </summary>
+    private string IsNotNullFilter(string column)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(column, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        {
+            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column));
+        }
+
+        return Database.ProviderName?.Contains("Npgsql") == true
+            ? $"\"{column}\" IS NOT NULL"
+            : $"{column} IS NOT NULL";
+    }
+
+    /// <inheritdoc cref="IsNotNullFilter(string)"/>
+    private string IsNotNullFilter(string column1, string column2)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(column1, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        {
+            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column1));
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(column2, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        {
+            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column2));
+        }
+
+        return Database.ProviderName?.Contains("Npgsql") == true
+            ? $"\"{column1}\" IS NOT NULL AND \"{column2}\" IS NOT NULL"
+            : $"{column1} IS NOT NULL AND {column2} IS NOT NULL";
+    }
 }
