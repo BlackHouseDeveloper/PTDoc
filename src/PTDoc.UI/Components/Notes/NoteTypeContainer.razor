@@ -13,6 +13,7 @@
                     value="@NoteType"
                     @onchange="HandleChange"
                     aria-label="Note type"
+                    disabled="@Disabled"
                     data-testid="note-type-select">
                 @foreach (var type in NoteTypes)
                 {
@@ -42,6 +43,7 @@
 
     [Parameter, EditorRequired] public string NoteType { get; set; } = "Evaluation Note";
     [Parameter] public IReadOnlyList<string> NoteTypes { get; set; } = DefaultNoteTypes;
+    [Parameter] public bool Disabled { get; set; }
     [Parameter, EditorRequired] public EventCallback<string> NoteTypeChanged { get; set; }
 
     private string? GetDescription() =>

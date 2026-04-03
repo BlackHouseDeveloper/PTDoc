@@ -247,12 +247,44 @@
 
         if (Guid.TryParse(SelectedPatientId, out var patientId))
         {
-            var existingDraft = await IntakeService.GetDraftByPatientIdAsync(patientId);
-            _intakeId = existingDraft?.IntakeId;
-
-            if (_intakeId.HasValue)
+            try
             {
-                await LoadStatusAsync(_intakeId.Value);
+                _isBusy = true;
+                var ensureResult = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
+                {
+                    PatientId = patientId,
+                    EmailAddress = string.IsNullOrWhiteSpace(Email) ? null : Email,
+                    PhoneNumber = string.IsNullOrWhiteSpace(PhoneNumber) ? null : PhoneNumber,
+                    AllowEmailMessages = !string.IsNullOrWhiteSpace(Email),
+                    AllowTextMessages = !string.IsNullOrWhiteSpace(PhoneNumber),
+                    AllowPhoneCalls = !string.IsNullOrWhiteSpace(PhoneNumber)
+                });
+
+                if (ensureResult.Status == IntakeEnsureDraftStatus.Locked)
+                {
+                    _errorMessage = ensureResult.ErrorMessage ?? "This patient already has a locked intake and cannot receive a new invite.";
+                    return;
+                }
+
+                if (ensureResult.Status == IntakeEnsureDraftStatus.PatientNotFound)
+                {
+                    _errorMessage = ensureResult.ErrorMessage ?? "The selected patient could not be found.";
+                    return;
+                }
+
+                _intakeId = ensureResult.Draft?.IntakeId;
+                if (_intakeId.HasValue)
+                {
+                    await LoadStatusAsync(_intakeId.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = ex.Message;
+            }
+            finally
+            {
+                _isBusy = false;
             }
         }
     }
@@ -394,14 +426,7 @@
             return _intakeId.Value;
         }
 
-        var existingDraft = await IntakeService.GetDraftByPatientIdAsync(patientId);
-        if (existingDraft?.IntakeId is Guid existingIntakeId)
-        {
-            _intakeId = existingIntakeId;
-            return existingIntakeId;
-        }
-
-        await IntakeService.SaveDraftAsync(new IntakeResponseDraft
+        var ensuredDraft = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
         {
             PatientId = patientId,
             EmailAddress = string.IsNullOrWhiteSpace(Email) ? null : Email,
@@ -411,8 +436,17 @@
             AllowPhoneCalls = !string.IsNullOrWhiteSpace(PhoneNumber)
         });
 
-        var createdDraft = await IntakeService.GetDraftByPatientIdAsync(patientId);
-        if (createdDraft?.IntakeId is not Guid createdIntakeId)
+        if (ensuredDraft.Status == IntakeEnsureDraftStatus.Locked)
+        {
+            throw new InvalidOperationException(ensuredDraft.ErrorMessage ?? "This patient already has a locked intake and cannot receive a new invite.");
+        }
+
+        if (ensuredDraft.Status == IntakeEnsureDraftStatus.PatientNotFound)
+        {
+            throw new InvalidOperationException(ensuredDraft.ErrorMessage ?? "The selected patient could not be found.");
+        }
+
+        if (ensuredDraft.Draft?.IntakeId is not Guid createdIntakeId)
         {
             throw new InvalidOperationException("Intake draft creation succeeded but no intake record was returned.");
         }

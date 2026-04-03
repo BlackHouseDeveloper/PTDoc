@@ -14,6 +14,8 @@ public sealed class IntakeApiService(
     IIntakeSessionStore sessionStore,
     NavigationManager navigationManager) : IIntakeService
 {
+    private const string EligiblePatientsEndpoint = "/api/v1/intake/patients/eligible";
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -42,6 +44,63 @@ public sealed class IntakeApiService(
         }
 
         return ToDraft(intake);
+    }
+
+    public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
+        Guid patientId,
+        IntakeResponseDraft? seedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new EnsureIntakeDraftRequest
+        {
+            PainMapData = BuildPainMapJson(seedState),
+            Consents = BuildConsentJson(seedState),
+            ResponseJson = seedState is null
+                ? "{}"
+                : JsonSerializer.Serialize(seedState, SerializerOptions),
+            TemplateVersion = "1.0"
+        };
+
+        using var response = await httpClient.PostAsJsonAsync(
+            $"/api/v1/intake/drafts/{patientId}",
+            request,
+            SerializerOptions,
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            var message = await ReadErrorAsync(response, cancellationToken) ?? $"Patient {patientId} was not found.";
+            return IntakeEnsureDraftResult.NotFound(message);
+        }
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            var message = await ReadErrorAsync(response, cancellationToken) ?? "Intake is locked for this patient and a new draft cannot be created.";
+            return IntakeEnsureDraftResult.Locked(message);
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Ensure draft completed but the intake payload was empty.");
+
+        return response.StatusCode == HttpStatusCode.Created
+            ? IntakeEnsureDraftResult.Created(ToDraft(intake))
+            : IntakeEnsureDraftResult.Existing(ToDraft(intake));
+    }
+
+    public async Task<IReadOnlyList<PatientListItemResponse>> SearchEligiblePatientsAsync(
+        string? query = null,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTake = take <= 0 ? 100 : take;
+        var path = string.IsNullOrWhiteSpace(query)
+            ? $"{EligiblePatientsEndpoint}?take={normalizedTake}"
+            : $"{EligiblePatientsEndpoint}?query={Uri.EscapeDataString(query.Trim())}&take={normalizedTake}";
+
+        var patients = await httpClient.GetFromJsonAsync<List<PatientListItemResponse>>(path, SerializerOptions, cancellationToken);
+        return patients ?? [];
     }
 
     public async Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -88,8 +147,30 @@ public sealed class IntakeApiService(
         var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
         if (existing is null)
         {
-            await CreateIntakeAsync(state.PatientId.Value, state, cancellationToken);
-            return;
+            if (await TryGetStandaloneAccessTokenAsync(cancellationToken) is not null)
+            {
+                return;
+            }
+
+            var ensured = await EnsureDraftAsync(state.PatientId.Value, state, cancellationToken);
+            if (ensured.Status is IntakeEnsureDraftStatus.Locked or IntakeEnsureDraftStatus.PatientNotFound)
+            {
+                throw new HttpRequestException(
+                    ensured.ErrorMessage ?? "Unable to ensure an intake draft for this patient.",
+                    inner: null,
+                    statusCode: ensured.Status == IntakeEnsureDraftStatus.Locked ? HttpStatusCode.Conflict : HttpStatusCode.NotFound);
+            }
+
+            if (ensured.Status == IntakeEnsureDraftStatus.Created)
+            {
+                return;
+            }
+
+            existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
+            if (existing is null)
+            {
+                return;
+            }
         }
 
         if (existing.Locked)
@@ -173,6 +254,24 @@ public sealed class IntakeApiService(
 
         var response = await httpClient.PostAsJsonAsync("/api/v1/intake/", createRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var payload = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(SerializerOptions, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(payload?.Error))
+            {
+                return payload.Error;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return string.IsNullOrWhiteSpace(body) ? null : body;
     }
 
     private async Task<HttpResponseMessage> SendWithOptionalStandaloneAccessAsync(
@@ -279,8 +378,13 @@ public sealed class IntakeApiService(
         return draft;
     }
 
-    private static string BuildPainMapJson(IntakeResponseDraft state)
+    private static string BuildPainMapJson(IntakeResponseDraft? state)
     {
+        if (state is null)
+        {
+            return "{}";
+        }
+
         var payload = new
         {
             selectedBodyRegion = state.SelectedBodyRegion,
@@ -290,8 +394,13 @@ public sealed class IntakeApiService(
         return JsonSerializer.Serialize(payload, SerializerOptions);
     }
 
-    private static string BuildConsentJson(IntakeResponseDraft state)
+    private static string BuildConsentJson(IntakeResponseDraft? state)
     {
+        if (state is null)
+        {
+            return "{}";
+        }
+
         var payload = new
         {
             hipaaAcknowledged = state.HipaaAcknowledged && !state.RevokeHipaaPrivacyNotice,
@@ -334,5 +443,10 @@ public sealed class IntakeApiService(
         var firstName = parts[0];
         var lastName = string.Join(' ', parts.Skip(1));
         return (firstName, lastName);
+    }
+
+    private sealed class ApiErrorResponse
+    {
+        public string? Error { get; set; }
     }
 }

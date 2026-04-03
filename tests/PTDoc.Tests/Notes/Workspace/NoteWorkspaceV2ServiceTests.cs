@@ -172,6 +172,50 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(5d, outcomeMeasure.MinimumDetectableChange);
     }
 
+    [Fact]
+    public async Task SaveAsync_RejectsPendingNote()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Pending",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+
+        var pendingNote = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.PendingCoSign,
+            DateOfService = new DateTime(2026, 4, 1),
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.ClinicalNotes.Add(pendingNote);
+
+        await _context.SaveChangesAsync();
+
+        var request = new NoteWorkspaceV2SaveRequest
+        {
+            NoteId = pendingNote.Id,
+            PatientId = patient.Id,
+            DateOfService = pendingNote.DateOfService,
+            NoteType = NoteType.ProgressNote,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote
+            }
+        };
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(request));
+
+        Assert.Equal("Only draft notes can be modified through the workspace API.", exception.Message);
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();

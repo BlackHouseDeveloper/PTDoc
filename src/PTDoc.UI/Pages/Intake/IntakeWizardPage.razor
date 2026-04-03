@@ -25,12 +25,15 @@
         <PainProgressBar CurrentStep="@State.CurrentStep" />
 
         <main class="intake-page__content" aria-live="polite">
-            @if (_draftNotFound)
+            @if (_showDraftUnavailable)
             {
                 <section class="intake-page__not-found">
-                    <h2>Intake Draft Not Found</h2>
-                    <p>We could not locate an intake draft for this patient link.</p>
-                    <p>If you received this link via email or text, please check the link is correct. Contact your care provider for assistance.</p>
+                    <h2>@_draftUnavailableTitle</h2>
+                    <p>@_draftUnavailableMessage</p>
+                    @if (!string.IsNullOrWhiteSpace(_draftUnavailableDetail))
+                    {
+                        <p>@_draftUnavailableDetail</p>
+                    }
                 </section>
             }
             else
@@ -78,9 +81,12 @@
 
     private IntakeWizardState State { get; set; } = new();
     private Guid? _loadedPatientId;
-    private bool _draftNotFound;
+    private bool _showDraftUnavailable;
     private bool _canSelectPatient;
     private string? _validationMessage;
+    private string _draftUnavailableTitle = "Intake Unavailable";
+    private string _draftUnavailableMessage = "We could not load an intake draft for this patient.";
+    private string? _draftUnavailableDetail;
     private IDisposable? _navGuard;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner}";
@@ -120,7 +126,7 @@
             };
 
             _loadedPatientId = null;
-            _draftNotFound = false;
+            ClearDraftUnavailableState();
             _validationMessage = null;
             _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         }
@@ -133,29 +139,77 @@
             return;
         }
 
-        var draft = await IntakeService.GetDraftByPatientIdAsync(patientId);
-
-        if (draft is null)
+        IntakeResponseDraft? draft;
+        try
         {
-            State = new IntakeWizardState
+            draft = await IntakeService.GetDraftByPatientIdAsync(patientId);
+
+            if (draft is null)
             {
-                PatientId = patientId,
-                IsPatientMode = State.IsPatientMode,
-                CurrentStep = IntakeStep.Demographics
-            };
+                if (!State.IsPatientMode)
+                {
+                    var ensureResult = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
+                    {
+                        PatientId = patientId
+                    });
 
-            _draftNotFound = true;
+                    if (ensureResult.Status is IntakeEnsureDraftStatus.Created or IntakeEnsureDraftStatus.Existing)
+                    {
+                        draft = ensureResult.Draft;
+                    }
+                    else
+                    {
+                        SetDraftUnavailableState(
+                            title: ensureResult.Status == IntakeEnsureDraftStatus.Locked ? "Intake Locked" : "Patient Intake Unavailable",
+                            message: ensureResult.ErrorMessage ?? "This patient cannot receive a new intake draft right now.",
+                            detail: ensureResult.Status == IntakeEnsureDraftStatus.Locked
+                                ? "This patient already has a locked intake record. Create or review the evaluation from the chart instead of starting a new intake."
+                                : "Select a different patient or refresh the patient list and try again.");
+                        InitializeBlankState(patientId);
+                        _loadedPatientId = patientId;
+                        return;
+                    }
+                }
+                else
+                {
+                    SetDraftUnavailableState(
+                        title: "Intake Draft Not Found",
+                        message: "We could not locate an active intake draft for this patient link.",
+                        detail: "If you received this link by email or text, contact your care provider for a new intake invitation.");
+                    InitializeBlankState(patientId);
+                    _loadedPatientId = patientId;
+                    return;
+                }
+            }
+
+            ClearDraftUnavailableState();
+            State = FromDraft(draft!);
+            State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
+
             _loadedPatientId = patientId;
-            return;
+            _validationMessage = null;
+            _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         }
-
-        State = FromDraft(draft);
-        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
-
-        _draftNotFound = false;
-        _loadedPatientId = patientId;
-        _validationMessage = null;
-        _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+        catch (HttpRequestException ex)
+        {
+            SetDraftUnavailableState(
+                title: "Unable to Load Intake",
+                message: ToUserFacingApiError(ex),
+                detail: State.IsPatientMode
+                    ? "Refresh this page or request a new intake invitation if the problem continues."
+                    : "Select a different patient or try again once the connection is restored.");
+            InitializeBlankState(patientId);
+        }
+        catch (Exception)
+        {
+            SetDraftUnavailableState(
+                title: "Unable to Load Intake",
+                message: "We could not load this intake right now.",
+                detail: State.IsPatientMode
+                    ? "Refresh this page or request a new intake invitation if the problem continues."
+                    : "Select a different patient or try again once the connection is restored.");
+            InitializeBlankState(patientId);
+        }
     }
 
     private async Task HandleDemographicsContinueAsync()
@@ -362,6 +416,8 @@
         {
             HttpStatusCode.Unauthorized => "Your session has expired or is missing API authorization. Please sign in again.",
             HttpStatusCode.Forbidden => "You do not have permission to modify this intake.",
+            HttpStatusCode.NotFound => "We could not find a matching patient or intake draft for this request.",
+            HttpStatusCode.Conflict => "This intake is locked and a new draft cannot be created for this patient.",
             _ => "We could not save your intake right now. Please try again."
         };
     }
@@ -381,7 +437,7 @@
                 IsPatientMode = State.IsPatientMode
             };
             _loadedPatientId = null;
-            _draftNotFound = false;
+            ClearDraftUnavailableState();
             _validationMessage = null;
             _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
             return Task.CompletedTask;
@@ -394,6 +450,32 @@
     private string GetModeQuery()
     {
         return State.IsPatientMode ? "?mode=patient" : string.Empty;
+    }
+
+    private void InitializeBlankState(Guid patientId)
+    {
+        State = new IntakeWizardState
+        {
+            PatientId = patientId,
+            IsPatientMode = State.IsPatientMode,
+            CurrentStep = IntakeStep.Demographics
+        };
+    }
+
+    private void SetDraftUnavailableState(string title, string message, string? detail = null)
+    {
+        _showDraftUnavailable = true;
+        _draftUnavailableTitle = title;
+        _draftUnavailableMessage = message;
+        _draftUnavailableDetail = detail;
+    }
+
+    private void ClearDraftUnavailableState()
+    {
+        _showDraftUnavailable = false;
+        _draftUnavailableTitle = "Intake Unavailable";
+        _draftUnavailableMessage = "We could not load an intake draft for this patient.";
+        _draftUnavailableDetail = null;
     }
 
     private static IntakeResponseDraft ToDraft(IntakeWizardState state)

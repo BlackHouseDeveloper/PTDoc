@@ -5,6 +5,7 @@
 @using PTDoc.UI.Components.Dashboard
 @using PTDoc.UI.Services
 @inject IPatientService PatientService
+@inject IIntakeService IntakeService
 @inject IAppointmentService AppointmentService
 @inject INoteService NoteService
 @inject INotificationCenterService NotificationCenterService
@@ -76,9 +77,10 @@
         <div class="dashboard-right-column">
             <RecentNotesCard Notes="@_recentNotes" />
             <RecentActivityCard Activities="@_recentActivities"
-                                IsLoading="@_isDashboardLoading"
-                                HasError="@_dashboardLoadFailed"
-                                OnRetry="LoadDashboardSnapshotAsync" />
+                                IsLoading="@_isRecentActivityLoading"
+                                HasError="@_recentActivityLoadFailed"
+                                ErrorMessage="@_recentActivityErrorMessage"
+                                OnRetry="RetryRecentActivityAsync" />
         </div>
     </div>
 
@@ -100,8 +102,10 @@
     private bool isSendIntakeModalOpen = false;
     private System.Timers.Timer? _autoRefreshTimer;
 
-    private bool _isDashboardLoading;
-    private bool _dashboardLoadFailed;
+    private bool _isRecentActivityLoading;
+    private bool _recentActivityLoadFailed;
+    private string? _recentActivityErrorMessage;
+    private CancellationTokenSource? _recentActivityCts;
     private int _patientsToday;
     private int _appointmentsToday;
     private int _notesDue;
@@ -125,12 +129,12 @@
     {
         try
         {
-            var patients = await PatientService.SearchAsync(query: null, take: 200);
+            var patients = await IntakeService.SearchEligiblePatientsAsync(take: 200);
             availablePatients = patients
                 .Select(p => new SendIntakeModal.PatientOption
                 {
                     Id = p.Id.ToString(),
-                    Name = $"{p.FirstName} {p.LastName}",
+                    Name = p.DisplayName,
                     Email = p.Email,
                     PhoneNumber = p.Phone
                 })
@@ -144,8 +148,8 @@
 
     private async Task LoadDashboardSnapshotAsync()
     {
-        _isDashboardLoading = true;
-        _dashboardLoadFailed = false;
+        _recentActivityLoadFailed = false;
+        _recentActivityErrorMessage = null;
         StateHasChanged();
 
         try
@@ -184,16 +188,65 @@
                 !notification.IsRead &&
                 string.Equals(notification.Type, "intake", StringComparison.OrdinalIgnoreCase));
             _urgentNotificationCount = notifications.Count(notification => notification.IsUrgent && !notification.IsRead);
-            _recentActivities = BuildRecentActivities(notes, appointments);
         }
         catch (Exception ex)
         {
-            _dashboardLoadFailed = true;
             Console.WriteLine($"Error loading dashboard snapshot: {ex.Message}");
+        }
+
+        await LoadRecentActivityAsync();
+        StateHasChanged();
+    }
+
+    private async Task RetryRecentActivityAsync()
+    {
+        await LoadRecentActivityAsync(force: true);
+    }
+
+    private async Task LoadRecentActivityAsync(bool force = false)
+    {
+        if (_isRecentActivityLoading && !force)
+        {
+            return;
+        }
+
+        _recentActivityCts?.Cancel();
+        _recentActivityCts?.Dispose();
+        _recentActivityCts = new CancellationTokenSource();
+
+        _isRecentActivityLoading = true;
+        _recentActivityLoadFailed = false;
+        _recentActivityErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var today = DateTime.UtcNow.Date;
+            var notesTask = NoteService.GetNotesAsync(take: 20, cancellationToken: _recentActivityCts.Token);
+            var appointmentsTask = AppointmentService.GetOverviewAsync(today, today.AddDays(1).AddTicks(-1), _recentActivityCts.Token);
+            await Task.WhenAll(notesTask, appointmentsTask);
+
+            var notes = (await notesTask)
+                .OrderByDescending(note => note.LastModifiedUtc)
+                .ToList();
+            var appointments = (await appointmentsTask).Appointments
+                .OrderBy(appointment => appointment.StartTimeUtc)
+                .ToList();
+
+            _recentActivities = BuildRecentActivities(notes, appointments);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _recentActivityLoadFailed = true;
+            _recentActivityErrorMessage = "Recent activity could not be refreshed. Check the API connection and try again.";
+            Console.WriteLine($"Error loading recent activity: {ex.Message}");
         }
         finally
         {
-            _isDashboardLoading = false;
+            _isRecentActivityLoading = false;
             StateHasChanged();
         }
     }
@@ -292,6 +345,8 @@
 
     public void Dispose()
     {
+        _recentActivityCts?.Cancel();
+        _recentActivityCts?.Dispose();
         _autoRefreshTimer?.Stop();
         _autoRefreshTimer?.Dispose();
     }

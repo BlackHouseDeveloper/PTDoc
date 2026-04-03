@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -47,7 +48,117 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return null;
 
-        return DeserializeDraft(intake.ResponseJson, patientId);
+        return DeserializeDraft(intake);
+    }
+
+    public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
+        Guid patientId,
+        IntakeResponseDraft? seedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        var patientExists = await _context.Patients
+            .AsNoTracking()
+            .AnyAsync(patient => patient.Id == patientId, cancellationToken);
+
+        if (!patientExists)
+        {
+            return IntakeEnsureDraftResult.NotFound($"Patient {patientId} not found.");
+        }
+
+        var existingDraft = await _context.IntakeForms
+            .AsNoTracking()
+            .Where(form => form.PatientId == patientId && !form.IsLocked)
+            .OrderByDescending(form => form.LastModifiedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existingDraft is not null)
+        {
+            return IntakeEnsureDraftResult.Existing(DeserializeDraft(existingDraft));
+        }
+
+        var hasLockedIntake = await _context.IntakeForms
+            .AsNoTracking()
+            .AnyAsync(form => form.PatientId == patientId && form.IsLocked, cancellationToken);
+
+        if (hasLockedIntake)
+        {
+            return IntakeEnsureDraftResult.Locked("Intake is locked for this patient and a new draft cannot be created.");
+        }
+
+        var userId = _identityContext.GetCurrentUserId();
+        var clinicId = _tenantContext.GetCurrentClinicId();
+        var draft = Clone(seedState ?? new IntakeResponseDraft());
+        draft.PatientId = patientId;
+        draft.IsLocked = false;
+        draft.IsSubmitted = false;
+
+        var intake = new IntakeForm
+        {
+            PatientId = patientId,
+            TemplateVersion = "1.0",
+            AccessToken = GenerateAccessTokenPlaceholderHash(),
+            ResponseJson = SerializeDraft(draft),
+            PainMapData = BuildPainMapJson(draft),
+            Consents = BuildConsentsJson(draft),
+            IsLocked = false,
+            ClinicId = clinicId,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId,
+            SyncState = SyncState.Pending
+        };
+
+        _context.IntakeForms.Add(intake);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        draft.IntakeId = intake.Id;
+        return IntakeEnsureDraftResult.Created(draft);
+    }
+
+    public async Task<IReadOnlyList<PatientListItemResponse>> SearchEligiblePatientsAsync(
+        string? query = null,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 250);
+        var normalizedQuery = query?.Trim();
+
+        var patientQuery = _context.Patients
+            .AsNoTracking()
+            .Where(patient => !patient.IsArchived)
+            .Select(patient => new
+            {
+                Patient = patient,
+                HasUnlockedDraft = _context.IntakeForms.Any(form => form.PatientId == patient.Id && !form.IsLocked),
+                HasLockedIntake = _context.IntakeForms.Any(form => form.PatientId == patient.Id && form.IsLocked)
+            })
+            .Where(row => row.HasUnlockedDraft || !row.HasLockedIntake);
+
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            var likePattern = $"%{normalizedQuery}%";
+            patientQuery = patientQuery.Where(row =>
+                EF.Functions.Like(row.Patient.FirstName + " " + row.Patient.LastName, likePattern) ||
+                (row.Patient.MedicalRecordNumber != null && EF.Functions.Like(row.Patient.MedicalRecordNumber, likePattern)) ||
+                (row.Patient.Email != null && EF.Functions.Like(row.Patient.Email, likePattern)));
+        }
+
+        return await patientQuery
+            .OrderBy(row => row.Patient.LastName)
+            .ThenBy(row => row.Patient.FirstName)
+            .Take(normalizedTake)
+            .Select(row => new PatientListItemResponse
+            {
+                Id = row.Patient.Id,
+                DisplayName = row.Patient.FirstName + " " + row.Patient.LastName,
+                FirstName = row.Patient.FirstName,
+                LastName = row.Patient.LastName,
+                MedicalRecordNumber = row.Patient.MedicalRecordNumber,
+                Email = row.Patient.Email,
+                Phone = row.Patient.Phone,
+                DateOfBirth = row.Patient.DateOfBirth,
+                IsArchived = row.Patient.IsArchived
+            })
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -99,6 +210,7 @@ public sealed class IntakeService : IIntakeService
             // Canonical invite links are minted separately; store a non-shareable placeholder hash.
             AccessToken = GenerateAccessTokenPlaceholderHash(),
             ResponseJson = SerializeDraft(draft),
+            PainMapData = BuildPainMapJson(draft),
             Consents = BuildConsentsJson(state),
             IsLocked = false,
             ClinicId = clinicId,
@@ -142,6 +254,7 @@ public sealed class IntakeService : IIntakeService
                 // Canonical invite links are minted separately; store a non-shareable placeholder hash.
                 AccessToken = GenerateAccessTokenPlaceholderHash(),
                 ResponseJson = SerializeDraft(state),
+                PainMapData = BuildPainMapJson(state),
                 Consents = BuildConsentsJson(state),
                 IsLocked = false,
                 ClinicId = clinicId,
@@ -154,6 +267,7 @@ public sealed class IntakeService : IIntakeService
         else
         {
             intake.ResponseJson = SerializeDraft(state);
+            intake.PainMapData = BuildPainMapJson(state);
             intake.Consents = BuildConsentsJson(state);
             intake.LastModifiedUtc = DateTime.UtcNow;
             intake.ModifiedByUserId = userId;
@@ -265,6 +379,15 @@ public sealed class IntakeService : IIntakeService
         target.IsLocked = source.IsLocked;
     }
 
+    private static IntakeResponseDraft DeserializeDraft(IntakeForm intake)
+    {
+        var draft = DeserializeDraft(intake.ResponseJson, intake.PatientId);
+        draft.IntakeId = intake.Id;
+        draft.IsLocked = intake.IsLocked;
+        draft.IsSubmitted = intake.SubmittedAt.HasValue;
+        return draft;
+    }
+
     private static IntakeResponseDraft DeserializeDraft(string json, Guid patientId)
     {
         try
@@ -283,6 +406,26 @@ public sealed class IntakeService : IIntakeService
 
     private static string SerializeDraft(IntakeResponseDraft state)
         => JsonSerializer.Serialize(state, SerializerOptions);
+
+    private static IntakeResponseDraft Clone(IntakeResponseDraft state)
+    {
+        var draft = new IntakeResponseDraft();
+        CopyDraftProperties(state, draft);
+        draft.IntakeId = state.IntakeId;
+        draft.PatientId = state.PatientId;
+        return draft;
+    }
+
+    private static string BuildPainMapJson(IntakeResponseDraft state)
+    {
+        var payload = new
+        {
+            selectedBodyRegion = state.SelectedBodyRegion,
+            selectedRegions = state.PainDetailDrafts.Keys.ToArray()
+        };
+
+        return JsonSerializer.Serialize(payload, SerializerOptions);
+    }
 
     private static string BuildPayerInfoJson(IntakeResponseDraft state)
     {

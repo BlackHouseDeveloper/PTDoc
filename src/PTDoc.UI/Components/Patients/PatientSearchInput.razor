@@ -1,4 +1,5 @@
 @* Patient Search Input Component - Search input for filtering patients *@
+@implements IDisposable
 
 <div class="patient-search-input" data-testid="patients-search">
     <svg class="patient-search-input-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -19,10 +20,32 @@
     [Parameter] public string Value { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Search by name or DOB";
+    [Parameter] public int DebounceMs { get; set; } = 300;
+
+    private CancellationTokenSource? _debounceCts;
 
     private async Task HandleInput(ChangeEventArgs e)
     {
         var newValue = e.Value?.ToString() ?? string.Empty;
-        await ValueChanged.InvokeAsync(newValue);
+
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(DebounceMs, token);
+            await ValueChanged.InvokeAsync(newValue);
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
     }
 }
