@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
@@ -26,10 +28,14 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
 
         var registry = new OutcomeMeasureRegistry();
         var catalogs = new WorkspaceReferenceCatalogService(registry);
+        var auditService = new AuditService(_context);
+        var rulesEngine = new RulesEngine(_context, auditService);
+        var validationService = new NoteSaveValidationService(rulesEngine);
         _service = new NoteWorkspaceV2Service(
             _context,
             new TestIdentityContextAccessor(),
             new TestTenantContextAccessor(),
+            validationService,
             new PlanOfCareCalculator(),
             new AssessmentCompositionService(),
             new GoalManagementService(catalogs),
@@ -150,17 +156,21 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         };
 
         var saved = await _service.SaveAsync(saveRequest);
-        var reloaded = await _service.LoadAsync(patient.Id, saved.NoteId);
+        Assert.True(saved.IsValid);
+        Assert.NotNull(saved.Workspace);
+
+        var workspace = saved.Workspace!;
+        var reloaded = await _service.LoadAsync(patient.Id, workspace.NoteId);
 
         Assert.NotNull(reloaded);
-        Assert.NotEqual(Guid.Empty, saved.NoteId);
-        Assert.Single(_context.OutcomeMeasureResults.Where(result => result.NoteId == saved.NoteId));
+        Assert.NotEqual(Guid.Empty, workspace.NoteId);
+        Assert.Single(_context.OutcomeMeasureResults.Where(result => result.NoteId == workspace.NoteId));
         Assert.Single(_context.PatientGoals.Where(goal => goal.PatientId == patient.Id));
 
-        var persistedNote = await _context.ClinicalNotes.FirstAsync(note => note.Id == saved.NoteId);
+        var persistedNote = await _context.ClinicalNotes.FirstAsync(note => note.Id == workspace.NoteId);
         Assert.Contains("97110", persistedNote.CptCodesJson);
         Assert.Contains("\"schemaVersion\":2", persistedNote.ContentJson);
-        Assert.False(string.IsNullOrWhiteSpace(saved.Payload.Plan.PlanOfCareNarrative));
+        Assert.False(string.IsNullOrWhiteSpace(workspace.Payload.Plan.PlanOfCareNarrative));
 
         var currentMetric = Assert.Single(reloaded!.Payload.Objective.Metrics);
         Assert.Equal("40 degrees", currentMetric.PreviousValue);
@@ -170,6 +180,49 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var outcomeMeasure = Assert.Single(reloaded.Payload.Objective.OutcomeMeasures);
         Assert.Equal(OutcomeMeasureType.NeckDisabilityIndex, outcomeMeasure.MeasureType);
         Assert.Equal(5d, outcomeMeasure.MinimumDetectableChange);
+    }
+
+    [Fact]
+    public async Task SaveAsync_MissingTimedMinutes_ReturnsWarningAndPersistsWorkspace()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Test",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid(),
+            PayerInfoJson = """{"PayerType":"Medicare"}"""
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 3, 30),
+            NoteType = NoteType.ProgressNote,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                Plan = new WorkspacePlanV2
+                {
+                    SelectedCptCodes =
+                    [
+                        new PlannedCptCodeV2
+                        {
+                            Code = "97110",
+                            Description = "Therapeutic exercises",
+                            Units = 2
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        Assert.NotNull(result.Workspace);
+        Assert.Contains(result.Warnings, warning => warning.Contains("Timed CPT minutes are missing", StringComparison.OrdinalIgnoreCase));
     }
 
     public void Dispose()

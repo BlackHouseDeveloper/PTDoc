@@ -13,6 +13,7 @@ public sealed class NoteWorkspaceV2Service(
     ApplicationDbContext db,
     IIdentityContextAccessor identityContext,
     ITenantContextAccessor tenantContext,
+    INoteSaveValidationService validationService,
     IPlanOfCareCalculator planOfCareCalculator,
     IAssessmentCompositionService assessmentCompositionService,
     IGoalManagementService goalManagementService,
@@ -39,7 +40,7 @@ public sealed class NoteWorkspaceV2Service(
         return await BuildLoadResponseAsync(note, cancellationToken);
     }
 
-    public async Task<NoteWorkspaceV2LoadResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default)
+    public async Task<NoteWorkspaceV2SaveResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -114,6 +115,33 @@ public sealed class NoteWorkspaceV2Service(
             .Select(group => group.First())
             .ToList();
 
+        var cptEntries = payload.Plan.SelectedCptCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code => new CptCodeEntry
+            {
+                Code = code.Code.Trim(),
+                Units = Math.Max(0, code.Units),
+                Minutes = code.Minutes,
+                IsTimed = KnownTimedCptCodes.Codes.Contains(code.Code)
+            })
+            .ToList();
+
+        var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = request.PatientId,
+            ExistingNoteId = note?.Id,
+            NoteType = request.NoteType,
+            DateOfService = request.DateOfService,
+            CptEntries = cptEntries
+        }, cancellationToken);
+
+        var saveResponse = new NoteWorkspaceV2SaveResponse();
+        saveResponse.ApplyValidation(validation);
+        if (!validation.IsValid)
+        {
+            return saveResponse;
+        }
+
         note ??= new ClinicalNote
         {
             Id = request.NoteId ?? Guid.NewGuid(),
@@ -125,17 +153,8 @@ public sealed class NoteWorkspaceV2Service(
         note.NoteType = request.NoteType;
         note.DateOfService = request.DateOfService.Date;
         note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
-        note.CptCodesJson = JsonSerializer.Serialize(
-            payload.Plan.SelectedCptCodes
-                .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-                .Select(code => new CptCodeEntry
-                {
-                    Code = code.Code,
-                    Units = code.Units,
-                    IsTimed = KnownTimedCptCodes.Codes.Contains(code.Code)
-                })
-                .ToList(),
-            SerializerOptions);
+        note.CptCodesJson = JsonSerializer.Serialize(cptEntries, SerializerOptions);
+        note.TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries);
         note.LastModifiedUtc = DateTime.UtcNow;
         note.ModifiedByUserId = currentUserId;
         note.SyncState = SyncState.Pending;
@@ -151,7 +170,8 @@ public sealed class NoteWorkspaceV2Service(
         await SyncPatientGoalsAsync(note, clinicId, payload, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-        return await BuildLoadResponseAsync(note, cancellationToken);
+        saveResponse.Workspace = await BuildLoadResponseAsync(note, cancellationToken);
+        return saveResponse;
     }
 
     private async Task<NoteWorkspaceV2LoadResponse> BuildLoadResponseAsync(
@@ -244,6 +264,15 @@ public sealed class NoteWorkspaceV2Service(
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };
+    }
+
+    private static int? ResolveTotalTreatmentMinutes(IReadOnlyCollection<CptCodeEntry> entries)
+    {
+        var totalMinutes = entries
+            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
+            .Sum(entry => entry.Minutes!.Value);
+
+        return totalMinutes > 0 ? totalMinutes : null;
     }
 
     private async Task SyncObjectiveMetricsAsync(

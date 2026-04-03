@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Application.DTOs;
@@ -126,26 +127,12 @@ public sealed class NoteResponse
 }
 
 /// <summary>
-/// Advisory compliance warning surfaced alongside a note operation.
-/// Returned when a compliance rule fires at <c>Warning</c> severity (e.g., 8-minute rule).
-/// A non-null ComplianceWarning does NOT block the operation — it is informational.
-/// </summary>
-public sealed class ComplianceWarning
-{
-    public string RuleId { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public Dictionary<string, object> Data { get; set; } = new();
-}
-
-/// <summary>
 /// Unified response envelope for create and update note operations.
-/// <c>ComplianceWarning</c> is non-null only when an advisory rule fired (e.g., 8-minute rule).
-/// Sprint S: Replaces inconsistent anonymous wrapper shapes with a typed contract.
+/// Includes both validation state and the saved note payload when persistence succeeds.
 /// </summary>
-public sealed class NoteOperationResponse
+public sealed class NoteOperationResponse : ValidatedOperationResponse
 {
-    public NoteResponse Note { get; set; } = null!;
-    public ComplianceWarning? ComplianceWarning { get; set; }
+    public NoteResponse? Note { get; set; }
 }
 
 /// <summary>

@@ -8,6 +8,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
@@ -55,8 +56,18 @@ public class DailyNoteServiceTests : IDisposable
         _identityMock.Setup(x => x.GetCurrentUserId()).Returns(TestUserId);
         _syncMock = new Mock<ISyncEngine>();
         _taxonomyCatalog = new TreatmentTaxonomyCatalogService();
+        var auditService = new AuditService(_db);
+        var rulesEngine = new RulesEngine(_db, auditService);
+        var validationService = new NoteSaveValidationService(rulesEngine);
 
-        _service = new DailyNoteService(_db, _aiMock.Object, _tenantMock.Object, _identityMock.Object, _syncMock.Object, _taxonomyCatalog);
+        _service = new DailyNoteService(
+            _db,
+            _aiMock.Object,
+            _tenantMock.Object,
+            _identityMock.Object,
+            _syncMock.Object,
+            _taxonomyCatalog,
+            validationService);
     }
 
     public void Dispose()
@@ -67,7 +78,7 @@ public class DailyNoteServiceTests : IDisposable
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private async Task<Patient> CreatePatientAsync()
+    private async Task<Patient> CreatePatientAsync(string payerType = "Commercial")
     {
         var clinic = new Clinic
         {
@@ -82,7 +93,8 @@ public class DailyNoteServiceTests : IDisposable
             ClinicId = clinic.Id,
             FirstName = "Jane",
             LastName = "Doe",
-            DateOfBirth = new DateTime(1980, 1, 1)
+            DateOfBirth = new DateTime(1980, 1, 1),
+            PayerInfoJson = JsonSerializer.Serialize(new { PayerType = payerType })
         };
         _db.Patients.Add(patient);
         await _db.SaveChangesAsync();
@@ -277,6 +289,66 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Equal(2, _db.ClinicalNotes.Count(n => n.PatientId == patient.Id && n.NoteType == NoteType.Daily));
     }
 
+    [Fact]
+    public async Task SaveDraftAsync_PnHardStop_ReturnsStructuredErrorAndDoesNotPersist()
+    {
+        var patient = await CreatePatientAsync("Medicare");
+        await SeedSignedEvaluationAsync(patient.Id, new DateTime(2026, 3, 1));
+        await SeedDailyNotesAsync(patient.Id, new DateTime(2026, 3, 2), 10);
+
+        var request = BuildRequest(patient.Id, new DateTime(2026, 4, 3));
+
+        var result = await _service.SaveDraftAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("Progress Note required", result.Errors);
+        Assert.Null(result.DailyNote);
+        Assert.Equal(11, _db.ClinicalNotes.Count(n => n.PatientId == patient.Id));
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_MissingTimedMinutes_ReturnsWarningAndPersistsDraft()
+    {
+        var patient = await CreatePatientAsync("Medicare");
+        var request = BuildRequest(patient.Id);
+        request.Content.CptCodes =
+        [
+            new CptCodeEntryDto
+            {
+                Code = "97110",
+                Units = 2
+            }
+        ];
+
+        var result = await _service.SaveDraftAsync(request);
+
+        Assert.True(result.IsValid);
+        Assert.NotNull(result.DailyNote);
+        Assert.Contains(result.Warnings, warning => warning.Contains("Timed CPT minutes are missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_LessThanFiveTimedMinutes_BlocksPersistence()
+    {
+        var patient = await CreatePatientAsync("Medicare");
+        var request = BuildRequest(patient.Id);
+        request.Content.CptCodes =
+        [
+            new CptCodeEntryDto
+            {
+                Code = "97110",
+                Units = 1,
+                Minutes = 4
+            }
+        ];
+
+        var result = await _service.SaveDraftAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("Minimum 5 minutes required", result.Errors);
+        Assert.Null(result.DailyNote);
+    }
+
     // ── 6. CalculateCptTime — 8-minute rule ───────────────────────────────────
 
     [Theory]
@@ -316,6 +388,24 @@ public class DailyNoteServiceTests : IDisposable
 
         Assert.Equal(3, result.TotalBillingUnits);
         Assert.Equal(38, result.TotalMinutes);
+    }
+
+    [Fact]
+    public void CalculateCptTime_AggregatesAcrossTimedCodes()
+    {
+        var request = new CptTimeCalculationRequest
+        {
+            CptCodes = new List<CptCodeEntryDto>
+            {
+                new() { Code = "97110", Minutes = 8 },
+                new() { Code = "97140", Minutes = 8 }
+            }
+        };
+
+        var result = _service.CalculateCptTime(request);
+
+        Assert.Equal(1, result.TotalBillingUnits);
+        Assert.Equal(16, result.TotalMinutes);
     }
 
     // ── 7. CheckMedicalNecessity — passes when all required fields present ────
@@ -390,6 +480,38 @@ public class DailyNoteServiceTests : IDisposable
         var result = await _service.GenerateAssessmentNarrativeAsync(content);
 
         Assert.Equal(aiNarrative, result);
+    }
+
+    private async Task SeedSignedEvaluationAsync(Guid patientId, DateTime dateOfService)
+    {
+        _db.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            NoteType = NoteType.Evaluation,
+            DateOfService = dateOfService,
+            SignatureHash = "signed",
+            SignedUtc = dateOfService.AddHours(1),
+            LastModifiedUtc = dateOfService
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    private async Task SeedDailyNotesAsync(Guid patientId, DateTime startDate, int count)
+    {
+        for (var index = 0; index < count; index++)
+        {
+            _db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = startDate.AddDays(index),
+                LastModifiedUtc = startDate.AddDays(index)
+            });
+        }
+
+        await _db.SaveChangesAsync();
     }
 
     [Fact]

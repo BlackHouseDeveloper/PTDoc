@@ -1,3 +1,4 @@
+using PTDoc.Application.Compliance;
 using PTDoc.Application.ReferenceData;
 
 namespace PTDoc.Application.DTOs;
@@ -19,6 +20,17 @@ public class DailyNoteResponse
     public DateTime? SignedUtc { get; set; }
     public DailyNoteContentDto Content { get; set; } = new();
     public MedicalNecessityCheckResult? ComplianceCheck { get; set; }
+}
+
+public class DailyNoteSaveResponse : ValidatedOperationResponse
+{
+    public DailyNoteResponse? DailyNote { get; set; }
+
+    public void Deconstruct(out DailyNoteResponse? response, out string? error)
+    {
+        response = DailyNote;
+        error = Errors.FirstOrDefault();
+    }
 }
 
 public class DailyNoteContentDto
@@ -84,6 +96,7 @@ public class CptCodeEntryDto
 {
     public string Code { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public int Units { get; set; }
     public int? Minutes { get; set; }
 }
 

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
 
@@ -15,6 +16,8 @@ public class RulesEngine : IRulesEngine
     private readonly IAuditService _auditService;
 
     // Rule constants based on Medicare specification
+    private const int ProgressNoteWarningVisitThreshold = 8;
+    private const int ProgressNoteWarningDayThreshold = 25;
     private const int ProgressNoteVisitThreshold = 10;
     private const int ProgressNoteDayThreshold = 30;
 
@@ -25,106 +28,135 @@ public class RulesEngine : IRulesEngine
     }
 
     /// <summary>
+    /// Determines whether a Progress Note is due for a Medicare patient on the supplied service date.
+    /// </summary>
+    public Task<ValidationResult> CheckProgressNoteDueAsync(Guid patientId, DateTime referenceDate, CancellationToken ct = default)
+        => CheckProgressNoteDueCoreAsync(patientId, referenceDate, payerTypeOverride: null, ct);
+
+    /// <summary>
+    /// Validates timed CPT units against Medicare 8-minute rule requirements.
+    /// </summary>
+    public async Task<ValidationResult> ValidateTimedUnitsAsync(List<CptCodeEntry> entries, CancellationToken ct = default)
+    {
+        entries ??= [];
+
+        var normalizedEntries = entries
+            .Select(entry => new CptCodeEntry
+            {
+                Code = entry.Code?.Trim() ?? string.Empty,
+                Units = entry.Units,
+                Minutes = entry.Minutes,
+                IsTimed = entry.IsTimed
+            })
+            .ToList();
+
+        TimedUnitCalculator.EnforceKnownTimedCptStatus(normalizedEntries);
+
+        var result = ValidationResult.Valid();
+
+        foreach (var entry in normalizedEntries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Code))
+            {
+                result.Errors.Add("Missing CPT data");
+            }
+
+            if (entry.Units < 0)
+            {
+                result.Errors.Add($"CPT code {entry.Code} has an invalid unit count.");
+            }
+
+            if (entry.Minutes < 0)
+            {
+                result.Errors.Add($"CPT code {entry.Code} must record zero or more minutes.");
+            }
+        }
+
+        var timedEntries = normalizedEntries
+            .Where(TimedUnitCalculator.IsRelevantTimedEntry)
+            .ToList();
+
+        if (timedEntries.Count == 0)
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("8MIN_RULE", result.Errors.Count == 0), ct);
+            result.IsValid = result.Errors.Count == 0;
+            return result;
+        }
+
+        foreach (var entry in timedEntries)
+        {
+            if (entry.Units > 0 && entry.Minutes is null)
+            {
+                result.Errors.Add($"Timed CPT code {entry.Code} is missing minutes.");
+                continue;
+            }
+
+            if (entry.Units > 0 && entry.Minutes <= 0)
+            {
+                result.Errors.Add($"Timed CPT code {entry.Code} must record minutes greater than zero.");
+            }
+        }
+
+        if (result.Errors.Count > 0)
+        {
+            result.IsValid = false;
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("8MIN_RULE", false), ct);
+            return result;
+        }
+
+        var totalMinutes = timedEntries
+            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
+            .Sum(entry => entry.Minutes!.Value);
+
+        if (totalMinutes < 5)
+        {
+            result.Errors.Add("Minimum 5 minutes required");
+            result.IsValid = false;
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("8MIN_RULE", false), ct);
+            return result;
+        }
+
+        if (totalMinutes <= 7)
+        {
+            result.Warnings.Add("Minutes fall below standard 8-minute threshold");
+            result.RequiresOverride = true;
+        }
+
+        var allowedUnits = TimedUnitCalculator.CalculateAllowedUnits(totalMinutes);
+        var requestedUnits = timedEntries.Sum(TimedUnitCalculator.ResolveRequestedUnits);
+
+        if (requestedUnits > allowedUnits)
+        {
+            result.Warnings.Add("Timed CPT units exceed allowed range for documented minutes");
+            result.RequiresOverride = true;
+        }
+
+        result.IsValid = result.Errors.Count == 0;
+        await _auditService.LogRuleEvaluationAsync(
+            AuditEvent.RuleEvaluation("8MIN_RULE", result.Errors.Count == 0 && result.Warnings.Count == 0), ct);
+        return result;
+    }
+
+    /// <summary>
     /// Validates Progress Note frequency: Medicare = ≥10 visits OR ≥30 days; Commercial = ≥30 days only.
     /// </summary>
     public async Task<RuleResult> ValidateProgressNoteFrequencyAsync(Guid patientId, string? payerType = null, CancellationToken ct = default)
     {
-        // Normalize: null/whitespace → "Commercial"
-        payerType = string.IsNullOrWhiteSpace(payerType) ? "Commercial" : payerType;
-        bool isMedicare = string.Equals(payerType, "Medicare", StringComparison.OrdinalIgnoreCase);
-        // Get all notes for patient ordered by date
-        var notes = await _context.ClinicalNotes
-            .Where(n => n.PatientId == patientId)
-            .OrderByDescending(n => n.DateOfService)
-            .ToListAsync(ct);
-
-        if (!notes.Any())
+        var validation = await CheckProgressNoteDueCoreAsync(patientId, DateTime.UtcNow.Date, payerType, ct);
+        if (validation.Errors.Count > 0)
         {
-            // No notes yet, no PN required
-            await _auditService.LogRuleEvaluationAsync(
-                AuditEvent.RuleEvaluation("PN_FREQUENCY", true), ct);
-            return RuleResult.Success("PN_FREQUENCY", "No notes yet, Progress Note not required");
+            return RuleResult.HardStop("PN_FREQUENCY", validation.Errors[0]);
         }
 
-        // Find most recent Evaluation or Progress Note
-        var lastPnOrEval = notes
-            .Where(n => n.NoteType == NoteType.Evaluation || n.NoteType == NoteType.ProgressNote)
-            .FirstOrDefault();
-
-        if (lastPnOrEval == null)
+        if (validation.Warnings.Count > 0)
         {
-            // Only daily notes exist, check if PN is needed
-            var daysSinceFirstNote = (DateTime.UtcNow.Date - notes.Last().DateOfService.Date).Days;
-            var dailyNoteCount = notes.Count(n => n.NoteType == NoteType.Daily);
-
-            // Medicare: visit OR day threshold; Commercial/other: day threshold only
-            var visitThresholdMet = isMedicare && dailyNoteCount >= ProgressNoteVisitThreshold;
-            var dayThresholdMet = daysSinceFirstNote >= ProgressNoteDayThreshold;
-
-            if (visitThresholdMet || dayThresholdMet)
-            {
-                await _auditService.LogRuleEvaluationAsync(
-                    AuditEvent.RuleEvaluation("PN_FREQUENCY", false), ct);
-
-                var thresholdDesc = isMedicare
-                    ? $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
-                    : $"{ProgressNoteDayThreshold} days";
-
-                return RuleResult.HardStop(
-                    "PN_FREQUENCY",
-                    "Progress Note required per payer guidelines.",
-                    new Dictionary<string, object>
-                    {
-                        ["VisitCount"] = dailyNoteCount,
-                        ["DaysSinceStart"] = daysSinceFirstNote,
-                        ["Threshold"] = thresholdDesc,
-                        ["PayerType"] = payerType
-                    });
-            }
-
-            await _auditService.LogRuleEvaluationAsync(
-                AuditEvent.RuleEvaluation("PN_FREQUENCY", true), ct);
-            return RuleResult.Success("PN_FREQUENCY", "Progress Note not yet required");
+            return RuleResult.Warning("PN_FREQUENCY", validation.Warnings[0]);
         }
 
-        // Count visits since last PN/Eval
-        var visitsSinceLastPn = notes
-            .Where(n => n.DateOfService > lastPnOrEval.DateOfService)
-            .Count();
-
-        var daysSinceLastPn = (DateTime.UtcNow.Date - lastPnOrEval.DateOfService.Date).Days;
-
-        // Medicare: visit OR day threshold; Commercial/other: day threshold only
-        var visitsExceeded = isMedicare && visitsSinceLastPn >= ProgressNoteVisitThreshold;
-        var daysExceeded = daysSinceLastPn >= ProgressNoteDayThreshold;
-
-        if (visitsExceeded || daysExceeded)
-        {
-            await _auditService.LogRuleEvaluationAsync(
-                AuditEvent.RuleEvaluation("PN_FREQUENCY", false), ct);
-
-            var thresholdDescription = isMedicare
-                ? $"{ProgressNoteVisitThreshold} visits OR {ProgressNoteDayThreshold} days"
-                : $"{ProgressNoteDayThreshold} days";
-
-            return RuleResult.HardStop(
-                "PN_FREQUENCY",
-                "Progress Note required per payer guidelines.",
-                new Dictionary<string, object>
-                {
-                    ["VisitsSinceLastPN"] = visitsSinceLastPn,
-                    ["DaysSinceLastPN"] = daysSinceLastPn,
-                    ["LastPNDate"] = lastPnOrEval.DateOfService,
-                    ["Threshold"] = thresholdDescription,
-                    ["PayerType"] = payerType
-                });
-        }
-
-        await _auditService.LogRuleEvaluationAsync(
-            AuditEvent.RuleEvaluation("PN_FREQUENCY", true), ct);
-
-        return RuleResult.Success("PN_FREQUENCY",
-            $"Progress Note not required ({visitsSinceLastPn} visits, {daysSinceLastPn} days since last PN)");
+        return RuleResult.Success("PN_FREQUENCY", "Progress Note not required");
     }
 
     /// <summary>
@@ -138,13 +170,15 @@ public class RulesEngine : IRulesEngine
             return RuleResult.Error("8MIN_RULE", "Total minutes cannot be negative");
         }
 
-        // Calculate allowed units based on 8-minute rule
-        int allowedUnits = CalculateAllowedUnits(totalMinutes);
+        TimedUnitCalculator.EnforceKnownTimedCptStatus(cptCodes);
 
-        // Sum up requested timed units
+        int allowedUnits = TimedUnitCalculator.CalculateAllowedUnits(totalMinutes);
+
         int requestedTimedUnits = cptCodes
-            .Where(c => c.IsTimed)
-            .Sum(c => c.Units);
+            .Where(TimedUnitCalculator.IsTimed)
+            .Sum(entry => entry.Units > 0
+                ? entry.Units
+                : TimedUnitCalculator.CalculateAllowedUnits(entry.Minutes.GetValueOrDefault()));
 
         await _auditService.LogRuleEvaluationAsync(
             AuditEvent.RuleEvaluation("8MIN_RULE", requestedTimedUnits <= allowedUnits), ct);
@@ -172,21 +206,7 @@ public class RulesEngine : IRulesEngine
     /// </summary>
     private static int CalculateAllowedUnits(int totalMinutes)
     {
-        // 8-minute rule table:
-        // 8-22 min = 1 unit
-        // 23-37 min = 2 units
-        // 38-52 min = 3 units
-        // 53-67 min = 4 units
-        // Pattern: first unit at 8min, additional units every 15min
-
-        if (totalMinutes < 8) return 0;
-        if (totalMinutes <= 22) return 1;
-
-        // After first unit (8-22 min), each additional 15 minutes = 1 unit
-        int minutesAbove22 = totalMinutes - 22;
-        int additionalUnits = (minutesAbove22 + 14) / 15; // Round up using integer division
-
-        return 1 + additionalUnits;
+        return TimedUnitCalculator.CalculateAllowedUnits(totalMinutes);
     }
 
     /// <summary>
@@ -246,5 +266,163 @@ public class RulesEngine : IRulesEngine
                 ["SignedUtc"] = note.SignedUtc ?? DateTime.MinValue,
                 ["SignedByUserId"] = note.SignedByUserId ?? Guid.Empty
             });
+    }
+
+    private async Task<ValidationResult> CheckProgressNoteDueCoreAsync(
+        Guid patientId,
+        DateTime referenceDate,
+        string? payerTypeOverride,
+        CancellationToken ct)
+    {
+        var payerType = payerTypeOverride;
+        if (string.IsNullOrWhiteSpace(payerType))
+        {
+            payerType = await ResolvePayerTypeAsync(patientId, ct);
+        }
+
+        if (!string.Equals(payerType, "Medicare", StringComparison.OrdinalIgnoreCase))
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("PN_FREQUENCY", true), ct);
+            return ValidationResult.Valid();
+        }
+
+        var serviceDate = referenceDate.Date;
+        var nextDay = serviceDate.AddDays(1);
+        var patientNotes = _context.ClinicalNotes
+            .AsNoTracking()
+            .Where(note => note.PatientId == patientId && note.DateOfService < nextDay);
+
+        var lastSignedPnOrEval = await patientNotes
+            .Where(note =>
+                note.SignatureHash != null &&
+                (note.NoteType == NoteType.Evaluation || note.NoteType == NoteType.ProgressNote))
+            .OrderByDescending(note => note.DateOfService)
+            .FirstOrDefaultAsync(ct);
+
+        int visitsSincePn;
+        int daysSincePn;
+
+        if (lastSignedPnOrEval is null)
+        {
+            var firstNoteDate = await patientNotes
+                .OrderBy(note => note.DateOfService)
+                .Select(note => (DateTime?)note.DateOfService)
+                .FirstOrDefaultAsync(ct);
+
+            if (!firstNoteDate.HasValue)
+            {
+                await _auditService.LogRuleEvaluationAsync(
+                    AuditEvent.RuleEvaluation("PN_FREQUENCY", true), ct);
+                return ValidationResult.Valid();
+            }
+
+            visitsSincePn = await patientNotes
+                .Where(note => note.NoteType == NoteType.Daily)
+                .CountAsync(ct);
+
+            daysSincePn = (serviceDate - firstNoteDate.Value.Date).Days;
+        }
+        else
+        {
+            visitsSincePn = await patientNotes
+                .Where(note => note.NoteType == NoteType.Daily && note.DateOfService > lastSignedPnOrEval.DateOfService)
+                .CountAsync(ct);
+
+            daysSincePn = (serviceDate - lastSignedPnOrEval.DateOfService.Date).Days;
+        }
+
+        ValidationResult result;
+        if (visitsSincePn >= ProgressNoteVisitThreshold || daysSincePn >= ProgressNoteDayThreshold)
+        {
+            result = ValidationResult.Error("Progress Note required");
+        }
+        else if (visitsSincePn >= ProgressNoteWarningVisitThreshold || daysSincePn >= ProgressNoteWarningDayThreshold)
+        {
+            result = ValidationResult.Warning("Progress Note due soon");
+        }
+        else
+        {
+            result = ValidationResult.Valid();
+        }
+
+        await _auditService.LogRuleEvaluationAsync(
+            AuditEvent.RuleEvaluation("PN_FREQUENCY", result.Errors.Count == 0 && result.Warnings.Count == 0), ct);
+        return result;
+    }
+
+    private async Task<string?> ResolvePayerTypeAsync(Guid patientId, CancellationToken ct)
+    {
+        var payerInfoJson = await _context.Patients
+            .AsNoTracking()
+            .Where(patient => patient.Id == patientId)
+            .Select(patient => patient.PayerInfoJson)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(payerInfoJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payerInfoJson);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "PayerType", StringComparison.OrdinalIgnoreCase))
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+}
+
+internal static class TimedUnitCalculator
+{
+    public static void EnforceKnownTimedCptStatus(List<CptCodeEntry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            if (KnownTimedCptCodes.Codes.Contains(entry.Code))
+            {
+                entry.IsTimed = true;
+            }
+        }
+    }
+
+    public static bool IsTimed(CptCodeEntry entry)
+        => entry.IsTimed || KnownTimedCptCodes.Codes.Contains(entry.Code);
+
+    public static bool IsRelevantTimedEntry(CptCodeEntry entry)
+        => IsTimed(entry) && (entry.Units > 0 || entry.Minutes.HasValue);
+
+    public static int ResolveRequestedUnits(CptCodeEntry entry)
+    {
+        if (entry.Units > 0)
+        {
+            return entry.Units;
+        }
+
+        var minutes = entry.Minutes.GetValueOrDefault();
+        return minutes > 0
+            ? CalculateAllowedUnits(minutes)
+            : 0;
+    }
+
+    public static int CalculateAllowedUnits(int totalMinutes)
+    {
+        if (totalMinutes < 8)
+        {
+            return 0;
+        }
+
+        return ((totalMinutes - 8) / 15) + 1;
     }
 }
