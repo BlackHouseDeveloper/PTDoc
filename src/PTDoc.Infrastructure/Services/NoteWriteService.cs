@@ -29,13 +29,13 @@ public sealed class NoteWriteService(
 
         if (request.TotalMinutes < 0)
         {
-            throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request));
+            throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
         var cptEntries = TryDeserializeCptCodes(request.CptCodesJson);
         if (cptEntries is null)
         {
-            throw new ArgumentException("CptCodesJson is not valid JSON.", nameof(request));
+            throw new ArgumentException("CptCodesJson is not valid JSON.", nameof(request.CptCodesJson));
         }
 
         var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
@@ -109,14 +109,14 @@ public sealed class NoteWriteService(
 
         if (request.TotalMinutes < 0)
         {
-            throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request));
+            throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
         var effectiveCptCodesJson = request.CptCodesJson ?? note.CptCodesJson;
         var cptEntries = TryDeserializeCptCodes(effectiveCptCodesJson);
         if (cptEntries is null)
         {
-            throw new ArgumentException("CptCodesJson is not valid JSON.", nameof(request));
+            throw new ArgumentException("CptCodesJson is not valid JSON.", nameof(request.CptCodesJson));
         }
 
         var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest

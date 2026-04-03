@@ -130,7 +130,14 @@ public class CptCodeBillingDetail
 {
     public string Code { get; set; } = string.Empty;
     public int Minutes { get; set; }
-    public int BillingUnits { get; set; }
+
+    /// <summary>
+    /// Per-code requested units before the aggregate 8-minute rule is applied.
+    /// This value is informational — it does not necessarily equal an allocation from
+    /// <see cref="CptTimeCalculationResponse.TotalBillingUnits"/>, which is computed
+    /// from aggregate timed minutes across all codes.
+    /// </summary>
+    public int RequestedUnits { get; set; }
 }
 
 public class EvalCarryForwardResponse

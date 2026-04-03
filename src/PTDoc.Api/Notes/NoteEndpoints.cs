@@ -382,7 +382,8 @@ public static class NoteEndpoints
 
     private static IResult ToValidationProblem(ArgumentException exception, string cptCodesField, string totalMinutesField)
     {
-        if (exception.Message.Contains("CptCodesJson", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(exception.ParamName, nameof(CreateNoteRequest.CptCodesJson), StringComparison.Ordinal)
+            || string.Equals(exception.ParamName, nameof(UpdateNoteRequest.CptCodesJson), StringComparison.Ordinal))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -390,7 +391,8 @@ public static class NoteEndpoints
             });
         }
 
-        if (exception.Message.Contains("TotalMinutes", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(exception.ParamName, nameof(CreateNoteRequest.TotalMinutes), StringComparison.Ordinal)
+            || string.Equals(exception.ParamName, nameof(UpdateNoteRequest.TotalMinutes), StringComparison.Ordinal))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {

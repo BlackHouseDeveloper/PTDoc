@@ -117,12 +117,17 @@ public sealed class NoteWorkspaceV2Service(
 
         var cptEntries = payload.Plan.SelectedCptCodes
             .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new CptCodeEntry
+            .Select(code =>
             {
-                Code = code.Code.Trim(),
-                Units = Math.Max(0, code.Units),
-                Minutes = code.Minutes,
-                IsTimed = KnownTimedCptCodes.Codes.Contains(code.Code)
+                var normalizedCode = code.Code.Trim();
+
+                return new CptCodeEntry
+                {
+                    Code = normalizedCode,
+                    Units = Math.Max(0, code.Units),
+                    Minutes = code.Minutes,
+                    IsTimed = KnownTimedCptCodes.Codes.Contains(normalizedCode)
+                };
             })
             .ToList();
 

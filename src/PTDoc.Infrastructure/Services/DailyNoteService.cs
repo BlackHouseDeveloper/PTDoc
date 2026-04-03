@@ -457,7 +457,7 @@ public class DailyNoteService : IDailyNoteService
             {
                 Code = entry.Code,
                 Minutes = entry.Minutes!.Value,
-                BillingUnits = TimedUnitCalculator.ResolveRequestedUnits(entry)
+                RequestedUnits = TimedUnitCalculator.ResolveRequestedUnits(entry)
             })
             .ToList();
 
