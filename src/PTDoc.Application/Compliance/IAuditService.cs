@@ -152,12 +152,33 @@ public class AuditEvent
     {
         return new AuditEvent
         {
-            EventType = "AddendumCreated",
+            EventType = "ADDENDUM_CREATE",
             UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
             Metadata = new Dictionary<string, object>
             {
                 ["NoteId"] = noteId,
                 ["AddendumId"] = addendumId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent EditBlockedSignedNote(Guid noteId, Guid? userId, string source)
+    {
+        return new AuditEvent
+        {
+            EventType = "EDIT_BLOCKED_SIGNED_NOTE",
+            Severity = "Warning",
+            Success = false,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["Source"] = source,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

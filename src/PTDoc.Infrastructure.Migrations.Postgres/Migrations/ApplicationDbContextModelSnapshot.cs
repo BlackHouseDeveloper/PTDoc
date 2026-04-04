@@ -251,8 +251,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("DateOfService")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAddendum")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsReEvaluation")
                         .HasColumnType("boolean");
@@ -268,6 +274,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<int>("NoteType")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("ParentNoteId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid");
@@ -312,9 +321,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("ClinicId")
                         .HasFilter("\"ClinicId\" IS NOT NULL");
 
+                    b.HasIndex("CreatedUtc");
+
                     b.HasIndex("DateOfService");
 
                     b.HasIndex("LastModifiedUtc");
+
+                    b.HasIndex("ParentNoteId");
 
                     b.HasIndex("PatientId");
 
@@ -1400,6 +1413,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ParentNote")
+                        .WithMany("Addendums")
+                        .HasForeignKey("ParentNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("ClinicalNotes")
                         .HasForeignKey("PatientId")
@@ -1409,6 +1427,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Appointment");
 
                     b.Navigation("Clinic");
+
+                    b.Navigation("ParentNote");
 
                     b.Navigation("Patient");
                 });
@@ -1626,6 +1646,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
+                    b.Navigation("Addendums");
+
                     b.Navigation("ObjectiveMetrics");
 
                     b.Navigation("TaxonomySelections");

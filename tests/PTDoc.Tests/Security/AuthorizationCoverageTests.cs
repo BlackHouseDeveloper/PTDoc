@@ -224,6 +224,8 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/reference-data/treatment-taxonomy/{categoryId}",     AuthorizationPolicies.ClinicalStaff),
 
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
+        new("GET",  "/api/v1/notes",            AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteRead),
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
         new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),
 

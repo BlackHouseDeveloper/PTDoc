@@ -246,8 +246,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("DateOfService")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsAddendum")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsReEvaluation")
                         .HasColumnType("INTEGER");
@@ -263,6 +269,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<int>("NoteType")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ParentNoteId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("TEXT");
@@ -307,9 +316,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("ClinicId")
                         .HasFilter("ClinicId IS NOT NULL");
 
+                    b.HasIndex("CreatedUtc");
+
                     b.HasIndex("DateOfService");
 
                     b.HasIndex("LastModifiedUtc");
+
+                    b.HasIndex("ParentNoteId");
 
                     b.HasIndex("PatientId");
 
@@ -1395,6 +1408,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ParentNote")
+                        .WithMany("Addendums")
+                        .HasForeignKey("ParentNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("ClinicalNotes")
                         .HasForeignKey("PatientId")
@@ -1404,6 +1422,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Appointment");
 
                     b.Navigation("Clinic");
+
+                    b.Navigation("ParentNote");
 
                     b.Navigation("Patient");
                 });
@@ -1621,6 +1641,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
+                    b.Navigation("Addendums");
+
                     b.Navigation("ObjectiveMetrics");
 
                     b.Navigation("TaxonomySelections");

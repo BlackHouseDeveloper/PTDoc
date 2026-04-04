@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -15,6 +16,7 @@ public sealed class SignatureServiceTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly Mock<IAuditService> _mockAuditService;
     private readonly Mock<IClinicalRulesEngine> _mockClinicalRulesEngine;
+    private readonly Mock<ISyncEngine> _mockSyncEngine;
     private readonly SignatureService _signatureService;
 
     public SignatureServiceTests()
@@ -26,15 +28,22 @@ public sealed class SignatureServiceTests : IDisposable
         _context = new ApplicationDbContext(options);
         _mockAuditService = new Mock<IAuditService>();
         _mockClinicalRulesEngine = new Mock<IClinicalRulesEngine>();
+        _mockSyncEngine = new Mock<ISyncEngine>();
         _mockClinicalRulesEngine
             .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var addendumService = new AddendumService(
+            _context,
+            _mockAuditService.Object,
+            _mockSyncEngine.Object);
 
         _signatureService = new SignatureService(
             _context,
             _mockAuditService.Object,
             _mockClinicalRulesEngine.Object,
-            new HashService());
+            new HashService(),
+            addendumService);
     }
 
     [Fact]
@@ -206,7 +215,7 @@ public sealed class SignatureServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAddendum_SignedNote_CreatesAddendumSuccessfully()
+    public async Task CreateAddendum_SignedNote_CreatesLinkedDraftAddendumSuccessfully()
     {
         var signer = await CreateUserAsync(Roles.PT);
         var note = new ClinicalNote
@@ -231,11 +240,30 @@ public sealed class SignatureServiceTests : IDisposable
         Assert.True(result.Success);
         Assert.NotNull(result.AddendumId);
 
-        var addendum = await _context.Addendums.FindAsync(result.AddendumId);
+        var addendum = await _context.ClinicalNotes.FindAsync(result.AddendumId);
         Assert.NotNull(addendum);
-        Assert.Equal(note.Id, addendum!.ClinicalNoteId);
-        Assert.Equal("Additional assessment findings", addendum.Content);
-        Assert.Equal(signer.Id, addendum.CreatedByUserId);
+        Assert.Equal(note.Id, addendum!.ParentNoteId);
+        Assert.True(addendum.IsAddendum);
+        Assert.Equal(NoteStatus.Draft, addendum.NoteStatus);
+        Assert.Equal(note.PatientId, addendum.PatientId);
+        Assert.Equal(note.NoteType, addendum.NoteType);
+        Assert.Equal(note.DateOfService, addendum.DateOfService);
+        Assert.Equal("[]", addendum.CptCodesJson);
+        Assert.Equal(signer.Id, addendum.ModifiedByUserId);
+        Assert.Equal("\"Additional assessment findings\"", addendum.ContentJson);
+
+        _mockSyncEngine.Verify(
+            engine => engine.EnqueueAsync("ClinicalNote", addendum.Id, SyncOperation.Create, It.IsAny<CancellationToken>()),
+            Times.Once);
+        _mockAuditService.Verify(
+            audit => audit.LogAddendumCreatedAsync(
+                It.Is<AuditEvent>(evt =>
+                    evt.EventType == "ADDENDUM_CREATE" &&
+                    evt.EntityType == "ClinicalNote" &&
+                    evt.EntityId == note.Id &&
+                    evt.UserId == signer.Id),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -247,7 +275,7 @@ public sealed class SignatureServiceTests : IDisposable
         var result = await _signatureService.CreateAddendumAsync(note.Id, "Additional notes", signer.Id);
 
         Assert.False(result.Success);
-        Assert.Contains("unsigned note", result.ErrorMessage);
+        Assert.Equal("Addendums can only be created for signed notes", result.ErrorMessage);
     }
 
     [Fact]
@@ -277,6 +305,90 @@ public sealed class SignatureServiceTests : IDisposable
 
         var updatedNote = await _context.ClinicalNotes.FindAsync(note.Id);
         Assert.Equal("ORIGINAL_HASH", updatedNote!.SignatureHash);
+    }
+
+    [Fact]
+    public async Task CreateAddendum_AddendumOfAddendum_ReturnsError()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var addendum = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            ParentNoteId = Guid.NewGuid(),
+            IsAddendum = true,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = "SIGNED_ADDENDUM_HASH",
+            SignedUtc = DateTime.UtcNow,
+            SignedByUserId = signer.Id,
+            NoteStatus = NoteStatus.Signed
+        };
+
+        _context.ClinicalNotes.Add(addendum);
+        await _context.SaveChangesAsync();
+
+        var result = await _signatureService.CreateAddendumAsync(addendum.Id, "Nested", signer.Id);
+
+        Assert.False(result.Success);
+        Assert.Equal("Cannot create addendum of addendum", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SignNote_Addendum_SignsIndependentlyWithoutAlteringOriginal()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var original = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow.Date,
+            ContentJson = "{\"assessment\":\"original\"}",
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = "ORIGINAL_HASH",
+            SignedUtc = DateTime.UtcNow.AddMinutes(-10),
+            SignedByUserId = signer.Id,
+            NoteStatus = NoteStatus.Signed
+        };
+
+        _context.ClinicalNotes.Add(original);
+        await _context.SaveChangesAsync();
+
+        _mockClinicalRulesEngine
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new RuleEvaluationResult
+                {
+                    RuleId = "DOC_BLOCK",
+                    Category = RuleCategory.DocCompleteness,
+                    Severity = ValidationSeverity.Error,
+                    Message = "Blocking clinical rule",
+                    Blocking = true
+                }
+            });
+
+        var addendumResult = await _signatureService.CreateAddendumAsync(original.Id, "Addendum text", signer.Id);
+        Assert.True(addendumResult.Success);
+
+        var signResult = await _signatureService.SignNoteAsync(addendumResult.AddendumId!.Value, signer.Id, Roles.PT, true, true);
+
+        Assert.True(signResult.Success);
+        Assert.NotNull(signResult.SignatureHash);
+
+        var signedAddendum = await _context.ClinicalNotes.FindAsync(addendumResult.AddendumId.Value);
+        Assert.NotNull(signedAddendum);
+        Assert.True(signedAddendum!.IsAddendum);
+        Assert.Equal(NoteStatus.Signed, signedAddendum.NoteStatus);
+        Assert.Equal(signResult.SignatureHash, signedAddendum.SignatureHash);
+
+        var unchangedOriginal = await _context.ClinicalNotes.FindAsync(original.Id);
+        Assert.NotNull(unchangedOriginal);
+        Assert.Equal("ORIGINAL_HASH", unchangedOriginal!.SignatureHash);
     }
 
     [Fact]

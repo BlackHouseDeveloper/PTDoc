@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
 
@@ -19,17 +20,20 @@ public class SignatureService : ISignatureService
     private readonly IAuditService _auditService;
     private readonly IClinicalRulesEngine _clinicalRulesEngine;
     private readonly IHashService _hashService;
+    private readonly IAddendumService? _addendumService;
 
     public SignatureService(
         ApplicationDbContext context,
         IAuditService auditService,
         IClinicalRulesEngine clinicalRulesEngine,
-        IHashService hashService)
+        IHashService hashService,
+        IAddendumService? addendumService = null)
     {
         _context = context;
         _auditService = auditService;
         _clinicalRulesEngine = clinicalRulesEngine;
         _hashService = hashService;
+        _addendumService = addendumService;
     }
 
     /// <summary>
@@ -183,55 +187,20 @@ public class SignatureService : ISignatureService
     /// </summary>
     public async Task<AddendumResult> CreateAddendumAsync(Guid noteId, string addendumContent, Guid userId, CancellationToken ct = default)
     {
-        var note = await _context.ClinicalNotes.FindAsync(new object[] { noteId }, ct);
-
-        if (note == null)
+        if (_addendumService is null)
         {
             return new AddendumResult
             {
                 Success = false,
-                ErrorMessage = "Note not found"
+                ErrorMessage = "Addendum service is not available"
             };
         }
 
-        if (string.IsNullOrEmpty(note.SignatureHash))
-        {
-            return new AddendumResult
-            {
-                Success = false,
-                ErrorMessage = "Cannot create addendum for unsigned note"
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(addendumContent))
-        {
-            return new AddendumResult
-            {
-                Success = false,
-                ErrorMessage = "Addendum content cannot be empty"
-            };
-        }
-
-        var addendum = new Addendum
-        {
-            Id = Guid.NewGuid(),
-            ClinicalNoteId = noteId,
-            Content = addendumContent,
-            CreatedUtc = DateTime.UtcNow,
-            CreatedByUserId = userId
-        };
-
-        _context.Addendums.Add(addendum);
-        await _context.SaveChangesAsync(ct);
-
-        await _auditService.LogAddendumCreatedAsync(
-            AuditEvent.AddendumCreated(noteId, addendum.Id, userId), ct);
-
-        return new AddendumResult
-        {
-            Success = true,
-            AddendumId = addendum.Id
-        };
+        return await _addendumService.CreateAddendumAsync(
+            noteId,
+            JsonSerializer.SerializeToElement(addendumContent),
+            userId,
+            ct);
     }
 
     /// <summary>
@@ -504,6 +473,11 @@ public class SignatureService : ISignatureService
 
     private async Task<SignatureResult?> ValidatePreSignatureRequirementsAsync(ClinicalNote note, CancellationToken ct)
     {
+        if (note.IsAddendum)
+        {
+            return null;
+        }
+
         var violations = await _clinicalRulesEngine.RunClinicalValidationAsync(note.Id, ct);
         var blockingViolations = violations.Where(v => v.Blocking).ToList();
         if (blockingViolations.Count > 0)
@@ -589,9 +563,7 @@ public class SignatureService : ISignatureService
 
     private static bool IsFinalized(ClinicalNote note)
     {
-        return note.NoteStatus == NoteStatus.Signed
-            || !string.IsNullOrWhiteSpace(note.SignatureHash)
-            || note.SignedUtc is not null;
+        return note.IsFinalized;
     }
 
     private static bool IsSupportedSignerRole(string role)

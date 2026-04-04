@@ -122,6 +122,8 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.DateOfService);
+            entity.HasIndex(e => e.CreatedUtc);
+            entity.HasIndex(e => e.ParentNoteId);
             entity.HasIndex(e => e.SignedUtc);
             entity.HasIndex(e => e.LastModifiedUtc);
 
@@ -134,6 +136,11 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.AppointmentId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.ParentNote)
+                .WithMany(e => e.Addendums)
+                .HasForeignKey(e => e.ParentNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // Configure IntakeForm
