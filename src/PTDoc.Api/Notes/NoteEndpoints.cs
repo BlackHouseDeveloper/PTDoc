@@ -164,9 +164,25 @@ public static class NoteEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {id} not found." });
 
+        if (note.IsAddendum)
+        {
+            if (note.ParentNoteId is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+
+            note = await db.ClinicalNotes
+                .AsNoTracking()
+                .Include(n => n.ObjectiveMetrics)
+                .FirstOrDefaultAsync(
+                    n => n.Id == note.ParentNoteId.Value && !n.IsAddendum,
+                    cancellationToken);
+
+            if (note is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+        }
+
         var linkedAddendumNotes = await db.ClinicalNotes
             .AsNoTracking()
-            .Where(n => n.ParentNoteId == note.Id)
+            .Where(n => n.ParentNoteId == note.Id && n.IsAddendum)
             .OrderBy(n => n.CreatedUtc)
             .ThenBy(n => n.LastModifiedUtc)
             .ToListAsync(cancellationToken);
@@ -287,7 +303,7 @@ public static class NoteEndpoints
             await auditService.LogRuleEvaluationAsync(
                 AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteEndpoints.UpdateNote"),
                 cancellationToken);
-            return Results.Conflict(new { error = immutabilityResult.Message });
+            return Results.Conflict(new { error = "Signed notes cannot be modified. Create addendum." });
         }
 
         try

@@ -24,7 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### EF Core Migrations
 - **Provider migrations** - Added `AddClinicalNoteLinkedAddendums` migrations and updated snapshots for SQLite, PostgreSQL, and SQL Server, including the self-referencing foreign key and backfill of existing `ClinicalNotes.CreatedUtc` values from `LastModifiedUtc`.
 
-### Added - Sprint 2: Legal eSignature Workflow and Document Hashing
+### Fixed - Sprint 2: PR Review Feedback
+
+- **Standardized immutability message** - Aligned `NoteWriteService` exception message to the canonical clinician-facing string `"Signed notes cannot be modified. Create addendum."` used across all other endpoints.
+- **`GET /api/v1/notes/{id}` addendum resolution** - Requesting an addendum note ID now resolves to its primary note and returns that note's full detail response; requesting a non-existent parent returns `404`.
+- **Linked-addendum query scoping** - The linked-addendum LINQ query on `GET /api/v1/notes/{id}` now explicitly filters `IsAddendum == true` so only addendum rows are returned even if `ParentNoteId` is populated for other purposes.
+- **`UpdateNote` standardized error** - Replaced the rules-engine message with the canonical `"Signed notes cannot be modified. Create addendum."` in the `PATCH` update endpoint's immutability response; the detailed rules-engine result is still logged via `LogRuleEvaluationAsync`.
+- **`IAddendumService` required dependency** - `SignatureService` now requires `IAddendumService` as a constructor-injected required dependency instead of an optional parameter, so misconfiguration fails at DI startup rather than returning a user-visible error at runtime.
+
+
 
 #### Legal eSignature Backend
 - **`IHashService` / `HashService`** - Added deterministic SHA-256 uppercase hex hashing over canonical note state, including persisted note fields, canonicalized content JSON, sorted CPT payloads, and sorted objective metrics, with malformed-JSON fallback behavior for both `JsonException` and `ArgumentException`.

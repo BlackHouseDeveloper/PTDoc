@@ -20,14 +20,14 @@ public class SignatureService : ISignatureService
     private readonly IAuditService _auditService;
     private readonly IClinicalRulesEngine _clinicalRulesEngine;
     private readonly IHashService _hashService;
-    private readonly IAddendumService? _addendumService;
+    private readonly IAddendumService _addendumService;
 
     public SignatureService(
         ApplicationDbContext context,
         IAuditService auditService,
         IClinicalRulesEngine clinicalRulesEngine,
         IHashService hashService,
-        IAddendumService? addendumService = null)
+        IAddendumService addendumService)
     {
         _context = context;
         _auditService = auditService;
@@ -187,15 +187,6 @@ public class SignatureService : ISignatureService
     /// </summary>
     public async Task<AddendumResult> CreateAddendumAsync(Guid noteId, string addendumContent, Guid userId, CancellationToken ct = default)
     {
-        if (_addendumService is null)
-        {
-            return new AddendumResult
-            {
-                Success = false,
-                ErrorMessage = "Addendum service is not available"
-            };
-        }
-
         return await _addendumService.CreateAddendumAsync(
             noteId,
             JsonSerializer.SerializeToElement(addendumContent),

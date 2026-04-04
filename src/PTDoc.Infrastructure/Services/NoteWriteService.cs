@@ -113,7 +113,7 @@ public sealed class NoteWriteService(
             await auditService.LogRuleEvaluationAsync(
                 AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteWriteService.UpdateAsync"),
                 ct);
-            throw new InvalidOperationException("Signed notes are immutable. Create addendum.");
+            throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
 
         if (request.TotalMinutes < 0)
