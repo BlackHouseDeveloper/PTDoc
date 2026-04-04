@@ -591,6 +591,33 @@ public class TenantIsolationTests
         Assert.Equal(2, overrides.Count);
     }
 
+    [Fact]
+    public async Task RuleOverride_LegacyRows_WithoutNoteId_AreQueryable_Via_UserClinicId()
+    {
+        // Legacy rows created before NoteId was added will have NoteId == null.
+        // The query filter must fall back to User.ClinicId so they remain visible
+        // to the correct clinic context and invisible to other clinics.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var userA = new User { Username = "legacy-ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "legacy-ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        // Legacy rows: NoteId is null, scoped only by User.ClinicId
+        seedCtx.RuleOverrides.AddRange(
+            new RuleOverride { NoteId = null, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Legacy A", AttestationText = "I attest" },
+            new RuleOverride { NoteId = null, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Legacy B", AttestationText = "I attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var overrides = await ctxA.RuleOverrides.ToListAsync();
+
+        Assert.Single(overrides);
+        Assert.Equal(userA.Id, overrides[0].UserId);
+    }
+
     // ─── Addendum isolation (Sprint II) ──────────────────────────────────────
 
     [Fact]

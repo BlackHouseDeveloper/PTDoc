@@ -25,6 +25,25 @@ public sealed class OverrideServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyOverrideAsync_NonExistentUser_ThrowsKeyNotFoundException()
+    {
+        var (noteId, _, _) = await SeedNoteAndUsersAsync();
+        var nonExistentUserId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.ApplyOverrideAsync(new OverrideRequest
+        {
+            NoteId = noteId,
+            RuleType = ComplianceRuleType.EightMinuteRule,
+            Reason = "Clinical judgment supports additional unit",
+            AttestedBy = nonExistentUserId,
+            Timestamp = DateTime.UtcNow
+        }));
+
+        Assert.Empty(_context.RuleOverrides);
+        Assert.Empty(_context.AuditLogs);
+    }
+
+    [Fact]
     public async Task ApplyOverrideAsync_NonPtUser_ThrowsUnauthorizedAccessException()
     {
         var (noteId, _, ptaUserId) = await SeedNoteAndUsersAsync();

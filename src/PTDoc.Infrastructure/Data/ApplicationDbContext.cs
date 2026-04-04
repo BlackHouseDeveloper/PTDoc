@@ -620,9 +620,11 @@ public class ApplicationDbContext : DbContext
             .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
 
         // RuleOverride is tied to a specific note/clinic; filter via the parent note's ClinicId to
-        // prevent cross-tenant override visibility.
+        // prevent cross-tenant override visibility. When NoteId is null (legacy rows), fall back to
+        // the attesting user's ClinicId so those rows remain queryable within their clinic.
         modelBuilder.Entity<RuleOverride>()
-            .HasQueryFilter(r => CurrentClinicId == null || r.Note!.ClinicId == CurrentClinicId);
+            .HasQueryFilter(r => CurrentClinicId == null
+                || (r.NoteId != null ? r.Note!.ClinicId == CurrentClinicId : r.User!.ClinicId == CurrentClinicId));
 
         // Addendum is associated with a ClinicalNote; filter via the parent note's ClinicId to
         // prevent cross-tenant addendum leakage.

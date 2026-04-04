@@ -20,7 +20,12 @@ public sealed class OverrideService(ApplicationDbContext db) : IOverrideService
             .AsNoTracking()
             .FirstOrDefaultAsync(entity => entity.Id == request.AttestedBy, ct);
 
-        if (!string.Equals(user?.Role, Roles.PT, StringComparison.OrdinalIgnoreCase))
+        if (user is null)
+        {
+            throw new KeyNotFoundException($"Attesting user {request.AttestedBy} not found.");
+        }
+
+        if (!string.Equals(user.Role, Roles.PT, StringComparison.OrdinalIgnoreCase))
         {
             throw new UnauthorizedAccessException("Only PT can override compliance warnings.");
         }
