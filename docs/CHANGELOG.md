@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Send intake modal Razor parse regression
+
+- **`src/PTDoc.UI/Components/SendIntakeModal.razor`** — Restored the missing `HandlePatientChanged` closing structure, added the `finally` busy-state cleanup, and reintroduced the `GenerateLinkAsync` method declaration so the component parses correctly again. Reason: a malformed `@code` block caused Razor `RZ1006` errors and cascading compile failures for injected services and `IAsyncDisposable`.
+- **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`** — Fixed client-push handling for clinical notes by rejecting `PendingCoSign` notes as read-only, parsing `noteType` from either enum-name strings or numeric values during note creation, and denormalizing `ClinicId` from the owning patient when creating a new note from sync payloads. Reason: sync tests showed pending co-sign notes were being accepted, `"ProgressNote"` payloads were defaulting to the wrong enum, and synced notes were losing tenant scoping metadata.
+- **`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`** — Serialized pushed clinical-note `createdUtc` values in round-trip `"O"` format. Reason: sync payload tests require full-precision addendum metadata to survive push serialization without trimming fractional-second digits.
+
 ### Fixed - Sprint II: NoteStatus alignment (CI build fix)
 
 #### Sprint-I / Sprint-II Merge: NoteStatus Status model aligned across workspace service layer

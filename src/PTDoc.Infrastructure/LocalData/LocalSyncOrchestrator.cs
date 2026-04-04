@@ -190,7 +190,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                     patientId = n.PatientServerId,
                     n.NoteType,
                     n.DateOfService,
-                    n.CreatedUtc,
+                    createdUtc = n.CreatedUtc.ToString("O"),
                     n.ParentNoteId,
                     n.IsAddendum,
                     n.ContentJson,

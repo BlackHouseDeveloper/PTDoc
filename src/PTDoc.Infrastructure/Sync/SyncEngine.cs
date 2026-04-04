@@ -810,19 +810,25 @@ public class SyncEngine : ISyncEngine
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (note is not null
-                && (note.NoteStatus == NoteStatus.Signed || note.SignatureHash != null || note.SignedUtc != null))
+                && (note.NoteStatus == NoteStatus.PendingCoSign
+                    || note.NoteStatus == NoteStatus.Signed
+                    || note.SignatureHash != null
+                    || note.SignedUtc != null))
             {
                 _logger.LogWarning(
-                    "Client push rejected: signed ClinicalNote {ServerId} is immutable", serverId);
+                    "Client push rejected: non-draft ClinicalNote {ServerId} is immutable", serverId);
 
-                if (_auditService is not null)
+                if (_auditService is not null
+                    && (note.NoteStatus == NoteStatus.Signed || note.SignatureHash != null || note.SignedUtc != null))
                 {
                     await _auditService.LogRuleEvaluationAsync(
                         AuditEvent.EditBlockedSignedNote(serverId, _identityContext?.TryGetCurrentUserId(), "SyncEngine.ReceiveClientPushAsync"),
                         cancellationToken);
                 }
 
-                return "Signed notes cannot be modified. Create addendum.";
+                return note.NoteStatus == NoteStatus.PendingCoSign
+                    ? "Pending notes are read-only while awaiting PT co-signature."
+                    : "Signed notes cannot be modified. Create addendum.";
             }
         }
         else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
@@ -1008,17 +1014,20 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
-                var noteTypeRaw = TryGetInt(root, "noteType") ?? TryGetInt(root, "NoteType") ?? 0;
+                var noteType = TryGetNoteType(root) ?? NoteType.Daily;
                 var createdUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? item.LastModifiedUtc;
                 var parentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId");
                 var isAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? false;
+                var clinicId = await _context.Patients
+                    .Where(p => p.Id == patientId)
+                    .Select(p => p.ClinicId)
+                    .FirstOrDefaultAsync(cancellationToken);
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
-                    NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
-                        ? (NoteType)noteTypeRaw
-                        : NoteType.Daily,
+                    ClinicId = clinicId,
+                    NoteType = noteType,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
@@ -1109,6 +1118,43 @@ public class SyncEngine : ISyncEngine
         if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
         return null;
     }
+
+    private static NoteType? TryGetNoteType(JsonElement root)
+    {
+        foreach (var propertyName in new[] { "noteType", "NoteType" })
+        {
+            if (!root.TryGetProperty(propertyName, out var el))
+            {
+                continue;
+            }
+
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var numericValue))
+            {
+                return Enum.IsDefined(typeof(NoteType), numericValue)
+                    ? (NoteType)numericValue
+                    : null;
+            }
+
+            if (el.ValueKind == JsonValueKind.String)
+            {
+                var stringValue = el.GetString();
+                if (int.TryParse(stringValue, out var numericStringValue))
+                {
+                    return Enum.IsDefined(typeof(NoteType), numericStringValue)
+                        ? (NoteType)numericStringValue
+                        : null;
+                }
+
+                if (Enum.TryParse<NoteType>(stringValue, ignoreCase: true, out var parsedEnum))
+                {
+                    return parsedEnum;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private async Task ArchiveConflictVersionAsync<TEntity>(
         TEntity archivedVersion,
         TEntity chosenVersion,
