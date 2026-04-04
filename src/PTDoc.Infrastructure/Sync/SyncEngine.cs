@@ -539,14 +539,43 @@ public class SyncEngine : ISyncEngine
             return null;
         }
 
+        var errorMessage = receipt.ErrorMessage.Trim();
+
         try
         {
-            return JsonSerializer.Deserialize<ConflictReceiptEnvelope>(receipt.ErrorMessage);
+            var envelope = JsonSerializer.Deserialize<ConflictReceiptEnvelope>(errorMessage);
+            if (envelope is not null && !string.IsNullOrWhiteSpace(envelope.Message))
+            {
+                return envelope;
+            }
         }
         catch (JsonException)
         {
+            // Fall back to legacy plain-text conflict receipts stored before the JSON envelope format.
+        }
+
+        return TryParseLegacyConflictReceipt(errorMessage);
+    }
+
+    private static ConflictReceiptEnvelope? TryParseLegacyConflictReceipt(string errorMessage)
+    {
+        if (!LooksLikeLegacyConflictMessage(errorMessage))
+        {
             return null;
         }
+
+        return new ConflictReceiptEnvelope
+        {
+            Message = errorMessage
+        };
+    }
+
+    private static bool LooksLikeLegacyConflictMessage(string errorMessage)
+    {
+        return errorMessage.Contains("server version is newer", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("immutable", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("locked", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("conflict", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ClientSyncPushItemResult BuildReplayResult(SyncQueueItem receipt, string entityType, int localId)
@@ -596,7 +625,7 @@ public class SyncEngine : ISyncEngine
             LocalId = localId,
             ServerId = serverId,
             Status = conflict.ResolutionType == ConflictResolution.LocalWins ? "Accepted" : "Conflict",
-            Error = conflict.Message,
+            Error = conflict.ResolutionType == ConflictResolution.LocalWins ? null : conflict.Message,
             ServerModifiedUtc = conflict.ServerModifiedUtc,
             Conflict = conflict
         };
@@ -1020,12 +1049,10 @@ public class SyncEngine : ISyncEngine
     {
         if (!snapshot.Exists)
         {
-            return item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase)
-                ? ConflictType.DeletedConflict
-                : null;
+            return null;
         }
 
-        if (snapshot.IsDeleted || item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+        if (snapshot.IsDeleted && !item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
         {
             return ConflictType.DeletedConflict;
         }
@@ -1312,7 +1339,7 @@ public class SyncEngine : ISyncEngine
             snapshot.ModifiedByUserId,
             cancellationToken);
 
-        await LogConflictEventAsync("CONFLICT_DETECTED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.Unknown, "ManualRequired", cancellationToken);
+        await LogConflictEventAsync("CONFLICT_MANUAL_REQUIRED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.Unknown, "ManualRequired", cancellationToken);
 
         return new ConflictResult
         {
@@ -1379,7 +1406,8 @@ public class SyncEngine : ISyncEngine
         ClientSyncPushItem item,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(item.DataJson) || item.DataJson == "{}")
+        if (string.IsNullOrWhiteSpace(item.DataJson) ||
+            (item.DataJson == "{}" && !item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogWarning(
                 "Client push rejected: empty or blank DataJson payload for {EntityType} with ServerId {ServerId}",

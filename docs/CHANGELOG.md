@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Sprint 3: PR 2 Conflict Resolution Engine
+### Fixed - Sprint 3: PR Review Feedback (Conflict Resolution Engine)
+
+#### SyncEngine — Delete Conflict Detection (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `DetectConflict`** — Client delete against a missing server record now returns `null` (treated as already-applied/Accepted) instead of `DeletedConflict`, making idempotent deletes safe for retries. `DeletedConflict` is now only raised when the server record exists, is archived/deleted, and the client is attempting an update — not when both sides agree on deletion. Reason: prevent clients from getting stuck in a permanent conflict loop when retrying deletes for already-removed rows.
+
+#### SyncEngine — Duplicate Audit Events (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ResolveUnknownConflictAsync`** — Renamed internal audit event from `CONFLICT_DETECTED` to `CONFLICT_MANUAL_REQUIRED` to eliminate duplicate audit log rows for unknown/manual-required conflicts, since `ResolveConflictAsync` already emits `CONFLICT_DETECTED` unconditionally before dispatching to each resolver. Reason: one conflict event per resolution path — no duplicate rows.
+
+#### SyncEngine — Legacy Conflict Receipt Backward Compatibility (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ParseConflictReceipt`** — Added a `TryParseLegacyConflictReceipt` / `LooksLikeLegacyConflictMessage` fallback so pre-JSON plain-text conflict messages (e.g. "Server version is newer", "immutable", "locked") stored before the JSON envelope format are parsed as conflict receipts rather than treated as non-conflict errors. Reason: prevent behavior change for existing devices upgrading through this release where old receipts were stored as plain text.
+
+#### SyncEngine — `BuildConflictResult` Error Field Contract (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `BuildConflictResult`** — `Error` field is now `null` when `ResolutionType == LocalWins` (result `Status == "Accepted"`), matching the `ClientSyncPushItemResult.Error` contract that reserves this field for `Error`/`Conflict` statuses only. Reason: avoid confusing clients that inspect `Error` for success path filtering.
+
+#### Test Coverage — Delete Semantics (`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`)
+- **`SyncClientProtocolTests.cs`** — Added three delete-semantics tests: delete existing patient (accepted, entity archived), idempotent delete of missing entity (accepted, no conflict), and update of archived/server-deleted patient (DeletedConflict). Reason: ensure deterministic pipeline does not regress delete behavior.
+
+
 
 #### Deterministic Sync Conflict Resolution (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
 - **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Added a single server-side conflict pipeline that loads a normalized server snapshot, detects deterministic conflict types, resolves conflicts before payload mutation, persists replayable conflict receipts, and archives the losing side in `SyncConflictArchives`. Reason: enforce one authoritative sync conflict path without duplicating logic across services.

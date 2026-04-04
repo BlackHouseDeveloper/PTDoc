@@ -1387,4 +1387,134 @@ public class SyncClientProtocolTests
         Assert.Equal("Conflict", response.Items[0].Status);
         Assert.Contains("newer", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ── Delete semantics tests ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_DeleteExistingPatient_IsAccepted()
+    {
+        // Arrange: existing patient on server, client pushes a delete
+        var context = CreateInMemoryContext();
+
+        var patient = new Patient
+        {
+            FirstName = "Jane",
+            LastName = "Doe",
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "Patient",
+                    ServerId = patient.Id,
+                    LocalId = 1,
+                    Operation = "Delete",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: delete is accepted without conflict
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal(0, response.ConflictCount);
+        Assert.Equal("Accepted", response.Items[0].Status);
+        Assert.Null(response.Items[0].Error);
+
+        // Entity should be archived (soft-deleted)
+        var archived = await context.Patients.FindAsync(patient.Id);
+        Assert.NotNull(archived);
+        Assert.True(archived.IsArchived);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_DeleteMissingPatient_IsIdempotentAccepted()
+    {
+        // Arrange: entity does not exist on server (already deleted or never synced)
+        var context = CreateInMemoryContext();
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var missingId = Guid.NewGuid();
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "Patient",
+                    ServerId = missingId,
+                    LocalId = 7,
+                    Operation = "Delete",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: idempotent – treated as already applied, no conflict
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal(0, response.ConflictCount);
+        Assert.Equal("Accepted", response.Items[0].Status);
+        Assert.Null(response.Items[0].Error);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_UpdateArchivedPatient_IsDeletedConflict()
+    {
+        // Arrange: patient is archived/deleted on server; client tries to update it
+        var context = CreateInMemoryContext();
+
+        var patient = new Patient
+        {
+            FirstName = "Archived",
+            LastName = "Patient",
+            IsArchived = true,
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "Patient",
+                    ServerId = patient.Id,
+                    LocalId = 3,
+                    Operation = "Update",
+                    DataJson = "{\"firstName\":\"Updated\",\"lastName\":\"Patient\"}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        // Act
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        // Assert: conflict because server-deleted beats client update
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal("Conflict", response.Items[0].Status);
+        Assert.NotNull(response.Items[0].Conflict);
+    }
 }
