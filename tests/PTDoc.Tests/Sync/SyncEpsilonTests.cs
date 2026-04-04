@@ -557,6 +557,7 @@ public class SyncEpsilonTests
         Assert.NotNull(queueItem);
         Assert.Equal(SyncQueueStatus.Pending, queueItem.Status);
         Assert.Equal(SyncOperation.Create, queueItem.Operation);
+        Assert.NotEqual(Guid.Empty, queueItem.Id);
     }
 
     [Fact]

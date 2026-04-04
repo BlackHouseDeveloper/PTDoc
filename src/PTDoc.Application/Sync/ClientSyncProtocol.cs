@@ -6,6 +6,9 @@ namespace PTDoc.Application.Sync;
 /// </summary>
 public class ClientSyncPushItem
 {
+    /// <summary>Stable idempotency key reused for retries of the same logical operation.</summary>
+    public Guid OperationId { get; set; }
+
     /// <summary>Logical entity type, e.g. "Patient" or "Appointment".</summary>
     public string EntityType { get; set; } = string.Empty;
 

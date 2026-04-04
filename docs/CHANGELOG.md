@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Sprint 3: PR Review Feedback (Sync Queue + Idempotency)
+
+#### SyncEngine — Processing Placeholder Before Entity Write (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Inserts a `SyncQueueStatus.Processing` receipt placeholder **before** calling `ApplyEntityFromPayloadAsync`, then promotes it to `Completed`/`Failed` in place. Concurrent requests arriving with the same `OperationId` hit a PK unique constraint on the placeholder insert and fall through to the existing replay path instead of both writing the entity. Conflict paths now update the placeholder rather than inserting a new receipt. Reason: close the race window where two concurrent retries could both pass the `existingReceipt` check and duplicate-write a create.
+
+#### LocalSyncOrchestrator — Coalesce Non-Completed Items (`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`)
+- **`LocalSyncOrchestrator.cs` / `EnqueueChangeAsync`** — Coalescing now supersedes **any** non-`Completed` queue row for the same `(EntityType, LocalEntityId)` pair — including `Failed` and `Processing` rows — not only unattempted `Pending` rows. The superseded row is reset to `Pending` with cleared retry state so it gets processed as fresh. Reason: prevent stale Failed payloads from being retried ahead of a newer update for the same entity, preserving last-write-wins semantics.
+
+#### MauiNoteDraftLocalPersistenceService — Best-Effort Enqueue (`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`)
+- **`MauiNoteDraftLocalPersistenceService.cs` / `SaveDraftAsync`** — Wrapped `EnqueueChangeAsync` in `try/catch` so a queue DB error does not bubble up and undo the already-committed `UpsertAsync` result. The draft remains persisted locally and marked `Pending`; the periodic sync scan (`EnsureQueueItemsForPendingEntitiesAsync`) will recover missing queue items. Reason: preserve offline-first UX — local save must succeed even when the sync queue DB is temporarily unavailable.
+
+#### LocalSyncCoordinator — Deterministic Loop Shutdown (`src/PTDoc.Maui/Services/LocalSyncCoordinator.cs`)
+- **`LocalSyncCoordinator.cs` / `RunLoopAsync` / `DisposeAsync`** — Added a `CancellationTokenSource` (`_loopCts`) that is created at `StartAsync` time. `WaitForNextTickAsync` now receives the loop cancellation token, and `DisposeAsync` cancels the source before awaiting `_loopTask`. `OperationCanceledException` surfaced from the cancelled tick is swallowed as normal shutdown. Reason: prevent a faulted or unobserved-exception `_loopTask` when the timer is disposed mid-await; shutdown is now deterministic and the loop exits cleanly on cancellation.
+
+### Added - Sprint 3: Offline Sync Queue Foundation
+
+#### MAUI Local Sync Queue + Background Processing
+- **`src/PTDoc.Application/LocalData/Entities/LocalSyncQueueItem.cs`**, **`src/PTDoc.Infrastructure/LocalData/LocalDbContext.cs`**, **`src/PTDoc.Infrastructure/LocalData/LocalDbInitializer.cs`** — Added a durable MAUI-side outbound sync queue persisted in local SQLite with `OperationId`, retry state, timestamps, payload JSON, and status indexes. `LocalDbInitializer` now performs idempotent schema creation for the queue table and indexes on existing device databases. Reason: offline changes must survive app restarts and be retried safely.
+- **`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`**, **`src/PTDoc.Application/LocalData/ILocalSyncOrchestrator.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`** — Reworked the local sync orchestrator around ordered queue execution instead of scanning all pending entities, added `EnqueueChangeAsync`, crash recovery for interrupted `Processing` rows, bounded retry/backoff, and queue-driven note draft enqueueing. Reason: provide a real offline-first sync pipeline foundation without introducing a second sync system.
+
+#### MAUI Sync Runtime Wiring
+- **`src/PTDoc.Maui/Services/LocalSyncCoordinator.cs`**, **`src/PTDoc.Maui/Services/MauiConnectivityService.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`src/PTDoc.Maui/App.xaml.cs`** — Added an app-lifetime MAUI sync coordinator with a 15-second background loop, MAUI-native connectivity detection, singleton sync state sharing, and startup wiring that begins background sync after local DB initialization. Reason: automatic sync should run continuously when the device is online without blocking the UI thread.
+
+#### Server Idempotency + Sync Audit Events
+- **`src/PTDoc.Application/Sync/ClientSyncProtocol.cs`**, **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`**, **`src/PTDoc.Application/Compliance/IAuditService.cs`**, **`src/PTDoc.Infrastructure/Compliance/AuditService.cs`** — Added `OperationId` to the client push protocol, implemented duplicate-operation replay on the server receipt path using the existing `SyncQueueItem` ledger, and introduced `SYNC_START` / `SYNC_SUCCESS` / `SYNC_FAILURE` audit events with non-PHI metadata only. Reason: retries must not create duplicate records and sync activity must be observable without leaking PHI.
+
+#### Test Coverage
+- **`tests/PTDoc.Tests/LocalData/LocalSyncOrchestratorTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`** — Added coverage for local queue coalescing, retry backoff gating, interrupted-processing recovery, duplicate `OperationId` replay, and sync audit-event PHI safety. Reason: sync queue state transitions and idempotent receipt behavior are acceptance-critical.
+
 ### Added - Sprint I: Mandatory Changelog Enforcement Rule (AGENT-CHANGELOG-001)
 
 #### Agent Behavioral Contract: `.github/agent.md`
