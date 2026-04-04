@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -21,7 +22,7 @@ public sealed class OverrideServiceTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
-        _service = new OverrideService(_context);
+        _service = new OverrideService(_context, NullLogger<OverrideService>.Instance);
     }
 
     [Fact]
@@ -124,7 +125,7 @@ public sealed class OverrideServiceTests : IDisposable
         Assert.Equal(noteId, audit.EntityId);
         Assert.Equal(ptUserId, audit.UserId);
         Assert.Contains("\"ruleType\":\"EightMinuteRule\"", audit.MetadataJson, StringComparison.Ordinal);
-        Assert.Contains("\"reason\":\"Clinical judgment supports additional unit\"", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"reason\":", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -136,7 +137,7 @@ public sealed class OverrideServiceTests : IDisposable
         {
             NoteId = noteId,
             RuleType = ComplianceRuleType.EightMinuteRule,
-            Reason = "First attestation",
+            Reason = "First PT attestation for this note",
             AttestedBy = ptUserId,
             Timestamp = DateTime.UtcNow.AddMinutes(-5)
         });
@@ -145,7 +146,7 @@ public sealed class OverrideServiceTests : IDisposable
         {
             NoteId = noteId,
             RuleType = ComplianceRuleType.EightMinuteRule,
-            Reason = "Second attestation",
+            Reason = "Second PT attestation for this note",
             AttestedBy = ptUserId,
             Timestamp = DateTime.UtcNow
         });

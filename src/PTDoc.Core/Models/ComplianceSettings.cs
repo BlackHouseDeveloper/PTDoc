@@ -9,6 +9,8 @@ public class ComplianceSettings
     public const string DefaultOverrideAttestationText =
         "I acknowledge this override and attest that the justification is accurate and clinically necessary.";
 
+    public const int DefaultMinJustificationLength = 20;
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public string OverrideAttestationText { get; set; } = DefaultOverrideAttestationText;
     public int MinJustificationLength { get; set; } = 20;

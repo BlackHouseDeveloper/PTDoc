@@ -266,9 +266,17 @@ public static class NoteEndpoints
         try
         {
             var result = await noteWriteService.CreateAsync(request, cancellationToken);
-            return result.IsValid
-                ? Results.Created($"/api/v1/notes/{result.Note!.Id}", result)
-                : Results.UnprocessableEntity(result);
+
+            if (!result.IsValid)
+                return Results.UnprocessableEntity(result);
+
+            if (result.Note is null)
+                return Results.Problem(
+                    title: "Note creation returned an invalid success response.",
+                    detail: "The note write service reported success but did not provide a note.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+
+            return Results.Created($"/api/v1/notes/{result.Note.Id}", result);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -402,13 +410,17 @@ public static class NoteEndpoints
             return Results.Conflict(new { error = "Stored CPT data is invalid and cannot be evaluated for override." });
         }
 
+        var totalTimedMinutes = cptEntries
+            .Where(entry => entry.IsTimed)
+            .Sum(entry => entry.Minutes ?? 0);
+
         var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
         {
             PatientId = note.PatientId,
             ExistingNoteId = note.Id,
             NoteType = note.NoteType,
             DateOfService = note.DateOfService,
-            TotalTimedMinutes = note.TotalTreatmentMinutes,
+            TotalTimedMinutes = totalTimedMinutes,
             CptEntries = cptEntries
         }, cancellationToken);
 

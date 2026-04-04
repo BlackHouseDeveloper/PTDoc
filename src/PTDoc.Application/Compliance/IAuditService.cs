@@ -113,7 +113,7 @@ public class AuditEvent
         };
     }
 
-    public static AuditEvent OverrideApplied(Guid noteId, ComplianceRuleType ruleType, string reason, Guid userId)
+    public static AuditEvent OverrideApplied(Guid noteId, ComplianceRuleType ruleType, Guid userId)
     {
         return new AuditEvent
         {
@@ -126,7 +126,6 @@ public class AuditEvent
             Metadata = new Dictionary<string, object>
             {
                 ["ruleType"] = ruleType.ToString(),
-                ["reason"] = reason,
                 ["timestamp"] = DateTime.UtcNow
             }
         };

@@ -170,14 +170,14 @@ public class AuthAuditTests : IAsyncDisposable
     {
         var noteId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, "Clinical judgment supports additional unit", userId);
+        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, userId);
 
         Assert.Equal("OVERRIDE_APPLIED", evt.EventType);
         Assert.Equal("ClinicalNote", evt.EntityType);
         Assert.Equal(noteId, evt.EntityId);
         Assert.Equal(userId, evt.UserId);
         Assert.Equal("EightMinuteRule", evt.Metadata["ruleType"]);
-        Assert.Equal("Clinical judgment supports additional unit", evt.Metadata["reason"]);
+        Assert.DoesNotContain("reason", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
     }
@@ -285,7 +285,7 @@ public class AuthAuditTests : IAsyncDisposable
     {
         var noteId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, "Clinical judgment supports additional unit", userId);
+        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, userId);
 
         await _auditService.LogRuleOverrideAsync(evt);
 
@@ -295,7 +295,7 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.Equal(userId, record.UserId);
         Assert.True(record.Success);
         Assert.Contains("\"ruleType\":\"EightMinuteRule\"", record.MetadataJson, StringComparison.Ordinal);
-        Assert.Contains("\"reason\":\"Clinical judgment supports additional unit\"", record.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"reason\":", record.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]

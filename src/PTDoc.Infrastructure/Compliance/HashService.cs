@@ -33,7 +33,6 @@ public sealed class HashService : IHashService
             writer.WriteString("PatientId", note.PatientId.ToString("D"));
             writer.WriteString("NoteType", note.NoteType.ToString());
             writer.WriteString("DateOfService", NormalizeDateTime(note.DateOfService));
-            writer.WriteString("LastModifiedUtc", NormalizeDateTime(note.LastModifiedUtc));
             WriteNormalizedStringProperty(writer, "TherapistNpi", note.TherapistNpi);
 
             if (note.TotalTreatmentMinutes.HasValue)

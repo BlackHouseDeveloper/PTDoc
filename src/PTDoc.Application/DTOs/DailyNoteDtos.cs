@@ -97,7 +97,7 @@ public class CptCodeEntryDto
 {
     public string Code { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public int Units { get; set; }
+    public int Units { get; set; } = 1;
     public int? Minutes { get; set; }
 }
 

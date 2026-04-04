@@ -86,8 +86,15 @@ public sealed class AddendumService(
     }
 
     private static bool ContentIsEmpty(JsonElement content) =>
-        content.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ||
-        (content.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(content.GetString()));
+        content.ValueKind switch
+        {
+            JsonValueKind.Undefined => true,
+            JsonValueKind.Null => true,
+            JsonValueKind.String => string.IsNullOrWhiteSpace(content.GetString()),
+            JsonValueKind.Array => !content.EnumerateArray().MoveNext(),
+            JsonValueKind.Object => !content.EnumerateObject().MoveNext(),
+            _ => false
+        };
 
     private static string SerializeContent(JsonElement content) =>
         content.ValueKind == JsonValueKind.String
