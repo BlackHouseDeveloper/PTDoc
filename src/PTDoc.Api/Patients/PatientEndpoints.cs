@@ -326,7 +326,7 @@ public static class PatientEndpoints
         var notes = await db.ClinicalNotes
             .AsNoTracking()
             .Include(n => n.ObjectiveMetrics)
-            .Where(n => n.PatientId == id)
+            .Where(n => n.PatientId == id && !n.IsAddendum)
             .OrderByDescending(n => n.DateOfService)
             .ToListAsync(cancellationToken);
 
@@ -515,6 +515,8 @@ public static class PatientEndpoints
         Id = n.Id,
         PatientId = n.PatientId,
         AppointmentId = n.AppointmentId,
+        ParentNoteId = n.ParentNoteId,
+        IsAddendum = n.IsAddendum,
         NoteType = n.NoteType,
         IsReEvaluation = n.IsReEvaluation,
         NoteStatus = n.NoteStatus,
@@ -527,6 +529,7 @@ public static class PatientEndpoints
         TherapistNpi = n.TherapistNpi,
         TotalTreatmentMinutes = n.TotalTreatmentMinutes,
         ClinicId = n.ClinicId,
+        CreatedUtc = n.CreatedUtc,
         LastModifiedUtc = n.LastModifiedUtc,
         ObjectiveMetrics = n.ObjectiveMetrics.Select(m => new ObjectiveMetricResponse
         {

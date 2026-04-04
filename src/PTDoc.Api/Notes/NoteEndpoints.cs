@@ -50,6 +50,10 @@ public static class NoteEndpoints
             .WithName("ListNotes")
             .WithSummary("List clinical notes with optional filtering");
 
+        readGroup.MapGet("/{id:guid}", GetNoteById)
+            .WithName("GetNoteById")
+            .WithSummary("Get a clinical note with linked addendums");
+
         // Write endpoints — NoteWrite policy (PT and PTA only)
         var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
@@ -100,6 +104,7 @@ public static class NoteEndpoints
 
         var query = db.ClinicalNotes
             .AsNoTracking()
+            .Where(n => !n.IsAddendum)
             .AsQueryable();
 
         if (patientId.HasValue)
@@ -111,9 +116,9 @@ public static class NoteEndpoints
 
         // Status filter: "signed" means has SignatureHash; "unsigned" means no SignatureHash
         if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.SignatureHash != null);
+            query = query.Where(n => n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null);
         else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.SignatureHash == null);
+            query = query.Where(n => n.NoteStatus != NoteStatus.Signed && n.SignatureHash == null && n.SignedUtc == null);
 
         // Taxonomy filter: use ANY/EXISTS predicate for an efficient SQL plan.
         if (!string.IsNullOrWhiteSpace(categoryId))
@@ -136,7 +141,7 @@ public static class NoteEndpoints
                     ? n.Patient.FirstName + " " + n.Patient.LastName
                     : string.Empty,
                 NoteType = n.NoteType.ToString(),
-                IsSigned = n.SignatureHash != null,
+                IsSigned = n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null,
                 DateOfService = n.DateOfService,
                 LastModifiedUtc = n.LastModifiedUtc,
                 CptCodesJson = n.CptCodesJson
@@ -144,6 +149,60 @@ public static class NoteEndpoints
             .ToListAsync(cancellationToken);
 
         return Results.Ok(notes);
+    }
+
+    private static async Task<IResult> GetNoteById(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var note = await db.ClinicalNotes
+            .AsNoTracking()
+            .Include(n => n.ObjectiveMetrics)
+            .FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+
+        if (note is null)
+            return Results.NotFound(new { error = $"Note {id} not found." });
+
+        if (note.IsAddendum)
+        {
+            if (note.ParentNoteId is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+
+            note = await db.ClinicalNotes
+                .AsNoTracking()
+                .Include(n => n.ObjectiveMetrics)
+                .FirstOrDefaultAsync(
+                    n => n.Id == note.ParentNoteId.Value && !n.IsAddendum,
+                    cancellationToken);
+
+            if (note is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+        }
+
+        var linkedAddendumNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(n => n.ParentNoteId == note.Id && n.IsAddendum)
+            .OrderBy(n => n.CreatedUtc)
+            .ThenBy(n => n.LastModifiedUtc)
+            .ToListAsync(cancellationToken);
+
+        var legacyAddendumRows = await db.Addendums
+            .AsNoTracking()
+            .Where(a => a.ClinicalNoteId == note.Id)
+            .OrderBy(a => a.CreatedUtc)
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(new NoteDetailResponse
+        {
+            Note = ToResponse(note),
+            Addendums = linkedAddendumNotes
+                .Select(MapLinkedAddendum)
+                .Concat(legacyAddendumRows.Select(MapLegacyAddendum))
+                .OrderBy(a => a.CreatedUtc)
+                .ThenBy(a => a.LastModifiedUtc)
+                .ToList()
+        });
     }
 
     // POST /api/v1/notes
@@ -215,6 +274,8 @@ public static class NoteEndpoints
         [FromBody] UpdateNoteRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IRulesEngine rulesEngine,
+        [FromServices] IAuditService auditService,
+        [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] INoteWriteService noteWriteService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -239,7 +300,10 @@ public static class NoteEndpoints
         var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
         if (!immutabilityResult.IsValid)
         {
-            return Results.Conflict(new { error = immutabilityResult.Message });
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteEndpoints.UpdateNote"),
+                cancellationToken);
+            return Results.Conflict(new { error = "Signed notes cannot be modified. Create addendum." });
         }
 
         try
@@ -252,6 +316,10 @@ public static class NoteEndpoints
         catch (ArgumentException ex)
         {
             return ToValidationProblem(ex, nameof(request.CptCodesJson), nameof(request.TotalMinutes));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
         }
     }
 
@@ -316,6 +384,9 @@ public static class NoteEndpoints
         var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
         if (!immutabilityResult.IsValid)
         {
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteEndpoints.AcceptAiSuggestion"),
+                cancellationToken);
             return Results.Conflict(new
             {
                 error = "AI-generated content cannot be accepted into a signed note. Create an addendum instead.",
@@ -601,11 +672,14 @@ public static class NoteEndpoints
         Id = n.Id,
         PatientId = n.PatientId,
         AppointmentId = n.AppointmentId,
+        ParentNoteId = n.ParentNoteId,
+        IsAddendum = n.IsAddendum,
         NoteType = n.NoteType,
         IsReEvaluation = n.IsReEvaluation,
         NoteStatus = n.NoteStatus,
         ContentJson = n.ContentJson,
         DateOfService = n.DateOfService,
+        CreatedUtc = n.CreatedUtc,
         SignatureHash = n.SignatureHash,
         SignedUtc = n.SignedUtc,
         SignedByUserId = n.SignedByUserId,
@@ -626,6 +700,36 @@ public static class NoteEndpoints
             IsWNL = m.IsWNL,
             LastModifiedUtc = m.LastModifiedUtc
         }).ToList()
+    };
+
+    private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note) => new()
+    {
+        Id = note.Id,
+        ParentNoteId = note.ParentNoteId ?? Guid.Empty,
+        IsLegacy = false,
+        IsSigned = note.IsFinalized,
+        CreatedUtc = note.CreatedUtc,
+        LastModifiedUtc = note.LastModifiedUtc,
+        Content = note.ContentJson,
+        ContentFormat = "json",
+        SignatureHash = note.SignatureHash,
+        SignedUtc = note.SignedUtc,
+        SignedByUserId = note.SignedByUserId,
+        NoteType = note.NoteType
+    };
+
+    private static NoteAddendumResponse MapLegacyAddendum(Addendum addendum) => new()
+    {
+        Id = addendum.Id,
+        ParentNoteId = addendum.ClinicalNoteId,
+        IsLegacy = true,
+        IsSigned = !string.IsNullOrWhiteSpace(addendum.SignatureHash),
+        CreatedUtc = addendum.CreatedUtc,
+        LastModifiedUtc = addendum.CreatedUtc,
+        Content = addendum.Content,
+        ContentFormat = "text",
+        SignatureHash = addendum.SignatureHash,
+        NoteType = null
     };
 
     /// <summary>

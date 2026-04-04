@@ -130,6 +130,40 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.DoesNotContain("SigningKey", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_AddendumCreated_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var addendumId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.AddendumCreated(noteId, addendumId, userId);
+
+        Assert.Equal("ADDENDUM_CREATE", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_EditBlockedSignedNote_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.EditBlockedSignedNote(noteId, userId, "SyncEngine.ReceiveClientPushAsync");
+
+        Assert.Equal("EDIT_BLOCKED_SIGNED_NOTE", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("SyncEngine.ReceiveClientPushAsync", evt.Metadata["Source"]);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
     // ─── AuditService persistence tests ─────────────────────────────────────
 
     [Fact]

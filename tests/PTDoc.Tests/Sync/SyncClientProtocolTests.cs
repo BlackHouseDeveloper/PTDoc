@@ -98,6 +98,9 @@ public class SyncClientProtocolTests
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow.AddHours(-1),
+            ParentNoteId = Guid.NewGuid(),
+            IsAddendum = true,
             ContentJson = "{\"text\":\"Draft note\"}",
             LastModifiedUtc = watermark.AddMinutes(1) // after watermark
         };
@@ -122,6 +125,9 @@ public class SyncClientProtocolTests
         Assert.Equal("ClinicalNote", result.Items[0].EntityType);
         Assert.Equal(note.Id, result.Items[0].ServerId);
         Assert.Contains("NoteType", result.Items[0].DataJson);
+        Assert.Contains("CreatedUtc", result.Items[0].DataJson);
+        Assert.Contains("ParentNoteId", result.Items[0].DataJson);
+        Assert.Contains("IsAddendum", result.Items[0].DataJson);
     }
 
     [Fact]
@@ -370,7 +376,7 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.ConflictCount);
         Assert.Single(response.Items);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Signed notes cannot be modified. Create addendum.", response.Items[0].Error);
     }
 
     [Fact]
@@ -822,7 +828,7 @@ public class SyncClientProtocolTests
         var draftResult = response.Items.First(i => i.LocalId == 2);
 
         Assert.Equal("Conflict", signedResult.Status);
-        Assert.Contains("immutable", signedResult.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Signed notes cannot be modified. Create addendum.", signedResult.Error);
 
         Assert.Equal("Accepted", draftResult.Status);
     }
@@ -888,7 +894,7 @@ public class SyncClientProtocolTests
         Assert.Equal(0, response.AcceptedCount);
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Signed notes cannot be modified. Create addendum.", response.Items[0].Error);
     }
 
     [Theory]

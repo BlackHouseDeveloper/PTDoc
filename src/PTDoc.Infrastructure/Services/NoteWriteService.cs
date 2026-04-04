@@ -71,6 +71,7 @@ public sealed class NoteWriteService(
             TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(request.TotalMinutes, cptEntries),
             NoteStatus = NoteStatus.Draft,
             ClinicId = clinicId,
+            CreatedUtc = now,
             LastModifiedUtc = now,
             ModifiedByUserId = userId,
             SyncState = SyncState.Pending
@@ -106,6 +107,14 @@ public sealed class NoteWriteService(
     {
         ArgumentNullException.ThrowIfNull(note);
         ArgumentNullException.ThrowIfNull(request);
+
+        if (note.IsFinalized)
+        {
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteWriteService.UpdateAsync"),
+                ct);
+            throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
+        }
 
         if (request.TotalMinutes < 0)
         {
@@ -204,11 +213,14 @@ public sealed class NoteWriteService(
         Id = note.Id,
         PatientId = note.PatientId,
         AppointmentId = note.AppointmentId,
+        ParentNoteId = note.ParentNoteId,
+        IsAddendum = note.IsAddendum,
         NoteType = note.NoteType,
         IsReEvaluation = note.IsReEvaluation,
         NoteStatus = note.NoteStatus,
         ContentJson = note.ContentJson,
         DateOfService = note.DateOfService,
+        CreatedUtc = note.CreatedUtc,
         SignatureHash = note.SignatureHash,
         SignedUtc = note.SignedUtc,
         SignedByUserId = note.SignedByUserId,

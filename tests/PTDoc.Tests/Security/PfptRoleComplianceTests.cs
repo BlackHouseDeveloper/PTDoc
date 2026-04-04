@@ -1619,7 +1619,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
-        return new SignatureService(_db, auditService, clinicalRulesMock.Object, new HashService());
+        return new SignatureService(_db, auditService, clinicalRulesMock.Object, new HashService(), new Mock<IAddendumService>().Object);
     }
 
     private async Task<User> CreateClinicianAsync(string role, Guid userId)

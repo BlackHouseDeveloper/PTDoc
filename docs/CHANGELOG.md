@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Sprint 2: Legal eSignature Workflow and Document Hashing
+### Added - Sprint 2: Immutable Signed Notes and Linked Addendums
+
+#### Clinical Note Immutability and Addendums
+- **Linked addendum note model** - Added `ClinicalNote.CreatedUtc`, `ClinicalNote.ParentNoteId`, and `ClinicalNote.IsAddendum` so all new addendums are stored as linked `ClinicalNote` rows and reuse the existing hash/signature pipeline instead of extending the legacy standalone `Addendum` write path.
+- **`IAddendumService` / `AddendumService`** - Added a dedicated addendum creation service that only allows addendums from finalized signed primary notes, rejects addendum-of-addendum nesting, preserves the original note unchanged, and enqueues the new draft note for sync.
+- **Note detail response** - Added `GET /api/v1/notes/{id}` returning the primary note plus ordered linked addendums, while still exposing legacy standalone `Addendum` rows read-only for compatibility.
+- **Addendum request flexibility** - Updated `POST /api/v1/notes/{noteId}/addendum` to accept raw JSON content so clients can submit either structured SOAP payloads or plain-text addendum content.
+
+#### Enforcement and Sync
+- **Final-signature edit blocking** - Standardized signed-note immutability across note updates, workspace saves, objective metric mutation endpoints, daily-note same-day upsert, AI suggestion acceptance, and sync push conflict handling, all with the clinician-facing message `Signed notes cannot be modified. Create addendum.`
+- **Audit trail events** - Added non-PHI `ADDENDUM_CREATE` and `EDIT_BLOCKED_SIGNED_NOTE` audit events for traceable addendum creation and blocked post-signature edits.
+- **Primary-note query scoping** - Excluded `IsAddendum` rows from primary-note workflows including note lists, patient note history, daily-note lookup/taxonomy queries, carry-forward source selection, and Medicare progress-note frequency counting.
+- **Offline note metadata** - Extended sync pull/push payloads and MAUI local note storage to preserve `CreatedUtc`, `ParentNoteId`, and `IsAddendum` for linked addendum notes without syncing legacy standalone addendum rows.
+
+#### EF Core Migrations
+- **Provider migrations** - Added `AddClinicalNoteLinkedAddendums` migrations and updated snapshots for SQLite, PostgreSQL, and SQL Server, including the self-referencing foreign key and backfill of existing `ClinicalNotes.CreatedUtc` values from `LastModifiedUtc`.
+
+### Fixed - Sprint 2: PR Review Feedback
+
+- **Standardized immutability message** - Aligned `NoteWriteService` exception message to the canonical clinician-facing string `"Signed notes cannot be modified. Create addendum."` used across all other endpoints.
+- **`GET /api/v1/notes/{id}` addendum resolution** - Requesting an addendum note ID now resolves to its primary note and returns that note's full detail response; requesting a non-existent parent returns `404`.
+- **Linked-addendum query scoping** - The linked-addendum LINQ query on `GET /api/v1/notes/{id}` now explicitly filters `IsAddendum == true` so only addendum rows are returned even if `ParentNoteId` is populated for other purposes.
+- **`UpdateNote` standardized error** - Replaced the rules-engine message with the canonical `"Signed notes cannot be modified. Create addendum."` in the `PATCH` update endpoint's immutability response; the detailed rules-engine result is still logged via `LogRuleEvaluationAsync`.
+- **`IAddendumService` required dependency** - `SignatureService` now requires `IAddendumService` as a constructor-injected required dependency instead of an optional parameter, so misconfiguration fails at DI startup rather than returning a user-visible error at runtime.
+
+
 
 #### Legal eSignature Backend
 - **`IHashService` / `HashService`** - Added deterministic SHA-256 uppercase hex hashing over canonical note state, including persisted note fields, canonicalized content JSON, sorted CPT payloads, and sorted objective metrics, with malformed-JSON fallback behavior for both `JsonException` and `ArgumentException`.
