@@ -847,7 +847,6 @@ if (noteState is not null)
     }
 }
             }
-        }
         else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
         {
             var isLocked = await _context.IntakeForms.AsNoTracking()
@@ -1067,9 +1066,7 @@ var isAddendum = TryGetBool(root, "isAddendum")
                     Id = serverId,
                     PatientId = patientId,
 
-                    NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
-                        ? (NoteType)noteTypeRaw
-                        : NoteType.Daily,
+                    NoteType = noteType,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
