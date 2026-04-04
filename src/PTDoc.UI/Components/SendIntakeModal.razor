@@ -283,6 +283,14 @@
                 _errorMessage = "Unable to prepare the intake draft. Please try again.";
                 Console.WriteLine($"[SendIntakeModal] EnsureDraft error: {ex.Message}");
             }
+            finally
+            {
+                _isBusy = false;
+            }
+        }
+    }
+
+    private async Task HandleGenerateLinkAsync()
     {
         _errorMessage = null;
 
