@@ -54,6 +54,9 @@ public class RuleResult
     public string RuleVersion { get; set; } = "1.0";
     public string Message { get; set; } = string.Empty;
     public Dictionary<string, object> Data { get; set; } = new();
+    public ComplianceRuleType? RuleType { get; set; }
+    public bool IsOverridable { get; set; }
+    public List<OverrideRequirement> OverrideRequirements { get; set; } = new();
 
     public static RuleResult Success(string ruleId, string message = "Rule passed")
     {
@@ -100,6 +103,30 @@ public class RuleResult
             Message = message,
             Data = data ?? new()
         };
+    }
+
+    public RuleResult WithRuleMetadata(ComplianceRuleType ruleType, bool isOverridable, string? message = null)
+    {
+        RuleType = ruleType;
+        IsOverridable = isOverridable;
+
+        if (isOverridable)
+        {
+            IsValid = false;
+
+            var resolvedMessage = string.IsNullOrWhiteSpace(message) ? Message : message;
+            if (!OverrideRequirements.Any(requirement => requirement.RuleType == ruleType))
+            {
+                OverrideRequirements.Add(new OverrideRequirement
+                {
+                    RuleType = ruleType,
+                    IsOverridable = true,
+                    Message = resolvedMessage
+                });
+            }
+        }
+
+        return this;
     }
 }
 

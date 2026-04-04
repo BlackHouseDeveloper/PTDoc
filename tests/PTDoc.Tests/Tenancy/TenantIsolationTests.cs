@@ -536,13 +536,21 @@ public class TenantIsolationTests
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
         var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
         seedCtx.Users.AddRange(userA, userB);
 
         seedCtx.RuleOverrides.AddRange(
-            new RuleOverride { UserId = userA.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" },
-            new RuleOverride { UserId = userB.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" }
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -559,13 +567,21 @@ public class TenantIsolationTests
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
         var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
         seedCtx.Users.AddRange(userA, userB);
 
         seedCtx.RuleOverrides.AddRange(
-            new RuleOverride { UserId = userA.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" },
-            new RuleOverride { UserId = userB.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" }
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
         );
         await seedCtx.SaveChangesAsync();
 

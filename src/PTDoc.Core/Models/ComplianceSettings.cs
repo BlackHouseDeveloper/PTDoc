@@ -6,9 +6,11 @@ namespace PTDoc.Core.Models;
 /// </summary>
 public class ComplianceSettings
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string OverrideAttestationText { get; set; } =
+    public const string DefaultOverrideAttestationText =
         "I acknowledge this override and attest that the justification is accurate and clinically necessary.";
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string OverrideAttestationText { get; set; } = DefaultOverrideAttestationText;
     public int MinJustificationLength { get; set; } = 20;
     public string AllowOverrideTypes { get; set; } = "[]";
 }

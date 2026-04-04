@@ -40,6 +40,8 @@ public sealed class CreateNoteRequest
     /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
     /// </summary>
     public int? TotalMinutes { get; set; }
+
+    public OverrideSubmission? Override { get; set; }
 }
 
 /// <summary>Request DTO for updating a draft clinical note.</summary>
@@ -60,6 +62,8 @@ public sealed class UpdateNoteRequest
     /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
     /// </summary>
     public int? TotalMinutes { get; set; }
+
+    public OverrideSubmission? Override { get; set; }
 }
 
 // ─── Objective Metric DTOs ────────────────────────────────────────────────────

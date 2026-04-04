@@ -81,6 +81,14 @@ public static class NoteWorkspaceV2Endpoints
                 ? Results.Ok(saved)
                 : Results.UnprocessableEntity(saved);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = [ex.Message]
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
         catch (KeyNotFoundException ex)
         {
             return Results.NotFound(new NoteWorkspaceV2SaveResponse

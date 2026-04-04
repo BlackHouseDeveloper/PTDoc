@@ -29,6 +29,10 @@ public static class NoteEndpoints
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private static readonly JsonSerializerOptions CptSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     /// <summary>
     /// SOAP section names that are valid targets for AI-generated content acceptance.
@@ -66,6 +70,10 @@ public static class NoteEndpoints
         writeGroup.MapPut("/{id:guid}", UpdateNote)
             .WithName("UpdateNote")
             .WithSummary("Update a draft clinical note");
+
+        writeGroup.MapPost("/{noteId:guid}/override", ApplyOverride)
+            .WithName("ApplyNoteOverride")
+            .WithSummary("Apply a PT-attested compliance override to an existing note");
 
         // Sprint UC-Gamma: AI output acceptance gate.
         // AI-generated content is NEVER persisted automatically — a clinician must
@@ -262,6 +270,16 @@ public static class NoteEndpoints
                 ? Results.Created($"/api/v1/notes/{result.Note!.Id}", result)
                 : Results.UnprocessableEntity(result);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(
+                new NoteOperationResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
         catch (ArgumentException ex)
         {
             return ToValidationProblem(ex, nameof(request.CptCodesJson), nameof(request.TotalMinutes));
@@ -323,6 +341,16 @@ public static class NoteEndpoints
                 ? Results.Ok(result)
                 : Results.UnprocessableEntity(result);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(
+                new NoteOperationResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
         catch (ArgumentException ex)
         {
             return ToValidationProblem(ex, nameof(request.CptCodesJson), nameof(request.TotalMinutes));
@@ -330,6 +358,114 @@ public static class NoteEndpoints
         catch (InvalidOperationException ex)
         {
             return Results.Conflict(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> ApplyOverride(
+        Guid noteId,
+        [FromBody] OverrideSubmission request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] INoteSaveValidationService validationService,
+        [FromServices] IOverrideService overrideService,
+        [FromServices] IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (!request.RuleType.HasValue)
+        {
+            errors[nameof(request.RuleType)] = ["RuleType is required."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            errors[nameof(request.Reason)] = ["Reason is required."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        var note = await db.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(entity => entity.Id == noteId, cancellationToken);
+
+        if (note is null)
+        {
+            return Results.NotFound(new { error = $"Note {noteId} not found." });
+        }
+
+        var cptEntries = TryDeserializeCptEntries(note.CptCodesJson);
+        if (cptEntries is null)
+        {
+            return Results.Conflict(new { error = "Stored CPT data is invalid and cannot be evaluated for override." });
+        }
+
+        var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = note.PatientId,
+            ExistingNoteId = note.Id,
+            NoteType = note.NoteType,
+            DateOfService = note.DateOfService,
+            TotalTimedMinutes = note.TotalTreatmentMinutes,
+            CptEntries = cptEntries
+        }, cancellationToken);
+
+        var ruleType = request.RuleType!.Value;
+        var matchingRequirement = validation.OverrideRequirements
+            .FirstOrDefault(requirement => requirement.RuleType == ruleType);
+
+        if (matchingRequirement is null)
+        {
+            if (ruleType == ComplianceRuleType.ProgressNoteRequired)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, ruleType, identityContext.TryGetCurrentUserId()),
+                    cancellationToken);
+            }
+
+            return Results.UnprocessableEntity(new
+            {
+                error = $"No active overridable compliance rule matched rule type '{ruleType}'.",
+                overrideRequirements = validation.OverrideRequirements
+            });
+        }
+
+        try
+        {
+            await overrideService.ApplyOverrideAsync(new OverrideRequest
+            {
+                NoteId = noteId,
+                RuleType = ruleType,
+                Reason = request.Reason,
+                AttestedBy = identityContext.GetCurrentUserId(),
+                Timestamp = DateTime.UtcNow
+            }, cancellationToken);
+
+            return Results.Ok(new { success = true });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.Reason)] = [ex.Message]
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ruleType == ComplianceRuleType.ProgressNoteRequired)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, ruleType, identityContext.TryGetCurrentUserId()),
+                    cancellationToken);
+            }
+
+            return Results.UnprocessableEntity(new { error = ex.Message });
         }
     }
 
@@ -683,6 +819,23 @@ public static class NoteEndpoints
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static List<CptCodeEntry>? TryDeserializeCptEntries(string? cptCodesJson)
+    {
+        if (string.IsNullOrWhiteSpace(cptCodesJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<CptCodeEntry>>(cptCodesJson, CptSerializerOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

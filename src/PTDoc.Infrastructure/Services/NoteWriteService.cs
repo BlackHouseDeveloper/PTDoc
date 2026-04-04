@@ -6,6 +6,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Services;
@@ -16,6 +17,7 @@ public sealed class NoteWriteService(
     IIdentityContextAccessor identityContext,
     IAuditService auditService,
     INoteSaveValidationService validationService,
+    IOverrideService overrideService,
     ISyncEngine syncEngine) : INoteWriteService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -26,6 +28,9 @@ public sealed class NoteWriteService(
     public async Task<NoteOperationResponse> CreateAsync(CreateNoteRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        var noteId = Guid.NewGuid();
+        var userId = identityContext.GetCurrentUserId();
 
         if (request.TotalMinutes < 0)
         {
@@ -49,17 +54,37 @@ public sealed class NoteWriteService(
 
         var response = new NoteOperationResponse();
         response.ApplyValidation(validation);
-        if (!validation.IsValid)
+
+        if (OverrideWorkflow.RequiresHardStopAudit(validation) && validation.RuleType.HasValue)
+        {
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.HardStopTriggered(noteId, validation.RuleType.Value, userId),
+                ct);
+            return response;
+        }
+
+        var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
+        if (!string.IsNullOrWhiteSpace(overrideError))
+        {
+            response.IsValid = false;
+            response.Errors = response.Errors
+                .Append(overrideError)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return response;
+        }
+
+        if (!validation.IsValid && !validation.RequiresOverride)
         {
             return response;
         }
 
         var clinicId = tenantContext.GetCurrentClinicId();
-        var userId = identityContext.GetCurrentUserId();
         var now = DateTime.UtcNow;
 
         var note = new ClinicalNote
         {
+            Id = noteId,
             PatientId = request.PatientId,
             AppointmentId = request.AppointmentId,
             NoteType = request.NoteType,
@@ -96,8 +121,27 @@ public sealed class NoteWriteService(
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        if (request.Override is not null)
+        {
+            await overrideService.ApplyOverrideAsync(
+                OverrideWorkflow.BuildRequest(note.Id, request.Override, userId),
+                ct);
+        }
+        else
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, ct);
+
+        if (request.Override is not null)
+        {
+            response.IsValid = true;
+            response.RequiresOverride = false;
+            response.RuleType = null;
+            response.IsOverridable = false;
+            response.OverrideRequirements = [];
+        }
 
         response.Note = ToResponse(note);
         return response;
@@ -140,7 +184,27 @@ public sealed class NoteWriteService(
 
         var response = new NoteOperationResponse();
         response.ApplyValidation(validation);
-        if (!validation.IsValid)
+
+        if (OverrideWorkflow.RequiresHardStopAudit(validation) && validation.RuleType.HasValue)
+        {
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.HardStopTriggered(note.Id, validation.RuleType.Value, identityContext.TryGetCurrentUserId()),
+                ct);
+            return response;
+        }
+
+        var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
+        if (!string.IsNullOrWhiteSpace(overrideError))
+        {
+            response.IsValid = false;
+            response.Errors = response.Errors
+                .Append(overrideError)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return response;
+        }
+
+        if (!validation.IsValid && !validation.RequiresOverride)
         {
             return response;
         }
@@ -169,9 +233,28 @@ public sealed class NoteWriteService(
         note.ModifiedByUserId = userId;
         note.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(ct);
+        if (request.Override is not null)
+        {
+            await overrideService.ApplyOverrideAsync(
+                OverrideWorkflow.BuildRequest(note.Id, request.Override, userId),
+                ct);
+        }
+        else
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, ct);
         await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), ct);
+
+        if (request.Override is not null)
+        {
+            response.IsValid = true;
+            response.RequiresOverride = false;
+            response.RuleType = null;
+            response.IsOverridable = false;
+            response.OverrideRequirements = [];
+        }
 
         response.Note = ToResponse(note);
         return response;

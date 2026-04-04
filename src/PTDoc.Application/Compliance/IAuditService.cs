@@ -113,6 +113,43 @@ public class AuditEvent
         };
     }
 
+    public static AuditEvent OverrideApplied(Guid noteId, ComplianceRuleType ruleType, string reason, Guid userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "OVERRIDE_APPLIED",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["ruleType"] = ruleType.ToString(),
+                ["reason"] = reason,
+                ["timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent HardStopTriggered(Guid noteId, ComplianceRuleType ruleType, Guid? userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "HARD_STOP_TRIGGERED",
+            Severity = "Warning",
+            Success = false,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["ruleType"] = ruleType.ToString(),
+                ["timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
     public static AuditEvent NoteSigned(Guid noteId, string noteType, string signatureHash, Guid userId)
     {
         return new AuditEvent
