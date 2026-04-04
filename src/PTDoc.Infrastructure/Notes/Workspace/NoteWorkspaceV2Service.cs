@@ -5,6 +5,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Notes.Workspace;
@@ -13,10 +14,13 @@ public sealed class NoteWorkspaceV2Service(
     ApplicationDbContext db,
     IIdentityContextAccessor identityContext,
     ITenantContextAccessor tenantContext,
+    INoteSaveValidationService validationService,
     IPlanOfCareCalculator planOfCareCalculator,
     IAssessmentCompositionService assessmentCompositionService,
     IGoalManagementService goalManagementService,
-    IOutcomeMeasureRegistry outcomeMeasureRegistry) : INoteWorkspaceV2Service
+    IOutcomeMeasureRegistry outcomeMeasureRegistry,
+    IAuditService? auditService = null,
+    IOverrideService? overrideService = null) : INoteWorkspaceV2Service
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -39,7 +43,7 @@ public sealed class NoteWorkspaceV2Service(
         return await BuildLoadResponseAsync(note, cancellationToken);
     }
 
-    public async Task<NoteWorkspaceV2LoadResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default)
+    public async Task<NoteWorkspaceV2SaveResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -57,13 +61,21 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("The requested note does not belong to the supplied patient.");
         }
 
-        if (note is not null && note.NoteStatus != NoteStatus.Draft)
+        if (note is not null && note.IsFinalized)
         {
-            throw new InvalidOperationException("Only draft notes can be modified through the workspace API.");
+            if (auditService is not null)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteWorkspaceV2Service.SaveAsync"),
+                    cancellationToken);
+            }
+
+            throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
 
         var currentUserId = identityContext.GetCurrentUserId();
         var clinicId = tenantContext.GetCurrentClinicId() ?? patient.ClinicId;
+        var noteId = note?.Id ?? request.NoteId ?? Guid.NewGuid();
         var payload = request.Payload ?? new NoteWorkspaceV2Payload();
         payload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
         payload.NoteType = request.NoteType;
@@ -114,29 +126,78 @@ public sealed class NoteWorkspaceV2Service(
             .Select(group => group.First())
             .ToList();
 
+        var cptEntries = payload.Plan.SelectedCptCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code =>
+            {
+                var normalizedCode = code.Code.Trim();
+
+                return new CptCodeEntry
+                {
+                    Code = normalizedCode,
+                    Units = Math.Max(0, code.Units),
+                    Minutes = code.Minutes,
+                    IsTimed = KnownTimedCptCodes.Codes.Contains(normalizedCode)
+                };
+            })
+            .ToList();
+
+        var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = request.PatientId,
+            ExistingNoteId = note?.Id,
+            NoteType = request.NoteType,
+            DateOfService = request.DateOfService,
+            CptEntries = cptEntries
+        }, cancellationToken);
+
+        var saveResponse = new NoteWorkspaceV2SaveResponse();
+        saveResponse.ApplyValidation(validation);
+
+        if (OverrideWorkflow.RequiresHardStopAudit(validation) && validation.RuleType.HasValue)
+        {
+            if (auditService is not null)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, validation.RuleType.Value, currentUserId),
+                    cancellationToken);
+            }
+
+            return saveResponse;
+        }
+
+        var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
+        if (!string.IsNullOrWhiteSpace(overrideError))
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = saveResponse.Errors
+                .Append(overrideError)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return saveResponse;
+        }
+
+        if (!validation.IsValid && !validation.RequiresOverride)
+        {
+            return saveResponse;
+        }
+
+        var now = DateTime.UtcNow;
         note ??= new ClinicalNote
         {
-            Id = request.NoteId ?? Guid.NewGuid(),
+            Id = noteId,
             PatientId = request.PatientId,
-            ClinicId = clinicId
+            ClinicId = clinicId,
+            CreatedUtc = now
         };
 
         note.PatientId = request.PatientId;
         note.NoteType = request.NoteType;
         note.DateOfService = request.DateOfService.Date;
         note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
-        note.CptCodesJson = JsonSerializer.Serialize(
-            payload.Plan.SelectedCptCodes
-                .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-                .Select(code => new CptCodeEntry
-                {
-                    Code = code.Code,
-                    Units = code.Units,
-                    IsTimed = KnownTimedCptCodes.Codes.Contains(code.Code)
-                })
-                .ToList(),
-            SerializerOptions);
-        note.LastModifiedUtc = DateTime.UtcNow;
+        note.CptCodesJson = JsonSerializer.Serialize(cptEntries, SerializerOptions);
+        note.TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries);
+        note.LastModifiedUtc = now;
         note.ModifiedByUserId = currentUserId;
         note.SyncState = SyncState.Pending;
         note.ClinicId = clinicId;
@@ -150,8 +211,33 @@ public sealed class NoteWorkspaceV2Service(
         await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, cancellationToken);
         await SyncPatientGoalsAsync(note, clinicId, payload, cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
-        return await BuildLoadResponseAsync(note, cancellationToken);
+        if (request.Override is not null)
+        {
+            if (overrideService is null)
+            {
+                throw new InvalidOperationException("Override service is not configured.");
+            }
+
+            await overrideService.ApplyOverrideAsync(
+                OverrideWorkflow.BuildRequest(note.Id, request.Override, currentUserId),
+                cancellationToken);
+        }
+        else
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (request.Override is not null)
+        {
+            saveResponse.IsValid = true;
+            saveResponse.RequiresOverride = false;
+            saveResponse.RuleType = null;
+            saveResponse.IsOverridable = false;
+            saveResponse.OverrideRequirements = [];
+        }
+
+        saveResponse.Workspace = await BuildLoadResponseAsync(note, cancellationToken);
+        return saveResponse;
     }
 
     private async Task<NoteWorkspaceV2LoadResponse> BuildLoadResponseAsync(
@@ -241,10 +327,18 @@ public sealed class NoteWorkspaceV2Service(
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
-            NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };
+    }
+
+    private static int? ResolveTotalTreatmentMinutes(IReadOnlyCollection<CptCodeEntry> entries)
+    {
+        var totalMinutes = entries
+            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
+            .Sum(entry => entry.Minutes!.Value);
+
+        return totalMinutes > 0 ? totalMinutes : null;
     }
 
     private async Task SyncObjectiveMetricsAsync(

@@ -23,6 +23,7 @@ public class NoteComplianceIntegrationTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly RulesEngine _rulesEngine;
     private readonly AuditService _auditService;
+    private readonly NoteSaveValidationService _validationService;
 
     public NoteComplianceIntegrationTests()
     {
@@ -33,6 +34,71 @@ public class NoteComplianceIntegrationTests : IDisposable
         _context = new ApplicationDbContext(options);
         _auditService = new AuditService(_context);
         _rulesEngine = new RulesEngine(_context, _auditService);
+        _validationService = new NoteSaveValidationService(_context, _rulesEngine);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenPnAndEightMinuteWarningsTrigger_MergesWarningsAndOverride()
+    {
+        var patientId = Guid.NewGuid();
+        _context.Patients.Add(new Patient
+        {
+            Id = patientId,
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            PayerInfoJson = """{"PayerType":"Medicare"}"""
+        });
+        _context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 3, 1),
+            SignatureHash = "signed",
+            SignedUtc = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc),
+            LastModifiedUtc = DateTime.UtcNow
+        });
+
+        for (var index = 0; index < 8; index++)
+        {
+            _context.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = new DateTime(2026, 3, 2).AddDays(index),
+                LastModifiedUtc = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 3, 24),
+            CptEntries =
+            [
+                new CptCodeEntry
+                {
+                    Code = "97110",
+                    Units = 1,
+                    Minutes = 6
+                }
+            ]
+        });
+
+        Assert.False(result.IsValid);
+        Assert.True(result.RequiresOverride);
+        Assert.True(result.IsOverridable);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
+        Assert.Contains(result.Warnings, warning => warning.Contains("Progress Note due soon", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
+        var requirement = Assert.Single(result.OverrideRequirements);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, requirement.RuleType);
+        Assert.False(string.IsNullOrWhiteSpace(requirement.AttestationText));
     }
 
     // ─── Progress Note hard stop ──────────────────────────────────────────────
@@ -63,6 +129,8 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.Equal(RuleSeverity.HardStop, result.Severity);
         Assert.Equal("PN_FREQUENCY", result.RuleId);
         Assert.Contains("Progress Note required", result.Message);
+        Assert.Equal(ComplianceRuleType.ProgressNoteRequired, result.RuleType);
+        Assert.False(result.IsOverridable);
     }
 
     [Fact]
@@ -148,10 +216,13 @@ public class NoteComplianceIntegrationTests : IDisposable
         var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
 
         // Assert: warning is returned (not a hard stop) — note creation proceeds with the warning
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
         Assert.Equal(RuleSeverity.Warning, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
-        Assert.Contains("PT override required", result.Message);
+        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Message);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
+        Assert.True(result.IsOverridable);
+        Assert.Single(result.OverrideRequirements);
     }
 
     [Fact]
@@ -369,7 +440,7 @@ public class NoteComplianceIntegrationTests : IDisposable
         // Assert: the 8-minute rule fires with a warning because 10 units > 2 allowed
         Assert.Equal(RuleSeverity.Warning, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
-        Assert.Contains("PT override required", result.Message);
+        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Message);
         Assert.Equal(2, result.Data["AllowedUnits"]);
         Assert.Equal(10, result.Data["RequestedUnits"]);
     }

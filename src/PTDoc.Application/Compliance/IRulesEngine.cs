@@ -7,6 +7,17 @@ namespace PTDoc.Application.Compliance;
 public interface IRulesEngine
 {
     /// <summary>
+    /// Determines whether a Progress Note is due for a Medicare patient on the supplied service date.
+    /// Warnings surface at 8 visits / 25 days; hard-stop errors surface at 10 visits / 30 days.
+    /// </summary>
+    Task<ValidationResult> CheckProgressNoteDueAsync(Guid patientId, DateTime referenceDate, CancellationToken ct = default);
+
+    /// <summary>
+    /// Validates timed CPT entries against Medicare 8-minute rule requirements.
+    /// </summary>
+    Task<ValidationResult> ValidateTimedUnitsAsync(List<CptCodeEntry> entries, CancellationToken ct = default);
+
+    /// <summary>
     /// Validates Progress Note frequency requirements.
     /// Medicare: ≥10 visits OR ≥30 days since last PN/Eval.
     /// Commercial/Unknown payer: ≥30 days only (no visit threshold).
@@ -43,6 +54,9 @@ public class RuleResult
     public string RuleVersion { get; set; } = "1.0";
     public string Message { get; set; } = string.Empty;
     public Dictionary<string, object> Data { get; set; } = new();
+    public ComplianceRuleType? RuleType { get; set; }
+    public bool IsOverridable { get; set; }
+    public List<OverrideRequirement> OverrideRequirements { get; set; } = new();
 
     public static RuleResult Success(string ruleId, string message = "Rule passed")
     {
@@ -90,6 +104,30 @@ public class RuleResult
             Data = data ?? new()
         };
     }
+
+    public RuleResult WithRuleMetadata(ComplianceRuleType ruleType, bool isOverridable, string? message = null)
+    {
+        RuleType = ruleType;
+        IsOverridable = isOverridable;
+
+        if (isOverridable)
+        {
+            IsValid = false;
+
+            var resolvedMessage = string.IsNullOrWhiteSpace(message) ? Message : message;
+            if (!OverrideRequirements.Any(requirement => requirement.RuleType == ruleType))
+            {
+                OverrideRequirements.Add(new OverrideRequirement
+                {
+                    RuleType = ruleType,
+                    IsOverridable = true,
+                    Message = resolvedMessage
+                });
+            }
+        }
+
+        return this;
+    }
 }
 
 public enum RuleSeverity
@@ -107,6 +145,7 @@ public class CptCodeEntry
 {
     public string Code { get; set; } = string.Empty;
     public int Units { get; set; }
+    public int? Minutes { get; set; }
     public bool IsTimed { get; set; } // Timed codes subject to 8-minute rule
 }
 

@@ -26,6 +26,15 @@ public class LocalClinicalNoteDraft : ILocalEntity
     /// <summary>Date of service for this note (date only, stored as UTC midnight).</summary>
     public DateTime DateOfService { get; set; }
 
+    /// <summary>Stable creation timestamp used to order linked addendums.</summary>
+    public DateTime CreatedUtc { get; set; }
+
+    /// <summary>Parent note ID when this local record represents an addendum.</summary>
+    public Guid? ParentNoteId { get; set; }
+
+    /// <summary>True when this local note is a linked addendum rather than a primary note.</summary>
+    public bool IsAddendum { get; set; }
+
     /// <summary>SOAP content as a JSON blob (keys: subjective, objective, assessment, plan, goals, billing).</summary>
     public string ContentJson { get; set; } = "{}";
 

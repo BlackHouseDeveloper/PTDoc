@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -10,8 +11,8 @@ using PTDoc.Infrastructure.Data;
 namespace PTDoc.Api.Notes;
 
 /// <summary>
-/// CRUD endpoints for objective metrics on draft clinical notes.
-/// Mutations are guarded: the parent note must be in Draft status.
+/// CRUD endpoints for objective metrics on editable clinical notes.
+/// Mutations are guarded: the parent note must not be finalized.
 /// Sprint O: TDD §5.4 ObjectiveMetric
 /// </summary>
 public static class ObjectiveMetricEndpoints
@@ -32,15 +33,15 @@ public static class ObjectiveMetricEndpoints
 
         writeGroup.MapPost("/", AddMetric)
             .WithName("AddObjectiveMetric")
-            .WithSummary("Add an objective metric to a draft note");
+            .WithSummary("Add an objective metric to an editable note");
 
         writeGroup.MapPut("/{metricId:guid}", UpdateMetric)
             .WithName("UpdateObjectiveMetric")
-            .WithSummary("Update an objective metric on a draft note");
+            .WithSummary("Update an objective metric on an editable note");
 
         writeGroup.MapDelete("/{metricId:guid}", DeleteMetric)
             .WithName("DeleteObjectiveMetric")
-            .WithSummary("Delete an objective metric from a draft note");
+            .WithSummary("Delete an objective metric from an editable note");
     }
 
     // GET /api/v1/notes/{noteId}/objective-metrics
@@ -69,6 +70,7 @@ public static class ObjectiveMetricEndpoints
         Guid noteId,
         [FromBody] CreateObjectiveMetricRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IAuditService auditService,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
@@ -79,8 +81,14 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be added to draft notes." });
+        var finalizedResult = await RejectIfFinalizedAsync(
+            note,
+            auditService,
+            identityContext,
+            "ObjectiveMetricEndpoints.AddMetric",
+            cancellationToken);
+        if (finalizedResult is not null)
+            return finalizedResult;
 
         if (string.IsNullOrWhiteSpace(request.Value))
             return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -121,6 +129,7 @@ public static class ObjectiveMetricEndpoints
         Guid metricId,
         [FromBody] UpdateObjectiveMetricRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IAuditService auditService,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
@@ -131,8 +140,14 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be modified on draft notes." });
+        var finalizedResult = await RejectIfFinalizedAsync(
+            note,
+            auditService,
+            identityContext,
+            "ObjectiveMetricEndpoints.UpdateMetric",
+            cancellationToken);
+        if (finalizedResult is not null)
+            return finalizedResult;
 
         var metric = await db.ObjectiveMetrics
             .FirstOrDefaultAsync(m => m.Id == metricId && m.NoteId == noteId, cancellationToken);
@@ -183,6 +198,7 @@ public static class ObjectiveMetricEndpoints
         Guid noteId,
         Guid metricId,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IAuditService auditService,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
@@ -193,8 +209,14 @@ public static class ObjectiveMetricEndpoints
         if (note is null)
             return Results.NotFound(new { error = $"Note {noteId} not found." });
 
-        if (note.NoteStatus != NoteStatus.Draft || !string.IsNullOrWhiteSpace(note.SignatureHash) || note.SignedUtc is not null)
-            return Results.UnprocessableEntity(new { error = "Objective metrics can only be deleted from draft notes." });
+        var finalizedResult = await RejectIfFinalizedAsync(
+            note,
+            auditService,
+            identityContext,
+            "ObjectiveMetricEndpoints.DeleteMetric",
+            cancellationToken);
+        if (finalizedResult is not null)
+            return finalizedResult;
 
         var metric = await db.ObjectiveMetrics
             .FirstOrDefaultAsync(m => m.Id == metricId && m.NoteId == noteId, cancellationToken);
@@ -227,6 +249,28 @@ public static class ObjectiveMetricEndpoints
         IsWNL = m.IsWNL,
         LastModifiedUtc = m.LastModifiedUtc
     };
+
+    private static async Task<IResult?> RejectIfFinalizedAsync(
+        ClinicalNote note,
+        IAuditService auditService,
+        IIdentityContextAccessor identityContext,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (!note.IsFinalized)
+        {
+            return null;
+        }
+
+        await auditService.LogRuleEvaluationAsync(
+            AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), source),
+            cancellationToken);
+
+        return Results.UnprocessableEntity(new
+        {
+            error = "Signed notes cannot be modified. Create addendum."
+        });
+    }
 }
 
 /// <summary>Request DTO for updating an objective metric (all fields optional).</summary>

@@ -58,3 +58,66 @@
         min-height: calc(var(--touch-target-desktop) * 8);
     }
 }
+
+/* Signature consent dialog overlay */
+::deep .signature-consent-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+::deep .signature-consent-dialog {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    max-width: 480px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+}
+
+::deep .signature-consent-dialog__title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    margin: 0;
+    color: var(--foreground);
+}
+
+::deep .signature-consent-dialog__body {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    margin: 0;
+    line-height: 1.5;
+}
+
+::deep .signature-consent-dialog__checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-3);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+::deep .signature-consent-dialog__checkbox-label input[type="checkbox"] {
+    margin-top: 2px;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+::deep .signature-consent-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-2);
+}

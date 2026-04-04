@@ -113,12 +113,17 @@ builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 
 // Register compliance services
 builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.INoteSaveValidationService, PTDoc.Infrastructure.Compliance.NoteSaveValidationService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IAuditService, PTDoc.Infrastructure.Compliance.AuditService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.IClinicalRulesEngine, PTDoc.Infrastructure.Compliance.ClinicalRulesEngine>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IHashService, PTDoc.Infrastructure.Compliance.HashService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IAddendumService, PTDoc.Infrastructure.Compliance.AddendumService>();
+builder.Services.AddScoped<PTDoc.Application.Compliance.IOverrideService, PTDoc.Infrastructure.Compliance.OverrideService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc.Infrastructure.Compliance.SignatureService>();
 builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
 builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
+builder.Services.AddScoped<PTDoc.Application.Services.INoteWriteService, PTDoc.Infrastructure.Services.NoteWriteService>();
 builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.BundledIcd10Service>();
 builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
     builder.Configuration.GetSection(PTDoc.Application.Configuration.RetentionOptions.SectionName));
@@ -152,7 +157,6 @@ builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingS
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
-builder.Services.AddScoped<IIntakeService, PTDoc.Infrastructure.Services.IntakeService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty
