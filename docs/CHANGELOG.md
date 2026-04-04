@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Linked-addendum query scoping** - The linked-addendum LINQ query on `GET /api/v1/notes/{id}` now explicitly filters `IsAddendum == true` so only addendum rows are returned even if `ParentNoteId` is populated for other purposes.
 - **`UpdateNote` standardized error** - Replaced the rules-engine message with the canonical `"Signed notes cannot be modified. Create addendum."` in the `PATCH` update endpoint's immutability response; the detailed rules-engine result is still logged via `LogRuleEvaluationAsync`.
 - **`IAddendumService` required dependency** - `SignatureService` now requires `IAddendumService` as a constructor-injected required dependency instead of an optional parameter, so misconfiguration fails at DI startup rather than returning a user-visible error at runtime.
+- **`SyncEngine.cs` merge conflict formatting** — Fixed improperly indented `CheckEntitySpecificConflictAsync` block and `ApplyEntityFromPayloadAsync` `ClinicalNote` creation block left over from the `Foundation-Enhancement/Fixes` merge; removed extra closing brace and corrected `noteTypeRaw` → `noteType` reference. Affects: `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`.
+- **`NoteWorkspaceV2Service.cs` merge conflict formatting** — Fixed improperly indented `if (note is not null)` guard block and removed extra closing brace in `SaveAsync` left over from the same merge. Affects: `src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`.
 
 
 

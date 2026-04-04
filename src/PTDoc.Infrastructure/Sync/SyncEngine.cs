@@ -799,54 +799,54 @@ public class SyncEngine : ISyncEngine
     {
         if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
         {
-var noteState = await _context.ClinicalNotes.AsNoTracking()
-    .Where(n => n.Id == serverId)
-    .Select(n => new
-    {
-        n.NoteStatus,
-        n.SignatureHash,
-        n.SignedUtc
-    })
-    .FirstOrDefaultAsync(cancellationToken);
+            var noteState = await _context.ClinicalNotes.AsNoTracking()
+                .Where(n => n.Id == serverId)
+                .Select(n => new
+                {
+                    n.NoteStatus,
+                    n.SignatureHash,
+                    n.SignedUtc
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-if (noteState is not null)
-{
-    // Rule 1: Strong signed detection (immutability)
-    if (noteState.NoteStatus == NoteStatus.Signed
-        || noteState.SignatureHash != null
-        || noteState.SignedUtc != null)
-    {
-        _logger.LogWarning(
-            "Client push rejected: signed ClinicalNote {ServerId} is immutable",
-            serverId);
+            if (noteState is not null)
+            {
+                // Rule 1: Strong signed detection (immutability)
+                if (noteState.NoteStatus == NoteStatus.Signed
+                    || noteState.SignatureHash != null
+                    || noteState.SignedUtc != null)
+                {
+                    _logger.LogWarning(
+                        "Client push rejected: signed ClinicalNote {ServerId} is immutable",
+                        serverId);
 
-        if (_auditService is not null)
-        {
-            await _auditService.LogRuleEvaluationAsync(
-                AuditEvent.EditBlockedSignedNote(
-                    serverId,
-                    _identityContext?.TryGetCurrentUserId(),
-                    "SyncEngine.ReceiveClientPushAsync"),
-                cancellationToken);
-        }
+                    if (_auditService is not null)
+                    {
+                        await _auditService.LogRuleEvaluationAsync(
+                            AuditEvent.EditBlockedSignedNote(
+                                serverId,
+                                _identityContext?.TryGetCurrentUserId(),
+                                "SyncEngine.ReceiveClientPushAsync"),
+                            cancellationToken);
+                    }
 
-        return "Signed notes cannot be modified. Create addendum.";
-    }
+                    return "Signed notes cannot be modified. Create addendum.";
+                }
 
-    // Rule 2: Draft-only editing
-    if (noteState.NoteStatus != NoteStatus.Draft)
-    {
-        _logger.LogWarning(
-            "Client push rejected: ClinicalNote {ServerId} is read-only with status {Status}",
-            serverId,
-            noteState.NoteStatus);
+                // Rule 2: Draft-only editing
+                if (noteState.NoteStatus != NoteStatus.Draft)
+                {
+                    _logger.LogWarning(
+                        "Client push rejected: ClinicalNote {ServerId} is read-only with status {Status}",
+                        serverId,
+                        noteState.NoteStatus);
 
-        return noteState.NoteStatus == NoteStatus.PendingCoSign
-            ? "Pending notes are read-only while awaiting PT co-signature"
-            : "Only draft notes can be modified";
-    }
-}
+                    return noteState.NoteStatus == NoteStatus.PendingCoSign
+                        ? "Pending notes are read-only while awaiting PT co-signature"
+                        : "Only draft notes can be modified";
+                }
             }
+        }
         else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
         {
             var isLocked = await _context.IntakeForms.AsNoTracking()
@@ -1039,40 +1039,38 @@ if (noteState is not null)
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
-var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+                var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
 
-if (patientId == Guid.Empty || clinicId is null)
-{
-    throw new InvalidOperationException(
-        $"ClinicalNote push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
-}
+                if (patientId == Guid.Empty || clinicId is null)
+                {
+                    throw new InvalidOperationException(
+                        $"ClinicalNote push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                }
 
-var noteType = TryGetEnumValue<NoteType>(root, "noteType")
-    ?? TryGetEnumValue<NoteType>(root, "NoteType")
-    ?? NoteType.Daily;
+                var noteType = TryGetEnumValue<NoteType>(root, "noteType")
+                    ?? TryGetEnumValue<NoteType>(root, "NoteType")
+                    ?? NoteType.Daily;
 
-var createdUtc = TryGetDateTime(root, "createdUtc")
-    ?? TryGetDateTime(root, "CreatedUtc")
-    ?? item.LastModifiedUtc;
+                var createdUtc = TryGetDateTime(root, "createdUtc")
+                    ?? TryGetDateTime(root, "CreatedUtc")
+                    ?? item.LastModifiedUtc;
 
-var parentNoteId = TryGetGuid(root, "parentNoteId")
-    ?? TryGetGuid(root, "ParentNoteId");
+                var parentNoteId = TryGetGuid(root, "parentNoteId")
+                    ?? TryGetGuid(root, "ParentNoteId");
 
-var isAddendum = TryGetBool(root, "isAddendum")
-    ?? TryGetBool(root, "IsAddendum")
-    ?? false;
+                var isAddendum = TryGetBool(root, "isAddendum")
+                    ?? TryGetBool(root, "IsAddendum")
+                    ?? false;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
-
                     NoteType = noteType,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
-                   ClinicId = clinicId,
-                  NoteStatus = NoteStatus.Draft,
-
+                    ClinicId = clinicId,
+                    NoteStatus = NoteStatus.Draft,
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
