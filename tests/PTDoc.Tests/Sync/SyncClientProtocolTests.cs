@@ -380,6 +380,60 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_RejectsPush_WhenClinicalNoteIsPendingCoSign()
+    {
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Piper",
+            LastName = "Pending",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.PendingCoSign,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"text\":\"Pending co-sign note\"}",
+            SignatureHash = null,
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = noteId,
+                    LocalId = 2,
+                    Operation = "Update",
+                    DataJson = "{\"text\":\"Attempted pending note edit\"}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal("Conflict", response.Items[0].Status);
+        Assert.Contains("Pending", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_RejectsPush_WhenIntakeFormIsLocked()
     {
         // Arrange
@@ -582,6 +636,54 @@ public class SyncClientProtocolTests
         Assert.Equal("Accepted", response.Items[0].Status);
         Assert.NotEqual(Guid.Empty, response.Items[0].ServerId);
         Assert.Equal(42, response.Items[0].LocalId);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_CreatesClinicalNote_WhenNoteTypeIsEnumNameString()
+    {
+        var context = CreateInMemoryContext();
+        var clinicId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Nina",
+            LastName = "Newnote",
+            ClinicId = clinicId,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var dateOfService = new DateTime(2026, 4, 3, 0, 0, 0, DateTimeKind.Utc);
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = Guid.Empty,
+                    LocalId = 17,
+                    Operation = "Create",
+                    DataJson =
+                        $$"""{"patientId":"{{patient.Id}}","noteType":"ProgressNote","dateOfService":"{{dateOfService:O}}","contentJson":"{}","cptCodesJson":"[]"}""",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal(0, response.ConflictCount);
+
+        var storedNote = await context.ClinicalNotes.SingleAsync();
+        Assert.Equal(NoteType.ProgressNote, storedNote.NoteType);
+        Assert.Equal(NoteStatus.Draft, storedNote.NoteStatus);
+        Assert.Equal(patient.Id, storedNote.PatientId);
+        Assert.Equal(clinicId, storedNote.ClinicId);
     }
 
     [Fact]

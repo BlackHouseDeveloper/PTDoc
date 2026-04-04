@@ -36,6 +36,8 @@ builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocalPersistenceService>();
+builder.Services.AddTransient<DraftAutosaveService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();

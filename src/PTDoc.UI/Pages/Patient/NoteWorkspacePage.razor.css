@@ -13,6 +13,11 @@
     min-height: calc(var(--touch-target-desktop) * 10);
 }
 
+::deep .note-workspace__status-row {
+    display: flex;
+    justify-content: flex-end;
+}
+
 ::deep .note-workspace__alert {
     border-radius: var(--radius);
     padding: var(--spacing-3) var(--spacing-4);

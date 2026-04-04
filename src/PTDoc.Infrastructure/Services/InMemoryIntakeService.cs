@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 
+using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 
 namespace PTDoc.Infrastructure.Services;
@@ -13,6 +14,30 @@ public sealed class InMemoryIntakeService : IIntakeService
         _drafts.TryGetValue(patientId, out var draft);
         return Task.FromResult(draft is null ? null : Clone(draft));
     }
+
+    public Task<IntakeEnsureDraftResult> EnsureDraftAsync(
+        Guid patientId,
+        IntakeResponseDraft? seedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_drafts.TryGetValue(patientId, out var draft))
+        {
+            return Task.FromResult(draft.IsLocked
+                ? IntakeEnsureDraftResult.Locked("Intake is locked for this patient and a new draft cannot be created.")
+                : IntakeEnsureDraftResult.Existing(Clone(draft)));
+        }
+
+        var created = Clone(seedState ?? new IntakeResponseDraft());
+        created.PatientId = patientId;
+        _drafts[patientId] = created;
+        return Task.FromResult(IntakeEnsureDraftResult.Created(Clone(created)));
+    }
+
+    public Task<IReadOnlyList<PatientListItemResponse>> SearchEligiblePatientsAsync(
+        string? query = null,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<PatientListItemResponse>>([]);
 
     public Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
     {
@@ -58,6 +83,7 @@ public sealed class InMemoryIntakeService : IIntakeService
     {
         return new IntakeResponseDraft
         {
+            IntakeId = state.IntakeId,
             PatientId = state.PatientId,
             CurrentStep = state.CurrentStep,
             HipaaAcknowledged = state.HipaaAcknowledged,

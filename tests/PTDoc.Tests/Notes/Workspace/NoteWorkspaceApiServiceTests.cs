@@ -34,7 +34,19 @@ public sealed class NoteWorkspaceApiServiceTests
 
             var response = new NoteWorkspaceV2SaveResponse
             {
-                Workspace = new NoteWorkspaceV2LoadResponse
+var response = new NoteWorkspaceV2SaveResponse
+{
+    NoteId = noteId,
+    PatientId = patientId,
+    DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
+    NoteType = NoteType.ProgressNote,
+    NoteStatus = NoteStatus.Draft,
+    IsSigned = false,
+    Payload = new NoteWorkspaceV2Payload
+    {
+        NoteType = NoteType.ProgressNote
+    }
+};
                 {
                     NoteId = noteId,
                     PatientId = patientId,
@@ -77,6 +89,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(noteId, result.NoteId);
+        Assert.Equal(NoteStatus.Draft, result.Status);
         Assert.NotNull(requestBody);
 
         using var document = JsonDocument.Parse(requestBody!);

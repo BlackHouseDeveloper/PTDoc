@@ -192,6 +192,8 @@ public class AuthorizationCoverageTests
 
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
         new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/drafts/{patientId:guid}",                     AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/intake/patients/eligible",                           AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/patient/{patientId:guid}/draft",              AuthorizationPolicies.IntakeRead),
         new("PUT",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeWrite),

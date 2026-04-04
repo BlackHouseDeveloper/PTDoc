@@ -147,6 +147,7 @@ builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PT
 
 // Register integration services
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
+
 builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
 builder.Services.AddScoped<IEmailDeliveryService, SendGridEmailService>();
@@ -156,6 +157,7 @@ builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingS
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
+builder.Services.AddScoped<IIntakeService, PTDoc.Infrastructure.Services.IntakeService>();
 builder.Services.AddSingleton(_ => new AzureBlobStorageOptions
 {
     ConnectionString = builder.Configuration[AzureBlobStorageOptions.ConnectionStringKey] ?? string.Empty

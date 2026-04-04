@@ -102,10 +102,10 @@
         </div>
 
         <div class="auth-actions">
-          <button type="button" class="auth-link" disabled="@isLoading">Forgot PIN?</button>
+          <button type="button" class="auth-link" disabled="@(isLoading || isExternalLoginRedirecting)">Forgot PIN?</button>
         </div>
 
-        <button type="submit" class="auth-primary" disabled="@isLoading">
+        <button type="submit" class="auth-primary" disabled="@(isLoading || isExternalLoginRedirecting)">
           @if (isLoading)
           {
             <span>Authenticating...</span>
@@ -118,8 +118,8 @@
 
         @if (supportsExternalIdentityLogin)
         {
-          <button type="button" class="auth-primary auth-secondary" disabled="@isLoading" @onclick="HandleExternalLogin">
-            @if (isLoading)
+          <button type="button" class="auth-primary auth-secondary" disabled="@(isLoading || isExternalLoginRedirecting)" @onclick="HandleExternalLogin">
+            @if (isExternalLoginRedirecting)
             {
               <span>Redirecting...</span>
             }

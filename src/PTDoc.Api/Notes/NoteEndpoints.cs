@@ -295,6 +295,16 @@ public static class NoteEndpoints
             return Results.Forbid();
         }
 
+        if (note.NoteStatus != NoteStatus.Draft)
+        {
+            return Results.Conflict(new
+            {
+                error = note.NoteStatus == NoteStatus.PendingCoSign
+                    ? "Pending notes are read-only while awaiting PT co-signature."
+                    : "Signed notes cannot be modified. Create an addendum instead."
+            });
+        }
+
         // Sprint S: Signature locking — enforce note immutability via the rules engine.
         // Signed notes cannot be modified; clinicians must create an addendum instead.
         var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
@@ -377,6 +387,16 @@ public static class NoteEndpoints
         if (PtaIsBlockedFromNoteType(httpContext.User, note.NoteType))
         {
             return Results.Forbid();
+        }
+
+        if (note.NoteStatus != NoteStatus.Draft)
+        {
+            return Results.Conflict(new
+            {
+                error = note.NoteStatus == NoteStatus.PendingCoSign
+                    ? "AI-generated content cannot be accepted while a note is pending PT co-signature."
+                    : "AI-generated content cannot be accepted into a signed note. Create an addendum instead."
+            });
         }
 
         // Sprint UC-Gamma AI guardrail: AI content CANNOT be written to a signed note.

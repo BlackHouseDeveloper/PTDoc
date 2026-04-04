@@ -47,6 +47,8 @@ public static class MauiProgram
 		builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 		builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 		builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+		builder.Services.AddScoped<INoteDraftLocalPersistenceService, MauiNoteDraftLocalPersistenceService>();
+		builder.Services.AddTransient<DraftAutosaveService>();
 		builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
 		builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 		builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();

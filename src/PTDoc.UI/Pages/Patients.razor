@@ -98,7 +98,6 @@
 
         try
         {
-            await Task.Delay(300, token);
             await LoadPatientsAsync(string.IsNullOrWhiteSpace(value) ? null : value, token);
         }
         catch (TaskCanceledException)

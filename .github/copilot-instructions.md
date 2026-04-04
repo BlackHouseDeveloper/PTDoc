@@ -340,7 +340,7 @@ A feature is considered **complete and mergeable** only when all of the followin
 - [ ] Signed clinical records cannot be silently overwritten by the change
 - [ ] StyleCop formatting passes (`dotnet format --verify-no-changes`)
 - [ ] CodeQL security scan reports no new high/critical alerts
-- [ ] `CHANGELOG.md` `[Unreleased]` section updated if the change is user-visible
+- [ ] `docs/CHANGELOG.md` `[Unreleased]` section updated — **mandatory for every session** except as permitted by the bypass in [Mandatory Changelog Rule](#mandatory-changelog-rule)
 
 ---
 
@@ -488,6 +488,43 @@ When the AI is uncertain about:
 | Database migrations or provider config | Consult `docs/EF_MIGRATIONS.md` |
 | Security, auth, or HIPAA controls | Consult `docs/SECURITY.md` |
 
+### Mandatory Changelog Rule
+
+> **Rule ID: AGENT-CHANGELOG-001 — This rule is mandatory and non-negotiable. No session is complete until `docs/CHANGELOG.md` is updated.**
+> Full specification: [`.github/agent.md`](agent.md)
+
+**Every working session must end with a changelog update.** A "session" is any continuous interaction or work period where code, configuration, documentation, or system behavior is changed.
+
+#### What counts as a change
+
+| Category | Examples |
+|----------|----------|
+| **Code** | New/deleted/modified source files |
+| **Configuration** | `appsettings*.json`, `.csproj`, `global.json`, CI workflows, `.github/` files |
+| **Documentation** | `docs/`, `README.md`, inline comments, any `.md` file |
+| **Refactoring** | Renames, structural reorganization, method/class extraction |
+| **Behavioral/Logic** | Business rule changes, service behavior, system output changes |
+| **Dependencies** | NuGet package additions, removals, or upgrades |
+| **Database** | EF Core migrations, schema changes, seed data |
+| **Security** | Auth policy changes, role assignments, secret handling |
+
+#### Required entry format
+
+```markdown
+### Added | Changed | Fixed | Removed | Security | Deprecated
+
+#### <Feature, System, or Area Name>
+- **`<PrimaryFile.cs>` / `<ComponentName>`** — <Concise description>. Affects: <files/systems>. Reason: <purpose>.
+```
+
+#### Catch-up requirement
+
+Before starting any new work, verify the last committed change has a changelog entry. If missing, write it first before proceeding.
+
+#### Bypass
+
+The `no-changelog` label may bypass the CI gate **only** for non-user-visible changes (CI-config-only fixes, pure reformats). It must **never** be used to skip changelog entries for substantive code changes.
+
 ### Prohibited AI Actions
 
 The AI must **never**:
@@ -515,6 +552,6 @@ For every task, follow this flow:
 
 ---
 
-**Last Updated:** March 2026 (Sprint I: background jobs, async processing, and PFPT governance sections added)  
+**Last Updated:** April 2026 (Sprint I: added AGENT-CHANGELOG-001 mandatory changelog enforcement rule; `.github/agent.md` created as agent behavioral contract)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required

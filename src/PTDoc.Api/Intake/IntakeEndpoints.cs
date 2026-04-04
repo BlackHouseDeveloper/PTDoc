@@ -33,6 +33,16 @@ public static class IntakeEndpoints
             .WithSummary("Create an intake response for a patient")
             .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
 
+        group.MapPost("/drafts/{patientId:guid}", EnsureDraft)
+            .WithName("EnsureIntakeDraft")
+            .WithSummary("Ensure an unlocked intake draft exists for a patient")
+            .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
+
+        group.MapGet("/patients/eligible", ListEligiblePatients)
+            .WithName("ListEligibleIntakePatients")
+            .WithSummary("List patients that can be used in intake and send-intake workflows")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
         group.MapGet("/{id:guid}", GetIntake)
             .WithName("GetIntake")
             .WithSummary("Get an intake response by ID")
@@ -207,6 +217,121 @@ public static class IntakeEndpoints
             return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
 
         return Results.Ok(ToResponse(intake));
+    }
+
+    // POST /api/v1/intake/drafts/{patientId}
+    private static async Task<IResult> EnsureDraft(
+        Guid patientId,
+        [FromBody] EnsureIntakeDraftRequest? request,
+        [FromServices] IIntakeService intakeService,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
+        CancellationToken cancellationToken)
+    {
+        // Validate override fields upfront so callers get a 400 before a draft is created,
+        // consistent with CreateIntake/UpdateIntake, and to avoid orphaned drafts with partial data.
+        string? resolvedPainMapData = null;
+        string? resolvedStructuredDataJson = null;
+        string? resolvedConsents = null;
+
+        if (request is not null)
+        {
+            if (!TryResolveStructuredData(
+                    request.StructuredData,
+                    request.PainMapData,
+                    existingStructuredDataJson: null,
+                    intakeReferenceData,
+                    out var painMapData,
+                    out var structuredDataJson,
+                    out var structuredDataValidationProblem))
+            {
+                return structuredDataValidationProblem!;
+            }
+
+            resolvedPainMapData = painMapData;
+            resolvedStructuredDataJson = structuredDataJson;
+
+            if (!TryNormalizeConsents(
+                    request.Consents,
+                    requireHipaaAcknowledgement: false,
+                    out var consents,
+                    out _,
+                    out var consentsValidationProblem))
+            {
+                return consentsValidationProblem!;
+            }
+
+            resolvedConsents = consents;
+        }
+
+        var seedDraft = ToSeedDraft(request, patientId);
+        var result = await intakeService.EnsureDraftAsync(patientId, seedDraft, cancellationToken);
+
+        if (result.Status == IntakeEnsureDraftStatus.PatientNotFound)
+        {
+            return Results.NotFound(new { error = result.ErrorMessage ?? $"Patient {patientId} not found." });
+        }
+
+        if (result.Status == IntakeEnsureDraftStatus.Locked)
+        {
+            return Results.Conflict(new { error = result.ErrorMessage ?? "Intake is locked for this patient and a new draft cannot be created." });
+        }
+
+        var intakeId = result.Draft?.IntakeId;
+        if (!intakeId.HasValue)
+        {
+            return Results.Problem("Intake draft was ensured but no intake identifier was returned.", statusCode: 500);
+        }
+
+        // For a newly created draft, apply the pre-validated override fields.
+        if (result.Status == IntakeEnsureDraftStatus.Created && request is not null)
+        {
+            var newIntake = await db.IntakeForms
+                .FirstOrDefaultAsync(form => form.Id == intakeId.Value, cancellationToken);
+
+            if (newIntake is not null)
+            {
+                if (resolvedPainMapData is not null)
+                    newIntake.PainMapData = resolvedPainMapData;
+
+                if (resolvedStructuredDataJson is not null)
+                    newIntake.StructuredDataJson = resolvedStructuredDataJson;
+
+                if (resolvedConsents is not null)
+                    newIntake.Consents = resolvedConsents;
+
+                if (!string.IsNullOrWhiteSpace(request.TemplateVersion))
+                    newIntake.TemplateVersion = request.TemplateVersion;
+
+                newIntake.LastModifiedUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .FirstOrDefaultAsync(form => form.Id == intakeId.Value, cancellationToken);
+
+        if (intake is null)
+        {
+            return Results.NotFound(new { error = $"Intake {intakeId.Value} not found." });
+        }
+
+        var response = ToResponse(intake);
+        return result.Status == IntakeEnsureDraftStatus.Created
+            ? Results.Created($"/api/v1/intake/{response.Id}", response)
+            : Results.Ok(response);
+    }
+
+    // GET /api/v1/intake/patients/eligible
+    private static async Task<IResult> ListEligiblePatients(
+        [FromQuery] string? query,
+        [FromQuery] int take,
+        [FromServices] IIntakeService intakeService,
+        CancellationToken cancellationToken)
+    {
+        var patients = await intakeService.SearchEligiblePatientsAsync(query, take, cancellationToken);
+        return Results.Ok(patients);
     }
 
     // PUT /api/v1/intake/{id}
@@ -652,6 +777,40 @@ public static class IntakeEndpoints
         ClinicId = f.ClinicId,
         LastModifiedUtc = f.LastModifiedUtc
     };
+
+    private static IntakeResponseDraft ToSeedDraft(EnsureIntakeDraftRequest? request, Guid patientId)
+    {
+        if (request is null)
+        {
+            return new IntakeResponseDraft { PatientId = patientId };
+        }
+
+        IntakeResponseDraft draft;
+        if (string.IsNullOrWhiteSpace(request.ResponseJson))
+        {
+            draft = new IntakeResponseDraft();
+        }
+        else
+        {
+            try
+            {
+                draft = JsonSerializer.Deserialize<IntakeResponseDraft>(
+                    request.ResponseJson,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                        PropertyNameCaseInsensitive = true
+                    }) ?? new IntakeResponseDraft();
+            }
+            catch (JsonException)
+            {
+                draft = new IntakeResponseDraft();
+            }
+        }
+
+        draft.PatientId = patientId;
+        return draft;
+    }
 
     /// <summary>
     /// Produces a lowercase hex SHA-256 hash of the given token, consistent with the Session.TokenHash pattern.

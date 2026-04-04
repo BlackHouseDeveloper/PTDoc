@@ -799,30 +799,53 @@ public class SyncEngine : ISyncEngine
     {
         if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
         {
-            var note = await _context.ClinicalNotes.AsNoTracking()
-                .Where(n => n.Id == serverId)
-                .Select(n => new
-                {
-                    n.NoteStatus,
-                    n.SignatureHash,
-                    n.SignedUtc
-                })
-                .FirstOrDefaultAsync(cancellationToken);
+var noteState = await _context.ClinicalNotes.AsNoTracking()
+    .Where(n => n.Id == serverId)
+    .Select(n => new
+    {
+        n.NoteStatus,
+        n.SignatureHash,
+        n.SignedUtc
+    })
+    .FirstOrDefaultAsync(cancellationToken);
 
-            if (note is not null
-                && (note.NoteStatus == NoteStatus.Signed || note.SignatureHash != null || note.SignedUtc != null))
-            {
-                _logger.LogWarning(
-                    "Client push rejected: signed ClinicalNote {ServerId} is immutable", serverId);
+if (noteState is not null)
+{
+    // Rule 1: Strong signed detection (immutability)
+    if (noteState.NoteStatus == NoteStatus.Signed
+        || noteState.SignatureHash != null
+        || noteState.SignedUtc != null)
+    {
+        _logger.LogWarning(
+            "Client push rejected: signed ClinicalNote {ServerId} is immutable",
+            serverId);
 
-                if (_auditService is not null)
-                {
-                    await _auditService.LogRuleEvaluationAsync(
-                        AuditEvent.EditBlockedSignedNote(serverId, _identityContext?.TryGetCurrentUserId(), "SyncEngine.ReceiveClientPushAsync"),
-                        cancellationToken);
-                }
+        if (_auditService is not null)
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(
+                    serverId,
+                    _identityContext?.TryGetCurrentUserId(),
+                    "SyncEngine.ReceiveClientPushAsync"),
+                cancellationToken);
+        }
 
-                return "Signed notes cannot be modified. Create addendum.";
+        return "Signed notes cannot be modified. Create addendum.";
+    }
+
+    // Rule 2: Draft-only editing
+    if (noteState.NoteStatus != NoteStatus.Draft)
+    {
+        _logger.LogWarning(
+            "Client push rejected: ClinicalNote {ServerId} is read-only with status {Status}",
+            serverId,
+            noteState.NoteStatus);
+
+        return noteState.NoteStatus == NoteStatus.PendingCoSign
+            ? "Pending notes are read-only while awaiting PT co-signature"
+            : "Only draft notes can be modified";
+    }
+}
             }
         }
         else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
@@ -965,6 +988,14 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+                if (patientId == Guid.Empty || clinicId is null)
+                {
+                    throw new InvalidOperationException(
+                        $"IntakeForm push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                }
+
                 var form = new IntakeForm
                 {
                     Id = serverId,
@@ -977,6 +1008,7 @@ public class SyncEngine : ISyncEngine
                     // AccessToken stores canonical hashed invite state; use a non-shareable placeholder hash here.
                     AccessToken = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())).ToLowerInvariant(),
                     IsLocked = false, // Never trust IsLocked from client push
+                    ClinicId = clinicId,
                     LastModifiedUtc = item.LastModifiedUtc,
                     ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
@@ -1008,20 +1040,42 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
-                var noteTypeRaw = TryGetInt(root, "noteType") ?? TryGetInt(root, "NoteType") ?? 0;
-                var createdUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? item.LastModifiedUtc;
-                var parentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId");
-                var isAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? false;
+var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+if (patientId == Guid.Empty || clinicId is null)
+{
+    throw new InvalidOperationException(
+        $"ClinicalNote push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+}
+
+var noteType = TryGetEnumValue<NoteType>(root, "noteType")
+    ?? TryGetEnumValue<NoteType>(root, "NoteType")
+    ?? NoteType.Daily;
+
+var createdUtc = TryGetDateTime(root, "createdUtc")
+    ?? TryGetDateTime(root, "CreatedUtc")
+    ?? item.LastModifiedUtc;
+
+var parentNoteId = TryGetGuid(root, "parentNoteId")
+    ?? TryGetGuid(root, "ParentNoteId");
+
+var isAddendum = TryGetBool(root, "isAddendum")
+    ?? TryGetBool(root, "IsAddendum")
+    ?? false;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
+
                     NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
                         ? (NoteType)noteTypeRaw
                         : NoteType.Daily,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
+                   ClinicId = clinicId,
+                  NoteStatus = NoteStatus.Draft,
+
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
@@ -1034,8 +1088,8 @@ public class SyncEngine : ISyncEngine
             }
             else
             {
-                // Only update unsigned (draft) notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
-                if (!existing.IsFinalized)
+                // Only update draft notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
+                if (existing.NoteStatus == NoteStatus.Draft)
                 {
                     existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
                     existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
@@ -1053,6 +1107,19 @@ public class SyncEngine : ISyncEngine
         {
             _logger.LogDebug("ApplyEntityFromPayloadAsync: unhandled entity type {EntityType}", entityType);
         }
+    }
+
+    private Task<Guid?> ResolvePatientClinicIdAsync(Guid patientId, CancellationToken cancellationToken)
+    {
+        if (patientId == Guid.Empty)
+        {
+            return Task.FromResult<Guid?>(null);
+        }
+
+        return _context.Patients
+            .Where(patient => patient.Id == patientId)
+            .Select(patient => patient.ClinicId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     // ── JSON parsing helpers ─────────────────────────────────────────────────────
@@ -1109,6 +1176,46 @@ public class SyncEngine : ISyncEngine
         if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
         return null;
     }
+
+    private static TEnum? TryGetEnumValue<TEnum>(JsonElement root, string propertyName)
+        where TEnum : struct, Enum
+    {
+        if (!root.TryGetProperty(propertyName, out var el))
+        {
+            return null;
+        }
+
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var numericValue))
+        {
+            return Enum.IsDefined(typeof(TEnum), numericValue)
+                ? (TEnum)Enum.ToObject(typeof(TEnum), numericValue)
+                : null;
+        }
+
+        if (el.ValueKind == JsonValueKind.String)
+        {
+            var rawValue = el.GetString();
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return null;
+            }
+
+            if (int.TryParse(rawValue, out var stringNumericValue))
+            {
+                return Enum.IsDefined(typeof(TEnum), stringNumericValue)
+                    ? (TEnum)Enum.ToObject(typeof(TEnum), stringNumericValue)
+                    : null;
+            }
+
+            if (Enum.TryParse<TEnum>(rawValue, ignoreCase: true, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
+
     private async Task ArchiveConflictVersionAsync<TEntity>(
         TEntity archivedVersion,
         TEntity chosenVersion,

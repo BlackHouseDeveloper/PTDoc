@@ -59,16 +59,30 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("The requested note does not belong to the supplied patient.");
         }
 
-        if (note is not null && note.IsFinalized)
+if (note is not null)
+{
+    // Rule 1: Signed notes are immutable (with audit logging)
+    if (note.IsFinalized)
+    {
+        if (auditService is not null)
         {
-            if (auditService is not null)
-            {
-                await auditService.LogRuleEvaluationAsync(
-                    AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteWorkspaceV2Service.SaveAsync"),
-                    cancellationToken);
-            }
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(
+                    note.Id,
+                    identityContext.TryGetCurrentUserId(),
+                    "NoteWorkspaceV2Service.SaveAsync"),
+                cancellationToken);
+        }
 
-            throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
+        throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
+    }
+
+    // Rule 2: Only draft notes can be edited via workspace
+    if (note.NoteStatus != NoteStatus.Draft)
+    {
+        throw new InvalidOperationException("Only draft notes can be modified through the workspace API.");
+    }
+}
         }
 
         var currentUserId = identityContext.GetCurrentUserId();
@@ -276,6 +290,7 @@ public sealed class NoteWorkspaceV2Service(
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
+            NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };

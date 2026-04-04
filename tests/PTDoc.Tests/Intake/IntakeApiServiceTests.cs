@@ -16,6 +16,67 @@ public sealed class IntakeApiServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task EnsureDraftAsync_ReturnsLockedResult_WhenApiConflicts()
+    {
+        var patientId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/intake/drafts/{patientId}", request.RequestUri!.AbsolutePath);
+            return new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = new StringContent("""{"error":"locked"}""", System.Text.Encoding.UTF8, "application/json")
+            };
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        var result = await service.EnsureDraftAsync(patientId, new IntakeResponseDraft { PatientId = patientId });
+
+        Assert.Equal(IntakeEnsureDraftStatus.Locked, result.Status);
+        Assert.Equal("locked", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SearchEligiblePatientsAsync_UsesWorkflowSpecificEndpoint()
+    {
+        var patientId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v1/intake/patients/eligible", request.RequestUri!.AbsolutePath);
+            Assert.Equal("?query=smith&take=25", request.RequestUri!.Query);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
+            {
+                new PatientListItemResponse
+                {
+                    Id = patientId,
+                    DisplayName = "Casey Smith",
+                    Email = "casey@example.com",
+                    Phone = "555-0101"
+                }
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        var patients = await service.SearchEligiblePatientsAsync("smith", 25);
+
+        var patient = Assert.Single(patients);
+        Assert.Equal(patientId, patient.Id);
+        Assert.Equal("Casey Smith", patient.DisplayName);
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_InStandalonePatientMode_UsesAccessEndpointAndSessionHeader()
     {
         var patientId = Guid.NewGuid();

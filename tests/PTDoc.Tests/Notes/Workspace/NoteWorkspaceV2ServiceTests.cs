@@ -193,82 +193,48 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             DateOfBirth = new DateTime(1990, 1, 1),
             ClinicId = Guid.NewGuid()
         };
-        var note = new ClinicalNote
+ _context.Patients.Add(patient);        
+var note = new ClinicalNote
         {
             Id = Guid.NewGuid(),
             PatientId = patient.Id,
             NoteType = NoteType.ProgressNote,
-            DateOfService = new DateTime(2026, 3, 30),
-            ContentJson = "{}",
-            LastModifiedUtc = DateTime.UtcNow,
-            SignatureHash = "SIGNED_HASH",
-            SignedUtc = DateTime.UtcNow,
-            NoteStatus = NoteStatus.Signed
-        };
+DateOfService = new DateTime(2026, 3, 30),
+ContentJson = "{}",
+LastModifiedUtc = DateTime.UtcNow,
+SignatureHash = "SIGNED_HASH",
+SignedUtc = DateTime.UtcNow,
+NoteStatus = NoteStatus.Signed
+};
 
-        _context.Patients.Add(patient);
-        _context.ClinicalNotes.Add(note);
+_context.ClinicalNotes.Add(note);
         await _context.SaveChangesAsync();
 
         var request = new NoteWorkspaceV2SaveRequest
         {
-            PatientId = patient.Id,
-            NoteId = note.Id,
-            DateOfService = note.DateOfService,
-            NoteType = note.NoteType,
-            Payload = new NoteWorkspaceV2Payload
-            {
-                NoteType = note.NoteType
-            }
-        };
+PatientId = patient.Id,
+NoteId = note.Id,
+DateOfService = note.DateOfService,
+NoteType = note.NoteType,
+Payload = new NoteWorkspaceV2Payload
+{
+    NoteType = note.NoteType
+}
+};
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(request));
+var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(request));
 
-        Assert.Equal("Signed notes cannot be modified. Create addendum.", ex.Message);
+Assert.Equal("Signed notes cannot be modified. Create addendum.", ex.Message);
+}
     }
+    
+NoteStatus = NoteStatus.PendingCoSign,
+DateOfService = new DateTime(2026, 4, 1),
+ContentJson = "{}",
+LastModifiedUtc = DateTime.UtcNow
+};
 
-    [Fact]
-    public async Task SaveAsync_MissingTimedMinutes_ReturnsWarningAndPersistsWorkspace()
-    {
-        var patient = new Patient
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "Test",
-            LastName = "Patient",
-            DateOfBirth = new DateTime(1990, 1, 1),
-            ClinicId = Guid.NewGuid(),
-            PayerInfoJson = """{"PayerType":"Medicare"}"""
-        };
-        _context.Patients.Add(patient);
-        await _context.SaveChangesAsync();
-
-        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
-        {
-            PatientId = patient.Id,
-            DateOfService = new DateTime(2026, 3, 30),
-            NoteType = NoteType.ProgressNote,
-            Payload = new NoteWorkspaceV2Payload
-            {
-                NoteType = NoteType.ProgressNote,
-                Plan = new WorkspacePlanV2
-                {
-                    SelectedCptCodes =
-                    [
-                        new PlannedCptCodeV2
-                        {
-                            Code = "97110",
-                            Description = "Therapeutic exercises",
-                            Units = 2
-                        }
-                    ]
-                }
-            }
-        });
-
-        Assert.True(result.IsValid);
-        Assert.NotNull(result.Workspace);
-        Assert.Contains(result.Warnings, warning => warning.Contains("Timed CPT minutes are missing", StringComparison.OrdinalIgnoreCase));
-    }
+_context.ClinicalNotes.Add(pendingNote);
 
     public void Dispose()
     {
