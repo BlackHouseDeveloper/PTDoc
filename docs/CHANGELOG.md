@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Sprint 3: PR 2 Conflict Resolution Engine
+
+#### Deterministic Sync Conflict Resolution (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Added a single server-side conflict pipeline that loads a normalized server snapshot, detects deterministic conflict types, resolves conflicts before payload mutation, persists replayable conflict receipts, and archives the losing side in `SyncConflictArchives`. Reason: enforce one authoritative sync conflict path without duplicating logic across services.
+- **`SyncEngine.cs` / signed-note conflict handling** — Signed clinical note conflicts now fail safe by preserving the original note and creating an addendum through the existing signature/addendum flow, with deterministic JSON payload capture and non-PHI audit events. Reason: signed clinical documentation must remain immutable while still preserving offline edits.
+- **`SyncEngine.cs` / draft, intake, and delete conflict handling** — Draft conflicts now resolve via deterministic last-write-wins using `LastModifiedUtc`, locked intake conflicts reject overwrite attempts, and supported patient delete conflicts keep server deletion or mark manual resolution while preserving data. Reason: provide predictable conflict outcomes with no silent data loss.
+
+#### Shared Sync Conflict Contracts (`src/PTDoc.Application/Sync/ClientSyncProtocol.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`)
+- **`ClientSyncProtocol.cs`** — Added structured sync conflict contracts: `ConflictType`, `ConflictResult`, and nullable `ClientSyncPushItemResult.Conflict` metadata while preserving existing response status semantics. Reason: return explicit API conflict outcomes without breaking existing sync clients.
+- **`ISyncEngine.cs`** — Extended `ConflictResolution` with `AddendumCreated`. Reason: represent signed-note conflict fallback without introducing a parallel resolution model.
+
+#### Test Coverage (`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`)
+- **Sync tests** — Added and updated coverage for draft local-wins/server-wins behavior, signed-note addendum creation, duplicate `OperationId` replay, archive preservation, and audit metadata safety. Reason: the new sync conflict rules are acceptance-critical and must stay deterministic.
+
 ### Fixed - Sprint 3: PR Review Feedback (Sync Queue + Idempotency)
 
 #### SyncEngine — Processing Placeholder Before Entity Write (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)

@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Sync;
 using System.Text.Json;
@@ -32,6 +36,20 @@ public class SyncEpsilonTests
         return new ApplicationDbContext(options);
     }
 
+    private static ISignatureService CreateSignatureService(ApplicationDbContext context)
+    {
+        var clinicalRules = new Mock<IClinicalRulesEngine>();
+        clinicalRules
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        return new SignatureService(
+            context,
+            Mock.Of<IAuditService>(),
+            Mock.Of<IIdentityContextAccessor>(),
+            clinicalRules.Object);
+    }
+
     // ── ProcessQueueItemAsync ─────────────────────────────────────────────────
 
     [Fact]
@@ -54,7 +72,10 @@ public class SyncEpsilonTests
         await context.SaveChangesAsync();
 
         // Enqueue the note for processing
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create);
 
         // Act: run push which calls ProcessQueueItemAsync
@@ -87,7 +108,10 @@ public class SyncEpsilonTests
         context.IntakeForms.Add(intake);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Create);
 
         // Act
@@ -339,7 +363,10 @@ public class SyncEpsilonTests
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -360,15 +387,21 @@ public class SyncEpsilonTests
         // Act
         var response = await syncEngine.ReceiveClientPushAsync(request);
 
-        // Assert: rejected
+        // Assert: conflict preserved through addendum creation
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("addendum", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        var conflict = Assert.IsType<ConflictResult>(response.Items[0].Conflict);
+        Assert.Equal(ConflictResolution.AddendumCreated, conflict.ResolutionType);
+        Assert.NotNull(conflict.NewEntityId);
 
         // Assert: ContentJson was NOT changed — signed note remains immutable
         var notUpdated = await context.ClinicalNotes.AsNoTracking().FirstAsync(n => n.Id == note.Id);
         Assert.Equal(originalContent, notUpdated.ContentJson);
         Assert.Equal("sha256-fakehash", notUpdated.SignatureHash);
+
+        var addendum = await context.Addendums.FindAsync(conflict.NewEntityId);
+        Assert.NotNull(addendum);
     }
 
     [Fact]

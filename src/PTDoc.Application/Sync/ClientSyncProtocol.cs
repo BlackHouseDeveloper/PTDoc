@@ -65,6 +65,9 @@ public class ClientSyncPushItemResult
 
     /// <summary>Server-side modification timestamp after the push was applied.</summary>
     public DateTime? ServerModifiedUtc { get; set; }
+
+    /// <summary>Optional structured conflict metadata for deterministic replay and client handling.</summary>
+    public ConflictResult? Conflict { get; set; }
 }
 
 /// <summary>
@@ -109,4 +112,23 @@ public class ClientSyncPullResponse
 
     /// <summary>UTC timestamp at which the server snapshot was taken.</summary>
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
+}
+
+public enum ConflictType
+{
+    DraftConflict = 0,
+    SignedConflict = 1,
+    IntakeLockedConflict = 2,
+    DeletedConflict = 3,
+    Unknown = 4
+}
+
+public class ConflictResult
+{
+    public bool WasConflict { get; set; }
+    public ConflictType ConflictType { get; set; } = ConflictType.Unknown;
+    public ConflictResolution ResolutionType { get; set; } = ConflictResolution.ManualRequired;
+    public string Message { get; set; } = string.Empty;
+    public Guid? NewEntityId { get; set; }
+    public DateTime? ServerModifiedUtc { get; set; }
 }

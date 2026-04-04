@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -28,6 +31,18 @@ public class SyncClientProtocolTests
             .Options;
 
         return new ApplicationDbContext(options);
+    }
+
+    private static ISignatureService CreateSignatureService(ApplicationDbContext context, Mock<IAuditService>? auditMock = null)
+    {
+        var audit = auditMock?.Object ?? Mock.Of<IAuditService>();
+        var identity = Mock.Of<IIdentityContextAccessor>();
+        var clinicalRules = new Mock<IClinicalRulesEngine>();
+        clinicalRules
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        return new SignatureService(context, audit, identity, clinicalRules.Object);
     }
 
     // ── GetClientDeltaAsync – entity allowlist tests ──────────────────────────
@@ -66,7 +81,10 @@ public class SyncClientProtocolTests
         context.IntakeForms.AddRange(form, oldForm);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         // Act
         var result = await syncEngine.GetClientDeltaAsync(watermark, new[] { "IntakeForm" });
@@ -114,7 +132,10 @@ public class SyncClientProtocolTests
         context.ClinicalNotes.AddRange(note, oldNote);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         // Act
         var result = await syncEngine.GetClientDeltaAsync(watermark, new[] { "ClinicalNote" });
@@ -180,7 +201,10 @@ public class SyncClientProtocolTests
         context.ObjectiveMetrics.AddRange(recentMetric, oldMetric);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         // Act
         var result = await syncEngine.GetClientDeltaAsync(watermark, new[] { "ObjectiveMetric" });
@@ -216,7 +240,10 @@ public class SyncClientProtocolTests
         context.AuditLogs.AddRange(recentLog, oldLog);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         // Act
         var result = await syncEngine.GetClientDeltaAsync(watermark, new[] { "AuditLog" });
@@ -232,7 +259,10 @@ public class SyncClientProtocolTests
     public async Task ReceiveClientPushAsync_Replays_DuplicateOperationId_WithoutDuplicateWrite()
     {
         var context = CreateInMemoryContext();
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         var operationId = Guid.NewGuid();
         var patientId = Guid.NewGuid();
         var timestamp = DateTime.UtcNow;
@@ -380,7 +410,10 @@ public class SyncClientProtocolTests
 
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         // Act: pull with no entity type filter (uses default allowlist)
         var result = await syncEngine.GetClientDeltaAsync(sinceUtc: watermark, entityTypes: null);
@@ -432,7 +465,10 @@ public class SyncClientProtocolTests
         context.ClinicalNotes.Add(signedNote);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -453,12 +489,19 @@ public class SyncClientProtocolTests
         // Act
         var response = await syncEngine.ReceiveClientPushAsync(request);
 
-        // Assert: push rejected due to signed immutability
+        // Assert: original note is preserved and the conflict is redirected into an addendum
         Assert.Equal(0, response.AcceptedCount);
         Assert.Equal(1, response.ConflictCount);
         Assert.Single(response.Items);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("addendum", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        var conflict = Assert.IsType<ConflictResult>(response.Items[0].Conflict);
+        Assert.Equal(ConflictType.SignedConflict, conflict.ConflictType);
+        Assert.Equal(ConflictResolution.AddendumCreated, conflict.ResolutionType);
+        Assert.NotNull(conflict.NewEntityId);
+
+        var addendum = await context.Addendums.FindAsync(conflict.NewEntityId);
+        Assert.NotNull(addendum);
     }
 
     [Fact]
@@ -490,7 +533,10 @@ public class SyncClientProtocolTests
         });
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         var request = new ClientSyncPushRequest
         {
             Items = new List<ClientSyncPushItem>
@@ -513,6 +559,130 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
         Assert.Contains("Pending", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_ReplaysSignedConflict_WithoutCreatingDuplicateAddendum()
+    {
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Replay",
+            LastName = "Signed",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{\"text\":\"Signed\"}",
+            SignatureHash = "signed-hash",
+            SignedUtc = DateTime.UtcNow.AddMinutes(-5),
+            SignedByUserId = Guid.NewGuid(),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5),
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    OperationId = operationId,
+                    EntityType = "ClinicalNote",
+                    ServerId = noteId,
+                    LocalId = 4,
+                    Operation = "Update",
+                    DataJson = "{\"text\":\"offline conflict\"}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+
+        var first = await syncEngine.ReceiveClientPushAsync(request);
+        var second = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, await context.Addendums.CountAsync());
+        Assert.Equal("Conflict", first.Items[0].Status);
+        Assert.Equal("Conflict", second.Items[0].Status);
+        var firstConflict = Assert.IsType<ConflictResult>(first.Items[0].Conflict);
+        var secondConflict = Assert.IsType<ConflictResult>(second.Items[0].Conflict);
+        Assert.Equal(firstConflict.NewEntityId, secondConflict.NewEntityId);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_ConflictAuditMetadata_DoesNotContainPayloadText()
+    {
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+        var auditService = new AuditService(context);
+        var signatureService = CreateSignatureService(context);
+
+        var patient = new Patient
+        {
+            FirstName = "Audit",
+            LastName = "Safety",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{\"text\":\"Signed\"}",
+            SignatureHash = "signed-hash",
+            SignedUtc = DateTime.UtcNow.AddMinutes(-5),
+            SignedByUserId = Guid.NewGuid(),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5),
+            ModifiedByUserId = Guid.NewGuid()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            auditService: auditService,
+            signatureService: signatureService);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = noteId,
+                    LocalId = 6,
+                    Operation = "Update",
+                    DataJson = "{\"text\":\"tampered payload content\"}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+
+        await syncEngine.ReceiveClientPushAsync(request);
+
+        var conflictLogs = await context.AuditLogs
+            .Where(log => log.EventType == "CONFLICT_DETECTED" || log.EventType == "ADDENDUM_CREATED")
+            .ToListAsync();
+
+        Assert.NotEmpty(conflictLogs);
+        Assert.DoesNotContain(conflictLogs, log => (log.MetadataJson ?? string.Empty).Contains("tampered payload content", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -544,7 +714,10 @@ public class SyncClientProtocolTests
         context.IntakeForms.Add(lockedIntake);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -602,7 +775,10 @@ public class SyncClientProtocolTests
         context.ClinicalNotes.Add(serverNote);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -628,6 +804,10 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
         Assert.Contains("newer", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        var conflict = Assert.IsType<ConflictResult>(response.Items[0].Conflict);
+        Assert.Equal(ConflictType.DraftConflict, conflict.ConflictType);
+        Assert.Equal(ConflictResolution.ServerWins, conflict.ResolutionType);
+        Assert.Single(await context.Set<SyncConflictArchive>().ToListAsync());
     }
 
     [Fact]
@@ -684,6 +864,10 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.AcceptedCount);
         Assert.Equal(0, response.ConflictCount);
         Assert.Equal("Accepted", response.Items[0].Status);
+        var conflict = Assert.IsType<ConflictResult>(response.Items[0].Conflict);
+        Assert.Equal(ConflictType.DraftConflict, conflict.ConflictType);
+        Assert.Equal(ConflictResolution.LocalWins, conflict.ResolutionType);
+        Assert.Single(await context.Set<SyncConflictArchive>().ToListAsync());
     }
 
     [Fact]
@@ -973,7 +1157,10 @@ public class SyncClientProtocolTests
         );
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -1012,7 +1199,8 @@ public class SyncClientProtocolTests
         var draftResult = response.Items.First(i => i.LocalId == 2);
 
         Assert.Equal("Conflict", signedResult.Status);
-        Assert.Contains("immutable", signedResult.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("addendum", signedResult.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ConflictResolution.AddendumCreated, signedResult.Conflict!.ResolutionType);
 
         Assert.Equal("Accepted", draftResult.Status);
     }
@@ -1053,7 +1241,10 @@ public class SyncClientProtocolTests
         });
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -1078,7 +1269,7 @@ public class SyncClientProtocolTests
         Assert.Equal(0, response.AcceptedCount);
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("addendum", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
