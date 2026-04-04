@@ -41,9 +41,6 @@ public class ApplicationDbContext : DbContext
 
     // System entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
-    public DbSet<Signature> Signatures => Set<Signature>();
-    public DbSet<RuleOverride> RuleOverrides => Set<RuleOverride>();
-    public DbSet<ComplianceSettings> ComplianceSettings => Set<ComplianceSettings>();
     public DbSet<SyncQueueItem> SyncQueueItems => Set<SyncQueueItem>();
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
@@ -74,8 +71,8 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.LastModifiedUtc);
             entity.HasIndex(e => new { e.FirstName, e.LastName });
-            entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter(IsNotNullFilter("MedicalRecordNumber"));
-            entity.HasIndex(e => e.Email).HasFilter(IsNotNullFilter("Email"));
+            entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter("MedicalRecordNumber IS NOT NULL");
+            entity.HasIndex(e => e.Email).HasFilter("Email IS NOT NULL");
 
             entity.Property(e => e.FirstName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.LastName).HasMaxLength(100).IsRequired();
@@ -122,8 +119,6 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.DateOfService);
-            entity.HasIndex(e => e.CreatedUtc);
-            entity.HasIndex(e => e.ParentNoteId);
             entity.HasIndex(e => e.SignedUtc);
             entity.HasIndex(e => e.LastModifiedUtc);
 
@@ -136,11 +131,6 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.AppointmentId)
                 .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasOne(e => e.ParentNote)
-                .WithMany(e => e.Addendums)
-                .HasForeignKey(e => e.ParentNoteId)
-                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // Configure IntakeForm
@@ -164,7 +154,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username).IsUnique();
-            entity.HasIndex(e => e.Email).IsUnique().HasFilter(IsNotNullFilter("Email"));
+            entity.HasIndex(e => e.Email).IsUnique().HasFilter("Email IS NOT NULL");
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Username).HasMaxLength(100).IsRequired();
@@ -188,7 +178,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.Provider, e.ExternalSubject }).IsUnique();
             entity.HasIndex(e => new { e.PrincipalType, e.InternalEntityId });
-            entity.HasIndex(e => e.TenantId).HasFilter(IsNotNullFilter("TenantId"));
+            entity.HasIndex(e => e.TenantId).HasFilter("TenantId IS NOT NULL");
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
@@ -213,7 +203,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username);
-            entity.HasIndex(e => e.UserId).HasFilter(IsNotNullFilter("UserId"));
+            entity.HasIndex(e => e.UserId).HasFilter("UserId IS NOT NULL");
             entity.HasIndex(e => e.AttemptedAt);
             entity.HasIndex(e => new { e.Success, e.AttemptedAt });
 
@@ -229,72 +219,15 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.TimestampUtc);
             entity.HasIndex(e => e.EventType);
-            entity.HasIndex(e => e.EntityId).HasFilter(IsNotNullFilter("EntityId"));
-            entity.HasIndex(e => e.UserId).HasFilter(IsNotNullFilter("UserId"));
+            entity.HasIndex(e => e.UserId).HasFilter("UserId IS NOT NULL");
             entity.HasIndex(e => e.CorrelationId);
-            entity.HasIndex(e => new { e.EntityType, e.EntityId }).HasFilter(IsNotNullFilter("EntityType", "EntityId"));
+            entity.HasIndex(e => new { e.EntityType, e.EntityId }).HasFilter("EntityType IS NOT NULL AND EntityId IS NOT NULL");
 
             entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Severity).HasMaxLength(20).IsRequired();
             entity.Property(e => e.EntityType).HasMaxLength(100);
             entity.Property(e => e.CorrelationId).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.MetadataJson).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-        });
-
-        modelBuilder.Entity<Signature>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.NoteId);
-            entity.HasIndex(e => e.SignedByUserId);
-            entity.HasIndex(e => e.TimestampUtc);
-
-            entity.Property(e => e.Role).HasMaxLength(50).IsRequired();
-            entity.Property(e => e.SignatureHash).HasMaxLength(64).IsRequired();
-            entity.Property(e => e.AttestationText).IsRequired();
-            entity.Property(e => e.IPAddress).HasMaxLength(45);
-            entity.Property(e => e.DeviceInfo).HasMaxLength(500);
-
-            entity.HasOne(e => e.Note)
-                .WithMany()
-                .HasForeignKey(e => e.NoteId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.SignedByUser)
-                .WithMany()
-                .HasForeignKey(e => e.SignedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<RuleOverride>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => e.TimestampUtc);
-
-            entity.Property(e => e.RuleName).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.Justification).IsRequired();
-            entity.Property(e => e.AttestationText).IsRequired();
-
-            entity.HasOne(e => e.User)
-                .WithMany()
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<ComplianceSettings>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.OverrideAttestationText)
-                .IsRequired()
-                .HasDefaultValue("I acknowledge this override and attest that the justification is accurate and clinically necessary.");
-            entity.Property(e => e.MinJustificationLength)
-                .IsRequired()
-                .HasDefaultValue(20);
-            entity.Property(e => e.AllowOverrideTypes)
-                .IsRequired()
-                .HasDefaultValue("[]");
         });
 
         // Configure SyncQueueItem
@@ -350,17 +283,11 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.CreatedByUserId);
 
             entity.Property(e => e.Content).IsRequired();
-            entity.Property(e => e.SignatureHash).HasMaxLength(64);
 
             // Relationship to ClinicalNote
             entity.HasOne(e => e.ClinicalNote)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicalNoteId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.CreatedByUser)
-                .WithMany()
-                .HasForeignKey(e => e.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -386,7 +313,10 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.Status });
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
 
             entity.Property(e => e.Description).HasMaxLength(2000).IsRequired();
             entity.Property(e => e.Category).HasMaxLength(200);
@@ -439,7 +369,10 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.PatientId, e.MeasureType });
             entity.HasIndex(e => e.DateRecorded);
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
 
             // Relationship to Patient
             entity.HasOne(e => e.Patient)
@@ -484,14 +417,20 @@ public class ApplicationDbContext : DbContext
         // Sprint J: Configure ClinicId FK on tenant-scoped entities
         modelBuilder.Entity<Patient>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
         });
 
         // Appointment, ClinicalNote, and IntakeForm carry ClinicId as a true FK to Clinic.
         // Denormalized from Patient for efficient per-clinic query filtering.
         modelBuilder.Entity<Appointment>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -500,7 +439,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<ClinicalNote>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -509,7 +451,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<IntakeForm>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
             entity.HasOne(e => e.Clinic)
                 .WithMany()
                 .HasForeignKey(e => e.ClinicId)
@@ -518,7 +463,10 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ClinicId).HasFilter(
+                Database.ProviderName?.Contains("Npgsql") == true
+                    ? "\"ClinicId\" IS NOT NULL"
+                    : "ClinicId IS NOT NULL");
         });
 
         // Sprint J: Global query filters — automatically scope all clinical reads to current clinic.
@@ -607,21 +555,6 @@ public class ApplicationDbContext : DbContext
         // NoteTaxonomySelection is accessed via ClinicalNote; filter via the parent note's ClinicId.
         modelBuilder.Entity<NoteTaxonomySelection>()
             .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
-
-        // Signature is accessed via ClinicalNote; filter via the parent note's ClinicId to prevent
-        // cross-tenant signature visibility.
-        modelBuilder.Entity<Signature>()
-            .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
-
-        // RuleOverride is tied to a specific user/clinic; filter via the user's ClinicId to prevent
-        // cross-tenant override visibility.
-        modelBuilder.Entity<RuleOverride>()
-            .HasQueryFilter(r => CurrentClinicId == null || r.User!.ClinicId == CurrentClinicId);
-
-        // Addendum is associated with a ClinicalNote; filter via the parent note's ClinicId to
-        // prevent cross-tenant addendum leakage.
-        modelBuilder.Entity<Addendum>()
-            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicalNote!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>
@@ -629,40 +562,4 @@ public class ApplicationDbContext : DbContext
     /// Evaluated at query execution time, not at model creation time.
     /// </summary>
     private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
-
-    /// <summary>
-    /// Returns a partial-index filter predicate appropriate for the configured database provider.
-    /// PostgreSQL requires double-quoted identifiers for mixed-case column names in partial-index
-    /// predicates (e.g. <c>"EntityId" IS NOT NULL</c>); SQL Server and SQLite are case-insensitive.
-    /// Using this helper ensures future migrations scaffold correctly without manual edits.
-    /// </summary>
-    private string IsNotNullFilter(string column)
-    {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(column, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-        {
-            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column));
-        }
-
-        return Database.ProviderName?.Contains("Npgsql") == true
-            ? $"\"{column}\" IS NOT NULL"
-            : $"{column} IS NOT NULL";
-    }
-
-    /// <inheritdoc cref="IsNotNullFilter(string)"/>
-    private string IsNotNullFilter(string column1, string column2)
-    {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(column1, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-        {
-            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column1));
-        }
-
-        if (!System.Text.RegularExpressions.Regex.IsMatch(column2, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-        {
-            throw new ArgumentException("Invalid column name for partial index filter.", nameof(column2));
-        }
-
-        return Database.ProviderName?.Contains("Npgsql") == true
-            ? $"\"{column1}\" IS NOT NULL AND \"{column2}\" IS NOT NULL"
-            : $"{column1} IS NOT NULL AND {column2} IS NOT NULL";
-    }
 }

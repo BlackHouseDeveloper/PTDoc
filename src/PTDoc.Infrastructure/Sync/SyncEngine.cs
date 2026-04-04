@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -20,19 +19,16 @@ public class SyncEngine : ISyncEngine
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
-    private readonly IAuditService? _auditService;
     private DateTime? _lastSyncAt;
 
     public SyncEngine(
         ApplicationDbContext context,
         ILogger<SyncEngine> logger,
-        IIdentityContextAccessor? identityContext = null,
-        IAuditService? auditService = null)
+        IIdentityContextAccessor? identityContext = null)
     {
         _context = context;
         _logger = logger;
         _identityContext = identityContext;
-        _auditService = auditService;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
@@ -295,20 +291,6 @@ public class SyncEngine : ISyncEngine
         where TEntity : class, ISyncTrackedEntity
     {
         // Check for signed entity (immutable)
-        if (localEntity is ClinicalNote localNote && localNote.IsFinalized)
-        {
-            _logger.LogWarning("Conflict: Attempted to modify signed entity {Type}:{Id}",
-                typeof(TEntity).Name, localEntity.Id);
-
-            return new SyncConflict
-            {
-                EntityType = typeof(TEntity).Name,
-                EntityId = localEntity.Id,
-                Resolution = ConflictResolution.RejectedImmutable,
-                Reason = "Signed notes cannot be modified. Create addendum."
-            };
-        }
-
         if (localEntity is ISignedEntity signedLocal && signedLocal.SignatureHash != null)
         {
             _logger.LogWarning("Conflict: Attempted to modify signed entity {Type}:{Id}",
@@ -402,22 +384,6 @@ public class SyncEngine : ISyncEngine
 
                 // Check for conflict: does a more-recent server version already exist?
                 var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
-                var entityConflictReason = await CheckEntitySpecificConflictAsync(entityType, serverId, cancellationToken);
-                if (entityConflictReason != null)
-                {
-                    conflictCount++;
-                    results.Add(new ClientSyncPushItemResult
-                    {
-                        EntityType = entityType,
-                        LocalId = item.LocalId,
-                        ServerId = serverId,
-                        Status = "Conflict",
-                        Error = entityConflictReason,
-                        ServerModifiedUtc = existing
-                    });
-                    continue;
-                }
-
                 if (existing.HasValue && existing.Value > item.LastModifiedUtc)
                 {
                     _logger.LogWarning(
@@ -433,6 +399,23 @@ public class SyncEngine : ISyncEngine
                         Status = "Conflict",
                         Error = "Server version is newer",
                         ServerModifiedUtc = existing.Value
+                    });
+                    continue;
+                }
+
+                // Check entity-specific immutability rules (signed notes, locked intake)
+                var entityConflictReason = await CheckEntitySpecificConflictAsync(entityType, serverId, cancellationToken);
+                if (entityConflictReason != null)
+                {
+                    conflictCount++;
+                    results.Add(new ClientSyncPushItemResult
+                    {
+                        EntityType = entityType,
+                        LocalId = item.LocalId,
+                        ServerId = serverId,
+                        Status = "Conflict",
+                        Error = entityConflictReason,
+                        ServerModifiedUtc = existing
                     });
                     continue;
                 }
@@ -649,9 +632,6 @@ public class SyncEngine : ISyncEngine
                         n.SignatureHash,
                         n.SignedUtc,
                         n.SignedByUserId,
-                        n.CreatedUtc,
-                        n.ParentNoteId,
-                        n.IsAddendum,
                         n.CptCodesJson,
                         n.LastModifiedUtc
                     }, jsonOptions),
@@ -804,47 +784,27 @@ public class SyncEngine : ISyncEngine
                 .Select(n => new
                 {
                     n.NoteStatus,
-                    n.SignatureHash,
-                    n.SignedUtc
+                    n.SignatureHash
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (noteState is not null)
+            if (noteState is not null && noteState.NoteStatus != NoteStatus.Draft)
             {
-                // Rule 1: Strong signed detection (immutability)
-                if (noteState.NoteStatus == NoteStatus.Signed
-                    || noteState.SignatureHash != null
-                    || noteState.SignedUtc != null)
-                {
-                    _logger.LogWarning(
-                        "Client push rejected: signed ClinicalNote {ServerId} is immutable",
-                        serverId);
+                _logger.LogWarning(
+                    "Client push rejected: ClinicalNote {ServerId} is read-only with status {Status}",
+                    serverId,
+                    noteState.NoteStatus);
+                return noteState.NoteStatus == NoteStatus.PendingCoSign
+                    ? "Pending notes are read-only while awaiting PT co-signature"
+                    : "Signed notes are immutable";
+            }
 
-                    if (_auditService is not null)
-                    {
-                        await _auditService.LogRuleEvaluationAsync(
-                            AuditEvent.EditBlockedSignedNote(
-                                serverId,
-                                _identityContext?.TryGetCurrentUserId(),
-                                "SyncEngine.ReceiveClientPushAsync"),
-                            cancellationToken);
-                    }
-
-                    return "Signed notes cannot be modified. Create addendum.";
-                }
-
-                // Rule 2: Draft-only editing
-                if (noteState.NoteStatus != NoteStatus.Draft)
-                {
-                    _logger.LogWarning(
-                        "Client push rejected: ClinicalNote {ServerId} is read-only with status {Status}",
-                        serverId,
-                        noteState.NoteStatus);
-
-                    return noteState.NoteStatus == NoteStatus.PendingCoSign
-                        ? "Pending notes are read-only while awaiting PT co-signature"
-                        : "Only draft notes can be modified";
-                }
+            if (noteState?.SignatureHash != null)
+            {
+                _logger.LogWarning(
+                    "Client push rejected: signed ClinicalNote {ServerId} is immutable",
+                    serverId);
+                return "Signed notes are immutable";
             }
         }
         else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
@@ -1050,26 +1010,12 @@ public class SyncEngine : ISyncEngine
                 var noteType = TryGetEnumValue<NoteType>(root, "noteType")
                     ?? TryGetEnumValue<NoteType>(root, "NoteType")
                     ?? NoteType.Daily;
-
-                var createdUtc = TryGetDateTime(root, "createdUtc")
-                    ?? TryGetDateTime(root, "CreatedUtc")
-                    ?? item.LastModifiedUtc;
-
-                var parentNoteId = TryGetGuid(root, "parentNoteId")
-                    ?? TryGetGuid(root, "ParentNoteId");
-
-                var isAddendum = TryGetBool(root, "isAddendum")
-                    ?? TryGetBool(root, "IsAddendum")
-                    ?? false;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
-                    NoteType = noteType,
-                    CreatedUtc = createdUtc,
-                    ParentNoteId = parentNoteId,
-                    IsAddendum = isAddendum,
                     ClinicId = clinicId,
+                    NoteType = noteType,
                     NoteStatus = NoteStatus.Draft,
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
@@ -1086,9 +1032,6 @@ public class SyncEngine : ISyncEngine
                 // Only update draft notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
                 if (existing.NoteStatus == NoteStatus.Draft)
                 {
-                    existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
-                    existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
-                    existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
                     existing.ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? existing.ContentJson;
                     existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
                     existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
@@ -1143,19 +1086,6 @@ public class SyncEngine : ISyncEngine
             if (el.ValueKind == JsonValueKind.String && Guid.TryParse(el.GetString(), out var g))
                 return g;
         }
-        return null;
-    }
-
-    private static bool? TryGetBool(JsonElement root, string propertyName)
-    {
-        if (root.TryGetProperty(propertyName, out var el))
-        {
-            if (el.ValueKind == JsonValueKind.True) return true;
-            if (el.ValueKind == JsonValueKind.False) return false;
-            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var value))
-                return value;
-        }
-
         return null;
     }
 

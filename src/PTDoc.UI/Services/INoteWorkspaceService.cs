@@ -8,7 +8,7 @@ public interface INoteWorkspaceService
 {
     Task<NoteWorkspaceLoadResult> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSaveResult> SaveDraftAsync(NoteWorkspaceDraft draft, CancellationToken cancellationToken = default);
-    Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, bool consentAccepted, bool intentConfirmed, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceAiAcceptanceResult> AcceptAiSuggestionAsync(
         Guid noteId,
         string section,
@@ -46,15 +46,10 @@ public sealed class NoteWorkspaceSaveResult
     public bool Success { get; init; }
     public string? ErrorMessage { get; init; }
     public Guid NoteId { get; init; }
-
-    public bool IsSubmitted { get; init; }
-    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
-    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
-    public bool RequiresOverride { get; init; }
-      public int? LocalDraftId { get; init; }
-  public NoteStatus Status { get; init; } = NoteStatus.Draft;
-   public ComplianceWarning? ComplianceWarning { get; init; }
-
+    public int? LocalDraftId { get; init; }
+    public NoteStatus Status { get; init; } = NoteStatus.Draft;
+    public bool IsSubmitted => Status != NoteStatus.Draft;
+    public ComplianceWarning? ComplianceWarning { get; init; }
 }
 
 public sealed class NoteWorkspaceSubmitResult

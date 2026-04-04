@@ -20,9 +20,7 @@ public class Addendum : ISyncTrackedEntity
     // Addendum metadata
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public Guid CreatedByUserId { get; set; }
-    public string? SignatureHash { get; set; }
 
     // Navigation
     public ClinicalNote? ClinicalNote { get; set; }
-    public User? CreatedByUser { get; set; }
 }

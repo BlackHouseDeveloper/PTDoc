@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -8,11 +7,12 @@ using Xunit;
 
 namespace PTDoc.Tests.Compliance;
 
-[Trait("Category", "Compliance")]
+[Xunit.Trait("Category", "Compliance")]
 public class RulesEngineTests : IDisposable
 {
     private readonly ApplicationDbContext _context;
     private readonly RulesEngine _rulesEngine;
+    private readonly AuditService _auditService;
 
     public RulesEngineTests()
     {
@@ -21,174 +21,158 @@ public class RulesEngineTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
-        var auditService = new AuditService(_context);
-        _rulesEngine = new RulesEngine(_context, auditService);
+        _auditService = new AuditService(_context);
+        _rulesEngine = new RulesEngine(_context, _auditService);
     }
 
     [Fact]
-    public async Task CheckProgressNoteDueAsync_NoMedicareCoverage_ReturnsValid()
+    public async Task ProgressNoteFrequency_NoNotes_ReturnsSuccess()
     {
-        var patientId = await CreatePatientAsync("Commercial");
+        // Arrange
+        var patientId = Guid.NewGuid();
 
-        var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 3, 24));
+        // Act
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
 
+        // Assert
         Assert.True(result.IsValid);
-        Assert.Empty(result.Errors);
-        Assert.Empty(result.Warnings);
+        Assert.Equal("PN_FREQUENCY", result.RuleId);
+        Assert.Equal(RuleSeverity.Info, result.Severity);
     }
 
     [Fact]
-    public async Task CheckProgressNoteDueAsync_EightVisits_ReturnsWarning()
+    public async Task ProgressNoteFrequency_TenVisits_ReturnsHardStop()
     {
-        var patientId = await CreatePatientAsync("Medicare");
-        await SeedSignedEvaluationAsync(patientId, new DateTime(2026, 3, 1));
-        await SeedDailyNotesAsync(patientId, new DateTime(2026, 3, 2), 8);
+        // Arrange
+        var patientId = Guid.NewGuid();
 
-        var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 3, 24));
+        // Create 10 daily notes without any PN or Eval
+        for (int i = 0; i < 10; i++)
+        {
+            _context.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow.AddDays(-i),
+                LastModifiedUtc = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
 
-        Assert.True(result.IsValid);
-        Assert.Contains("Progress Note due soon", result.Warnings);
-        Assert.Empty(result.Errors);
-    }
+        // Act
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
 
-    [Fact]
-    public async Task CheckProgressNoteDueAsync_TenVisits_ReturnsHardStop()
-    {
-        var patientId = await CreatePatientAsync("Medicare");
-        await SeedSignedEvaluationAsync(patientId, new DateTime(2026, 3, 1));
-        await SeedDailyNotesAsync(patientId, new DateTime(2026, 3, 2), 10);
-
-        var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 4, 3));
-
+        // Assert
         Assert.False(result.IsValid);
-        Assert.Contains("Progress Note required", result.Errors);
+        Assert.Equal("PN_FREQUENCY", result.RuleId);
+        Assert.Equal(RuleSeverity.HardStop, result.Severity);
+        Assert.Contains("Progress Note required", result.Message);
+        Assert.Equal(10, result.Data["VisitCount"]);
     }
 
     [Fact]
-    public async Task CheckProgressNoteDueAsync_TwentyFiveDays_ReturnsWarning()
+    public async Task ProgressNoteFrequency_ThirtyDays_ReturnsHardStop()
     {
-        var patientId = await CreatePatientAsync("Medicare");
-        await SeedSignedProgressNoteAsync(patientId, new DateTime(2026, 3, 9));
+        // Arrange
+        var patientId = Guid.NewGuid();
 
-        var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 4, 3));
+        // Create daily notes spanning 30 days
+        for (int i = 0; i < 5; i++)
+        {
+            _context.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow.AddDays(-30).AddDays(i * 6),
+                LastModifiedUtc = DateTime.UtcNow
+            });
+        }
+        await _context.SaveChangesAsync();
 
-        Assert.True(result.IsValid);
-        Assert.Contains("Progress Note due soon", result.Warnings);
-    }
+        // Act
+        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
 
-    [Fact]
-    public async Task CheckProgressNoteDueAsync_SignedProgressNoteResetsCounters()
-    {
-        var patientId = await CreatePatientAsync("Medicare");
-        await SeedSignedEvaluationAsync(patientId, new DateTime(2026, 3, 1));
-        await SeedDailyNotesAsync(patientId, new DateTime(2026, 3, 2), 10);
-        await SeedSignedProgressNoteAsync(patientId, new DateTime(2026, 3, 20));
-
-        var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 4, 3));
-
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Errors);
-    }
-
-    [Fact]
-    public async Task ValidateTimedUnitsAsync_LessThanFiveMinutes_ReturnsError()
-    {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "97110", Units = 1, Minutes = 4, IsTimed = true }
-        ]);
-
+        // Assert
         Assert.False(result.IsValid);
-        Assert.Contains("Minimum 5 minutes required", result.Errors);
+        Assert.Equal("PN_FREQUENCY", result.RuleId);
+        Assert.Equal(RuleSeverity.HardStop, result.Severity);
+        Assert.Contains("Progress Note required", result.Message);
     }
 
     [Fact]
-    public async Task ValidateTimedUnitsAsync_FiveToSevenMinutes_ReturnsWarningAndOverride()
+    public async Task EightMinuteRule_ValidUnits_ReturnsSuccess()
     {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "97110", Units = 1, Minutes = 6, IsTimed = true }
-        ]);
+        // Arrange
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = 2, IsTimed = true }
+        };
+        int totalMinutes = 30; // 30 minutes = 2 units allowed
 
+        // Act
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(totalMinutes, cptCodes);
+
+        // Assert
         Assert.True(result.IsValid);
-        Assert.Contains("Minutes fall below standard 8-minute threshold", result.Warnings);
-        Assert.True(result.RequiresOverride);
+        Assert.Equal("8MIN_RULE", result.RuleId);
+        Assert.Equal(RuleSeverity.Info, result.Severity);
     }
 
     [Fact]
-    public async Task ValidateTimedUnitsAsync_EightMinutesOrMore_ReturnsValid()
+    public async Task EightMinuteRule_ExcessUnits_ReturnsWarning()
     {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "97110", Units = 1, Minutes = 8, IsTimed = true }
-        ]);
+        // Arrange
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = 3, IsTimed = true }
+        };
+        int totalMinutes = 30; // 30 minutes = 2 units allowed, but 3 requested
 
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Errors);
+        // Act
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(totalMinutes, cptCodes);
+
+        // Assert
+        Assert.True(result.IsValid); // Warning, not error
+        Assert.Equal("8MIN_RULE", result.RuleId);
+        Assert.Equal(RuleSeverity.Warning, result.Severity);
+        Assert.Contains("PT override required", result.Message);
+        Assert.Equal(2, result.Data["AllowedUnits"]);
+        Assert.Equal(3, result.Data["RequestedUnits"]);
+        Assert.Equal(1, result.Data["ExcessUnits"]);
     }
 
-    [Fact]
-    public async Task ValidateTimedUnitsAsync_OverBilledUnits_ReturnsWarningAndOverride()
+    [Theory]
+    [InlineData(8, 1)]   // 8-22 min = 1 unit
+    [InlineData(22, 1)]
+    [InlineData(23, 2)]  // 23-37 min = 2 units
+    [InlineData(37, 2)]
+    [InlineData(38, 3)]  // 38-52 min = 3 units
+    [InlineData(52, 3)]
+    [InlineData(53, 4)]  // 53-67 min = 4 units
+    [InlineData(67, 4)]
+    public async Task EightMinuteRule_BoundaryValues_CalculatesCorrectUnits(int minutes, int expectedUnits)
     {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "97110", Units = 3, Minutes = 30, IsTimed = true }
-        ]);
+        // Arrange - request MORE units than allowed to get the AllowedUnits in response
+        var cptCodes = new List<CptCodeEntry>
+        {
+            new() { Code = "97110", Units = expectedUnits + 1, IsTimed = true }
+        };
 
-        Assert.True(result.IsValid);
-        Assert.Contains("Timed CPT units exceed allowed range for documented minutes", result.Warnings);
-        Assert.True(result.RequiresOverride);
-    }
+        // Act
+        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(minutes, cptCodes);
 
-    [Fact]
-    public async Task ValidateTimedUnitsAsync_MixedTimedAndUntimed_UsesOnlyTimedMinutes()
-    {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "97110", Units = 1, Minutes = 8, IsTimed = false },
-            new() { Code = "97010", Units = 4, Minutes = 60, IsTimed = false }
-        ]);
-
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Errors);
-        Assert.Empty(result.Warnings);
-    }
-
-    [Fact]
-    public async Task ValidateTimedUnitsAsync_MissingCptData_ReturnsError()
-    {
-        var result = await _rulesEngine.ValidateTimedUnitsAsync(
-        [
-            new() { Code = "", Units = 1, Minutes = 8, IsTimed = true }
-        ]);
-
-        Assert.False(result.IsValid);
-        Assert.Contains("Missing CPT data", result.Errors);
+        // Assert - should be a warning (not success) because we requested too many units
+        Assert.Equal(RuleSeverity.Warning, result.Severity);
+        Assert.Equal(expectedUnits, result.Data["AllowedUnits"]);
+        Assert.Equal(expectedUnits + 1, result.Data["RequestedUnits"]);
     }
 
     [Fact]
     public async Task ValidateImmutability_UnsignedNote_AllowsEdits()
     {
-        var note = new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
-            NoteType = NoteType.Daily,
-            DateOfService = DateTime.UtcNow,
-            LastModifiedUtc = DateTime.UtcNow
-        };
-        _context.ClinicalNotes.Add(note);
-        await _context.SaveChangesAsync();
-
-        var result = await _rulesEngine.ValidateImmutabilityAsync(note.Id);
-
-        Assert.True(result.IsValid);
-        Assert.Equal("IMMUTABLE", result.RuleId);
-    }
-
-    [Fact]
-    public async Task ValidateImmutability_SignedNote_BlocksEdits()
-    {
+        // Arrange
         var note = new ClinicalNote
         {
             Id = Guid.NewGuid(),
@@ -196,84 +180,53 @@ public class RulesEngineTests : IDisposable
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow,
-            SignatureHash = "ABC123",
-            SignedUtc = DateTime.UtcNow,
-            SignedByUserId = Guid.NewGuid()
+            SignatureHash = null // Not signed
         };
         _context.ClinicalNotes.Add(note);
         await _context.SaveChangesAsync();
 
+        // Act
         var result = await _rulesEngine.ValidateImmutabilityAsync(note.Id);
 
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Equal("IMMUTABLE", result.RuleId);
+        Assert.Contains("edits allowed", result.Message);
+    }
+
+    [Fact]
+    public async Task ValidateImmutability_SignedNote_BlocksEdits()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = "ABC123", // Signed
+            SignedUtc = DateTime.UtcNow,
+            SignedByUserId = userId
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _rulesEngine.ValidateImmutabilityAsync(note.Id);
+
+        // Assert
         Assert.False(result.IsValid);
+        Assert.Equal("IMMUTABLE", result.RuleId);
         Assert.Equal(RuleSeverity.HardStop, result.Severity);
+        Assert.Contains("cannot be edited", result.Message);
+        Assert.Contains("addendum", result.Message.ToLower());
     }
 
     public void Dispose()
     {
         _context.Database.EnsureDeleted();
         _context.Dispose();
-    }
-
-    private async Task<Guid> CreatePatientAsync(string payerType)
-    {
-        var patientId = Guid.NewGuid();
-        _context.Patients.Add(new Patient
-        {
-            Id = patientId,
-            FirstName = "Jane",
-            LastName = "Doe",
-            DateOfBirth = new DateTime(1980, 1, 1),
-            PayerInfoJson = JsonSerializer.Serialize(new { PayerType = payerType })
-        });
-        await _context.SaveChangesAsync();
-        return patientId;
-    }
-
-    private async Task SeedSignedEvaluationAsync(Guid patientId, DateTime dateOfService)
-    {
-        _context.ClinicalNotes.Add(new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = patientId,
-            NoteType = NoteType.Evaluation,
-            DateOfService = dateOfService,
-            SignatureHash = "signed",
-            SignedUtc = dateOfService.AddHours(1),
-            LastModifiedUtc = dateOfService
-        });
-        await _context.SaveChangesAsync();
-    }
-
-    private async Task SeedSignedProgressNoteAsync(Guid patientId, DateTime dateOfService)
-    {
-        _context.ClinicalNotes.Add(new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = patientId,
-            NoteType = NoteType.ProgressNote,
-            DateOfService = dateOfService,
-            SignatureHash = "signed",
-            SignedUtc = dateOfService.AddHours(1),
-            LastModifiedUtc = dateOfService
-        });
-        await _context.SaveChangesAsync();
-    }
-
-    private async Task SeedDailyNotesAsync(Guid patientId, DateTime startDate, int count)
-    {
-        for (var index = 0; index < count; index++)
-        {
-            _context.ClinicalNotes.Add(new ClinicalNote
-            {
-                Id = Guid.NewGuid(),
-                PatientId = patientId,
-                NoteType = NoteType.Daily,
-                DateOfService = startDate.AddDays(index),
-                LastModifiedUtc = startDate.AddDays(index)
-            });
-        }
-
-        await _context.SaveChangesAsync();
     }
 }

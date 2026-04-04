@@ -9,7 +9,6 @@
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
 6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
-7. **Update the changelog** - if the session changes repository contents, update `docs/CHANGELOG.md` before handing off. If no entry is appropriate, say so explicitly.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.

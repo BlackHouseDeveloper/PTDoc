@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using PTDoc.Application.Compliance;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -8,7 +7,6 @@ using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
-using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Services;
@@ -21,8 +19,6 @@ public class DailyNoteService : IDailyNoteService
     private readonly IIdentityContextAccessor _identityContext;
     private readonly ISyncEngine _syncEngine;
     private readonly ITreatmentTaxonomyCatalogService _taxonomyCatalog;
-    private readonly INoteSaveValidationService _validationService;
-    private readonly IAuditService? _auditService;
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public DailyNoteService(
@@ -31,9 +27,7 @@ public class DailyNoteService : IDailyNoteService
         ITenantContextAccessor tenantContext,
         IIdentityContextAccessor identityContext,
         ISyncEngine syncEngine,
-        ITreatmentTaxonomyCatalogService taxonomyCatalog,
-        INoteSaveValidationService validationService,
-        IAuditService? auditService = null)
+        ITreatmentTaxonomyCatalogService taxonomyCatalog)
     {
         _db = db;
         _aiService = aiService;
@@ -41,24 +35,16 @@ public class DailyNoteService : IDailyNoteService
         _identityContext = identityContext;
         _syncEngine = syncEngine;
         _taxonomyCatalog = taxonomyCatalog;
-        _validationService = validationService;
-        _auditService = auditService;
     }
 
-    public async Task<DailyNoteSaveResponse> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
+    public async Task<(DailyNoteResponse? Response, string? Error)> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
     {
-        var saveResponse = new DailyNoteSaveResponse();
-
         // Validate patient exists in current tenant scope
         var patientExists = await _db.Patients
             .AsNoTracking()
             .AnyAsync(p => p.Id == request.PatientId, ct);
         if (!patientExists)
-        {
-            saveResponse.IsValid = false;
-            saveResponse.Errors = [$"Patient {request.PatientId} not found."];
-            return saveResponse;
-        }
+            return (null, $"Patient {request.PatientId} not found.");
 
         // Validate appointment FK if provided
         if (request.AppointmentId.HasValue)
@@ -67,17 +53,9 @@ public class DailyNoteService : IDailyNoteService
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == request.AppointmentId.Value, ct);
             if (appointment is null)
-            {
-                saveResponse.IsValid = false;
-                saveResponse.Errors = [$"Appointment {request.AppointmentId} not found."];
-                return saveResponse;
-            }
+                return (null, $"Appointment {request.AppointmentId} not found.");
             if (appointment.PatientId != request.PatientId)
-            {
-                saveResponse.IsValid = false;
-                saveResponse.Errors = [$"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}."];
-                return saveResponse;
-            }
+                return (null, $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}.");
         }
 
         if (request.Content.TreatmentTaxonomySelections.Count > 0)
@@ -89,9 +67,7 @@ public class DailyNoteService : IDailyNoteService
                 var resolved = _taxonomyCatalog.ResolveSelection(selection.CategoryId, selection.ItemId);
                 if (resolved is null)
                 {
-                    saveResponse.IsValid = false;
-                    saveResponse.Errors = [$"Unknown treatment taxonomy selection '{selection.CategoryId}/{selection.ItemId}'."];
-                    return saveResponse;
+                    return (null, $"Unknown treatment taxonomy selection '{selection.CategoryId}/{selection.ItemId}'.");
                 }
 
                 normalizedSelections.Add(resolved);
@@ -102,66 +78,22 @@ public class DailyNoteService : IDailyNoteService
 
         var startOfDay = request.DateOfService.Date;
         var startOfNextDay = startOfDay.AddDays(1);
-        var sameDayDailyNotes = _db.ClinicalNotes
-            .Where(n =>
+        var note = await _db.ClinicalNotes
+            .FirstOrDefaultAsync(n =>
                 n.PatientId == request.PatientId &&
                 n.NoteType == NoteType.Daily &&
-                !n.IsAddendum &&
                 n.DateOfService >= startOfDay &&
-                n.DateOfService < startOfNextDay);
-
-        var finalizedNote = await sameDayDailyNotes
-            .FirstOrDefaultAsync(n =>
-                n.NoteStatus == NoteStatus.Signed ||
-                n.SignatureHash != null ||
-                n.SignedUtc != null,
-                ct);
-        if (finalizedNote is not null)
-        {
-            await LogEditBlockedAsync(finalizedNote.Id, "DailyNoteService.SaveDraftAsync", ct);
-            saveResponse.IsValid = false;
-            saveResponse.Errors = ["Signed notes cannot be modified. Create addendum."];
-            return saveResponse;
-        }
-
-        var note = await sameDayDailyNotes
-            .FirstOrDefaultAsync(n =>
-                n.NoteStatus != NoteStatus.Signed &&
-                n.SignatureHash == null &&
-                n.SignedUtc == null,
-                ct);
+                n.DateOfService < startOfNextDay &&
+                n.SignedUtc == null, ct);
 
         var contentJson = JsonSerializer.Serialize(request.Content, _json);
-        var cptEntries = (request.Content.CptCodes ?? [])
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new CptCodeEntry
-            {
-                Code = code.Code.Trim(),
-                Units = Math.Max(0, code.Units),
-                Minutes = code.Minutes,
-                IsTimed = false
-            })
-            .ToList();
-        var cptCodesJson = JsonSerializer.Serialize(cptEntries, _json);
+        var cptCodesJson = JsonSerializer.Serialize(
+            (request.Content.CptCodes ?? new()).Select(c => new { code = c.Code, minutes = c.Minutes ?? 0 }), _json);
 
         var clinicId = _tenantContext.GetCurrentClinicId();
         var userId = _identityContext.GetCurrentUserId();
         var now = DateTime.UtcNow;
         var isNew = note is null;
-
-        var validation = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
-        {
-            PatientId = request.PatientId,
-            ExistingNoteId = isNew ? null : note!.Id,
-            NoteType = NoteType.Daily,
-            DateOfService = request.DateOfService,
-            CptEntries = cptEntries
-        }, ct);
-        saveResponse.ApplyValidation(validation);
-        if (!validation.IsValid)
-        {
-            return saveResponse;
-        }
 
         if (isNew)
         {
@@ -173,9 +105,7 @@ public class DailyNoteService : IDailyNoteService
                 DateOfService = request.DateOfService,
                 ContentJson = contentJson,
                 CptCodesJson = cptCodesJson,
-                TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries),
                 ClinicId = clinicId,
-                CreatedUtc = now,
                 LastModifiedUtc = now,
                 ModifiedByUserId = userId,
                 SyncState = SyncState.Pending
@@ -186,7 +116,6 @@ public class DailyNoteService : IDailyNoteService
         {
             note!.ContentJson = contentJson;
             note.CptCodesJson = cptCodesJson;
-            note.TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries);
             note.LastModifiedUtc = now;
             note.ModifiedByUserId = userId;
         }
@@ -222,23 +151,22 @@ public class DailyNoteService : IDailyNoteService
             ct);
 
         var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
-        saveResponse.DailyNote = new DailyNoteResponse
+        return (new DailyNoteResponse
         {
             NoteId = note.Id,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
-            IsSigned = note.IsFinalized,
+            IsSigned = note.SignedUtc.HasValue,
             SignedUtc = note.SignedUtc,
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
-        };
-        return saveResponse;
+        }, null);
     }
 
     public async Task<DailyNoteResponse?> GetByIdAsync(Guid noteId, CancellationToken ct = default)
     {
         var note = await _db.ClinicalNotes
-            .FirstOrDefaultAsync(n => n.Id == noteId && n.NoteType == NoteType.Daily && !n.IsAddendum, ct);
+            .FirstOrDefaultAsync(n => n.Id == noteId && n.NoteType == NoteType.Daily, ct);
         if (note == null) return null;
         var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
         return new DailyNoteResponse
@@ -246,7 +174,7 @@ public class DailyNoteService : IDailyNoteService
             NoteId = note.Id,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
-            IsSigned = note.IsFinalized,
+            IsSigned = note.SignedUtc.HasValue,
             SignedUtc = note.SignedUtc,
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
@@ -256,7 +184,7 @@ public class DailyNoteService : IDailyNoteService
     public async Task<List<DailyNoteResponse>> GetForPatientAsync(Guid patientId, int limit = 30, CancellationToken ct = default)
     {
         var notes = await _db.ClinicalNotes
-            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Daily && !n.IsAddendum)
+            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Daily)
             .OrderByDescending(n => n.DateOfService)
             .Take(limit)
             .ToListAsync(ct);
@@ -269,7 +197,7 @@ public class DailyNoteService : IDailyNoteService
                 NoteId = n.Id,
                 PatientId = n.PatientId,
                 DateOfService = n.DateOfService,
-                IsSigned = n.IsFinalized,
+                IsSigned = n.SignedUtc.HasValue,
                 SignedUtc = n.SignedUtc,
                 Content = dto
             };
@@ -294,7 +222,7 @@ public class DailyNoteService : IDailyNoteService
 
         var noteQuery = _db.ClinicalNotes
             .AsNoTracking()
-            .Where(n => n.NoteType == NoteType.Daily && !n.IsAddendum && matchingIds.Contains(n.Id));
+            .Where(n => n.NoteType == NoteType.Daily && matchingIds.Contains(n.Id));
 
         if (patientId.HasValue)
             noteQuery = noteQuery.Where(n => n.PatientId == patientId.Value);
@@ -312,7 +240,7 @@ public class DailyNoteService : IDailyNoteService
                 NoteId = n.Id,
                 PatientId = n.PatientId,
                 DateOfService = n.DateOfService,
-                IsSigned = n.IsFinalized,
+                IsSigned = n.SignedUtc.HasValue,
                 SignedUtc = n.SignedUtc,
                 Content = dto
             };
@@ -322,7 +250,7 @@ public class DailyNoteService : IDailyNoteService
     public async Task<EvalCarryForwardResponse> GetEvalCarryForwardAsync(Guid patientId, CancellationToken ct = default)
     {
         var evalNote = await _db.ClinicalNotes
-            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Evaluation && !n.IsAddendum)
+            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Evaluation)
             .OrderByDescending(n => n.DateOfService)
             .FirstOrDefaultAsync(ct);
 
@@ -463,38 +391,19 @@ public class DailyNoteService : IDailyNoteService
 
     public CptTimeCalculationResponse CalculateCptTime(CptTimeCalculationRequest request)
     {
-        var entries = (request.CptCodes ?? [])
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new CptCodeEntry
-            {
-                Code = code.Code.Trim(),
-                Units = Math.Max(0, code.Units),
-                Minutes = code.Minutes,
-                IsTimed = false
-            })
-            .ToList();
-
-        TimedUnitCalculator.EnforceKnownTimedCptStatus(entries);
-
-        var details = entries
-            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
-            .Select(entry => new CptCodeBillingDetail
-            {
-                Code = entry.Code,
-                Minutes = entry.Minutes!.Value,
-                RequestedUnits = TimedUnitCalculator.ResolveRequestedUnits(entry)
-            })
-            .ToList();
-
-        var timedTotalMinutes = entries
-            .Where(TimedUnitCalculator.IsTimed)
-            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
-            .Sum(entry => entry.Minutes!.Value);
-
+        var details = new List<CptCodeBillingDetail>();
+        foreach (var code in request.CptCodes ?? new())
+        {
+            if (code.Minutes is null or <= 0) continue;
+            var minutes = code.Minutes.Value;
+            var units = (minutes / 15) + (minutes % 15 >= 8 ? 1 : 0);
+            if (units == 0 && minutes >= 8) units = 1;
+            details.Add(new CptCodeBillingDetail { Code = code.Code, Minutes = minutes, BillingUnits = units });
+        }
         return new CptTimeCalculationResponse
         {
             TotalMinutes = details.Sum(d => d.Minutes),
-            TotalBillingUnits = TimedUnitCalculator.CalculateAllowedUnits(timedTotalMinutes),
+            TotalBillingUnits = details.Sum(d => d.BillingUnits),
             Details = details
         };
     }
@@ -525,26 +434,5 @@ public class DailyNoteService : IDailyNoteService
             warnings.Add("Plan section is empty — document next steps for continuity.");
 
         return new MedicalNecessityCheckResult { Passes = missing.Count == 0, MissingElements = missing, Warnings = warnings };
-    }
-
-    private static int? ResolveTotalTreatmentMinutes(IReadOnlyCollection<CptCodeEntry> entries)
-    {
-        var totalMinutes = entries
-            .Where(entry => entry.Minutes.GetValueOrDefault() > 0)
-            .Sum(entry => entry.Minutes!.Value);
-
-        return totalMinutes > 0 ? totalMinutes : null;
-    }
-
-    private Task LogEditBlockedAsync(Guid noteId, string source, CancellationToken ct)
-    {
-        if (_auditService is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        return _auditService.LogRuleEvaluationAsync(
-            AuditEvent.EditBlockedSignedNote(noteId, _identityContext.TryGetCurrentUserId(), source),
-            ct);
     }
 }

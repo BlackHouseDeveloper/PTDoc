@@ -93,7 +93,6 @@ public class LocalDbContext : DbContext
             entity.Property(e => e.LocalId).ValueGeneratedOnAdd();
             entity.HasIndex(e => e.ServerId);
             entity.HasIndex(e => e.PatientServerId);
-            entity.HasIndex(e => e.ParentNoteId);
             entity.HasIndex(e => e.SyncState);
             entity.HasIndex(e => e.DateOfService);
 

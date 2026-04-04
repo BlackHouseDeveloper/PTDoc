@@ -23,7 +23,6 @@ public class NoteComplianceIntegrationTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly RulesEngine _rulesEngine;
     private readonly AuditService _auditService;
-    private readonly NoteSaveValidationService _validationService;
 
     public NoteComplianceIntegrationTests()
     {
@@ -34,66 +33,6 @@ public class NoteComplianceIntegrationTests : IDisposable
         _context = new ApplicationDbContext(options);
         _auditService = new AuditService(_context);
         _rulesEngine = new RulesEngine(_context, _auditService);
-        _validationService = new NoteSaveValidationService(_rulesEngine);
-    }
-
-    [Fact]
-    public async Task ValidateAsync_WhenPnAndEightMinuteWarningsTrigger_MergesWarningsAndOverride()
-    {
-        var patientId = Guid.NewGuid();
-        _context.Patients.Add(new Patient
-        {
-            Id = patientId,
-            FirstName = "Jane",
-            LastName = "Doe",
-            DateOfBirth = new DateTime(1980, 1, 1),
-            PayerInfoJson = """{"PayerType":"Medicare"}"""
-        });
-        _context.ClinicalNotes.Add(new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = patientId,
-            NoteType = NoteType.Evaluation,
-            DateOfService = new DateTime(2026, 3, 1),
-            SignatureHash = "signed",
-            SignedUtc = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc),
-            LastModifiedUtc = DateTime.UtcNow
-        });
-
-        for (var index = 0; index < 8; index++)
-        {
-            _context.ClinicalNotes.Add(new ClinicalNote
-            {
-                Id = Guid.NewGuid(),
-                PatientId = patientId,
-                NoteType = NoteType.Daily,
-                DateOfService = new DateTime(2026, 3, 2).AddDays(index),
-                LastModifiedUtc = DateTime.UtcNow
-            });
-        }
-
-        await _context.SaveChangesAsync();
-
-        var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
-        {
-            PatientId = patientId,
-            NoteType = NoteType.Daily,
-            DateOfService = new DateTime(2026, 3, 24),
-            CptEntries =
-            [
-                new CptCodeEntry
-                {
-                    Code = "97110",
-                    Units = 1,
-                    Minutes = 6
-                }
-            ]
-        });
-
-        Assert.True(result.IsValid);
-        Assert.True(result.RequiresOverride);
-        Assert.Contains(result.Warnings, warning => warning.Contains("Progress Note due soon", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(result.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
     }
 
     // ─── Progress Note hard stop ──────────────────────────────────────────────

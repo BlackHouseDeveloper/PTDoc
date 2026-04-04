@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Application.DTOs;
@@ -110,14 +109,11 @@ public sealed class NoteResponse
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
-    public Guid? ParentNoteId { get; set; }
-    public bool IsAddendum { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public string ContentJson { get; set; } = "{}";
     public DateTime DateOfService { get; set; }
-    public DateTime CreatedUtc { get; set; }
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
@@ -130,34 +126,26 @@ public sealed class NoteResponse
 }
 
 /// <summary>
-/// Unified response envelope for create and update note operations.
-/// Includes both validation state and the saved note payload when persistence succeeds.
+/// Advisory compliance warning surfaced alongside a note operation.
+/// Returned when a compliance rule fires at <c>Warning</c> severity (e.g., 8-minute rule).
+/// A non-null ComplianceWarning does NOT block the operation — it is informational.
 /// </summary>
-public sealed class NoteOperationResponse : ValidatedOperationResponse
+public sealed class ComplianceWarning
 {
-    public NoteResponse? Note { get; set; }
+    public string RuleId { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public Dictionary<string, object> Data { get; set; } = new();
 }
 
-public sealed class NoteDetailResponse
+/// <summary>
+/// Unified response envelope for create and update note operations.
+/// <c>ComplianceWarning</c> is non-null only when an advisory rule fired (e.g., 8-minute rule).
+/// Sprint S: Replaces inconsistent anonymous wrapper shapes with a typed contract.
+/// </summary>
+public sealed class NoteOperationResponse
 {
-    public NoteResponse? Note { get; set; }
-    public IReadOnlyCollection<NoteAddendumResponse> Addendums { get; set; } = Array.Empty<NoteAddendumResponse>();
-}
-
-public sealed class NoteAddendumResponse
-{
-    public Guid Id { get; set; }
-    public Guid ParentNoteId { get; set; }
-    public bool IsLegacy { get; set; }
-    public bool IsSigned { get; set; }
-    public DateTime CreatedUtc { get; set; }
-    public DateTime LastModifiedUtc { get; set; }
-    public string Content { get; set; } = string.Empty;
-    public string ContentFormat { get; set; } = "json";
-    public string? SignatureHash { get; set; }
-    public DateTime? SignedUtc { get; set; }
-    public Guid? SignedByUserId { get; set; }
-    public NoteType? NoteType { get; set; }
+    public NoteResponse Note { get; set; } = null!;
+    public ComplianceWarning? ComplianceWarning { get; set; }
 }
 
 /// <summary>

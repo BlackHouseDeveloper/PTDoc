@@ -47,8 +47,7 @@ public class CarryForwardService : ICarryForwardService
         var sourceNote = await _context.ClinicalNotes
             .AsNoTracking()
             .Where(n => n.PatientId == patientId
-                        && !n.IsAddendum
-                        && (n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null)
+                        && n.SignatureHash != null          // signed only
                         && eligibleSourceTypes.Contains(n.NoteType))
             .OrderByDescending(n => n.DateOfService)
             .ThenByDescending(n => n.LastModifiedUtc)

@@ -8,7 +8,6 @@ namespace PTDoc.Core.Models;
 public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime LastModifiedUtc { get; set; }
     public Guid ModifiedByUserId { get; set; }
     public SyncState SyncState { get; set; }
@@ -16,8 +15,6 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // Association
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
-    public Guid? ParentNoteId { get; set; }
-    public bool IsAddendum { get; set; }
 
     // Note type
     public NoteType NoteType { get; set; }
@@ -50,11 +47,6 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
 
-    public bool IsFinalized =>
-        NoteStatus == NoteStatus.Signed ||
-        !string.IsNullOrWhiteSpace(SignatureHash) ||
-        SignedUtc is not null;
-
     // Co-sign fields — PT countersignature required when note is authored by PTA
     /// <summary>True when the note was authored/signed by a PTA and requires PT co-signature.</summary>
     public bool RequiresCoSign { get; set; }
@@ -76,8 +68,6 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // Navigation properties
     public Patient? Patient { get; set; }
     public Appointment? Appointment { get; set; }
-    public ClinicalNote? ParentNote { get; set; }
-    public ICollection<ClinicalNote> Addendums { get; set; } = new List<ClinicalNote>();
     public Clinic? Clinic { get; set; }
     public ICollection<ObjectiveMetric> ObjectiveMetrics { get; set; } = new List<ObjectiveMetric>();
     public ICollection<NoteTaxonomySelection> TaxonomySelections { get; set; } = new List<NoteTaxonomySelection>();

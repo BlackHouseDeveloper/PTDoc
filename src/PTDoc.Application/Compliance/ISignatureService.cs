@@ -1,5 +1,3 @@
-using PTDoc.Core.Models;
-
 namespace PTDoc.Application.Compliance;
 
 /// <summary>
@@ -9,17 +7,10 @@ namespace PTDoc.Application.Compliance;
 public interface ISignatureService
 {
     /// <summary>
-    /// Signs a clinical note or finalizes a pending PTA signature.
+    /// Signs a clinical note with SHA-256 hash of canonical content.
+    /// Makes the note immutable. When signed by a PTA, marks it as requiring PT co-sign.
     /// </summary>
-    Task<SignatureResult> SignNoteAsync(
-        Guid noteId,
-        Guid userId,
-        string role,
-        bool consentAccepted,
-        bool intentConfirmed,
-        string? ipAddress = null,
-        string? deviceInfo = null,
-        CancellationToken ct = default);
+    Task<SignatureResult> SignNoteAsync(Guid noteId, Guid userId, bool signerIsPta = false, CancellationToken ct = default);
 
     /// <summary>
     /// PT co-signs (countersigns) a PTA-authored note that has RequiresCoSign = true.
@@ -27,14 +18,7 @@ public interface ISignatureService
     /// PT role enforcement is handled at the API layer via AuthorizationPolicies.NoteCoSign;
     /// this method assumes the caller has already been authorized as a PT.
     /// </summary>
-    Task<CoSignResult> CoSignNoteAsync(
-        Guid noteId,
-        Guid ptUserId,
-        bool consentAccepted,
-        bool intentConfirmed,
-        string? ipAddress = null,
-        string? deviceInfo = null,
-        CancellationToken ct = default);
+    Task<CoSignResult> CoSignNoteAsync(Guid noteId, Guid ptUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Creates an addendum to a signed note.
@@ -43,9 +27,9 @@ public interface ISignatureService
     Task<AddendumResult> CreateAddendumAsync(Guid noteId, string addendumContent, Guid userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Verifies a note's latest persisted signature hash against current content.
+    /// Verifies a note's signature hash matches its current content.
     /// </summary>
-    Task<SignatureVerificationResult> VerifySignatureAsync(Guid noteId, CancellationToken ct = default);
+    Task<bool> VerifySignatureAsync(Guid noteId, CancellationToken ct = default);
 }
 
 public class SignatureResult
@@ -57,9 +41,6 @@ public class SignatureResult
 
     /// <summary>True when the note was signed by a PTA and now requires PT co-sign.</summary>
     public bool RequiresCoSign { get; set; }
-
-    /// <summary>The note status after the signature operation succeeds.</summary>
-    public NoteStatus? Status { get; set; }
 
     /// <summary>
     /// Blocking rule violations that prevented signing.
@@ -87,7 +68,6 @@ public enum CoSignStatus
     NotSigned,
     DoesNotRequireCoSign,
     AlreadyCoSigned,
-    InvalidState,
 }
 
 public class AddendumResult
@@ -95,11 +75,4 @@ public class AddendumResult
     public bool Success { get; set; }
     public Guid? AddendumId { get; set; }
     public string? ErrorMessage { get; set; }
-}
-
-public sealed class SignatureVerificationResult
-{
-    public bool Exists { get; set; }
-    public bool IsValid { get; set; }
-    public string Message { get; set; } = string.Empty;
 }

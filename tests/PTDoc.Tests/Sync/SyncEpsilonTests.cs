@@ -363,7 +363,7 @@ public class SyncEpsilonTests
         // Assert: rejected
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Equal("Signed notes cannot be modified. Create addendum.", response.Items[0].Error);
+        Assert.Contains("immutable", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
 
         // Assert: ContentJson was NOT changed — signed note remains immutable
         var notUpdated = await context.ClinicalNotes.AsNoTracking().FirstAsync(n => n.Id == note.Id);

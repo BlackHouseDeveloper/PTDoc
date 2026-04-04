@@ -1,4 +1,3 @@
-using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Application.Outcomes;
 
@@ -228,7 +227,6 @@ public sealed class PlannedCptCodeV2
     public string Code { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int Units { get; set; } = 1;
-    public int? Minutes { get; set; }
 }
 
 public sealed class ComputedPlanOfCareV2
@@ -279,11 +277,6 @@ public sealed class NoteWorkspaceV2LoadResponse
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
-}
-
-public sealed class NoteWorkspaceV2SaveResponse : ValidatedOperationResponse
-{
-    public NoteWorkspaceV2LoadResponse? Workspace { get; set; }
 }
 
 public sealed class BodyRegionCatalog
