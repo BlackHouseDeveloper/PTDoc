@@ -130,7 +130,12 @@ public enum ConflictResolution
     /// <summary>
     /// Update rejected due to lock (intake form)
     /// </summary>
-    RejectedLocked
+    RejectedLocked,
+
+    /// <summary>
+    /// Signed note conflict preserved as an addendum.
+    /// </summary>
+    AddendumCreated
 }
 
 /// <summary>
