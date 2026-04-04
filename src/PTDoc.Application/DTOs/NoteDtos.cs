@@ -110,11 +110,14 @@ public sealed class NoteResponse
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
+    public Guid? ParentNoteId { get; set; }
+    public bool IsAddendum { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public string ContentJson { get; set; } = "{}";
     public DateTime DateOfService { get; set; }
+    public DateTime CreatedUtc { get; set; }
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
@@ -133,6 +136,28 @@ public sealed class NoteResponse
 public sealed class NoteOperationResponse : ValidatedOperationResponse
 {
     public NoteResponse? Note { get; set; }
+}
+
+public sealed class NoteDetailResponse
+{
+    public NoteResponse? Note { get; set; }
+    public IReadOnlyCollection<NoteAddendumResponse> Addendums { get; set; } = Array.Empty<NoteAddendumResponse>();
+}
+
+public sealed class NoteAddendumResponse
+{
+    public Guid Id { get; set; }
+    public Guid ParentNoteId { get; set; }
+    public bool IsLegacy { get; set; }
+    public bool IsSigned { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime LastModifiedUtc { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public string ContentFormat { get; set; } = "json";
+    public string? SignatureHash { get; set; }
+    public DateTime? SignedUtc { get; set; }
+    public Guid? SignedByUserId { get; set; }
+    public NoteType? NoteType { get; set; }
 }
 
 /// <summary>

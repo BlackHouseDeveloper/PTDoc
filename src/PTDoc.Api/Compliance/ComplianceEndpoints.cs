@@ -6,6 +6,7 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace PTDoc.Api.Compliance;
 
@@ -203,7 +204,7 @@ public static class ComplianceEndpoints
         // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",
             async (Guid noteId, [FromBody] AddendumRequest request,
-                   ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
+                   IAddendumService addendumService, IIdentityContextAccessor identityContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
                 if (userId == Guid.Empty)
@@ -211,10 +212,15 @@ public static class ComplianceEndpoints
                     return Results.Unauthorized();
                 }
 
-                var result = await signatureService.CreateAddendumAsync(noteId, request.Content, userId);
+                var result = await addendumService.CreateAddendumAsync(noteId, request.Content, userId);
 
                 if (!result.Success)
                 {
+                    if (string.Equals(result.ErrorMessage, "Note not found", StringComparison.Ordinal))
+                    {
+                        return Results.NotFound(new { error = result.ErrorMessage });
+                    }
+
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
 
@@ -308,5 +314,5 @@ public static class ComplianceEndpoints
 }
 
 public record EightMinuteRuleRequest(List<CptCodeEntry> CptCodes);
-public record AddendumRequest(string Content);
+public record AddendumRequest(JsonElement Content);
 public sealed record SignNoteRequest(bool ConsentAccepted, bool IntentConfirmed);

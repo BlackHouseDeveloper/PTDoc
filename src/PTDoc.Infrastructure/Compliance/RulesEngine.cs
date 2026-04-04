@@ -221,7 +221,7 @@ public class RulesEngine : IRulesEngine
             return RuleResult.Error("SIGN_ELIGIBLE", "Note not found");
         }
 
-        if (!string.IsNullOrEmpty(note.SignatureHash))
+        if (note.IsFinalized)
         {
             return RuleResult.Error("SIGN_ELIGIBLE", "Note is already signed");
         }
@@ -246,7 +246,7 @@ public class RulesEngine : IRulesEngine
             return RuleResult.Error("IMMUTABLE", "Note not found");
         }
 
-        if (string.IsNullOrEmpty(note.SignatureHash))
+        if (!note.IsFinalized)
         {
             // Not signed, can be edited
             await _auditService.LogRuleEvaluationAsync(
@@ -291,11 +291,11 @@ public class RulesEngine : IRulesEngine
         var nextDay = serviceDate.AddDays(1);
         var patientNotes = _context.ClinicalNotes
             .AsNoTracking()
-            .Where(note => note.PatientId == patientId && note.DateOfService < nextDay);
+            .Where(note => note.PatientId == patientId && !note.IsAddendum && note.DateOfService < nextDay);
 
         var lastSignedPnOrEval = await patientNotes
             .Where(note =>
-                note.SignatureHash != null &&
+                (note.NoteStatus == NoteStatus.Signed || note.SignatureHash != null || note.SignedUtc != null) &&
                 (note.NoteType == NoteType.Evaluation || note.NoteType == NoteType.ProgressNote))
             .OrderByDescending(note => note.DateOfService)
             .FirstOrDefaultAsync(ct);

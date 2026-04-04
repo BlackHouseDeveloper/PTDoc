@@ -17,7 +17,8 @@ public sealed class NoteWorkspaceV2Service(
     IPlanOfCareCalculator planOfCareCalculator,
     IAssessmentCompositionService assessmentCompositionService,
     IGoalManagementService goalManagementService,
-    IOutcomeMeasureRegistry outcomeMeasureRegistry) : INoteWorkspaceV2Service
+    IOutcomeMeasureRegistry outcomeMeasureRegistry,
+    IAuditService? auditService = null) : INoteWorkspaceV2Service
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -58,9 +59,16 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("The requested note does not belong to the supplied patient.");
         }
 
-        if (note is not null && note.NoteStatus != NoteStatus.Draft)
+        if (note is not null && note.IsFinalized)
         {
-            throw new InvalidOperationException("Only draft notes can be modified through the workspace API.");
+            if (auditService is not null)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteWorkspaceV2Service.SaveAsync"),
+                    cancellationToken);
+            }
+
+            throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
 
         var currentUserId = identityContext.GetCurrentUserId();
@@ -147,11 +155,13 @@ public sealed class NoteWorkspaceV2Service(
             return saveResponse;
         }
 
+        var now = DateTime.UtcNow;
         note ??= new ClinicalNote
         {
             Id = request.NoteId ?? Guid.NewGuid(),
             PatientId = request.PatientId,
-            ClinicId = clinicId
+            ClinicId = clinicId,
+            CreatedUtc = now
         };
 
         note.PatientId = request.PatientId;
@@ -160,7 +170,7 @@ public sealed class NoteWorkspaceV2Service(
         note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
         note.CptCodesJson = JsonSerializer.Serialize(cptEntries, SerializerOptions);
         note.TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries);
-        note.LastModifiedUtc = DateTime.UtcNow;
+        note.LastModifiedUtc = now;
         note.ModifiedByUserId = currentUserId;
         note.SyncState = SyncState.Pending;
         note.ClinicId = clinicId;
@@ -266,7 +276,6 @@ public sealed class NoteWorkspaceV2Service(
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
-            NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };

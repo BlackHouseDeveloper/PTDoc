@@ -260,7 +260,7 @@ public class DailyNoteServiceTests : IDisposable
     // ── 5. SaveDraftAsync — signed note is not overwritten (immutability) ─────
 
     [Fact]
-    public async Task SaveDraftAsync_SignedNote_CreatesNewDraftInsteadOfOverwriting()
+    public async Task SaveDraftAsync_SignedNote_ReturnsErrorAndDoesNotCreateNewDraft()
     {
         var patient = await CreatePatientAsync();
         var date = new DateTime(2026, 3, 30);
@@ -279,14 +279,59 @@ public class DailyNoteServiceTests : IDisposable
         _db.ClinicalNotes.Add(signedNote);
         await _db.SaveChangesAsync();
 
-        // SaveDraft should create a NEW draft (upsert predicate excludes signed notes)
+        // SaveDraft should reject any same-day edit attempt once the primary note is finalized.
         var request = BuildRequest(patient.Id, date);
         var (response, error) = await _service.SaveDraftAsync(request);
 
-        Assert.Null(error);
-        Assert.NotNull(response);
-        Assert.NotEqual(signedNote.Id, response!.NoteId);
-        Assert.Equal(2, _db.ClinicalNotes.Count(n => n.PatientId == patient.Id && n.NoteType == NoteType.Daily));
+        Assert.Null(response);
+        Assert.Equal("Signed notes cannot be modified. Create addendum.", error);
+        Assert.Equal(1, _db.ClinicalNotes.Count(n => n.PatientId == patient.Id && n.NoteType == NoteType.Daily));
+    }
+
+    [Fact]
+    public async Task GetByTaxonomyAsync_ExcludesAddendumNotes()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id, new DateTime(2026, 4, 1));
+        request.Content.TreatmentTaxonomySelections =
+        [
+            new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = "foot-ankle",
+                ItemId = "talocrural-joint-arthrokinematics"
+            }
+        ];
+
+        var primaryResult = await _service.SaveDraftAsync(request);
+        Assert.NotNull(primaryResult.DailyNote);
+
+        var addendum = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ParentNoteId = primaryResult.DailyNote!.NoteId,
+            IsAddendum = true,
+            NoteType = NoteType.Daily,
+            DateOfService = request.DateOfService,
+            ContentJson = "{}",
+            CptCodesJson = "[]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _db.ClinicalNotes.Add(addendum);
+        _db.NoteTaxonomySelections.Add(new NoteTaxonomySelection
+        {
+            ClinicalNoteId = addendum.Id,
+            CategoryId = "foot-ankle",
+            CategoryTitle = "Foot & Ankle",
+            CategoryKind = 0,
+            ItemId = "talocrural-joint-arthrokinematics",
+            ItemLabel = "Talocrural joint arthrokinematics (e.g., posterior glide of talus)"
+        });
+        await _db.SaveChangesAsync();
+
+        var results = await _service.GetByTaxonomyAsync("foot-ankle");
+
+        Assert.Single(results);
+        Assert.Equal(primaryResult.DailyNote.NoteId, results[0].NoteId);
     }
 
     [Fact]

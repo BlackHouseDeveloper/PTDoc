@@ -22,6 +22,7 @@ public class DailyNoteService : IDailyNoteService
     private readonly ISyncEngine _syncEngine;
     private readonly ITreatmentTaxonomyCatalogService _taxonomyCatalog;
     private readonly INoteSaveValidationService _validationService;
+    private readonly IAuditService? _auditService;
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public DailyNoteService(
@@ -31,7 +32,8 @@ public class DailyNoteService : IDailyNoteService
         IIdentityContextAccessor identityContext,
         ISyncEngine syncEngine,
         ITreatmentTaxonomyCatalogService taxonomyCatalog,
-        INoteSaveValidationService validationService)
+        INoteSaveValidationService validationService,
+        IAuditService? auditService = null)
     {
         _db = db;
         _aiService = aiService;
@@ -40,6 +42,7 @@ public class DailyNoteService : IDailyNoteService
         _syncEngine = syncEngine;
         _taxonomyCatalog = taxonomyCatalog;
         _validationService = validationService;
+        _auditService = auditService;
     }
 
     public async Task<DailyNoteSaveResponse> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
@@ -99,13 +102,34 @@ public class DailyNoteService : IDailyNoteService
 
         var startOfDay = request.DateOfService.Date;
         var startOfNextDay = startOfDay.AddDays(1);
-        var note = await _db.ClinicalNotes
-            .FirstOrDefaultAsync(n =>
+        var sameDayDailyNotes = _db.ClinicalNotes
+            .Where(n =>
                 n.PatientId == request.PatientId &&
                 n.NoteType == NoteType.Daily &&
+                !n.IsAddendum &&
                 n.DateOfService >= startOfDay &&
-                n.DateOfService < startOfNextDay &&
-                n.SignedUtc == null, ct);
+                n.DateOfService < startOfNextDay);
+
+        var finalizedNote = await sameDayDailyNotes
+            .FirstOrDefaultAsync(n =>
+                n.NoteStatus == NoteStatus.Signed ||
+                n.SignatureHash != null ||
+                n.SignedUtc != null,
+                ct);
+        if (finalizedNote is not null)
+        {
+            await LogEditBlockedAsync(finalizedNote.Id, "DailyNoteService.SaveDraftAsync", ct);
+            saveResponse.IsValid = false;
+            saveResponse.Errors = ["Signed notes cannot be modified. Create addendum."];
+            return saveResponse;
+        }
+
+        var note = await sameDayDailyNotes
+            .FirstOrDefaultAsync(n =>
+                n.NoteStatus != NoteStatus.Signed &&
+                n.SignatureHash == null &&
+                n.SignedUtc == null,
+                ct);
 
         var contentJson = JsonSerializer.Serialize(request.Content, _json);
         var cptEntries = (request.Content.CptCodes ?? [])
@@ -151,6 +175,7 @@ public class DailyNoteService : IDailyNoteService
                 CptCodesJson = cptCodesJson,
                 TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries),
                 ClinicId = clinicId,
+                CreatedUtc = now,
                 LastModifiedUtc = now,
                 ModifiedByUserId = userId,
                 SyncState = SyncState.Pending
@@ -202,7 +227,7 @@ public class DailyNoteService : IDailyNoteService
             NoteId = note.Id,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
-            IsSigned = note.SignedUtc.HasValue,
+            IsSigned = note.IsFinalized,
             SignedUtc = note.SignedUtc,
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
@@ -213,7 +238,7 @@ public class DailyNoteService : IDailyNoteService
     public async Task<DailyNoteResponse?> GetByIdAsync(Guid noteId, CancellationToken ct = default)
     {
         var note = await _db.ClinicalNotes
-            .FirstOrDefaultAsync(n => n.Id == noteId && n.NoteType == NoteType.Daily, ct);
+            .FirstOrDefaultAsync(n => n.Id == noteId && n.NoteType == NoteType.Daily && !n.IsAddendum, ct);
         if (note == null) return null;
         var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
         return new DailyNoteResponse
@@ -221,7 +246,7 @@ public class DailyNoteService : IDailyNoteService
             NoteId = note.Id,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
-            IsSigned = note.SignedUtc.HasValue,
+            IsSigned = note.IsFinalized,
             SignedUtc = note.SignedUtc,
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
@@ -231,7 +256,7 @@ public class DailyNoteService : IDailyNoteService
     public async Task<List<DailyNoteResponse>> GetForPatientAsync(Guid patientId, int limit = 30, CancellationToken ct = default)
     {
         var notes = await _db.ClinicalNotes
-            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Daily)
+            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Daily && !n.IsAddendum)
             .OrderByDescending(n => n.DateOfService)
             .Take(limit)
             .ToListAsync(ct);
@@ -244,7 +269,7 @@ public class DailyNoteService : IDailyNoteService
                 NoteId = n.Id,
                 PatientId = n.PatientId,
                 DateOfService = n.DateOfService,
-                IsSigned = n.SignedUtc.HasValue,
+                IsSigned = n.IsFinalized,
                 SignedUtc = n.SignedUtc,
                 Content = dto
             };
@@ -269,7 +294,7 @@ public class DailyNoteService : IDailyNoteService
 
         var noteQuery = _db.ClinicalNotes
             .AsNoTracking()
-            .Where(n => n.NoteType == NoteType.Daily && matchingIds.Contains(n.Id));
+            .Where(n => n.NoteType == NoteType.Daily && !n.IsAddendum && matchingIds.Contains(n.Id));
 
         if (patientId.HasValue)
             noteQuery = noteQuery.Where(n => n.PatientId == patientId.Value);
@@ -287,7 +312,7 @@ public class DailyNoteService : IDailyNoteService
                 NoteId = n.Id,
                 PatientId = n.PatientId,
                 DateOfService = n.DateOfService,
-                IsSigned = n.SignedUtc.HasValue,
+                IsSigned = n.IsFinalized,
                 SignedUtc = n.SignedUtc,
                 Content = dto
             };
@@ -297,7 +322,7 @@ public class DailyNoteService : IDailyNoteService
     public async Task<EvalCarryForwardResponse> GetEvalCarryForwardAsync(Guid patientId, CancellationToken ct = default)
     {
         var evalNote = await _db.ClinicalNotes
-            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Evaluation)
+            .Where(n => n.PatientId == patientId && n.NoteType == NoteType.Evaluation && !n.IsAddendum)
             .OrderByDescending(n => n.DateOfService)
             .FirstOrDefaultAsync(ct);
 
@@ -509,5 +534,17 @@ public class DailyNoteService : IDailyNoteService
             .Sum(entry => entry.Minutes!.Value);
 
         return totalMinutes > 0 ? totalMinutes : null;
+    }
+
+    private Task LogEditBlockedAsync(Guid noteId, string source, CancellationToken ct)
+    {
+        if (_auditService is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _auditService.LogRuleEvaluationAsync(
+            AuditEvent.EditBlockedSignedNote(noteId, _identityContext.TryGetCurrentUserId(), source),
+            ct);
     }
 }

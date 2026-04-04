@@ -183,6 +183,51 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_SignedNote_ThrowsImmutableError()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Locked",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = new DateTime(2026, 3, 30),
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow,
+            SignatureHash = "SIGNED_HASH",
+            SignedUtc = DateTime.UtcNow,
+            NoteStatus = NoteStatus.Signed
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var request = new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            NoteType = note.NoteType,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = note.NoteType
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(request));
+
+        Assert.Equal("Signed notes cannot be modified. Create addendum.", ex.Message);
+    }
+
+    [Fact]
     public async Task SaveAsync_MissingTimedMinutes_ReturnsWarningAndPersistsWorkspace()
     {
         var patient = new Patient
