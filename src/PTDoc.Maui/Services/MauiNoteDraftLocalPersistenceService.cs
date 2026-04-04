@@ -33,16 +33,22 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         localDraft.SyncState = SyncState.Pending;
 
         localDraft = await localRepository.UpsertAsync(localDraft, cancellationToken);
-
-        try
-        {
-            await localSyncOrchestrator.PushPendingAsync(cancellationToken);
-            localDraft = await localRepository.GetByLocalIdAsync(localDraft.LocalId, cancellationToken) ?? localDraft;
-        }
-        catch
-        {
-            // Local persistence succeeded; the pending row will retry through the sync pipeline later.
-        }
+        await localSyncOrchestrator.EnqueueChangeAsync(
+            "ClinicalNote",
+            localDraft.ServerId,
+            localDraft.LocalId,
+            localDraft.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+            JsonSerializer.Serialize(new
+            {
+                localDraft.ServerId,
+                patientId = localDraft.PatientServerId,
+                localDraft.NoteType,
+                localDraft.DateOfService,
+                localDraft.ContentJson,
+                localDraft.CptCodesJson,
+                localDraft.LastModifiedUtc
+            }, SerializerOptions),
+            cancellationToken);
 
         return new NoteWorkspaceSaveResult
         {

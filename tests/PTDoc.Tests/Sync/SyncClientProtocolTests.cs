@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Sync;
+using System.Text.Json;
 using Xunit;
 
 namespace PTDoc.Tests.Sync;
@@ -224,6 +226,92 @@ public class SyncClientProtocolTests
         Assert.Equal("AuditLog", result.Items[0].EntityType);
         Assert.Equal(recentLog.Id, result.Items[0].ServerId);
         Assert.Contains("EventType", result.Items[0].DataJson);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_Replays_DuplicateOperationId_WithoutDuplicateWrite()
+    {
+        var context = CreateInMemoryContext();
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var operationId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var timestamp = DateTime.UtcNow;
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    OperationId = operationId,
+                    EntityType = "Patient",
+                    ServerId = patientId,
+                    LocalId = 7,
+                    Operation = "Create",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        firstName = "Offline",
+                        lastName = "Replay",
+                        dateOfBirth = new DateTime(1991, 1, 1),
+                        lastModifiedUtc = timestamp
+                    }),
+                    LastModifiedUtc = timestamp
+                }
+            ]
+        };
+
+        var first = await syncEngine.ReceiveClientPushAsync(request);
+        var second = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, first.AcceptedCount);
+        Assert.Equal(1, second.AcceptedCount);
+        Assert.Equal(patientId, second.Items[0].ServerId);
+        Assert.Equal(1, await context.Patients.CountAsync());
+        Assert.Equal(1, await context.SyncQueueItems.CountAsync(q => q.Id == operationId));
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_Writes_SyncAuditEvents_WithoutPhi()
+    {
+        var context = CreateInMemoryContext();
+        var auditService = new AuditService(context);
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance, auditService: auditService);
+        var operationId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var timestamp = DateTime.UtcNow;
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    OperationId = operationId,
+                    EntityType = "Patient",
+                    ServerId = patientId,
+                    LocalId = 3,
+                    Operation = "Create",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        firstName = "Hidden",
+                        lastName = "Phi",
+                        dateOfBirth = new DateTime(1992, 2, 2),
+                        lastModifiedUtc = timestamp
+                    }),
+                    LastModifiedUtc = timestamp
+                }
+            ]
+        };
+
+        await syncEngine.ReceiveClientPushAsync(request);
+
+        var auditLogs = await context.AuditLogs
+            .Where(a => a.EventType == "SYNC_START" || a.EventType == "SYNC_SUCCESS")
+            .ToListAsync();
+
+        Assert.Equal(2, auditLogs.Count);
+        Assert.All(auditLogs, log => Assert.DoesNotContain("Hidden", log.MetadataJson, StringComparison.OrdinalIgnoreCase));
+        Assert.All(auditLogs, log => Assert.DoesNotContain("Phi", log.MetadataJson, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

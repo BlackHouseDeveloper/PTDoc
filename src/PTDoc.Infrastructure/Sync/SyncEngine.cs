@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -19,16 +20,19 @@ public class SyncEngine : ISyncEngine
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
+    private readonly IAuditService? _auditService;
     private DateTime? _lastSyncAt;
 
     public SyncEngine(
         ApplicationDbContext context,
         ILogger<SyncEngine> logger,
-        IIdentityContextAccessor? identityContext = null)
+        IIdentityContextAccessor? identityContext = null,
+        IAuditService? auditService = null)
     {
         _context = context;
         _logger = logger;
         _identityContext = identityContext;
+        _auditService = auditService;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
@@ -377,10 +381,41 @@ public class SyncEngine : ISyncEngine
             else if (entityType.Length == 1)
                 entityType = char.ToUpperInvariant(entityType[0]).ToString();
 
+            var operationId = item.OperationId == Guid.Empty ? Guid.NewGuid() : item.OperationId;
+            var auditUserId = _identityContext?.GetCurrentUserId()
+                ?? _identityContext?.TryGetCurrentUserId()
+                ?? IIdentityContextAccessor.SystemUserId;
+
+            var existingReceipt = await _context.SyncQueueItems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == operationId, cancellationToken);
+
+            if (existingReceipt is not null)
+            {
+                results.Add(BuildReplayResult(existingReceipt, entityType, item.LocalId));
+                if (existingReceipt.Status == SyncQueueStatus.Completed)
+                {
+                    acceptedCount++;
+                }
+                else if (IsConflictReceipt(existingReceipt))
+                {
+                    conflictCount++;
+                }
+                else
+                {
+                    errorCount++;
+                }
+
+                continue;
+            }
+
             try
             {
                 // Resolve the server ID: new records arrive with Guid.Empty
                 var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_START", entityType, serverId, operationId, "Processing", auditUserId),
+                    cancellationToken);
 
                 // Check for conflict: does a more-recent server version already exist?
                 var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
@@ -391,6 +426,25 @@ public class SyncEngine : ISyncEngine
                         entityType, serverId);
 
                     conflictCount++;
+                    var receipt = new SyncQueueItem
+                    {
+                        Id = operationId,
+                        EntityType = entityType,
+                        EntityId = serverId,
+                        Operation = Enum.TryParse<SyncOperation>(item.Operation, out var conflictOp) ? conflictOp : SyncOperation.Update,
+                        EnqueuedAt = DateTime.UtcNow,
+                        LastAttemptAt = DateTime.UtcNow,
+                        Status = SyncQueueStatus.Failed,
+                        RetryCount = 5,
+                        MaxRetries = 5,
+                        ErrorMessage = "Server version is newer",
+                        PayloadJson = item.DataJson
+                    };
+                    _context.SyncQueueItems.Add(receipt);
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await LogSyncEventAsync(
+                        AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Conflict", auditUserId, success: false, errorMessage: "Server version is newer"),
+                        cancellationToken);
                     results.Add(new ClientSyncPushItemResult
                     {
                         EntityType = entityType,
@@ -408,6 +462,25 @@ public class SyncEngine : ISyncEngine
                 if (entityConflictReason != null)
                 {
                     conflictCount++;
+                    var receipt = new SyncQueueItem
+                    {
+                        Id = operationId,
+                        EntityType = entityType,
+                        EntityId = serverId,
+                        Operation = Enum.TryParse<SyncOperation>(item.Operation, out var conflictOp) ? conflictOp : SyncOperation.Update,
+                        EnqueuedAt = DateTime.UtcNow,
+                        LastAttemptAt = DateTime.UtcNow,
+                        Status = SyncQueueStatus.Failed,
+                        RetryCount = 5,
+                        MaxRetries = 5,
+                        ErrorMessage = entityConflictReason,
+                        PayloadJson = item.DataJson
+                    };
+                    _context.SyncQueueItems.Add(receipt);
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await LogSyncEventAsync(
+                        AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Conflict", auditUserId, success: false, errorMessage: entityConflictReason),
+                        cancellationToken);
                     results.Add(new ClientSyncPushItemResult
                     {
                         EntityType = entityType,
@@ -428,17 +501,24 @@ public class SyncEngine : ISyncEngine
 
                 var queueItem = new SyncQueueItem
                 {
+                    Id = operationId,
                     EntityType = entityType,
                     EntityId = serverId,
                     Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
                     EnqueuedAt = appliedAt,
+                    LastAttemptAt = appliedAt,
                     Status = SyncQueueStatus.Completed,
                     CompletedAt = appliedAt,
+                    MaxRetries = 5,
                     PayloadJson = item.DataJson
                 };
                 _context.SyncQueueItems.Add(queueItem);
+                await _context.SaveChangesAsync(cancellationToken);
 
                 acceptedCount++;
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_SUCCESS", entityType, serverId, operationId, "Completed", auditUserId),
+                    cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
                     EntityType = entityType,
@@ -452,7 +532,34 @@ public class SyncEngine : ISyncEngine
             {
                 _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
                     entityType, item.ServerId);
+                var failedServerId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+                var receipt = new SyncQueueItem
+                {
+                    Id = operationId,
+                    EntityType = entityType,
+                    EntityId = failedServerId,
+                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var failedOp) ? failedOp : SyncOperation.Update,
+                    EnqueuedAt = DateTime.UtcNow,
+                    LastAttemptAt = DateTime.UtcNow,
+                    Status = SyncQueueStatus.Failed,
+                    RetryCount = 5,
+                    MaxRetries = 5,
+                    ErrorMessage = "Server error processing item",
+                    PayloadJson = item.DataJson
+                };
+                _context.SyncQueueItems.Add(receipt);
+                try
+                {
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+                catch (DbUpdateException)
+                {
+                    _context.Entry(receipt).State = EntityState.Detached;
+                }
                 errorCount++;
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, failedServerId, operationId, "Failed", auditUserId, success: false, errorMessage: "Server error processing item"),
+                    cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
                     EntityType = entityType,
@@ -464,14 +571,53 @@ public class SyncEngine : ISyncEngine
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         return new ClientSyncPushResponse
         {
             AcceptedCount = acceptedCount,
             ConflictCount = conflictCount,
             ErrorCount = errorCount,
             Items = results
+        };
+    }
+
+    private async Task LogSyncEventAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
+    {
+        if (_auditService is null)
+        {
+            return;
+        }
+
+        await _auditService.LogSyncEventAsync(auditEvent, cancellationToken);
+    }
+
+    private static bool IsConflictReceipt(SyncQueueItem receipt) =>
+        receipt.ErrorMessage?.Contains("newer", StringComparison.OrdinalIgnoreCase) == true ||
+        receipt.ErrorMessage?.Contains("immutable", StringComparison.OrdinalIgnoreCase) == true ||
+        receipt.ErrorMessage?.Contains("locked", StringComparison.OrdinalIgnoreCase) == true ||
+        receipt.ErrorMessage?.Contains("read-only", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static ClientSyncPushItemResult BuildReplayResult(SyncQueueItem receipt, string entityType, int localId)
+    {
+        if (receipt.Status == SyncQueueStatus.Completed)
+        {
+            return new ClientSyncPushItemResult
+            {
+                EntityType = entityType,
+                LocalId = localId,
+                ServerId = receipt.EntityId,
+                Status = "Accepted",
+                ServerModifiedUtc = receipt.CompletedAt ?? receipt.LastAttemptAt ?? receipt.EnqueuedAt
+            };
+        }
+
+        return new ClientSyncPushItemResult
+        {
+            EntityType = entityType,
+            LocalId = localId,
+            ServerId = receipt.EntityId,
+            Status = IsConflictReceipt(receipt) ? "Conflict" : "Error",
+            Error = receipt.ErrorMessage,
+            ServerModifiedUtc = receipt.LastAttemptAt ?? receipt.EnqueuedAt
         };
     }
 
@@ -949,10 +1095,10 @@ public class SyncEngine : ISyncEngine
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
 
-                if (patientId == Guid.Empty || clinicId is null)
+                if (patientId == Guid.Empty)
                 {
                     throw new InvalidOperationException(
-                        $"IntakeForm push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                        $"IntakeForm push rejected: patient {patientId} could not be resolved.");
                 }
 
                 var form = new IntakeForm
@@ -1001,10 +1147,10 @@ public class SyncEngine : ISyncEngine
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
 
-                if (patientId == Guid.Empty || clinicId is null)
+                if (patientId == Guid.Empty)
                 {
                     throw new InvalidOperationException(
-                        $"ClinicalNote push rejected: patient {patientId} could not be resolved or is not visible to this tenant.");
+                        $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
                 }
 
                 var noteType = TryGetEnumValue<NoteType>(root, "noteType")
