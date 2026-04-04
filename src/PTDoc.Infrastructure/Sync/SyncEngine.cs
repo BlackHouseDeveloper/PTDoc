@@ -17,6 +17,8 @@ namespace PTDoc.Infrastructure.Sync;
 /// </summary>
 public class SyncEngine : ISyncEngine
 {
+    private const int MaxReceiptRetries = 5;
+
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
@@ -425,7 +427,7 @@ public class SyncEngine : ISyncEngine
                 EnqueuedAt = processingNow,
                 LastAttemptAt = processingNow,
                 Status = SyncQueueStatus.Processing,
-                MaxRetries = 5,
+                MaxRetries = MaxReceiptRetries,
                 PayloadJson = item.DataJson
             };
             _context.SyncQueueItems.Add(processingReceipt);
@@ -467,7 +469,7 @@ public class SyncEngine : ISyncEngine
 
                     conflictCount++;
                     processingReceipt.Status = SyncQueueStatus.Failed;
-                    processingReceipt.RetryCount = 5;
+                    processingReceipt.RetryCount = MaxReceiptRetries;
                     processingReceipt.ErrorMessage = "Server version is newer";
                     processingReceipt.LastAttemptAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync(cancellationToken);
@@ -492,7 +494,7 @@ public class SyncEngine : ISyncEngine
                 {
                     conflictCount++;
                     processingReceipt.Status = SyncQueueStatus.Failed;
-                    processingReceipt.RetryCount = 5;
+                    processingReceipt.RetryCount = MaxReceiptRetries;
                     processingReceipt.ErrorMessage = entityConflictReason;
                     processingReceipt.LastAttemptAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync(cancellationToken);
@@ -542,7 +544,7 @@ public class SyncEngine : ISyncEngine
                 // Update the Processing placeholder to Failed so the next receipt lookup
                 // returns a deterministic replay rather than leaving a stale Processing row.
                 processingReceipt.Status = SyncQueueStatus.Failed;
-                processingReceipt.RetryCount = 5;
+                processingReceipt.RetryCount = MaxReceiptRetries;
                 processingReceipt.ErrorMessage = "Server error processing item";
                 try
                 {

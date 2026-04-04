@@ -55,7 +55,8 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Best-effort queueing: the draft is already persisted locally and remains
-            // marked pending so a later sync scan can recreate missing queue items.
+            // marked Pending so EnsureQueueItemsForPendingEntitiesAsync can recreate the
+            // missing queue item during the next sync scan.
         }
 
         return new NoteWorkspaceSaveResult

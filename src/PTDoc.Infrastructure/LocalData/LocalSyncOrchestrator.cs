@@ -66,6 +66,11 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             .Where(q =>
                 q.EntityType == entityType &&
                 q.LocalEntityId == localEntityId &&
+                // Supersede any non-Completed row, including Failed (stale payload) and
+                // Processing (interrupted mid-flight) rows. Processing rows are safe to
+                // supersede because the server receipt for that attempt already carries the
+                // OperationId; the new enqueue assigns a fresh OperationId, so both records
+                // remain independently idempotent on the server side.
                 q.Status != SyncQueueStatus.Completed)
             .OrderByDescending(q => q.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
