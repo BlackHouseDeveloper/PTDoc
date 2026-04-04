@@ -33,22 +33,30 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         localDraft.SyncState = SyncState.Pending;
 
         localDraft = await localRepository.UpsertAsync(localDraft, cancellationToken);
-        await localSyncOrchestrator.EnqueueChangeAsync(
-            "ClinicalNote",
-            localDraft.ServerId,
-            localDraft.LocalId,
-            localDraft.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
-            JsonSerializer.Serialize(new
-            {
+        try
+        {
+            await localSyncOrchestrator.EnqueueChangeAsync(
+                "ClinicalNote",
                 localDraft.ServerId,
-                patientId = localDraft.PatientServerId,
-                localDraft.NoteType,
-                localDraft.DateOfService,
-                localDraft.ContentJson,
-                localDraft.CptCodesJson,
-                localDraft.LastModifiedUtc
-            }, SerializerOptions),
-            cancellationToken);
+                localDraft.LocalId,
+                localDraft.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+                JsonSerializer.Serialize(new
+                {
+                    localDraft.ServerId,
+                    patientId = localDraft.PatientServerId,
+                    localDraft.NoteType,
+                    localDraft.DateOfService,
+                    localDraft.ContentJson,
+                    localDraft.CptCodesJson,
+                    localDraft.LastModifiedUtc
+                }, SerializerOptions),
+                cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Best-effort queueing: the draft is already persisted locally and remains
+            // marked pending so a later sync scan can recreate missing queue items.
+        }
 
         return new NoteWorkspaceSaveResult
         {

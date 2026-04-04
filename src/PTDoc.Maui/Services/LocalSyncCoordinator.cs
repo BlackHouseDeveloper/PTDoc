@@ -16,6 +16,7 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
     private readonly SemaphoreSlim _syncGate = new(1, 1);
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(15);
+    private CancellationTokenSource? _loopCts;
     private PeriodicTimer? _timer;
     private Task? _loopTask;
     private bool _started;
@@ -61,8 +62,9 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
             }
 
             _started = true;
+            _loopCts = new CancellationTokenSource();
             _timer = new PeriodicTimer(_interval);
-            _loopTask = RunLoopAsync();
+            _loopTask = RunLoopAsync(_loopCts.Token);
         }
         finally
         {
@@ -114,6 +116,7 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _loopCts?.Cancel();
         _timer?.Dispose();
         if (_loopTask is not null)
         {
@@ -127,27 +130,35 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
             }
         }
 
+        _loopCts?.Dispose();
         _syncGate.Dispose();
         _startGate.Dispose();
     }
 
-    private async Task RunLoopAsync()
+    private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         if (_timer is null)
         {
             return;
         }
 
-        while (await _timer.WaitForNextTickAsync())
+        try
         {
-            try
+            while (await _timer.WaitForNextTickAsync(cancellationToken))
             {
-                await RunSyncCycleAsync(CancellationToken.None);
+                try
+                {
+                    await RunSyncCycleAsync(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unhandled error in local sync background loop");
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unhandled error in local sync background loop");
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown — swallow the cancellation exception.
         }
     }
 

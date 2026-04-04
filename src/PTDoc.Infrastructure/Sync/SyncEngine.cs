@@ -409,10 +409,50 @@ public class SyncEngine : ISyncEngine
                 continue;
             }
 
+            // Resolve the server ID outside the try block so the catch can reference it.
+            var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+
+            // Processing placeholder — persisted before the entity write so that a concurrent
+            // request arriving with the same OperationId hits a PK conflict and enters the
+            // replay path instead of duplicating the write.
+            var processingNow = DateTime.UtcNow;
+            var processingReceipt = new SyncQueueItem
+            {
+                Id = operationId,
+                EntityType = entityType,
+                EntityId = serverId,
+                Operation = Enum.TryParse<SyncOperation>(item.Operation, out var pendingOp) ? pendingOp : SyncOperation.Update,
+                EnqueuedAt = processingNow,
+                LastAttemptAt = processingNow,
+                Status = SyncQueueStatus.Processing,
+                MaxRetries = 5,
+                PayloadJson = item.DataJson
+            };
+            _context.SyncQueueItems.Add(processingReceipt);
             try
             {
-                // Resolve the server ID: new records arrive with Guid.Empty
-                var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // A concurrent request already persisted a receipt for this OperationId.
+                _context.Entry(processingReceipt).State = EntityState.Detached;
+                var concurrentReceipt = await _context.SyncQueueItems
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(q => q.Id == operationId, cancellationToken);
+                if (concurrentReceipt is not null)
+                {
+                    results.Add(BuildReplayResult(concurrentReceipt, entityType, item.LocalId));
+                    if (concurrentReceipt.Status == SyncQueueStatus.Completed) acceptedCount++;
+                    else if (IsConflictReceipt(concurrentReceipt)) conflictCount++;
+                    else errorCount++;
+                }
+
+                continue;
+            }
+
+            try
+            {
                 await LogSyncEventAsync(
                     AuditEvent.SyncEvent("SYNC_START", entityType, serverId, operationId, "Processing", auditUserId),
                     cancellationToken);
@@ -426,21 +466,10 @@ public class SyncEngine : ISyncEngine
                         entityType, serverId);
 
                     conflictCount++;
-                    var receipt = new SyncQueueItem
-                    {
-                        Id = operationId,
-                        EntityType = entityType,
-                        EntityId = serverId,
-                        Operation = Enum.TryParse<SyncOperation>(item.Operation, out var conflictOp) ? conflictOp : SyncOperation.Update,
-                        EnqueuedAt = DateTime.UtcNow,
-                        LastAttemptAt = DateTime.UtcNow,
-                        Status = SyncQueueStatus.Failed,
-                        RetryCount = 5,
-                        MaxRetries = 5,
-                        ErrorMessage = "Server version is newer",
-                        PayloadJson = item.DataJson
-                    };
-                    _context.SyncQueueItems.Add(receipt);
+                    processingReceipt.Status = SyncQueueStatus.Failed;
+                    processingReceipt.RetryCount = 5;
+                    processingReceipt.ErrorMessage = "Server version is newer";
+                    processingReceipt.LastAttemptAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync(cancellationToken);
                     await LogSyncEventAsync(
                         AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Conflict", auditUserId, success: false, errorMessage: "Server version is newer"),
@@ -462,21 +491,10 @@ public class SyncEngine : ISyncEngine
                 if (entityConflictReason != null)
                 {
                     conflictCount++;
-                    var receipt = new SyncQueueItem
-                    {
-                        Id = operationId,
-                        EntityType = entityType,
-                        EntityId = serverId,
-                        Operation = Enum.TryParse<SyncOperation>(item.Operation, out var conflictOp) ? conflictOp : SyncOperation.Update,
-                        EnqueuedAt = DateTime.UtcNow,
-                        LastAttemptAt = DateTime.UtcNow,
-                        Status = SyncQueueStatus.Failed,
-                        RetryCount = 5,
-                        MaxRetries = 5,
-                        ErrorMessage = entityConflictReason,
-                        PayloadJson = item.DataJson
-                    };
-                    _context.SyncQueueItems.Add(receipt);
+                    processingReceipt.Status = SyncQueueStatus.Failed;
+                    processingReceipt.RetryCount = 5;
+                    processingReceipt.ErrorMessage = entityConflictReason;
+                    processingReceipt.LastAttemptAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync(cancellationToken);
                     await LogSyncEventAsync(
                         AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Conflict", auditUserId, success: false, errorMessage: entityConflictReason),
@@ -493,26 +511,14 @@ public class SyncEngine : ISyncEngine
                     continue;
                 }
 
-                // Apply the entity change to the server database and record receipt in the sync queue.
-                // Sprint UC-Epsilon: entity changes are now applied immediately so the server database
-                // reflects the client's offline work when it reconnects.
+                // Apply the entity change to the server database and promote the
+                // Processing receipt to Completed in the same SaveChanges call.
                 var appliedAt = DateTime.UtcNow;
                 await ApplyEntityFromPayloadAsync(entityType, serverId, item, cancellationToken);
 
-                var queueItem = new SyncQueueItem
-                {
-                    Id = operationId,
-                    EntityType = entityType,
-                    EntityId = serverId,
-                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
-                    EnqueuedAt = appliedAt,
-                    LastAttemptAt = appliedAt,
-                    Status = SyncQueueStatus.Completed,
-                    CompletedAt = appliedAt,
-                    MaxRetries = 5,
-                    PayloadJson = item.DataJson
-                };
-                _context.SyncQueueItems.Add(queueItem);
+                processingReceipt.Status = SyncQueueStatus.Completed;
+                processingReceipt.CompletedAt = appliedAt;
+                processingReceipt.LastAttemptAt = appliedAt;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 acceptedCount++;
@@ -532,33 +538,24 @@ public class SyncEngine : ISyncEngine
             {
                 _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
                     entityType, item.ServerId);
-                var failedServerId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
-                var receipt = new SyncQueueItem
-                {
-                    Id = operationId,
-                    EntityType = entityType,
-                    EntityId = failedServerId,
-                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var failedOp) ? failedOp : SyncOperation.Update,
-                    EnqueuedAt = DateTime.UtcNow,
-                    LastAttemptAt = DateTime.UtcNow,
-                    Status = SyncQueueStatus.Failed,
-                    RetryCount = 5,
-                    MaxRetries = 5,
-                    ErrorMessage = "Server error processing item",
-                    PayloadJson = item.DataJson
-                };
-                _context.SyncQueueItems.Add(receipt);
+
+                // Update the Processing placeholder to Failed so the next receipt lookup
+                // returns a deterministic replay rather than leaving a stale Processing row.
+                processingReceipt.Status = SyncQueueStatus.Failed;
+                processingReceipt.RetryCount = 5;
+                processingReceipt.ErrorMessage = "Server error processing item";
                 try
                 {
                     await _context.SaveChangesAsync(cancellationToken);
                 }
                 catch (DbUpdateException)
                 {
-                    _context.Entry(receipt).State = EntityState.Detached;
+                    _context.Entry(processingReceipt).State = EntityState.Detached;
                 }
+
                 errorCount++;
                 await LogSyncEventAsync(
-                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, failedServerId, operationId, "Failed", auditUserId, success: false, errorMessage: "Server error processing item"),
+                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Failed", auditUserId, success: false, errorMessage: "Server error processing item"),
                     cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {

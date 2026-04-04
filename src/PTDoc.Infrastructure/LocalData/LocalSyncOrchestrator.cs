@@ -66,8 +66,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             .Where(q =>
                 q.EntityType == entityType &&
                 q.LocalEntityId == localEntityId &&
-                q.Status == SyncQueueStatus.Pending &&
-                q.LastAttemptUtc == null)
+                q.Status != SyncQueueStatus.Completed)
             .OrderByDescending(q => q.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -77,6 +76,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             existing.Operation = operation;
             existing.PayloadJson = payloadJson;
             existing.ErrorMessage = null;
+            existing.LastAttemptUtc = null;
+            existing.RetryCount = 0;
+            existing.Status = SyncQueueStatus.Pending;
             existing.CreatedUtc = DateTime.UtcNow;
         }
         else
