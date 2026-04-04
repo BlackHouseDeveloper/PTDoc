@@ -130,12 +130,26 @@ public sealed class NoteResponse
 }
 
 /// <summary>
+/// Advisory compliance warning surfaced alongside a note operation.
+/// Returned when a compliance rule fires at Warning severity (e.g., 8-minute rule).
+/// A non-null ComplianceWarning does NOT block the operation — it is informational.
+/// </summary>
+public sealed class ComplianceWarning
+{
+    public string RuleId { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public Dictionary<string, object> Data { get; set; } = new();
+}
+
+/// <summary>
 /// Unified response envelope for create and update note operations.
 /// Includes both validation state and the saved note payload when persistence succeeds.
+/// ComplianceWarning is non-null only when an advisory rule fired (e.g., 8-minute rule).
 /// </summary>
 public sealed class NoteOperationResponse : ValidatedOperationResponse
 {
     public NoteResponse? Note { get; set; }
+    public ComplianceWarning? ComplianceWarning { get; set; }
 }
 
 public sealed class NoteDetailResponse

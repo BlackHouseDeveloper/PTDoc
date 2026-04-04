@@ -324,7 +324,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             IsSubmitted = operation.Note.SignedUtc.HasValue,
             Errors = operation.Errors,
             Warnings = operation.Warnings,
-            RequiresOverride = operation.RequiresOverride
+            RequiresOverride = operation.RequiresOverride,
+            ComplianceWarning = operation.ComplianceWarning
         };
     }
 

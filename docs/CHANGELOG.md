@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Sprint 2: Immutable Signed Notes and Linked Addendums
 
+#### ComplianceWarning Carried Forward from Foundation-Enhancement/Fixes
+- **`ComplianceWarning`** (`src/PTDoc.Application/DTOs/NoteDtos.cs`) — Advisory compliance warning class surfaced alongside note operations when a rule fires at Warning severity (e.g. 8-minute rule). Non-null value is informational and does not block the operation.
+- **`NoteOperationResponse.ComplianceWarning`** — Property added to the unified note operation response envelope so API callers can surface advisory warnings without treating them as errors.
+- **`NoteWorkspaceSaveResult.ComplianceWarning`** (`src/PTDoc.UI/Services/INoteWorkspaceService.cs`) — Property added to the UI-layer save result DTO so workspace components can display advisory compliance warnings.
+- **`NoteWorkspaceApiService.SaveLegacyDraftAsync`** — Maps `operation.ComplianceWarning` into `NoteWorkspaceSaveResult`.
+
 #### Clinical Note Immutability and Addendums
 - **Linked addendum note model** - Added `ClinicalNote.CreatedUtc`, `ClinicalNote.ParentNoteId`, and `ClinicalNote.IsAddendum` so all new addendums are stored as linked `ClinicalNote` rows and reuse the existing hash/signature pipeline instead of extending the legacy standalone `Addendum` write path.
 - **`IAddendumService` / `AddendumService`** - Added a dedicated addendum creation service that only allows addendums from finalized signed primary notes, rejects addendum-of-addendum nesting, preserves the original note unchanged, and enqueues the new draft note for sync.

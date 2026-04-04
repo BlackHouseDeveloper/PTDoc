@@ -47,6 +47,7 @@ public sealed class NoteWorkspaceSaveResult
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public bool RequiresOverride { get; init; }
+    public ComplianceWarning? ComplianceWarning { get; init; }
 }
 
 public sealed class NoteWorkspaceSubmitResult
