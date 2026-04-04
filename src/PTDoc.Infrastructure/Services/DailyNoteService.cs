@@ -23,6 +23,7 @@ public class DailyNoteService : IDailyNoteService
     private readonly ITreatmentTaxonomyCatalogService _taxonomyCatalog;
     private readonly INoteSaveValidationService _validationService;
     private readonly IAuditService? _auditService;
+    private readonly IOverrideService? _overrideService;
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public DailyNoteService(
@@ -33,7 +34,8 @@ public class DailyNoteService : IDailyNoteService
         ISyncEngine syncEngine,
         ITreatmentTaxonomyCatalogService taxonomyCatalog,
         INoteSaveValidationService validationService,
-        IAuditService? auditService = null)
+        IAuditService? auditService = null,
+        IOverrideService? overrideService = null)
     {
         _db = db;
         _aiService = aiService;
@@ -43,6 +45,7 @@ public class DailyNoteService : IDailyNoteService
         _taxonomyCatalog = taxonomyCatalog;
         _validationService = validationService;
         _auditService = auditService;
+        _overrideService = overrideService;
     }
 
     public async Task<DailyNoteSaveResponse> SaveDraftAsync(SaveDailyNoteRequest request, CancellationToken ct = default)
@@ -148,6 +151,7 @@ public class DailyNoteService : IDailyNoteService
         var userId = _identityContext.GetCurrentUserId();
         var now = DateTime.UtcNow;
         var isNew = note is null;
+        var noteId = note?.Id ?? Guid.NewGuid();
 
         var validation = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
         {
@@ -158,7 +162,31 @@ public class DailyNoteService : IDailyNoteService
             CptEntries = cptEntries
         }, ct);
         saveResponse.ApplyValidation(validation);
-        if (!validation.IsValid)
+
+        if (OverrideWorkflow.RequiresHardStopAudit(validation) && validation.RuleType.HasValue)
+        {
+            if (_auditService is not null)
+            {
+                await _auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, validation.RuleType.Value, userId),
+                    ct);
+            }
+
+            return saveResponse;
+        }
+
+        var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
+        if (!string.IsNullOrWhiteSpace(overrideError))
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = saveResponse.Errors
+                .Append(overrideError)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return saveResponse;
+        }
+
+        if (!validation.IsValid && !validation.RequiresOverride)
         {
             return saveResponse;
         }
@@ -167,6 +195,7 @@ public class DailyNoteService : IDailyNoteService
         {
             note = new ClinicalNote
             {
+                Id = noteId,
                 PatientId = request.PatientId,
                 AppointmentId = request.AppointmentId,
                 NoteType = NoteType.Daily,
@@ -214,7 +243,22 @@ public class DailyNoteService : IDailyNoteService
             });
         }
 
-        await _db.SaveChangesAsync(ct);
+        if (request.Override is not null)
+        {
+            if (_overrideService is null)
+            {
+                throw new InvalidOperationException("Override service is not configured.");
+            }
+
+            await _overrideService.ApplyOverrideAsync(
+                OverrideWorkflow.BuildRequest(note.Id, request.Override, userId),
+                ct);
+        }
+        else
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+
         await _syncEngine.EnqueueAsync(
             "ClinicalNote",
             note.Id,
@@ -232,6 +276,16 @@ public class DailyNoteService : IDailyNoteService
             Content = dto,
             ComplianceCheck = CheckMedicalNecessity(dto)
         };
+
+        if (request.Override is not null)
+        {
+            saveResponse.IsValid = true;
+            saveResponse.RequiresOverride = false;
+            saveResponse.RuleType = null;
+            saveResponse.IsOverridable = false;
+            saveResponse.OverrideRequirements = [];
+        }
+
         return saveResponse;
     }
 

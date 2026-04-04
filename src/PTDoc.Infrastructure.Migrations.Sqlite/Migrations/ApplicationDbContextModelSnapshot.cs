@@ -906,6 +906,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("NoteId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("RuleName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -918,6 +921,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("NoteId")
+                        .HasFilter("NoteId IS NOT NULL");
 
                     b.HasIndex("TimestampUtc");
 
@@ -1555,11 +1561,18 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTDoc.Core.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Note");
 
                     b.Navigation("User");
                 });

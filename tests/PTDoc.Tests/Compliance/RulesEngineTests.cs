@@ -61,7 +61,9 @@ public class RulesEngineTests : IDisposable
         var result = await _rulesEngine.CheckProgressNoteDueAsync(patientId, new DateTime(2026, 4, 3));
 
         Assert.False(result.IsValid);
-        Assert.Contains("Progress Note required", result.Errors);
+        Assert.Contains(result.Errors, error => error.Contains("Progress Note required", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(ComplianceRuleType.ProgressNoteRequired, result.RuleType);
+        Assert.False(result.IsOverridable);
     }
 
     [Fact]
@@ -110,9 +112,12 @@ public class RulesEngineTests : IDisposable
             new() { Code = "97110", Units = 1, Minutes = 6, IsTimed = true }
         ]);
 
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
         Assert.Contains("Minutes fall below standard 8-minute threshold", result.Warnings);
         Assert.True(result.RequiresOverride);
+        Assert.True(result.IsOverridable);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, Assert.Single(result.OverrideRequirements).RuleType);
     }
 
     [Fact]
@@ -135,9 +140,12 @@ public class RulesEngineTests : IDisposable
             new() { Code = "97110", Units = 3, Minutes = 30, IsTimed = true }
         ]);
 
-        Assert.True(result.IsValid);
-        Assert.Contains("Timed CPT units exceed allowed range for documented minutes", result.Warnings);
+        Assert.False(result.IsValid);
+        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Warnings);
         Assert.True(result.RequiresOverride);
+        Assert.True(result.IsOverridable);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, Assert.Single(result.OverrideRequirements).RuleType);
     }
 
     [Fact]

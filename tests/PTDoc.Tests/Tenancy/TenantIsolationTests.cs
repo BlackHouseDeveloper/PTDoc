@@ -536,13 +536,21 @@ public class TenantIsolationTests
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
         var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
         seedCtx.Users.AddRange(userA, userB);
 
         seedCtx.RuleOverrides.AddRange(
-            new RuleOverride { UserId = userA.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" },
-            new RuleOverride { UserId = userB.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" }
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -559,13 +567,21 @@ public class TenantIsolationTests
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
 
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
         var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
         seedCtx.Users.AddRange(userA, userB);
 
         seedCtx.RuleOverrides.AddRange(
-            new RuleOverride { UserId = userA.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" },
-            new RuleOverride { UserId = userB.Id, RuleName = "MinutesRequired", Justification = "Medical necessity", AttestationText = "I attest" }
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
         );
         await seedCtx.SaveChangesAsync();
 
@@ -573,6 +589,33 @@ public class TenantIsolationTests
         var overrides = await sysCtx.RuleOverrides.ToListAsync();
 
         Assert.Equal(2, overrides.Count);
+    }
+
+    [Fact]
+    public async Task RuleOverride_LegacyRows_WithoutNoteId_AreQueryable_Via_UserClinicId()
+    {
+        // Legacy rows created before NoteId was added will have NoteId == null.
+        // The query filter must fall back to User.ClinicId so they remain visible
+        // to the correct clinic context and invisible to other clinics.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var userA = new User { Username = "legacy-ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "legacy-ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        // Legacy rows: NoteId is null, scoped only by User.ClinicId
+        seedCtx.RuleOverrides.AddRange(
+            new RuleOverride { NoteId = null, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Legacy A", AttestationText = "I attest" },
+            new RuleOverride { NoteId = null, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Legacy B", AttestationText = "I attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var overrides = await ctxA.RuleOverrides.ToListAsync();
+
+        Assert.Single(overrides);
+        Assert.Equal(userA.Id, overrides[0].UserId);
     }
 
     // ─── Addendum isolation (Sprint II) ──────────────────────────────────────

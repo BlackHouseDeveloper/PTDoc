@@ -30,7 +30,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var catalogs = new WorkspaceReferenceCatalogService(registry);
         var auditService = new AuditService(_context);
         var rulesEngine = new RulesEngine(_context, auditService);
-        var validationService = new NoteSaveValidationService(rulesEngine);
+        var validationService = new NoteSaveValidationService(_context, rulesEngine);
         _service = new NoteWorkspaceV2Service(
             _context,
             new TestIdentityContextAccessor(),

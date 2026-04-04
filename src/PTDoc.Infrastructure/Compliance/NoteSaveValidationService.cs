@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Compliance;
 
-public sealed class NoteSaveValidationService(IRulesEngine rulesEngine) : INoteSaveValidationService
+public sealed class NoteSaveValidationService(ApplicationDbContext db, IRulesEngine rulesEngine) : INoteSaveValidationService
 {
     public async Task<ValidationResult> ValidateAsync(NoteSaveComplianceRequest request, CancellationToken ct = default)
     {
@@ -63,7 +65,7 @@ public sealed class NoteSaveValidationService(IRulesEngine rulesEngine) : INoteS
         {
             merged.IsValid = false;
             merged.Errors = merged.Errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            return merged;
+            return await PopulateOverrideMetadataAsync(merged, ct);
         }
 
         var missingTimedMinutes = timedEntries
@@ -86,7 +88,7 @@ public sealed class NoteSaveValidationService(IRulesEngine rulesEngine) : INoteS
 
                 var aggregateValidation = await rulesEngine.ValidateTimedUnitsAsync([aggregateEntry], ct);
                 merged.MergeFrom(aggregateValidation);
-                return merged;
+                return await PopulateOverrideMetadataAsync(merged, ct);
             }
 
             if (request.AllowIncompleteTimedEntries)
@@ -94,24 +96,47 @@ public sealed class NoteSaveValidationService(IRulesEngine rulesEngine) : INoteS
                 merged.Warnings.Add(
                     $"Timed CPT minutes are missing for {string.Join(", ", missingTimedMinutes)}. 8-minute validation skipped until minutes are provided.");
                 merged.Warnings = merged.Warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                return merged;
+                return await PopulateOverrideMetadataAsync(merged, ct);
             }
 
             merged.Errors.Add(
                 $"Timed CPT minutes are required for {string.Join(", ", missingTimedMinutes)}.");
             merged.Errors = merged.Errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             merged.IsValid = false;
-            return merged;
+            return await PopulateOverrideMetadataAsync(merged, ct);
         }
 
         if (timedEntries.Count == 0)
         {
-            merged.IsValid = merged.Errors.Count == 0;
-            return merged;
+            merged.IsValid = merged.Errors.Count == 0 && !merged.RequiresOverride;
+            return await PopulateOverrideMetadataAsync(merged, ct);
         }
 
         var timedValidation = await rulesEngine.ValidateTimedUnitsAsync(normalizedEntries, ct);
         merged.MergeFrom(timedValidation);
-        return merged;
+        return await PopulateOverrideMetadataAsync(merged, ct);
+    }
+
+    private async Task<ValidationResult> PopulateOverrideMetadataAsync(ValidationResult result, CancellationToken ct)
+    {
+        if (result.OverrideRequirements.Count == 0)
+        {
+            return result;
+        }
+
+        var attestationText = await db.ComplianceSettings
+            .AsNoTracking()
+            .Select(settings => settings.OverrideAttestationText)
+            .FirstOrDefaultAsync(ct)
+            ?? ComplianceSettings.DefaultOverrideAttestationText;
+
+        foreach (var requirement in result.OverrideRequirements.Where(requirement => string.IsNullOrWhiteSpace(requirement.AttestationText)))
+        {
+            requirement.AttestationText = attestationText;
+        }
+
+        result.RequiresOverride = true;
+        result.IsValid = result.Errors.Count == 0 && !result.RequiresOverride;
+        return result;
     }
 }

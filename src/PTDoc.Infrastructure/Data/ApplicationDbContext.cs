@@ -269,12 +269,18 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<RuleOverride>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NoteId).HasFilter(IsNotNullFilter("NoteId"));
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.TimestampUtc);
 
             entity.Property(e => e.RuleName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Justification).IsRequired();
             entity.Property(e => e.AttestationText).IsRequired();
+
+            entity.HasOne(e => e.Note)
+                .WithMany()
+                .HasForeignKey(e => e.NoteId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.User)
                 .WithMany()
@@ -288,7 +294,7 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.OverrideAttestationText)
                 .IsRequired()
-                .HasDefaultValue("I acknowledge this override and attest that the justification is accurate and clinically necessary.");
+                .HasDefaultValue(PTDoc.Core.Models.ComplianceSettings.DefaultOverrideAttestationText);
             entity.Property(e => e.MinJustificationLength)
                 .IsRequired()
                 .HasDefaultValue(20);
@@ -613,10 +619,12 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Signature>()
             .HasQueryFilter(s => CurrentClinicId == null || s.Note!.ClinicId == CurrentClinicId);
 
-        // RuleOverride is tied to a specific user/clinic; filter via the user's ClinicId to prevent
-        // cross-tenant override visibility.
+        // RuleOverride is tied to a specific note/clinic; filter via the parent note's ClinicId to
+        // prevent cross-tenant override visibility. When NoteId is null (legacy rows), fall back to
+        // the attesting user's ClinicId so those rows remain queryable within their clinic.
         modelBuilder.Entity<RuleOverride>()
-            .HasQueryFilter(r => CurrentClinicId == null || r.User!.ClinicId == CurrentClinicId);
+            .HasQueryFilter(r => CurrentClinicId == null
+                || (r.NoteId != null ? r.Note!.ClinicId == CurrentClinicId : r.User!.ClinicId == CurrentClinicId));
 
         // Addendum is associated with a ClinicalNote; filter via the parent note's ClinicId to
         // prevent cross-tenant addendum leakage.

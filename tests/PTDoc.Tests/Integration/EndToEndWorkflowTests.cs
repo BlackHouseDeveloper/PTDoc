@@ -435,7 +435,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    public async Task PT_Creates_DailyNote_WithWarning_ReturnsStructuredEnvelope()
+    public async Task PT_Creates_DailyNote_WithWarning_Returns422UntilOverrideProvided()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
@@ -451,6 +451,43 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         });
 
         using var response = await client.PostAsync("/api/v1/notes", body);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        var envelope = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        Assert.False(envelope.IsValid);
+        Assert.Null(envelope.Note);
+        Assert.True(envelope.RequiresOverride);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, envelope.RuleType);
+        Assert.True(envelope.IsOverridable);
+        Assert.Single(envelope.OverrideRequirements);
+        Assert.Contains(envelope.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task PT_Creates_DailyNote_WithOverride_PersistsOverrideLogAndAudit()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        var body = JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"subjective\":\"Patient reports improvement\"}",
+            TotalMinutes = 6,
+            CptCodesJson = "[{\"code\":\"97110\",\"units\":1,\"minutes\":6}]",
+            Override = new OverrideSubmission
+            {
+                RuleType = ComplianceRuleType.EightMinuteRule,
+                Reason = "Clinical judgment supports additional unit"
+            }
+        });
+
+        using var response = await client.PostAsync("/api/v1/notes", body);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         var envelope = JsonSerializer.Deserialize<NoteOperationResponse>(
@@ -459,8 +496,22 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         Assert.True(envelope.IsValid);
         Assert.NotNull(envelope.Note);
-        Assert.True(envelope.RequiresOverride);
+        Assert.False(envelope.RequiresOverride);
         Assert.Contains(envelope.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var noteId = envelope.Note!.Id;
+
+        var overrideLog = await db.RuleOverrides.SingleAsync(row => row.NoteId == noteId);
+        Assert.Equal("EightMinuteRule", overrideLog.RuleName);
+        Assert.Equal("Clinical judgment supports additional unit", overrideLog.Justification);
+        Assert.Equal(TestRoleAuthHandler.GetUserIdForRole(Roles.PT), overrideLog.UserId);
+
+        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "OVERRIDE_APPLIED" && log.EntityId == noteId);
+        Assert.Equal(TestRoleAuthHandler.GetUserIdForRole(Roles.PT), audit.UserId);
+        Assert.Contains("\"ruleType\":\"EightMinuteRule\"", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"Clinical judgment supports additional unit\"", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -519,7 +570,48 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         Assert.False(envelope.IsValid);
         Assert.Null(envelope.Note);
-        Assert.Contains("Progress Note required", envelope.Errors);
+        Assert.Equal(ComplianceRuleType.ProgressNoteRequired, envelope.RuleType);
+        Assert.False(envelope.IsOverridable);
+        Assert.Contains(envelope.Errors, error => error.Contains("Progress Note required", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task PT_Posts_HardStopOverride_Returns422AndLogsAudit()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"subjective\":\"Stable\"}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var created = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = created.Note!.Id;
+
+        using var overrideResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/override",
+            JsonContent(new OverrideSubmission
+            {
+                RuleType = ComplianceRuleType.ProgressNoteRequired,
+                Reason = "Attempted hard-stop override"
+            }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, overrideResponse.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "HARD_STOP_TRIGGERED" && log.EntityId == noteId);
+        Assert.Equal(TestRoleAuthHandler.GetUserIdForRole(Roles.PT), audit.UserId);
+        Assert.False(audit.Success);
+        Assert.Contains("\"ruleType\":\"ProgressNoteRequired\"", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]

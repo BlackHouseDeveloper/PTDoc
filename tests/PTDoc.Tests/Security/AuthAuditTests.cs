@@ -164,6 +164,41 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_OverrideApplied_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, "Clinical judgment supports additional unit", userId);
+
+        Assert.Equal("OVERRIDE_APPLIED", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("EightMinuteRule", evt.Metadata["ruleType"]);
+        Assert.Equal("Clinical judgment supports additional unit", evt.Metadata["reason"]);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public void AuditEvent_HardStopTriggered_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.HardStopTriggered(noteId, ComplianceRuleType.ProgressNoteRequired, userId);
+
+        Assert.Equal("HARD_STOP_TRIGGERED", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal("ProgressNoteRequired", evt.Metadata["ruleType"]);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
     // ─── AuditService persistence tests ─────────────────────────────────────
 
     [Fact]
@@ -242,6 +277,43 @@ public class AuthAuditTests : IAsyncDisposable
         // Metadata JSON must not contain raw token value
         Assert.DoesNotContain(JwtHeaderPrefix, record.MetadataJson);    // JWT header prefix
         Assert.DoesNotContain("signingkey", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task LogRuleOverrideAsync_OverrideApplied_PersistsToAuditLog()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.OverrideApplied(noteId, ComplianceRuleType.EightMinuteRule, "Clinical judgment supports additional unit", userId);
+
+        await _auditService.LogRuleOverrideAsync(evt);
+
+        var record = await _context.AuditLogs.SingleAsync(a => a.EventType == "OVERRIDE_APPLIED");
+        Assert.Equal("ClinicalNote", record.EntityType);
+        Assert.Equal(noteId, record.EntityId);
+        Assert.Equal(userId, record.UserId);
+        Assert.True(record.Success);
+        Assert.Contains("\"ruleType\":\"EightMinuteRule\"", record.MetadataJson, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"Clinical judgment supports additional unit\"", record.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task LogRuleEvaluationAsync_HardStopTriggered_PersistsToAuditLog()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.HardStopTriggered(noteId, ComplianceRuleType.ProgressNoteRequired, userId);
+
+        await _auditService.LogRuleEvaluationAsync(evt);
+
+        var record = await _context.AuditLogs.SingleAsync(a => a.EventType == "HARD_STOP_TRIGGERED");
+        Assert.Equal("ClinicalNote", record.EntityType);
+        Assert.Equal(noteId, record.EntityId);
+        Assert.Equal(userId, record.UserId);
+        Assert.False(record.Success);
+        Assert.Contains("\"ruleType\":\"ProgressNoteRequired\"", record.MetadataJson, StringComparison.Ordinal);
     }
 
     // ─── Multiple auth events ─────────────────────────────────────────────────

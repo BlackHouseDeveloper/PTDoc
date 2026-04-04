@@ -9,6 +9,7 @@ public class SaveDailyNoteRequest
     public Guid? AppointmentId { get; set; }
     public DateTime DateOfService { get; set; }
     public DailyNoteContentDto Content { get; set; } = new();
+    public OverrideSubmission? Override { get; set; }
 }
 
 public class DailyNoteResponse

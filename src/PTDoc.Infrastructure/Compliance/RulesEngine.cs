@@ -80,7 +80,7 @@ public class RulesEngine : IRulesEngine
         {
             await _auditService.LogRuleEvaluationAsync(
                 AuditEvent.RuleEvaluation("8MIN_RULE", result.Errors.Count == 0), ct);
-            result.IsValid = result.Errors.Count == 0;
+            result.IsValid = result.Errors.Count == 0 && !result.RequiresOverride;
             return result;
         }
 
@@ -122,7 +122,7 @@ public class RulesEngine : IRulesEngine
         if (totalMinutes <= 7)
         {
             result.Warnings.Add("Minutes fall below standard 8-minute threshold");
-            result.RequiresOverride = true;
+            result.WithRuleMetadata(ComplianceRuleType.EightMinuteRule, isOverridable: true);
         }
 
         var allowedUnits = TimedUnitCalculator.CalculateAllowedUnits(totalMinutes);
@@ -130,13 +130,13 @@ public class RulesEngine : IRulesEngine
 
         if (requestedUnits > allowedUnits)
         {
-            result.Warnings.Add("Timed CPT units exceed allowed range for documented minutes");
-            result.RequiresOverride = true;
+            result.Warnings.Add("Units exceed allowed per CMS 8-minute rule.");
+            result.WithRuleMetadata(ComplianceRuleType.EightMinuteRule, isOverridable: true);
         }
 
-        result.IsValid = result.Errors.Count == 0;
+        result.IsValid = result.Errors.Count == 0 && !result.RequiresOverride;
         await _auditService.LogRuleEvaluationAsync(
-            AuditEvent.RuleEvaluation("8MIN_RULE", result.Errors.Count == 0 && result.Warnings.Count == 0), ct);
+            AuditEvent.RuleEvaluation("8MIN_RULE", result.IsValid), ct);
         return result;
     }
 
@@ -148,7 +148,8 @@ public class RulesEngine : IRulesEngine
         var validation = await CheckProgressNoteDueCoreAsync(patientId, DateTime.UtcNow.Date, payerType, ct);
         if (validation.Errors.Count > 0)
         {
-            return RuleResult.HardStop("PN_FREQUENCY", validation.Errors[0]);
+            return RuleResult.HardStop("PN_FREQUENCY", "Progress Note required per Medicare guidelines.")
+                .WithRuleMetadata(ComplianceRuleType.ProgressNoteRequired, isOverridable: false);
         }
 
         if (validation.Warnings.Count > 0)
@@ -187,14 +188,15 @@ public class RulesEngine : IRulesEngine
         {
             return RuleResult.Warning(
                 "8MIN_RULE",
-                $"Units exceed 8-minute rule allowance. PT override required.",
+                "Units exceed allowed per CMS 8-minute rule.",
                 new Dictionary<string, object>
                 {
                     ["TotalMinutes"] = totalMinutes,
                     ["AllowedUnits"] = allowedUnits,
                     ["RequestedUnits"] = requestedTimedUnits,
                     ["ExcessUnits"] = requestedTimedUnits - allowedUnits
-                });
+                })
+                .WithRuleMetadata(ComplianceRuleType.EightMinuteRule, isOverridable: true);
         }
 
         return RuleResult.Success("8MIN_RULE",
@@ -335,7 +337,8 @@ public class RulesEngine : IRulesEngine
         ValidationResult result;
         if (visitsSincePn >= ProgressNoteVisitThreshold || daysSincePn >= ProgressNoteDayThreshold)
         {
-            result = ValidationResult.Error("Progress Note required");
+            result = ValidationResult.Error("Progress Note required per Medicare guidelines.")
+                .WithRuleMetadata(ComplianceRuleType.ProgressNoteRequired, isOverridable: false);
         }
         else if (visitsSincePn >= ProgressNoteWarningVisitThreshold || daysSincePn >= ProgressNoteWarningDayThreshold)
         {

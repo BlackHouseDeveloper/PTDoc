@@ -34,7 +34,7 @@ public class NoteComplianceIntegrationTests : IDisposable
         _context = new ApplicationDbContext(options);
         _auditService = new AuditService(_context);
         _rulesEngine = new RulesEngine(_context, _auditService);
-        _validationService = new NoteSaveValidationService(_rulesEngine);
+        _validationService = new NoteSaveValidationService(_context, _rulesEngine);
     }
 
     [Fact]
@@ -90,10 +90,15 @@ public class NoteComplianceIntegrationTests : IDisposable
             ]
         });
 
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
         Assert.True(result.RequiresOverride);
+        Assert.True(result.IsOverridable);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
         Assert.Contains(result.Warnings, warning => warning.Contains("Progress Note due soon", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(result.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
+        var requirement = Assert.Single(result.OverrideRequirements);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, requirement.RuleType);
+        Assert.False(string.IsNullOrWhiteSpace(requirement.AttestationText));
     }
 
     // ─── Progress Note hard stop ──────────────────────────────────────────────
@@ -124,6 +129,8 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.Equal(RuleSeverity.HardStop, result.Severity);
         Assert.Equal("PN_FREQUENCY", result.RuleId);
         Assert.Contains("Progress Note required", result.Message);
+        Assert.Equal(ComplianceRuleType.ProgressNoteRequired, result.RuleType);
+        Assert.False(result.IsOverridable);
     }
 
     [Fact]
@@ -209,10 +216,13 @@ public class NoteComplianceIntegrationTests : IDisposable
         var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
 
         // Assert: warning is returned (not a hard stop) — note creation proceeds with the warning
-        Assert.True(result.IsValid);
+        Assert.False(result.IsValid);
         Assert.Equal(RuleSeverity.Warning, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
-        Assert.Contains("PT override required", result.Message);
+        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Message);
+        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
+        Assert.True(result.IsOverridable);
+        Assert.Single(result.OverrideRequirements);
     }
 
     [Fact]
@@ -430,7 +440,7 @@ public class NoteComplianceIntegrationTests : IDisposable
         // Assert: the 8-minute rule fires with a warning because 10 units > 2 allowed
         Assert.Equal(RuleSeverity.Warning, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
-        Assert.Contains("PT override required", result.Message);
+        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Message);
         Assert.Equal(2, result.Data["AllowedUnits"]);
         Assert.Equal(10, result.Data["RequestedUnits"]);
     }

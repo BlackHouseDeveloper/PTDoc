@@ -42,6 +42,14 @@ public static class DailyNoteEndpoints
                     ? Results.Ok(result)
                     : Results.UnprocessableEntity(result);
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new DailyNoteSaveResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
             catch (KeyNotFoundException ex)
             {
                 return Results.NotFound(new DailyNoteSaveResponse

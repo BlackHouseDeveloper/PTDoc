@@ -8,6 +8,9 @@ public sealed class ValidationResult
     public List<string> Errors { get; set; } = [];
     public List<string> Warnings { get; set; } = [];
     public bool RequiresOverride { get; set; }
+    public ComplianceRuleType? RuleType { get; set; }
+    public bool IsOverridable { get; set; }
+    public List<OverrideRequirement> OverrideRequirements { get; set; } = [];
 
     public static ValidationResult Valid() => new();
 
@@ -29,6 +32,7 @@ public sealed class ValidationResult
         }
 
         result.RequiresOverride = requiresOverride;
+        result.IsValid = !requiresOverride;
         return result;
     }
 
@@ -55,8 +59,54 @@ public sealed class ValidationResult
             }
         }
 
-        RequiresOverride |= other.RequiresOverride;
-        IsValid = Errors.Count == 0;
+        foreach (var requirement in other.OverrideRequirements)
+        {
+            if (!OverrideRequirements.Any(existing =>
+                    existing.RuleType == requirement.RuleType &&
+                    string.Equals(existing.Message, requirement.Message, StringComparison.OrdinalIgnoreCase)))
+            {
+                OverrideRequirements.Add(new OverrideRequirement
+                {
+                    RuleType = requirement.RuleType,
+                    IsOverridable = requirement.IsOverridable,
+                    Message = requirement.Message,
+                    AttestationText = requirement.AttestationText
+                });
+            }
+        }
+
+        RequiresOverride |= other.RequiresOverride || other.OverrideRequirements.Count > 0;
+        IsOverridable |= other.IsOverridable;
+        RuleType ??= other.RuleType;
+        IsValid = Errors.Count == 0 && !RequiresOverride;
+    }
+
+    public ValidationResult WithRuleMetadata(ComplianceRuleType ruleType, bool isOverridable, string? message = null)
+    {
+        RuleType = ruleType;
+        IsOverridable = isOverridable;
+
+        if (isOverridable)
+        {
+            RequiresOverride = true;
+            IsValid = false;
+
+            var resolvedMessage = string.IsNullOrWhiteSpace(message)
+                ? Warnings.FirstOrDefault() ?? Errors.FirstOrDefault() ?? string.Empty
+                : message;
+
+            if (!OverrideRequirements.Any(requirement => requirement.RuleType == ruleType))
+            {
+                OverrideRequirements.Add(new OverrideRequirement
+                {
+                    RuleType = ruleType,
+                    IsOverridable = true,
+                    Message = resolvedMessage
+                });
+            }
+        }
+
+        return this;
     }
 
     public static ValidationResult Merge(params ValidationResult[] results)
@@ -77,6 +127,9 @@ public abstract class ValidatedOperationResponse
     public List<string> Errors { get; set; } = [];
     public List<string> Warnings { get; set; } = [];
     public bool RequiresOverride { get; set; }
+    public ComplianceRuleType? RuleType { get; set; }
+    public bool IsOverridable { get; set; }
+    public List<OverrideRequirement> OverrideRequirements { get; set; } = [];
 
     public void ApplyValidation(ValidationResult validation)
     {
@@ -84,6 +137,17 @@ public abstract class ValidatedOperationResponse
         Errors = validation.Errors;
         Warnings = validation.Warnings;
         RequiresOverride = validation.RequiresOverride;
+        RuleType = validation.RuleType;
+        IsOverridable = validation.IsOverridable;
+        OverrideRequirements = validation.OverrideRequirements
+            .Select(requirement => new OverrideRequirement
+            {
+                RuleType = requirement.RuleType,
+                IsOverridable = requirement.IsOverridable,
+                Message = requirement.Message,
+                AttestationText = requirement.AttestationText
+            })
+            .ToList();
     }
 }
 

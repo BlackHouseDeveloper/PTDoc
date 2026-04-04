@@ -76,7 +76,13 @@ public class AuditService : IAuditService
 
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
-        var auditLog = new AuditLog
+        _context.AuditLogs.Add(CreateAuditLog(auditEvent));
+        await _context.SaveChangesAsync(ct);
+    }
+
+    internal static AuditLog CreateAuditLog(AuditEvent auditEvent)
+    {
+        return new AuditLog
         {
             Id = Guid.NewGuid(),
             TimestampUtc = DateTime.UtcNow,
@@ -90,8 +96,5 @@ public class AuditService : IAuditService
             EntityType = auditEvent.EntityType,
             EntityId = auditEvent.EntityId
         };
-
-        _context.AuditLogs.Add(auditLog);
-        await _context.SaveChangesAsync(ct);
     }
 }

@@ -58,7 +58,7 @@ public class DailyNoteServiceTests : IDisposable
         _taxonomyCatalog = new TreatmentTaxonomyCatalogService();
         var auditService = new AuditService(_db);
         var rulesEngine = new RulesEngine(_db, auditService);
-        var validationService = new NoteSaveValidationService(rulesEngine);
+        var validationService = new NoteSaveValidationService(_db, rulesEngine);
 
         _service = new DailyNoteService(
             _db,
@@ -346,7 +346,7 @@ public class DailyNoteServiceTests : IDisposable
         var result = await _service.SaveDraftAsync(request);
 
         Assert.False(result.IsValid);
-        Assert.Contains("Progress Note required", result.Errors);
+        Assert.Contains(result.Errors, error => error.Contains("Progress Note required", StringComparison.OrdinalIgnoreCase));
         Assert.Null(result.DailyNote);
         Assert.Equal(11, _db.ClinicalNotes.Count(n => n.PatientId == patient.Id));
     }

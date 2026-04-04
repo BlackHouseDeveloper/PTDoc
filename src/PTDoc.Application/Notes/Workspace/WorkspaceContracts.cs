@@ -268,6 +268,7 @@ public sealed class NoteWorkspaceV2SaveRequest
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
+    public OverrideSubmission? Override { get; set; }
 }
 
 public sealed class NoteWorkspaceV2LoadResponse
