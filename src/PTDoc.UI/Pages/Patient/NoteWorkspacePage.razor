@@ -311,7 +311,6 @@
             ActiveSection = SoapSection.Subjective,
             SaveState = NoteSaveState.Unsaved,
             IsDirty = false,
-            IsSubmitted = false
         };
         _dateOfService = DateTime.UtcNow;
 
@@ -350,7 +349,7 @@
         _note.Assessment = result.Payload.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = result.Payload.Plan ?? new PlanVm();
         _dryNeedling = result.Payload.DryNeedling ?? new DryNeedlingVm();
-        _note.IsSubmitted = result.IsSubmitted;
+        _note.Status = result.Status;
         _note.IsDirty = false;
         _note.MarkSaved();
         _dateOfService = result.DateOfService;
@@ -628,7 +627,7 @@
             _currentNoteId = saveResult.NoteId;
             _note.NoteId = saveResult.NoteId;
             _note.Mode = NoteMode.Existing;
-            _note.IsSubmitted = saveResult.IsSubmitted;
+            _note.Status = saveResult.Status;
             _note.MarkSaved();
 
             if (saveResult.Warnings.Count > 0)
@@ -703,7 +702,7 @@
             return;
         }
 
-        _note.IsSubmitted = true;
+        _note.Status = submitResult.Status;
         _note.IsDirty = false;
         _note.MarkSaved();
         SetValidationMessage(

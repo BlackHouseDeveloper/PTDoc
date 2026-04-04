@@ -68,7 +68,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             NoteId = workspace.NoteId,
             WorkspaceNoteType = ToWorkspaceNoteType(workspace.NoteType),
             DateOfService = workspace.DateOfService,
-            IsSubmitted = workspace.IsSigned,
+            Status = workspace.NoteStatus,
             Payload = MapToUiPayload(workspace.Payload)
         };
     }
@@ -131,7 +131,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         {
             Success = true,
             NoteId = saved.Workspace.NoteId,
-            IsSubmitted = saved.Workspace.IsSigned,
+            Status = saved.Workspace.NoteStatus,
             Errors = saved.Errors,
             Warnings = saved.Warnings,
             RequiresOverride = saved.RequiresOverride
@@ -157,7 +157,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             return new NoteWorkspaceSubmitResult
             {
                 Success = true,
-                RequiresCoSign = payload?.RequiresCoSign ?? false
+                RequiresCoSign = payload?.RequiresCoSign ?? false,
+                Status = payload?.RequiresCoSign == true ? NoteStatus.PendingCoSign : NoteStatus.Signed
             };
         }
 
@@ -321,7 +322,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         {
             Success = true,
             NoteId = operation.Note.Id,
-            IsSubmitted = operation.Note.SignedUtc.HasValue,
+            Status = operation.Note.SignedUtc.HasValue ? NoteStatus.Signed : NoteStatus.Draft,
             Errors = operation.Errors,
             Warnings = operation.Warnings,
             RequiresOverride = operation.RequiresOverride,
@@ -342,7 +343,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             NoteId = note.Id,
             WorkspaceNoteType = workspaceNoteType,
             DateOfService = note.DateOfService,
-            IsSubmitted = note.SignedUtc.HasValue,
+            Status = note.SignedUtc.HasValue ? NoteStatus.Signed : NoteStatus.Draft,
             Payload = payload
         };
     }

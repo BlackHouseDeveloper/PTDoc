@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Sprint 2: Immutable Signed Notes and Linked Addendums
+### Fixed - Sprint II: NoteStatus alignment (CI build fix)
 
-#### ComplianceWarning Carried Forward from Foundation-Enhancement/Fixes
+#### Sprint-I / Sprint-II Merge: NoteStatus Status model aligned across workspace service layer
+- **`INoteWorkspaceService.cs`** — `NoteWorkspaceSaveResult`, `NoteWorkspaceLoadResult`, and `NoteWorkspaceSubmitResult` now carry `NoteStatus Status` (Foundation Sprint-I pattern) and computed `bool IsSubmitted => Status != NoteStatus.Draft` instead of a settable `bool IsSubmitted`. `NoteWorkspaceSaveResult` retains Sprint-II fields (`Errors`, `Warnings`, `RequiresOverride`, `ComplianceWarning`). `NoteWorkspaceDraft` gains `int? LocalDraftId` (Sprint-I). Reason: `SoapNoteVm.IsSubmitted` was made read-only (computed) in Sprint-I, so Sprint-II code that tried to assign it directly caused a CS0200 compile error.
+- **`NoteWorkspaceApiService.cs`** — All `NoteWorkspaceLoadResult`/`NoteWorkspaceSaveResult`/`NoteWorkspaceSubmitResult` constructors updated to set `Status = ...` (from `workspace.NoteStatus`, `note.SignedUtc.HasValue ? Signed : Draft`, `RequiresCoSign ? PendingCoSign : Signed`) instead of `IsSubmitted = ...`. Reason: DTOs now use Status-based model.
+- **`NoteWorkspacePage.razor`** — Replaced all three `_note.IsSubmitted = x` assignments with `_note.Status = result.Status / saveResult.Status / submitResult.Status`. Removed `IsSubmitted = false` from the `SoapNoteVm` object initializer (default is `Status = NoteStatus.Draft` which computes to `IsSubmitted = false`). Reason: `SoapNoteVm.IsSubmitted` is a read-only computed property since Sprint-I.
+
 - **`ComplianceWarning`** (`src/PTDoc.Application/DTOs/NoteDtos.cs`) — Advisory compliance warning class surfaced alongside note operations when a rule fires at Warning severity (e.g. 8-minute rule). Non-null value is informational and does not block the operation.
 - **`NoteOperationResponse.ComplianceWarning`** — Property added to the unified note operation response envelope so API callers can surface advisory warnings without treating them as errors.
 - **`NoteWorkspaceSaveResult.ComplianceWarning`** (`src/PTDoc.UI/Services/INoteWorkspaceService.cs`) — Property added to the UI-layer save result DTO so workspace components can display advisory compliance warnings.
