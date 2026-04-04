@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed - PR review: compliance security and correctness hardening
+### Fixed - CI test failures from Sprint II security hardening
+
+- **`tests/PTDoc.Tests/Compliance/HashServiceTests.cs`** — Replaced `GenerateHash_ContentOrTimestampChange_ReturnsDifferentHash` with two precise tests: `GenerateHash_ContentChange_ReturnsDifferentHash` (content changes produce a different hash) and `GenerateHash_MetadataOnlyChange_ReturnsSameHash` (changing only `LastModifiedUtc` now correctly produces the *same* hash, documenting the intentional exclusion of sync metadata from the canonical signature document). Reason: after `LastModifiedUtc` was removed from the canonical hash the original test, which asserted both content and timestamp changes produce different hashes, began failing.
+- **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Replaced the `Assert.Contains("\"reason\":..."` assertion in `PT_Creates_DailyNote_WithOverride_PersistsOverrideLogAndAudit` with `Assert.DoesNotContain("\"reason\":"...)`. Reason: the preceding Sprint II hardening removed the free-text justification from `OVERRIDE_APPLIED` audit metadata; the E2E test was still asserting the old (PHI-unsafe) shape.
+
+
 
 - **`src/PTDoc.Infrastructure/Compliance/HashService.cs`** — Removed `LastModifiedUtc` from the canonical document used for SHA-256 signature hashing. Reason: any sync-metadata or save-path update that touches `LastModifiedUtc` without changing clinical content would invalidate the hash and break signature verification.
 - **`src/PTDoc.Application/Compliance/IAuditService.cs`** — Removed the free-text override `reason` from the `OverrideApplied` audit metadata (now logs only `ruleType` and `timestamp`). The justification is still persisted in `RuleOverride.Justification` which is access-controlled. Reason: free-text justification may include PHI that must not appear in audit log metadata.

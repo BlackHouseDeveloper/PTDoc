@@ -511,7 +511,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "OVERRIDE_APPLIED" && log.EntityId == noteId);
         Assert.Equal(TestRoleAuthHandler.GetUserIdForRole(Roles.PT), audit.UserId);
         Assert.Contains("\"ruleType\":\"EightMinuteRule\"", audit.MetadataJson, StringComparison.Ordinal);
-        Assert.Contains("\"reason\":\"Clinical judgment supports additional unit\"", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"reason\":", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -71,16 +71,27 @@ public sealed class HashServiceTests
     }
 
     [Fact]
-    public void GenerateHash_ContentOrTimestampChange_ReturnsDifferentHash()
+    public void GenerateHash_ContentChange_ReturnsDifferentHash()
     {
         var note = CreateNote();
         var changedContent = CreateNote(contentJson: "{\"assessment\":\"changed\"}");
-        var changedTimestamp = CreateNote(lastModifiedUtc: note.LastModifiedUtc.AddMinutes(1));
 
         var originalHash = _hashService.GenerateHash(note);
 
         Assert.NotEqual(originalHash, _hashService.GenerateHash(changedContent));
-        Assert.NotEqual(originalHash, _hashService.GenerateHash(changedTimestamp));
+    }
+
+    [Fact]
+    public void GenerateHash_MetadataOnlyChange_ReturnsSameHash()
+    {
+        // LastModifiedUtc is intentionally excluded from the canonical document
+        // so that sync metadata updates do not invalidate a signed note's hash.
+        var note = CreateNote();
+        var changedTimestamp = CreateNote(lastModifiedUtc: note.LastModifiedUtc.AddMinutes(1));
+
+        var originalHash = _hashService.GenerateHash(note);
+
+        Assert.Equal(originalHash, _hashService.GenerateHash(changedTimestamp));
     }
 
     [Fact]
