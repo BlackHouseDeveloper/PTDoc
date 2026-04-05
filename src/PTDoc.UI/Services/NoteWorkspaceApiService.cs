@@ -95,15 +95,30 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         var response = await httpClient.PostAsJsonAsync("/api/v2/notes/workspace/", request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
+            var failedSave = TryDeserialize<NoteWorkspaceV2SaveResponse>(failurePayload);
+            if (failedSave is not null)
+            {
+                return new NoteWorkspaceSaveResult
+                {
+                    Success = false,
+                    ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
+                        ?? ReadError(failurePayload, response.StatusCode),
+                    Errors = failedSave.Errors,
+                    Warnings = failedSave.Warnings,
+                    RequiresOverride = failedSave.RequiresOverride
+                };
+            }
+
             return new NoteWorkspaceSaveResult
             {
                 Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+                ErrorMessage = ReadError(failurePayload, response.StatusCode)
             };
         }
 
-        var saved = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2LoadResponse>(SerializerOptions, cancellationToken);
-        if (saved is null)
+        var saved = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>(SerializerOptions, cancellationToken);
+        if (saved?.Workspace is null)
         {
             return new NoteWorkspaceSaveResult
             {
@@ -115,16 +130,27 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         return new NoteWorkspaceSaveResult
         {
             Success = true,
-            NoteId = saved.NoteId,
-            Status = saved.NoteStatus
+            NoteId = saved.Workspace.NoteId,
+            Status = saved.Workspace.NoteStatus,
+            Errors = saved.Errors,
+            Warnings = saved.Warnings,
+            RequiresOverride = saved.RequiresOverride
         };
     }
 
     public async Task<NoteWorkspaceSubmitResult> SubmitAsync(
         Guid noteId,
+        bool consentAccepted,
+        bool intentConfirmed,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", content: null, cancellationToken);
+        var request = JsonContent.Create(new SubmitNoteRequest
+        {
+            ConsentAccepted = consentAccepted,
+            IntentConfirmed = intentConfirmed
+        });
+
+        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", request, cancellationToken);
         if (response.IsSuccessStatusCode)
         {
             var payload = await response.Content.ReadFromJsonAsync<SubmitNoteResponse>(SerializerOptions, cancellationToken);
@@ -260,10 +286,25 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
 
         if (!response.IsSuccessStatusCode)
         {
+            var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
+            var failedSave = TryDeserialize<NoteOperationResponse>(failurePayload);
+            if (failedSave is not null)
+            {
+                return new NoteWorkspaceSaveResult
+                {
+                    Success = false,
+                    ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
+                        ?? ReadError(failurePayload, response.StatusCode),
+                    Errors = failedSave.Errors,
+                    Warnings = failedSave.Warnings,
+                    RequiresOverride = failedSave.RequiresOverride
+                };
+            }
+
             return new NoteWorkspaceSaveResult
             {
                 Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+                ErrorMessage = ReadError(failurePayload, response.StatusCode)
             };
         }
 
@@ -281,7 +322,10 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         {
             Success = true,
             NoteId = operation.Note.Id,
-            Status = operation.Note.NoteStatus,
+            Status = operation.Note.SignedUtc.HasValue ? NoteStatus.Signed : NoteStatus.Draft,
+            Errors = operation.Errors,
+            Warnings = operation.Warnings,
+            RequiresOverride = operation.RequiresOverride,
             ComplianceWarning = operation.ComplianceWarning
         };
     }
@@ -299,7 +343,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             NoteId = note.Id,
             WorkspaceNoteType = workspaceNoteType,
             DateOfService = note.DateOfService,
-            Status = note.NoteStatus,
+            Status = note.SignedUtc.HasValue ? NoteStatus.Signed : NoteStatus.Draft,
             Payload = payload
         };
     }
@@ -312,6 +356,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             {
                 Code = code.Code,
                 Units = code.Units,
+                Minutes = code.Minutes,
                 IsTimed = false
             })
             .ToList();
@@ -455,7 +500,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                     {
                         Code = code.Code,
                         Description = code.Description,
-                        Units = code.Units
+                        Units = code.Units,
+                        Minutes = code.Minutes
                     })
                     .ToList(),
                 TreatmentFrequency = FormatFrequency(payload.Plan.TreatmentFrequencyDaysPerWeek),
@@ -583,7 +629,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                     {
                         Code = code.Code.Trim(),
                         Description = code.Description?.Trim() ?? string.Empty,
-                        Units = Math.Max(1, code.Units)
+                        Units = Math.Max(1, code.Units),
+                        Minutes = code.Minutes
                     })
                     .ToList(),
                 HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes,
@@ -778,9 +825,51 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
     private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ReadError(payload, response.StatusCode);
+    }
+
+    private static T? TryDeserialize<T>(string? payload)
+    {
         if (string.IsNullOrWhiteSpace(payload))
         {
-            return $"Request failed with status {(int)response.StatusCode}.";
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(payload, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+    }
+
+    private static string? BuildValidationMessage(IEnumerable<string>? errors, IEnumerable<string>? warnings)
+    {
+        var errorMessages = (errors ?? [])
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (errorMessages.Count > 0)
+        {
+            return string.Join(" ", errorMessages);
+        }
+
+        var warningMessages = (warnings ?? [])
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return warningMessages.Count > 0 ? string.Join(" ", warningMessages) : null;
+    }
+
+    private static string? ReadError(string? payload, HttpStatusCode statusCode)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return $"Request failed with status {(int)statusCode}.";
         }
 
         try
@@ -832,6 +921,23 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 return detailMessage;
             }
 
+            if (json.RootElement.TryGetProperty("errors", out var errorListElement)
+                && errorListElement.ValueKind == JsonValueKind.Array)
+            {
+                var messages = errorListElement
+                    .EnumerateArray()
+                    .Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString())
+                    .Where(message => !string.IsNullOrWhiteSpace(message))
+                    .Cast<string>()
+                    .ToList();
+
+                if (messages.Count > 0)
+                {
+                    return string.Join(" ", messages);
+                }
+            }
+
             if (json.RootElement.TryGetProperty("errors", out var errorsElement) && errorsElement.ValueKind == JsonValueKind.Object)
             {
                 foreach (var error in errorsElement.EnumerateObject())
@@ -859,5 +965,11 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
     {
         public bool Success { get; set; }
         public bool RequiresCoSign { get; set; }
+    }
+
+    private sealed class SubmitNoteRequest
+    {
+        public bool ConsentAccepted { get; set; }
+        public bool IntentConfirmed { get; set; }
     }
 }

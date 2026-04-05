@@ -406,6 +406,77 @@ public class LocalSyncOrchestratorTests
         Assert.NotNull(meta.LastPushedAt);
     }
 
+    [Fact]
+    public async Task PushPendingAsync_IncludesAddendumMetadata_ForClinicalNotes()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var parentNoteId = Guid.NewGuid();
+        var createdUtc = DateTime.UtcNow.AddHours(-2);
+        var note = new LocalClinicalNoteDraft
+        {
+            ServerId = Guid.NewGuid(),
+            PatientServerId = Guid.NewGuid(),
+            NoteType = "Daily",
+            DateOfService = DateTime.UtcNow.Date,
+            CreatedUtc = createdUtc,
+            ParentNoteId = parentNoteId,
+            IsAddendum = true,
+            ContentJson = "{\"text\":\"addendum\"}",
+            CptCodesJson = "[]",
+            SyncState = SyncState.Pending,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        ctx.ClinicalNoteDrafts.Add(note);
+        await ctx.SaveChangesAsync();
+
+        string? requestBody = null;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (request, _) =>
+            {
+                requestBody = await request.Content!.ReadAsStringAsync();
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = JsonContent.Create(new ClientSyncPushResponse
+                    {
+                        AcceptedCount = 1,
+                        Items =
+                        [
+                            new ClientSyncPushItemResult
+                            {
+                                EntityType = "ClinicalNote",
+                                LocalId = note.LocalId,
+                                ServerId = note.ServerId,
+                                Status = "Accepted",
+                                ServerModifiedUtc = DateTime.UtcNow
+                            }
+                        ]
+                    })
+                };
+            });
+
+        var httpClient = new HttpClient(handler.Object) { BaseAddress = new Uri("http://localhost:5170") };
+        var orch = new LocalSyncOrchestrator(ctx, httpClient, NullLogger<LocalSyncOrchestrator>.Instance);
+
+        await orch.PushPendingAsync();
+
+        Assert.False(string.IsNullOrWhiteSpace(requestBody));
+        var pushRequest = JsonSerializer.Deserialize<ClientSyncPushRequest>(requestBody!, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+        var pushedItem = Assert.Single(pushRequest!.Items);
+        using var doc = JsonDocument.Parse(pushedItem.DataJson);
+        var root = doc.RootElement;
+
+        Assert.Equal(createdUtc.ToString("O"), root.GetProperty("createdUtc").GetString());
+        Assert.Equal(parentNoteId.ToString(), root.GetProperty("parentNoteId").GetString());
+        Assert.True(root.GetProperty("isAddendum").GetBoolean());
+    }
+
     // ── PullChangesAsync ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -420,6 +491,52 @@ public class LocalSyncOrchestratorTests
         Assert.Equal(0, result.PulledCount);
         Assert.Equal(0, result.AppliedCount);
         Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public async Task PullChangesAsync_PopulatesAddendumMetadata_WhenPullingClinicalNote()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var serverId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var parentNoteId = Guid.NewGuid();
+        var createdUtc = DateTime.UtcNow.AddDays(-1);
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items =
+            [
+                new ClientSyncPullItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = serverId,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        PatientId = patientId,
+                        NoteType = NoteType.Daily,
+                        DateOfService = DateTime.UtcNow.Date,
+                        CreatedUtc = createdUtc,
+                        ParentNoteId = parentNoteId,
+                        IsAddendum = true,
+                        ContentJson = "{\"text\":\"server addendum\"}",
+                        CptCodesJson = "[]",
+                        LastModifiedUtc = DateTime.UtcNow
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PullChangesAsync();
+
+        Assert.Equal(1, result.AppliedCount);
+        var local = await ctx.ClinicalNoteDrafts.FirstOrDefaultAsync(n => n.ServerId == serverId);
+        Assert.NotNull(local);
+        Assert.Equal(parentNoteId, local!.ParentNoteId);
+        Assert.True(local.IsAddendum);
+        Assert.Equal(createdUtc, local.CreatedUtc);
     }
 
     [Fact]

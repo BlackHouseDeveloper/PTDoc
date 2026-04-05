@@ -29,6 +29,10 @@ public static class NoteEndpoints
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private static readonly JsonSerializerOptions CptSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     /// <summary>
     /// SOAP section names that are valid targets for AI-generated content acceptance.
@@ -50,6 +54,10 @@ public static class NoteEndpoints
             .WithName("ListNotes")
             .WithSummary("List clinical notes with optional filtering");
 
+        readGroup.MapGet("/{id:guid}", GetNoteById)
+            .WithName("GetNoteById")
+            .WithSummary("Get a clinical note with linked addendums");
+
         // Write endpoints — NoteWrite policy (PT and PTA only)
         var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
@@ -62,6 +70,10 @@ public static class NoteEndpoints
         writeGroup.MapPut("/{id:guid}", UpdateNote)
             .WithName("UpdateNote")
             .WithSummary("Update a draft clinical note");
+
+        writeGroup.MapPost("/{noteId:guid}/override", ApplyOverride)
+            .WithName("ApplyNoteOverride")
+            .WithSummary("Apply a PT-attested compliance override to an existing note");
 
         // Sprint UC-Gamma: AI output acceptance gate.
         // AI-generated content is NEVER persisted automatically — a clinician must
@@ -100,6 +112,7 @@ public static class NoteEndpoints
 
         var query = db.ClinicalNotes
             .AsNoTracking()
+            .Where(n => !n.IsAddendum)
             .AsQueryable();
 
         if (patientId.HasValue)
@@ -111,9 +124,9 @@ public static class NoteEndpoints
 
         // Status filter: "signed" means has SignatureHash; "unsigned" means no SignatureHash
         if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.SignatureHash != null);
+            query = query.Where(n => n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null);
         else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.SignatureHash == null);
+            query = query.Where(n => n.NoteStatus != NoteStatus.Signed && n.SignatureHash == null && n.SignedUtc == null);
 
         // Taxonomy filter: use ANY/EXISTS predicate for an efficient SQL plan.
         if (!string.IsNullOrWhiteSpace(categoryId))
@@ -136,7 +149,7 @@ public static class NoteEndpoints
                     ? n.Patient.FirstName + " " + n.Patient.LastName
                     : string.Empty,
                 NoteType = n.NoteType.ToString(),
-                IsSigned = n.SignatureHash != null,
+                IsSigned = n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null,
                 DateOfService = n.DateOfService,
                 LastModifiedUtc = n.LastModifiedUtc,
                 CptCodesJson = n.CptCodesJson
@@ -146,14 +159,65 @@ public static class NoteEndpoints
         return Results.Ok(notes);
     }
 
+    private static async Task<IResult> GetNoteById(
+        Guid id,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var note = await db.ClinicalNotes
+            .AsNoTracking()
+            .Include(n => n.ObjectiveMetrics)
+            .FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+
+        if (note is null)
+            return Results.NotFound(new { error = $"Note {id} not found." });
+
+        if (note.IsAddendum)
+        {
+            if (note.ParentNoteId is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+
+            note = await db.ClinicalNotes
+                .AsNoTracking()
+                .Include(n => n.ObjectiveMetrics)
+                .FirstOrDefaultAsync(
+                    n => n.Id == note.ParentNoteId.Value && !n.IsAddendum,
+                    cancellationToken);
+
+            if (note is null)
+                return Results.NotFound(new { error = $"Primary note for addendum {id} not found." });
+        }
+
+        var linkedAddendumNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(n => n.ParentNoteId == note.Id && n.IsAddendum)
+            .OrderBy(n => n.CreatedUtc)
+            .ThenBy(n => n.LastModifiedUtc)
+            .ToListAsync(cancellationToken);
+
+        var legacyAddendumRows = await db.Addendums
+            .AsNoTracking()
+            .Where(a => a.ClinicalNoteId == note.Id)
+            .OrderBy(a => a.CreatedUtc)
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(new NoteDetailResponse
+        {
+            Note = ToResponse(note),
+            Addendums = linkedAddendumNotes
+                .Select(MapLinkedAddendum)
+                .Concat(legacyAddendumRows.Select(MapLegacyAddendum))
+                .OrderBy(a => a.CreatedUtc)
+                .ThenBy(a => a.LastModifiedUtc)
+                .ToList()
+        });
+    }
+
     // POST /api/v1/notes
     private static async Task<IResult> CreateNote(
         [FromBody] CreateNoteRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] ITenantContextAccessor tenantContext,
-        [FromServices] IIdentityContextAccessor identityContext,
-        [FromServices] IRulesEngine rulesEngine,
-        [FromServices] ISyncEngine syncEngine,
+        [FromServices] INoteWriteService noteWriteService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -199,135 +263,35 @@ public static class NoteEndpoints
                 return Results.UnprocessableEntity(new { error = $"Appointment {request.AppointmentId} does not belong to patient {request.PatientId}." });
         }
 
-        // Sprint S: Progress Note hard stop — block Daily note creation when PN is required.
-        // Pass payer type to apply payer-aware cadence (Medicare=visit+day, Commercial=day only).
-        if (request.NoteType == NoteType.Daily)
+        try
         {
-            // Derive payer type from Patient.PayerInfoJson for correct threshold selection
-            string? payerType = null;
-            var patientForPayer = await db.Patients
-                .AsNoTracking()
-                .Select(p => new { p.Id, p.PayerInfoJson })
-                .FirstOrDefaultAsync(p => p.Id == request.PatientId, cancellationToken);
-            if (patientForPayer is not null && !string.IsNullOrWhiteSpace(patientForPayer.PayerInfoJson))
-            {
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(patientForPayer.PayerInfoJson);
-                    foreach (var property in doc.RootElement.EnumerateObject())
-                    {
-                        if (string.Equals(property.Name, "PayerType", StringComparison.OrdinalIgnoreCase))
-                        {
-                            payerType = property.Value.GetString();
-                            break;
-                        }
-                    }
-                }
-                catch { /* fall through — use default */ }
-            }
+            var result = await noteWriteService.CreateAsync(request, cancellationToken);
 
-            var pnFreqResult = await rulesEngine.ValidateProgressNoteFrequencyAsync(request.PatientId, payerType, cancellationToken);
-            if (pnFreqResult.Severity == RuleSeverity.HardStop)
-            {
-                return Results.UnprocessableEntity(new
-                {
-                    error = pnFreqResult.Message,
-                    ruleId = pnFreqResult.RuleId,
-                    data = pnFreqResult.Data
-                });
-            }
+            if (!result.IsValid)
+                return Results.UnprocessableEntity(result);
+
+            if (result.Note is null)
+                return Results.Problem(
+                    title: "Note creation returned an invalid success response.",
+                    detail: "The note write service reported success but did not provide a note.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+
+            return Results.Created($"/api/v1/notes/{result.Note.Id}", result);
         }
-
-        // Sprint S: 8-minute rule validation — runs only when TotalMinutes is explicitly provided.
-        // Negative TotalMinutes → 400; malformed CptCodesJson when TotalMinutes present → 400;
-        // rules engine Error → 400; Warning → advisory in response (note still created).
-        ComplianceWarning? complianceWarning = null;
-        if (request.TotalMinutes.HasValue)
+        catch (UnauthorizedAccessException ex)
         {
-            if (request.TotalMinutes.Value < 0)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+            return Results.Json(
+                new NoteOperationResponse
                 {
-                    { nameof(request.TotalMinutes), ["TotalMinutes must be zero or greater."] }
-                });
-
-            if (!string.IsNullOrWhiteSpace(request.CptCodesJson) && request.CptCodesJson != "[]")
-            {
-                var cptCodes = TryDeserializeCptCodes(request.CptCodesJson);
-                if (cptCodes is null)
-                    return Results.ValidationProblem(new Dictionary<string, string[]>
-                    {
-                        { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
-                    });
-
-                // Server-side enforcement: override IsTimed for known timed CPT codes
-                // so that UI serialization cannot bypass 8-minute rule validation.
-                EnforceKnownTimedCptStatus(cptCodes);
-
-                if (cptCodes.Any(c => c.IsTimed))
-                {
-                    var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
-                        request.TotalMinutes.Value, cptCodes, cancellationToken);
-                    if (!eightMinResult.IsValid)
-                        return Results.ValidationProblem(new Dictionary<string, string[]>
-                        {
-                            { "8MinuteRule", [eightMinResult.Message] }
-                        });
-                    if (eightMinResult.Severity == RuleSeverity.Warning)
-                        complianceWarning = ToComplianceWarning(eightMinResult);
-                }
-            }
+                    IsValid = false,
+                    Errors = [ex.Message]
+                },
+                statusCode: StatusCodes.Status403Forbidden);
         }
-
-        var clinicId = tenantContext.GetCurrentClinicId();
-        var userId = identityContext.GetCurrentUserId();
-
-        var note = new ClinicalNote
+        catch (ArgumentException ex)
         {
-            PatientId = request.PatientId,
-            AppointmentId = request.AppointmentId,
-            NoteType = request.NoteType,
-            IsReEvaluation = request.IsReEvaluation,
-            ContentJson = string.IsNullOrWhiteSpace(request.ContentJson) ? "{}" : request.ContentJson,
-            DateOfService = request.DateOfService,
-            CptCodesJson = string.IsNullOrWhiteSpace(request.CptCodesJson) ? "[]" : request.CptCodesJson,
-            TherapistNpi = request.TherapistNpi?.Trim(),
-            TotalTreatmentMinutes = request.TotalMinutes,
-            NoteStatus = NoteStatus.Draft,
-            ClinicId = clinicId,
-            LastModifiedUtc = DateTime.UtcNow,
-            ModifiedByUserId = userId,
-            SyncState = SyncState.Pending
-        };
-
-        db.ClinicalNotes.Add(note);
-
-        // Track 7D: Lock intake form when an Evaluation note is created.
-        // Per acceptance criteria: "Intake cannot be edited after Eval creation."
-        if (request.NoteType == NoteType.Evaluation)
-        {
-            var draftIntake = await db.IntakeForms
-                .Where(f => f.PatientId == request.PatientId && !f.IsLocked)
-                .OrderByDescending(f => f.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (draftIntake is not null)
-            {
-                draftIntake.IsLocked = true;
-                draftIntake.LastModifiedUtc = DateTime.UtcNow;
-                draftIntake.ModifiedByUserId = userId;
-                draftIntake.SyncState = SyncState.Pending;
-                await syncEngine.EnqueueAsync("IntakeForm", draftIntake.Id, SyncOperation.Update, cancellationToken);
-            }
+            return ToValidationProblem(ex, nameof(request.CptCodesJson), nameof(request.TotalMinutes));
         }
-
-        await db.SaveChangesAsync(cancellationToken);
-        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, cancellationToken);
-
-        return Results.Created($"/api/v1/notes/{note.Id}", new NoteOperationResponse
-        {
-            Note = ToResponse(note),
-            ComplianceWarning = complianceWarning
-        });
     }
 
     // PUT /api/notes/{id}
@@ -335,10 +299,10 @@ public static class NoteEndpoints
         Guid id,
         [FromBody] UpdateNoteRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] IIdentityContextAccessor identityContext,
-        [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
-        [FromServices] ISyncEngine syncEngine,
+        [FromServices] IAuditService auditService,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] INoteWriteService noteWriteService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -372,76 +336,149 @@ public static class NoteEndpoints
         var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
         if (!immutabilityResult.IsValid)
         {
-            return Results.Conflict(new { error = immutabilityResult.Message });
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteEndpoints.UpdateNote"),
+                cancellationToken);
+            return Results.Conflict(new { error = "Signed notes cannot be modified. Create addendum." });
         }
 
-        // Sprint S: 8-minute rule validation on update — runs only when TotalMinutes is provided.
-        // Uses the incoming CptCodesJson (if being updated) or the existing saved value.
-        // Negative TotalMinutes → 400; malformed JSON when TotalMinutes present → 400;
-        // rules engine Error → 400; Warning → advisory in response (update still saved).
-        ComplianceWarning? complianceWarning = null;
-        if (request.TotalMinutes.HasValue)
+        try
         {
-            if (request.TotalMinutes.Value < 0)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
+            var result = await noteWriteService.UpdateAsync(note, request, cancellationToken);
+            return result.IsValid
+                ? Results.Ok(result)
+                : Results.UnprocessableEntity(result);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(
+                new NoteOperationResponse
                 {
-                    { nameof(request.TotalMinutes), ["TotalMinutes must be zero or greater."] }
-                });
+                    IsValid = false,
+                    Errors = [ex.Message]
+                },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (ArgumentException ex)
+        {
+            return ToValidationProblem(ex, nameof(request.CptCodesJson), nameof(request.TotalMinutes));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+    }
 
-            var effectiveCptCodesJson = request.CptCodesJson ?? note.CptCodesJson;
-            if (!string.IsNullOrWhiteSpace(effectiveCptCodesJson) && effectiveCptCodesJson != "[]")
+    private static async Task<IResult> ApplyOverride(
+        Guid noteId,
+        [FromBody] OverrideSubmission request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] INoteSaveValidationService validationService,
+        [FromServices] IOverrideService overrideService,
+        [FromServices] IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (!request.RuleType.HasValue)
+        {
+            errors[nameof(request.RuleType)] = ["RuleType is required."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            errors[nameof(request.Reason)] = ["Reason is required."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        var note = await db.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(entity => entity.Id == noteId, cancellationToken);
+
+        if (note is null)
+        {
+            return Results.NotFound(new { error = $"Note {noteId} not found." });
+        }
+
+        var cptEntries = TryDeserializeCptEntries(note.CptCodesJson);
+        if (cptEntries is null)
+        {
+            return Results.Conflict(new { error = "Stored CPT data is invalid and cannot be evaluated for override." });
+        }
+
+        var totalTimedMinutes = cptEntries
+            .Where(entry => entry.IsTimed)
+            .Sum(entry => entry.Minutes ?? 0);
+
+        var validation = await validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = note.PatientId,
+            ExistingNoteId = note.Id,
+            NoteType = note.NoteType,
+            DateOfService = note.DateOfService,
+            TotalTimedMinutes = totalTimedMinutes,
+            CptEntries = cptEntries
+        }, cancellationToken);
+
+        var ruleType = request.RuleType!.Value;
+        var matchingRequirement = validation.OverrideRequirements
+            .FirstOrDefault(requirement => requirement.RuleType == ruleType);
+
+        if (matchingRequirement is null)
+        {
+            if (ruleType == ComplianceRuleType.ProgressNoteRequired)
             {
-                var cptCodes = TryDeserializeCptCodes(effectiveCptCodesJson);
-                if (cptCodes is null)
-                    return Results.ValidationProblem(new Dictionary<string, string[]>
-                    {
-                        { nameof(request.CptCodesJson), ["CptCodesJson is not valid JSON."] }
-                    });
-
-                // Server-side enforcement: override IsTimed for known timed CPT codes
-                // so that UI serialization cannot bypass 8-minute rule validation.
-                EnforceKnownTimedCptStatus(cptCodes);
-
-                if (cptCodes.Any(c => c.IsTimed))
-                {
-                    var eightMinResult = await rulesEngine.ValidateEightMinuteRuleAsync(
-                        request.TotalMinutes.Value, cptCodes, cancellationToken);
-                    if (!eightMinResult.IsValid)
-                        return Results.ValidationProblem(new Dictionary<string, string[]>
-                        {
-                            { "8MinuteRule", [eightMinResult.Message] }
-                        });
-                    if (eightMinResult.Severity == RuleSeverity.Warning)
-                        complianceWarning = ToComplianceWarning(eightMinResult);
-                }
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, ruleType, identityContext.TryGetCurrentUserId()),
+                    cancellationToken);
             }
+
+            return Results.UnprocessableEntity(new
+            {
+                error = $"No active overridable compliance rule matched rule type '{ruleType}'.",
+                overrideRequirements = validation.OverrideRequirements
+            });
         }
 
-        if (request.ContentJson is not null)
-            note.ContentJson = request.ContentJson;
-
-        if (request.DateOfService is not null)
-            note.DateOfService = request.DateOfService.Value;
-
-        if (request.CptCodesJson is not null)
-            note.CptCodesJson = request.CptCodesJson;
-
-        var userId = identityContext.GetCurrentUserId();
-        note.LastModifiedUtc = DateTime.UtcNow;
-        note.ModifiedByUserId = userId;
-        note.SyncState = SyncState.Pending;
-
-        await db.SaveChangesAsync(cancellationToken);
-        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Update, cancellationToken);
-
-        // Sprint S: Audit logging — record every successful note edit.
-        await auditService.LogNoteEditedAsync(AuditEvent.NoteEdited(note.Id, userId), cancellationToken);
-
-        return Results.Ok(new NoteOperationResponse
+        try
         {
-            Note = ToResponse(note),
-            ComplianceWarning = complianceWarning
-        });
+            await overrideService.ApplyOverrideAsync(new OverrideRequest
+            {
+                NoteId = noteId,
+                RuleType = ruleType,
+                Reason = request.Reason,
+                AttestedBy = identityContext.GetCurrentUserId(),
+                Timestamp = DateTime.UtcNow
+            }, cancellationToken);
+
+            return Results.Ok(new { success = true });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.Reason)] = [ex.Message]
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ruleType == ComplianceRuleType.ProgressNoteRequired)
+            {
+                await auditService.LogRuleEvaluationAsync(
+                    AuditEvent.HardStopTriggered(noteId, ruleType, identityContext.TryGetCurrentUserId()),
+                    cancellationToken);
+            }
+
+            return Results.UnprocessableEntity(new { error = ex.Message });
+        }
     }
 
     // POST /api/notes/{noteId}/accept-ai-suggestion
@@ -515,6 +552,9 @@ public static class NoteEndpoints
         var immutabilityResult = await rulesEngine.ValidateImmutabilityAsync(note.Id, cancellationToken);
         if (!immutabilityResult.IsValid)
         {
+            await auditService.LogRuleEvaluationAsync(
+                AuditEvent.EditBlockedSignedNote(note.Id, identityContext.TryGetCurrentUserId(), "NoteEndpoints.AcceptAiSuggestion"),
+                cancellationToken);
             return Results.Conflict(new
             {
                 error = "AI-generated content cannot be accepted into a signed note. Create an addendum instead.",
@@ -579,33 +619,30 @@ public static class NoteEndpoints
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Maps a RuleResult to a ComplianceWarning DTO for inclusion in the response.
-    /// Called only when the rule fired at Warning severity.
-    /// </summary>
-    private static ComplianceWarning ToComplianceWarning(RuleResult result) => new()
+    private static IResult ToValidationProblem(ArgumentException exception, string cptCodesField, string totalMinutesField)
     {
-        RuleId = result.RuleId,
-        Message = result.Message,
-        Data = result.Data
-    };
+        if (string.Equals(exception.ParamName, nameof(CreateNoteRequest.CptCodesJson), StringComparison.Ordinal)
+            || string.Equals(exception.ParamName, nameof(UpdateNoteRequest.CptCodesJson), StringComparison.Ordinal))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { cptCodesField, ["CptCodesJson is not valid JSON."] }
+            });
+        }
 
-    /// <summary>
-    /// Attempts to deserialize a CPT codes JSON string.
-    /// Returns null when the JSON is malformed — callers that have <c>TotalMinutes</c> set
-    /// must treat a null return as a validation failure and reject the request.
-    /// </summary>
-    private static List<CptCodeEntry>? TryDeserializeCptCodes(string cptCodesJson)
-    {
-        try
+        if (string.Equals(exception.ParamName, nameof(CreateNoteRequest.TotalMinutes), StringComparison.Ordinal)
+            || string.Equals(exception.ParamName, nameof(UpdateNoteRequest.TotalMinutes), StringComparison.Ordinal))
         {
-            return JsonSerializer.Deserialize<List<CptCodeEntry>>(cptCodesJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { totalMinutesField, ["TotalMinutes must be zero or greater."] }
+            });
         }
-        catch (JsonException)
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
         {
-            return null;
-        }
+            { "request", [exception.Message] }
+        });
     }
 
     /// <summary>
@@ -796,6 +833,23 @@ public static class NoteEndpoints
             .ToList();
     }
 
+    private static List<CptCodeEntry>? TryDeserializeCptEntries(string? cptCodesJson)
+    {
+        if (string.IsNullOrWhiteSpace(cptCodesJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<CptCodeEntry>>(cptCodesJson, CptSerializerOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
     private static NoteResponse ToResponse(ClinicalNote n) => new()
@@ -803,11 +857,14 @@ public static class NoteEndpoints
         Id = n.Id,
         PatientId = n.PatientId,
         AppointmentId = n.AppointmentId,
+        ParentNoteId = n.ParentNoteId,
+        IsAddendum = n.IsAddendum,
         NoteType = n.NoteType,
         IsReEvaluation = n.IsReEvaluation,
         NoteStatus = n.NoteStatus,
         ContentJson = n.ContentJson,
         DateOfService = n.DateOfService,
+        CreatedUtc = n.CreatedUtc,
         SignatureHash = n.SignatureHash,
         SignedUtc = n.SignedUtc,
         SignedByUserId = n.SignedByUserId,
@@ -828,6 +885,36 @@ public static class NoteEndpoints
             IsWNL = m.IsWNL,
             LastModifiedUtc = m.LastModifiedUtc
         }).ToList()
+    };
+
+    private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note) => new()
+    {
+        Id = note.Id,
+        ParentNoteId = note.ParentNoteId ?? Guid.Empty,
+        IsLegacy = false,
+        IsSigned = note.IsFinalized,
+        CreatedUtc = note.CreatedUtc,
+        LastModifiedUtc = note.LastModifiedUtc,
+        Content = note.ContentJson,
+        ContentFormat = "json",
+        SignatureHash = note.SignatureHash,
+        SignedUtc = note.SignedUtc,
+        SignedByUserId = note.SignedByUserId,
+        NoteType = note.NoteType
+    };
+
+    private static NoteAddendumResponse MapLegacyAddendum(Addendum addendum) => new()
+    {
+        Id = addendum.Id,
+        ParentNoteId = addendum.ClinicalNoteId,
+        IsLegacy = true,
+        IsSigned = !string.IsNullOrWhiteSpace(addendum.SignatureHash),
+        CreatedUtc = addendum.CreatedUtc,
+        LastModifiedUtc = addendum.CreatedUtc,
+        Content = addendum.Content,
+        ContentFormat = "text",
+        SignatureHash = addendum.SignatureHash,
+        NoteType = null
     };
 
     /// <summary>

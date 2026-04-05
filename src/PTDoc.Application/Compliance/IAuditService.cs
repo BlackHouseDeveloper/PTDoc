@@ -22,6 +22,16 @@ public interface IAuditService
     Task LogNoteSignedAsync(AuditEvent auditEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Logs a legal signature event.
+    /// </summary>
+    Task LogSignatureEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs a signature verification event.
+    /// </summary>
+    Task LogSignatureVerificationAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Logs an addendum creation event.
     /// </summary>
     Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
@@ -109,6 +119,42 @@ public class AuditEvent
         };
     }
 
+    public static AuditEvent OverrideApplied(Guid noteId, ComplianceRuleType ruleType, Guid userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "OVERRIDE_APPLIED",
+            Severity = "Info",
+            Success = true,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["ruleType"] = ruleType.ToString(),
+                ["timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent HardStopTriggered(Guid noteId, ComplianceRuleType ruleType, Guid? userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "HARD_STOP_TRIGGERED",
+            Severity = "Warning",
+            Success = false,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["ruleType"] = ruleType.ToString(),
+                ["timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
     public static AuditEvent NoteSigned(Guid noteId, string noteType, string signatureHash, Guid userId)
     {
         return new AuditEvent
@@ -125,16 +171,56 @@ public class AuditEvent
         };
     }
 
+    public static AuditEvent SignatureAction(string eventType, Guid noteId, Guid? userId, bool success = true, string? errorMessage = null)
+    {
+        return new AuditEvent
+        {
+            EventType = eventType,
+            UserId = userId,
+            Success = success,
+            ErrorMessage = errorMessage,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["Action"] = eventType,
+                ["NoteId"] = noteId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
     public static AuditEvent AddendumCreated(Guid noteId, Guid addendumId, Guid userId)
     {
         return new AuditEvent
         {
-            EventType = "AddendumCreated",
+            EventType = "ADDENDUM_CREATE",
             UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
             Metadata = new Dictionary<string, object>
             {
                 ["NoteId"] = noteId,
                 ["AddendumId"] = addendumId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent EditBlockedSignedNote(Guid noteId, Guid? userId, string source)
+    {
+        return new AuditEvent
+        {
+            EventType = "EDIT_BLOCKED_SIGNED_NOTE",
+            Severity = "Warning",
+            Success = false,
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["Source"] = source,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

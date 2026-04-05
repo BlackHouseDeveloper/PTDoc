@@ -70,13 +70,16 @@ dotnet run --project src/PTDoc.Api --urls http://localhost:5170
    dotnet test
    ```
 
-3. **Commit with conventional commits:**
+3. **Update the changelog:**
+   - Add a concise entry to `docs/CHANGELOG.md` describing the user-visible, architectural, compliance, or workflow changes included in the session or PR.
+
+4. **Commit with conventional commits:**
    ```bash
    git add .
    git commit -m "feat(intake): add patient intake form component"
    ```
 
-4. **Push and create PR:**
+5. **Push and create PR:**
    ```bash
    git push -u origin feature/patient-intake-form
    gh pr create --title "Add Patient Intake Form" --body "Implements #123"

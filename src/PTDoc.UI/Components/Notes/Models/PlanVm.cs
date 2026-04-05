@@ -41,4 +41,5 @@ public class CptCodeEntry
     public string Description { get; set; } = string.Empty;
     /// <summary>Billing units (each unit = 15 minutes per CMS guidance).</summary>
     public int Units { get; set; } = 2;
+    public int? Minutes { get; set; }
 }

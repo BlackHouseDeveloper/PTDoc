@@ -118,6 +118,9 @@ public class SyncClientProtocolTests
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow.AddHours(-1),
+            ParentNoteId = Guid.NewGuid(),
+            IsAddendum = true,
             ContentJson = "{\"text\":\"Draft note\"}",
             LastModifiedUtc = watermark.AddMinutes(1) // after watermark
         };
@@ -145,6 +148,9 @@ public class SyncClientProtocolTests
         Assert.Equal("ClinicalNote", result.Items[0].EntityType);
         Assert.Equal(note.Id, result.Items[0].ServerId);
         Assert.Contains("NoteType", result.Items[0].DataJson);
+        Assert.Contains("CreatedUtc", result.Items[0].DataJson);
+        Assert.Contains("ParentNoteId", result.Items[0].DataJson);
+        Assert.Contains("IsAddendum", result.Items[0].DataJson);
     }
 
     [Fact]

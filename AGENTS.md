@@ -8,6 +8,7 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 - Reuse existing patterns; do not refactor unrelated code.
 - Check file placement against [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before adding files.
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
+- Update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) at the end of every repository-changing session before handing off. If no entry is needed, state that explicitly.
 
 ## Documentation Order
 

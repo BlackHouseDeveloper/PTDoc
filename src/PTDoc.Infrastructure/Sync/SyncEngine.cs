@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Compliance;
 using Microsoft.Extensions.Logging;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
@@ -1269,6 +1270,9 @@ public class SyncEngine : ISyncEngine
                         n.SignatureHash,
                         n.SignedUtc,
                         n.SignedByUserId,
+                        n.CreatedUtc,
+                        n.ParentNoteId,
+                        n.IsAddendum,
                         n.CptCodesJson,
                         n.LastModifiedUtc
                     }, jsonOptions),
@@ -2035,7 +2039,6 @@ public class SyncEngine : ISyncEngine
                     // AccessToken stores canonical hashed invite state; use a non-shareable placeholder hash here.
                     AccessToken = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())).ToLowerInvariant(),
                     IsLocked = false, // Never trust IsLocked from client push
-                    ClinicId = clinicId,
                     LastModifiedUtc = item.LastModifiedUtc,
                     ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
@@ -2069,22 +2072,35 @@ public class SyncEngine : ISyncEngine
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
 
-                if (patientId == Guid.Empty)
-                {
-                    throw new InvalidOperationException(
-                        $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
-                }
+                      if (patientId == Guid.Empty)
+                      {
+                            throw new InvalidOperationException(
+                            $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
+                       }
 
-                var noteType = TryGetEnumValue<NoteType>(root, "noteType")
-                    ?? TryGetEnumValue<NoteType>(root, "NoteType")
-                    ?? NoteType.Daily;
+                // Use improved parsing from Foundation
+                var noteType = TryGetNoteType(root) ?? NoteType.Daily;
+
+                // Keep additional metadata fields (Foundation)
+                var createdUtc = TryGetDateTime(root, "createdUtc") 
+                ?? TryGetDateTime(root, "CreatedUtc") 
+                ?? item.LastModifiedUtc;
+
+                var parentNoteId = TryGetGuid(root, "parentNoteId") 
+                ?? TryGetGuid(root, "ParentNoteId");
+
+                var isAddendum = TryGetBool(root, "isAddendum") 
+                ?? TryGetBool(root, "IsAddendum") 
+                ?? false;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
                     ClinicId = clinicId,
                     NoteType = noteType,
-                    NoteStatus = NoteStatus.Draft,
+                    CreatedUtc = createdUtc,
+                    ParentNoteId = parentNoteId,
+                    IsAddendum = isAddendum,
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
@@ -2097,9 +2113,12 @@ public class SyncEngine : ISyncEngine
             }
             else
             {
-                // Only update draft notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
-                if (existing.NoteStatus == NoteStatus.Draft)
+                // Only update unsigned (draft) notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
+                if (!existing.IsFinalized)
                 {
+                    existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
+                    existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
+                    existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
                     existing.ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? existing.ContentJson;
                     existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
                     existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
@@ -2113,19 +2132,6 @@ public class SyncEngine : ISyncEngine
         {
             _logger.LogDebug("ApplyEntityFromPayloadAsync: unhandled entity type {EntityType}", entityType);
         }
-    }
-
-    private Task<Guid?> ResolvePatientClinicIdAsync(Guid patientId, CancellationToken cancellationToken)
-    {
-        if (patientId == Guid.Empty)
-        {
-            return Task.FromResult<Guid?>(null);
-        }
-
-        return _context.Patients
-            .Where(patient => patient.Id == patientId)
-            .Select(patient => patient.ClinicId)
-            .FirstOrDefaultAsync(cancellationToken);
     }
 
     // ── JSON parsing helpers ─────────────────────────────────────────────────────
@@ -2157,6 +2163,19 @@ public class SyncEngine : ISyncEngine
         return null;
     }
 
+    private static bool? TryGetBool(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var el))
+        {
+            if (el.ValueKind == JsonValueKind.True) return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var value))
+                return value;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Reads an integer property, supporting both numeric JSON values and string-encoded integers.
     /// Used for enum fields (NoteType, AppointmentType, AppointmentStatus) which are serialised
@@ -2170,39 +2189,36 @@ public class SyncEngine : ISyncEngine
         return null;
     }
 
-    private static TEnum? TryGetEnumValue<TEnum>(JsonElement root, string propertyName)
-        where TEnum : struct, Enum
+    private static NoteType? TryGetNoteType(JsonElement root)
     {
-        if (!root.TryGetProperty(propertyName, out var el))
+        foreach (var propertyName in new[] { "noteType", "NoteType" })
         {
-            return null;
-        }
-
-        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var numericValue))
-        {
-            return Enum.IsDefined(typeof(TEnum), numericValue)
-                ? (TEnum)Enum.ToObject(typeof(TEnum), numericValue)
-                : null;
-        }
-
-        if (el.ValueKind == JsonValueKind.String)
-        {
-            var rawValue = el.GetString();
-            if (string.IsNullOrWhiteSpace(rawValue))
+            if (!root.TryGetProperty(propertyName, out var el))
             {
-                return null;
+                continue;
             }
 
-            if (int.TryParse(rawValue, out var stringNumericValue))
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var numericValue))
             {
-                return Enum.IsDefined(typeof(TEnum), stringNumericValue)
-                    ? (TEnum)Enum.ToObject(typeof(TEnum), stringNumericValue)
+                return Enum.IsDefined(typeof(NoteType), numericValue)
+                    ? (NoteType)numericValue
                     : null;
             }
 
-            if (Enum.TryParse<TEnum>(rawValue, ignoreCase: true, out var parsed))
+            if (el.ValueKind == JsonValueKind.String)
             {
-                return parsed;
+                var stringValue = el.GetString();
+                if (int.TryParse(stringValue, out var numericStringValue))
+                {
+                    return Enum.IsDefined(typeof(NoteType), numericStringValue)
+                        ? (NoteType)numericStringValue
+                        : null;
+                }
+
+                if (Enum.TryParse<NoteType>(stringValue, ignoreCase: true, out var parsedEnum))
+                {
+                    return parsedEnum;
+                }
             }
         }
 

@@ -101,6 +101,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Coverage
 - **`tests/PTDoc.Tests/LocalData/LocalSyncOrchestratorTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`** — Added coverage for local queue coalescing, retry backoff gating, interrupted-processing recovery, duplicate `OperationId` replay, and sync audit-event PHI safety. Reason: sync queue state transitions and idempotent receipt behavior are acceptance-critical.
+### Fixed - CI test failures from Sprint II security hardening
+
+- **`tests/PTDoc.Tests/Compliance/HashServiceTests.cs`** — Replaced `GenerateHash_ContentOrTimestampChange_ReturnsDifferentHash` with two precise tests: `GenerateHash_ContentChange_ReturnsDifferentHash` (content changes produce a different hash) and `GenerateHash_MetadataOnlyChange_ReturnsSameHash` (changing only `LastModifiedUtc` now correctly produces the *same* hash, documenting the intentional exclusion of sync metadata from the canonical signature document). Reason: after `LastModifiedUtc` was removed from the canonical hash the original test, which asserted both content and timestamp changes produce different hashes, began failing.
+- **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Replaced the `Assert.Contains("\"reason\":..."` assertion in `PT_Creates_DailyNote_WithOverride_PersistsOverrideLogAndAudit` with `Assert.DoesNotContain("\"reason\":"...)`. Reason: the preceding Sprint II hardening removed the free-text justification from `OVERRIDE_APPLIED` audit metadata; the E2E test was still asserting the old (PHI-unsafe) shape.
+
+
+
+- **`src/PTDoc.Infrastructure/Compliance/HashService.cs`** — Removed `LastModifiedUtc` from the canonical document used for SHA-256 signature hashing. Reason: any sync-metadata or save-path update that touches `LastModifiedUtc` without changing clinical content would invalidate the hash and break signature verification.
+- **`src/PTDoc.Application/Compliance/IAuditService.cs`** — Removed the free-text override `reason` from the `OverrideApplied` audit metadata (now logs only `ruleType` and `timestamp`). The justification is still persisted in `RuleOverride.Justification` which is access-controlled. Reason: free-text justification may include PHI that must not appear in audit log metadata.
+- **`src/PTDoc.Infrastructure/Compliance/OverrideService.cs`** — `RuleOverride.TimestampUtc` is now always set to `DateTime.UtcNow` on the server; the caller-supplied `request.Timestamp` is no longer trusted for the persisted timestamp. Reason: allowing client-provided timestamps enables backdating/forward-dating override audit records.
+- **`src/PTDoc.Infrastructure/Compliance/OverrideService.cs`** — Override eligibility is now driven by `ComplianceSettings.AllowOverrideTypes` (parsed from DB) instead of a hard-coded `EightMinuteRule` check; `MinJustificationLength` from settings is also enforced. Falls back to `{EightMinuteRule}` when settings are absent or unpopulated. Reason: policy was split between runtime code and the `ComplianceSettings` schema; keeping it in one place prevents drift.
+- **`src/PTDoc.Core/Models/ComplianceSettings.cs`** — Added `DefaultMinJustificationLength = 20` constant. Reason: used as fallback in `OverrideService` when no settings row exists in the database.
+- **`src/PTDoc.Api/Notes/NoteEndpoints.cs`** — `TotalTimedMinutes` passed to compliance validation is now computed by summing `Minutes` from timed CPT entries (`IsTimed == true`) rather than copying `ClinicalNote.TotalTreatmentMinutes`. Reason: total treatment minutes includes untimed codes, so using it caused 8-minute rule evaluation with an inflated minute total.
+- **`src/PTDoc.Api/Notes/NoteEndpoints.cs`** — Added an explicit null guard after note creation: if `result.IsValid` is `true` but `result.Note` is `null` the endpoint returns `500 InternalServerError` instead of throwing a `NullReferenceException`. Reason: the nullability contract was not enforced by the type system; a defensive check prevents silent runtime crashes.
+- **`src/PTDoc.Application/DTOs/DailyNoteDtos.cs`** — `CptCodeEntryDto.Units` now defaults to `1` instead of `0`. Reason: `0` is an invalid billing-unit count; older clients that don't send a `units` field would silently produce invalid CPT entries.
+- **`src/PTDoc.Infrastructure/Compliance/AddendumService.cs`** — `ContentIsEmpty` now treats empty JSON objects (`{}`) and empty JSON arrays (`[]`) as empty content, matching the intent of rejecting addendums with no meaningful payload. Reason: the previous check only handled `null`/`undefined`/blank strings, so `{}` or `[]` passed validation with no clinical content.
+
+### Added - Sprint 2: Medicare override and compliance audit integration
+
+- **`src/PTDoc.Application/Compliance/OverrideContracts.cs`**, **`src/PTDoc.Application/Compliance/NoteSaveValidation.cs`**, **`src/PTDoc.Application/Compliance/IRulesEngine.cs`** — Added typed compliance override contracts (`ComplianceRuleType`, `OverrideSubmission`, `OverrideRequest`, `OverrideRequirement`, `IOverrideService`) and extended validation/rule-result envelopes with structured rule metadata (`ruleType`, `isOverridable`, `overrideRequirements`) while preserving the legacy warning/error/`requiresOverride` shape. Reason: note save flows now need explicit, auditable override semantics instead of ad hoc warning strings.
+- **`src/PTDoc.Infrastructure/Compliance/OverrideService.cs`**, **`src/PTDoc.Infrastructure/Compliance/OverrideWorkflow.cs`**, **`src/PTDoc.Infrastructure/Compliance/RulesEngine.cs`**, **`src/PTDoc.Infrastructure/Compliance/NoteSaveValidationService.cs`**, **`src/PTDoc.Application/Compliance/IAuditService.cs`**, **`src/PTDoc.Infrastructure/Compliance/AuditService.cs`** — Implemented PT-only override application, attestation resolution from `ComplianceSettings`, `OVERRIDE_APPLIED` / `HARD_STOP_TRIGGERED` audit helpers, and updated Medicare rule evaluation so 8-minute violations are explicitly overridable while Progress Note requirements remain hard stops. Reason: Medicare compliance requires explicit attestation, non-bypassable hard stops, and PHI-safe audit trails.
+- **`src/PTDoc.Infrastructure/Services/NoteWriteService.cs`**, **`src/PTDoc.Infrastructure/Services/DailyNoteService.cs`**, **`src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`**, **`src/PTDoc.Application/DTOs/NoteDtos.cs`**, **`src/PTDoc.Application/DTOs/DailyNoteDtos.cs`**, **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`** — Integrated override enforcement into all server-side note save paths, including candidate note IDs for first-save audit events and explicit `422` responses when an overridable warning is active but no matching override payload is supplied. Reason: overrides must be explicit at save time and must not persist silently.
+- **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`src/PTDoc.Api/Notes/DailyNoteEndpoints.cs`**, **`src/PTDoc.Api/Notes/NoteWorkspaceV2Endpoints.cs`**, **`src/PTDoc.Api/Program.cs`** — Added `POST /api/v1/notes/{noteId}/override`, mapped override-specific `403` / `422` API behavior, and registered `IOverrideService` in DI without changing existing note-write authorization policy boundaries. Reason: clients need an explicit compliance override API while keeping PT enforcement on the server.
+- **`src/PTDoc.Core/Models/RuleOverride.cs`**, **`src/PTDoc.Core/Models/ComplianceSettings.cs`**, **`src/PTDoc.Infrastructure/Data/ApplicationDbContext.cs`**, **`src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations/20260404020000_AddComplianceOverrideNoteLink.cs`**, **`src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations/20260404020000_AddComplianceOverrideNoteLink.Designer.cs`**, **`src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations/ApplicationDbContextModelSnapshot.cs`**, **`src/PTDoc.Infrastructure.Migrations.SqlServer/Migrations/20260404020010_AddComplianceOverrideNoteLink.cs`**, **`src/PTDoc.Infrastructure.Migrations.SqlServer/Migrations/20260404020010_AddComplianceOverrideNoteLink.Designer.cs`**, **`src/PTDoc.Infrastructure.Migrations.SqlServer/Migrations/ApplicationDbContextModelSnapshot.cs`**, **`src/PTDoc.Infrastructure.Migrations.Postgres/Migrations/20260404020020_AddComplianceOverrideNoteLink.cs`**, **`src/PTDoc.Infrastructure.Migrations.Postgres/Migrations/20260404020020_AddComplianceOverrideNoteLink.Designer.cs`**, **`src/PTDoc.Infrastructure.Migrations.Postgres/Migrations/ApplicationDbContextModelSnapshot.cs`** — Linked `RuleOverride` records to `ClinicalNote` via `NoteId`, updated tenant scoping to flow through the linked note’s clinic, and added provider-specific migrations/snapshots for the new FK and filtered index. Reason: override history must be tied to specific notes and remain tenant-safe.
+- **`tests/PTDoc.Tests/Compliance/RulesEngineTests.cs`**, **`tests/PTDoc.Tests/Compliance/NoteComplianceIntegrationTests.cs`**, **`tests/PTDoc.Tests/Compliance/OverrideServiceTests.cs`**, **`tests/PTDoc.Tests/Security/AuthAuditTests.cs`**, **`tests/PTDoc.Tests/Tenancy/TenantIsolationTests.cs`**, **`tests/PTDoc.Tests/Integration/DatabaseProviderMigrationTests.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`**, **`tests/PTDoc.Tests/Notes/DailyNoteServiceTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceV2ServiceTests.cs`** — Updated compliance tests for typed rule metadata and `422` override enforcement, added override-service and audit-event coverage, extended tenancy/migration checks for `RuleOverrides.NoteId`, and added end-to-end coverage for save-time override success plus hard-stop override audit logging. Reason: the override/audit contract changes note-save behavior and requires dedicated coverage across service, API, tenancy, and persistence layers.
+
+### Fixed - PR review: OverrideService and RuleOverride tenant filter corrections
+
+- **`src/PTDoc.Infrastructure/Compliance/OverrideService.cs`** — Split the null-user check from the role check in `ApplyOverrideAsync`: a missing attesting user now throws `KeyNotFoundException` (not `UnauthorizedAccessException`), reserving the unauthorized exception for the wrong-role case. Reason: the previous check made a missing user indistinguishable from an incorrect role and produced misleading 403 responses.
+- **`src/PTDoc.Infrastructure/Data/ApplicationDbContext.cs`** — Updated the `RuleOverride` global query filter to fall back to `User.ClinicId` when `NoteId` is null, so legacy rows (without a linked note) remain visible in tenant-scoped queries within their clinic instead of becoming invisible. Reason: the previous filter scoped exclusively via `Note.ClinicId`, silently hiding all pre-migration override records.
+
+### Fixed - Send intake modal Razor parse regression
+
+- **`src/PTDoc.UI/Components/SendIntakeModal.razor`** — Restored the missing `HandlePatientChanged` closing structure, added the `finally` busy-state cleanup, and reintroduced the `GenerateLinkAsync` method declaration so the component parses correctly again. Reason: a malformed `@code` block caused Razor `RZ1006` errors and cascading compile failures for injected services and `IAsyncDisposable`.
+- **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`** — Fixed client-push handling for clinical notes by rejecting `PendingCoSign` notes as read-only, parsing `noteType` from either enum-name strings or numeric values during note creation, and denormalizing `ClinicId` from the owning patient when creating a new note from sync payloads. Reason: sync tests showed pending co-sign notes were being accepted, `"ProgressNote"` payloads were defaulting to the wrong enum, and synced notes were losing tenant scoping metadata.
+- **`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`** — Serialized pushed clinical-note `createdUtc` values in round-trip `"O"` format. Reason: sync payload tests require full-precision addendum metadata to survive push serialization without trimming fractional-second digits.
+
+### Fixed - Sprint II: NoteStatus alignment (CI build fix)
+
+#### Sprint-I / Sprint-II Merge: NoteStatus Status model aligned across workspace service layer
+- **`INoteWorkspaceService.cs`** — `NoteWorkspaceSaveResult`, `NoteWorkspaceLoadResult`, and `NoteWorkspaceSubmitResult` now carry `NoteStatus Status` (Foundation Sprint-I pattern) and computed `bool IsSubmitted => Status != NoteStatus.Draft` instead of a settable `bool IsSubmitted`. `NoteWorkspaceSaveResult` retains Sprint-II fields (`Errors`, `Warnings`, `RequiresOverride`, `ComplianceWarning`). `NoteWorkspaceDraft` gains `int? LocalDraftId` (Sprint-I). Reason: `SoapNoteVm.IsSubmitted` was made read-only (computed) in Sprint-I, so Sprint-II code that tried to assign it directly caused a CS0200 compile error.
+- **`NoteWorkspaceApiService.cs`** — All `NoteWorkspaceLoadResult`/`NoteWorkspaceSaveResult`/`NoteWorkspaceSubmitResult` constructors updated to set `Status = ...` (from `workspace.NoteStatus`, `note.SignedUtc.HasValue ? Signed : Draft`, `RequiresCoSign ? PendingCoSign : Signed`) instead of `IsSubmitted = ...`. Reason: DTOs now use Status-based model.
+- **`NoteWorkspacePage.razor`** — Replaced all three `_note.IsSubmitted = x` assignments with `_note.Status = result.Status / saveResult.Status / submitResult.Status`. Removed `IsSubmitted = false` from the `SoapNoteVm` object initializer (default is `Status = NoteStatus.Draft` which computes to `IsSubmitted = false`). Reason: `SoapNoteVm.IsSubmitted` is a read-only computed property since Sprint-I.
+
+#### SendIntakeModal.razor: Fixed missing method signature and unclosed braces
+- **`SendIntakeModal.razor`** (`src/PTDoc.UI/Components/SendIntakeModal.razor`) — Fixed a pre-existing malformed `@code` block: `HandleGenerateLinkAsync`'s method body was present without its signature, and `HandlePatientChanged` was missing its `finally { _isBusy = false; }` block, its `if`-block closing `}`, and its method-closing `}`. Added the missing `finally` block, the two `}` closers, and the `private async Task HandleGenerateLinkAsync()` signature. Reason: The Razor source generator reported `RZ1006: The code block is missing a closing "}"` blocking the entire `PTDoc.UI` compilation and causing cascade errors in `SendIntakeModal.razor` and other files.
+
+- **`ComplianceWarning`** (`src/PTDoc.Application/DTOs/NoteDtos.cs`) — Advisory compliance warning class surfaced alongside note operations when a rule fires at Warning severity (e.g. 8-minute rule). Non-null value is informational and does not block the operation.
+- **`NoteOperationResponse.ComplianceWarning`** — Property added to the unified note operation response envelope so API callers can surface advisory warnings without treating them as errors.
+- **`NoteWorkspaceSaveResult.ComplianceWarning`** (`src/PTDoc.UI/Services/INoteWorkspaceService.cs`) — Property added to the UI-layer save result DTO so workspace components can display advisory compliance warnings.
+- **`NoteWorkspaceApiService.SaveLegacyDraftAsync`** — Maps `operation.ComplianceWarning` into `NoteWorkspaceSaveResult`.
+
+#### Clinical Note Immutability and Addendums
+- **Linked addendum note model** - Added `ClinicalNote.CreatedUtc`, `ClinicalNote.ParentNoteId`, and `ClinicalNote.IsAddendum` so all new addendums are stored as linked `ClinicalNote` rows and reuse the existing hash/signature pipeline instead of extending the legacy standalone `Addendum` write path.
+- **`IAddendumService` / `AddendumService`** - Added a dedicated addendum creation service that only allows addendums from finalized signed primary notes, rejects addendum-of-addendum nesting, preserves the original note unchanged, and enqueues the new draft note for sync.
+- **Note detail response** - Added `GET /api/v1/notes/{id}` returning the primary note plus ordered linked addendums, while still exposing legacy standalone `Addendum` rows read-only for compatibility.
+- **Addendum request flexibility** - Updated `POST /api/v1/notes/{noteId}/addendum` to accept raw JSON content so clients can submit either structured SOAP payloads or plain-text addendum content.
+
+#### Enforcement and Sync
+- **Final-signature edit blocking** - Standardized signed-note immutability across note updates, workspace saves, objective metric mutation endpoints, daily-note same-day upsert, AI suggestion acceptance, and sync push conflict handling, all with the clinician-facing message `Signed notes cannot be modified. Create addendum.`
+- **Audit trail events** - Added non-PHI `ADDENDUM_CREATE` and `EDIT_BLOCKED_SIGNED_NOTE` audit events for traceable addendum creation and blocked post-signature edits.
+- **Primary-note query scoping** - Excluded `IsAddendum` rows from primary-note workflows including note lists, patient note history, daily-note lookup/taxonomy queries, carry-forward source selection, and Medicare progress-note frequency counting.
+- **Offline note metadata** - Extended sync pull/push payloads and MAUI local note storage to preserve `CreatedUtc`, `ParentNoteId`, and `IsAddendum` for linked addendum notes without syncing legacy standalone addendum rows.
+
+#### EF Core Migrations
+- **Provider migrations** - Added `AddClinicalNoteLinkedAddendums` migrations and updated snapshots for SQLite, PostgreSQL, and SQL Server, including the self-referencing foreign key and backfill of existing `ClinicalNotes.CreatedUtc` values from `LastModifiedUtc`.
+
+### Fixed - Sprint 2: PR Review Feedback
+
+- **Standardized immutability message** - Aligned `NoteWriteService` exception message to the canonical clinician-facing string `"Signed notes cannot be modified. Create addendum."` used across all other endpoints.
+- **`GET /api/v1/notes/{id}` addendum resolution** - Requesting an addendum note ID now resolves to its primary note and returns that note's full detail response; requesting a non-existent parent returns `404`.
+- **Linked-addendum query scoping** - The linked-addendum LINQ query on `GET /api/v1/notes/{id}` now explicitly filters `IsAddendum == true` so only addendum rows are returned even if `ParentNoteId` is populated for other purposes.
+- **`UpdateNote` standardized error** - Replaced the rules-engine message with the canonical `"Signed notes cannot be modified. Create addendum."` in the `PATCH` update endpoint's immutability response; the detailed rules-engine result is still logged via `LogRuleEvaluationAsync`.
+- **`IAddendumService` required dependency** - `SignatureService` now requires `IAddendumService` as a constructor-injected required dependency instead of an optional parameter, so misconfiguration fails at DI startup rather than returning a user-visible error at runtime.
+
+
+
+#### Legal eSignature Backend
+- **`IHashService` / `HashService`** - Added deterministic SHA-256 uppercase hex hashing over canonical note state, including persisted note fields, canonicalized content JSON, sorted CPT payloads, and sorted objective metrics, with malformed-JSON fallback behavior for both `JsonException` and `ArgumentException`.
+- **`SignatureService` legal signature flow** - Extended the existing signature pipeline to require explicit consent and intent, bind signatures to authenticated PT/PTA users, persist one `Signature` row per legal signing event, and distinguish PTA `PendingCoSign` workflow from final PT signature completion.
+- **Tamper verification with legacy fallback** - Added latest-signature verification by recomputing the note hash; when no `Signature` rows exist, falls back to the legacy `ClinicalNotes.SignatureHash` field so pre-upgrade notes remain verifiable.
+- **Default attestation text** - Stored the default legal attestation on each persisted signature record without introducing new schema.
+- **Audit hooks for signatures** - Added `SIGN` and `VERIFY` audit events with note/user/timestamp metadata only and no PHI-bearing payloads.
+
+#### API and Workflow Updates
+- **`POST /api/v1/notes/{noteId}/sign`** - Now requires `{ consentAccepted, intentConfirmed }`, derives the signer role from the authenticated principal, captures IP/user-agent metadata when present, and returns explicit note status plus co-sign requirement.
+- **`POST /api/v1/notes/{noteId}/co-sign`** - Kept as the PT-only compatibility alias while requiring the same consent/intent request contract and finalizing PTA daily notes through the shared legal signature flow.
+- **`GET /api/v1/notes/{noteId}/verify`** - Added canonical verification endpoint returning `{ isValid, message }` while preserving `GET /verify-signature` as a compatibility alias.
+- **Explicit consent/intent on signature** - `SubmitAsync` in `NoteWorkspaceApiService` now accepts `consentAccepted` and `intentConfirmed` as parameters instead of hardcoding `true`, and `NoteWorkspacePage` presents a dedicated consent/intent dialog that requires the clinician to explicitly check both boxes before the API call is made.
+
+#### Changed
+- **Objective metric mutability** - Objective metrics are now editable until the note is truly finalized so PTA-signed `PendingCoSign` notes remain modifiable before the final PT signature, matching the deferred immutability scope of the next PR.
+
+#### Verification
+- **Compliance test coverage** - Added deterministic hash tests, legal signature service tests, verification/tamper detection tests, endpoint authorization inventory coverage for `GET /api/v1/notes/{noteId:guid}/verify`, workspace submit payload coverage, and end-to-end sign/verify route coverage.
+- **Integration auth harness** - Seeded deterministic internal users for the role-based integration auth handler so stricter signer-to-user binding remains active in end-to-end tests.
+### Added - Sprint 2: Rules Engine Enforcement
+
+#### Centralized Compliance Validation
+- **`ValidationResult` / `ValidatedOperationResponse`** - Added a shared compliance validation envelope with `isValid`, `errors`, `warnings`, and `requiresOverride` for note save and evaluation flows.
+- **`INoteSaveValidationService`** - Added a service-layer validation orchestrator that merges Progress Note and 8-minute rule results before persistence.
+- **`INoteWriteService` / `NoteWriteService`** - Added a dedicated note write service so `/api/v1/notes` create/update enforcement runs outside controllers/endpoints.
+
+#### Rules Engine Enforcement
+- **`IRulesEngine.CheckProgressNoteDueAsync`** - Added Medicare-specific Progress Note due evaluation with warning thresholds at 8 visits / 25 days and hard stops at 10 visits / 30 days.
+- **`IRulesEngine.ValidateTimedUnitsAsync`** - Added timed CPT enforcement for missing CPT data, mixed timed/untimed entries, `<5` minute hard stops, `5-7` minute warning+override cases, and overbilled timed-unit warning+override cases.
+- **Progress Note reset behavior** - Signed Evaluation and signed Progress Note records now reset PN visit/day counters for server-side enforcement.
+- **Shared timed-unit calculation path** - `CalculateCptTime` now uses the same aggregate timed-unit helper as save validation to avoid drift between helper output and enforced billing logic.
+
+#### Note Save and API Behavior
+- **Daily note draft saves** - `DailyNoteService.SaveDraftAsync` now validates compliance before `SaveChangesAsync` and returns a typed save envelope instead of a tuple result.
+- **Workspace saves** - `NoteWorkspaceV2Service.SaveAsync` now returns a typed validation envelope and surfaces warnings/override flags for timed CPT rule checks.
+- **Structured save responses** - Note create/update, daily note saves, and workspace saves now return top-level `isValid`, `errors`, `warnings`, and `requiresOverride`, with `422 Unprocessable Entity` for compliance hard stops.
+- **Compliance evaluate endpoints** - `/api/v1/compliance/evaluate/pn-frequency/*` and `/api/v1/compliance/evaluate/8-minute-rule` now return `ValidationResult`.
+- **DTO contract updates** - Daily note and workspace CPT models now carry `Units` and `Minutes` so timed-unit enforcement can run server-side from note payloads.
+
+#### Client and Test Coverage
+- **Workspace client handling** - The note workspace API client now preserves structured compliance errors, warnings, and override requirements from `422` save responses.
+- **Compliance and integration tests** - Updated rules-engine, note-save, workspace, and end-to-end coverage for PN warnings/hard stops, 8-minute rule blocks/warnings, combined validation results, and structured save envelopes.
+
+### Added - Sprint 2: Compliance Schema Foundation
+
+#### Legal eSignature and Compliance Data Model
+- **`Signature` entity** - New legal-grade signature table with note/user foreign keys, signer role, timestamp, signature hash, attestation text, consent/intent flags, and optional IP/device metadata.
+- **`RuleOverride` entity** - New compliance override table capturing rule name, clinician justification, attestation text, timestamp, and required user relationship.
+- **`ComplianceSettings` entity** - New future-facing compliance configuration table with default override attestation text, minimum justification length, and allowed override types payload.
+
+#### Existing Schema Extensions
+- **`Addendum`** - Extended with optional `SignatureHash` and explicit `CreatedByUserId -> Users` foreign key while preserving the existing append-only note linkage.
+- **`AuditLog`** - Added standalone `EntityId` index support while retaining the existing richer audit structure (`EventType`, `CorrelationId`, `MetadataJson`, severity, success state).
+
+#### EF Core Migrations
+- **`ApplicationDbContext`** - Added `DbSet<Signature>`, `DbSet<RuleOverride>`, and `DbSet<ComplianceSettings>` plus explicit relationship, index, and default-value configuration for the new compliance foundation tables.
+- **Provider migrations** - Added `AddComplianceSignatureEntities` migrations for SQLite, SQL Server, and Postgres.
+- **Postgres migration cleanup** - Normalized `ClinicId` filtered index definitions in the model so the Postgres provider migration no longer includes unrelated index-filter churn.
+
+#### Verification
+- **Schema smoke coverage** - Updated `DatabaseProviderMigrationTests` to query `Signatures`, `RuleOverrides`, and `ComplianceSettings`.
+- **SQLite migration apply** - Applied the new SQLite migration locally and verified `dotnet ef migrations has-pending-model-changes` returns clean.
 
 ### Added - Sprint I: Mandatory Changelog Enforcement Rule (AGENT-CHANGELOG-001)
 

@@ -1065,6 +1065,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         var root = doc.RootElement;
 
         var serverSignatureHash = GetStringCaseInsensitive(root, "SignatureHash");
+        var serverCreatedUtc = GetDateTimeCaseInsensitive(root, "CreatedUtc") ?? item.LastModifiedUtc;
+        var serverParentNoteId = GetGuidCaseInsensitive(root, "ParentNoteId");
+        var serverIsAddendum = GetBoolCaseInsensitive(root, "IsAddendum") ?? false;
 
         if (local is null)
         {
@@ -1074,6 +1077,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
                 NoteType = GetNoteTypeString(root),
                 DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc,
+                CreatedUtc = serverCreatedUtc,
+                ParentNoteId = serverParentNoteId,
+                IsAddendum = serverIsAddendum,
                 ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? "{}",
                 CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? "[]",
                 SignatureHash = serverSignatureHash,
@@ -1090,6 +1096,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         // to alert the clinician that their local edits cannot be applied.
         if (local.SyncState == SyncState.Pending && serverSignatureHash != null)
         {
+            local.CreatedUtc = serverCreatedUtc;
+            local.ParentNoteId = serverParentNoteId;
+            local.IsAddendum = serverIsAddendum;
             local.SyncState = SyncState.Conflict;
             local.SignatureHash = serverSignatureHash;
             _logger.LogWarning(
@@ -1109,6 +1118,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         }
 
         // Apply server version — signed notes are immutable so always take server signature state
+        local.CreatedUtc = serverCreatedUtc;
+        local.ParentNoteId = serverParentNoteId;
+        local.IsAddendum = serverIsAddendum;
         local.ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson;
         local.CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? local.CptCodesJson;
         local.DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService;
@@ -1158,12 +1170,43 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             ? g
             : null;
 
+    private static Guid? GetGuidCaseInsensitive(JsonElement root, string propertyName)
+    {
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+        var result = GetGuid(root, camelCase);
+        if (result.HasValue) return result;
+        var pascalCase = char.ToUpperInvariant(propertyName[0]) + propertyName[1..];
+        return GetGuid(root, pascalCase);
+    }
+
     private static DateTime? GetDateTime(JsonElement root, string propertyName) =>
         root.TryGetProperty(propertyName, out var el)
             && el.ValueKind == JsonValueKind.String
             && el.TryGetDateTime(out var dt)
             ? dt
             : null;
+
+    private static bool? GetBoolCaseInsensitive(JsonElement root, string propertyName)
+    {
+        foreach (var key in new[]
+                 {
+                     char.ToLowerInvariant(propertyName[0]) + propertyName[1..],
+                     char.ToUpperInvariant(propertyName[0]) + propertyName[1..]
+                 })
+        {
+            if (!root.TryGetProperty(key, out var el))
+            {
+                continue;
+            }
+
+            if (el.ValueKind == JsonValueKind.True) return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var value))
+                return value;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Reads NoteType from the payload handling both numeric (System.Text.Json default) and string forms.

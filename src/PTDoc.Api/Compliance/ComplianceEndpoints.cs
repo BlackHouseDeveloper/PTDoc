@@ -5,6 +5,8 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace PTDoc.Api.Compliance;
 
@@ -25,7 +27,7 @@ public static class ComplianceEndpoints
         complianceGroup.MapPost("/evaluate/pn-frequency/{patientId:guid}",
             async (Guid patientId, IRulesEngine rulesEngine) =>
             {
-                var result = await rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
+                var result = await rulesEngine.CheckProgressNoteDueAsync(patientId, DateTime.UtcNow.Date);
                 return Results.Ok(result);
             })
             .WithName("EvaluateProgressNoteFrequency");
@@ -33,9 +35,7 @@ public static class ComplianceEndpoints
         complianceGroup.MapPost("/evaluate/8-minute-rule",
             async ([FromBody] EightMinuteRuleRequest request, IRulesEngine rulesEngine) =>
             {
-                var result = await rulesEngine.ValidateEightMinuteRuleAsync(
-                    request.TotalMinutes,
-                    request.CptCodes);
+                var result = await rulesEngine.ValidateTimedUnitsAsync(request.CptCodes);
                 return Results.Ok(result);
             })
             .WithName("EvaluateEightMinuteRule");
@@ -81,7 +81,7 @@ public static class ComplianceEndpoints
         // Domain guard: PTA may only sign Daily notes (not Eval, ProgressNote, or Discharge)
         // per FSD §3.3 and Medicare documentation rules.
         notesGroup.MapPost("/{noteId:guid}/sign",
-            async (Guid noteId, ISignatureService signatureService,
+            async (Guid noteId, [FromBody] SignNoteRequest request, ISignatureService signatureService,
                    IIdentityContextAccessor identityContext,
                    ApplicationDbContext db,
                    HttpContext httpContext) =>
@@ -92,8 +92,14 @@ public static class ComplianceEndpoints
                     return Results.Unauthorized();
                 }
 
+                var role = ResolveSignerRole(httpContext.User);
+                if (role is null)
+                {
+                    return Results.Forbid();
+                }
+
                 // Domain guard: PTA cannot sign Evaluation, Progress Note, or Discharge notes.
-                var isPta = httpContext.User.IsInRole(Roles.PTA);
+                var isPta = string.Equals(role, Roles.PTA, StringComparison.Ordinal);
                 if (isPta)
                 {
                     var noteType = await db.ClinicalNotes
@@ -109,7 +115,15 @@ public static class ComplianceEndpoints
                         return Results.Forbid();
                 }
 
-                var result = await signatureService.SignNoteAsync(noteId, userId, signerIsPta: isPta);
+                var result = await signatureService.SignNoteAsync(
+                    noteId,
+                    userId,
+                    role,
+                    request.ConsentAccepted,
+                    request.IntentConfirmed,
+                    httpContext.Connection.RemoteIpAddress?.ToString(),
+                    httpContext.Request.Headers.UserAgent.ToString(),
+                    httpContext.RequestAborted);
 
                 if (!result.Success)
                 {
@@ -122,15 +136,21 @@ public static class ComplianceEndpoints
                             validationFailures = result.ValidationFailures
                         });
                     }
+
+                    if (string.Equals(result.ErrorMessage, "Note not found", StringComparison.Ordinal))
+                    {
+                        return Results.NotFound(new { error = result.ErrorMessage });
+                    }
+
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
 
                 return Results.Ok(new
                 {
                     success = true,
+                    status = result.Status?.ToString(),
                     signatureHash = result.SignatureHash,
                     signedUtc = result.SignedUtc,
-                    // Sprint UC4: Notify caller that PT co-sign is required for PTA-authored notes
                     requiresCoSign = result.RequiresCoSign
                 });
             })
@@ -139,8 +159,9 @@ public static class ComplianceEndpoints
 
         // Co-sign endpoint — PT-only, countersigns a PTA-authored note per Medicare rules.
         notesGroup.MapPost("/{noteId:guid}/co-sign",
-            async (Guid noteId, ISignatureService signatureService,
-                   IIdentityContextAccessor identityContext) =>
+            async (Guid noteId, [FromBody] SignNoteRequest request, ISignatureService signatureService,
+                   IIdentityContextAccessor identityContext,
+                   HttpContext httpContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
                 if (userId == Guid.Empty)
@@ -148,7 +169,14 @@ public static class ComplianceEndpoints
                     return Results.Unauthorized();
                 }
 
-                var result = await signatureService.CoSignNoteAsync(noteId, userId);
+                var result = await signatureService.CoSignNoteAsync(
+                    noteId,
+                    userId,
+                    request.ConsentAccepted,
+                    request.IntentConfirmed,
+                    httpContext.Connection.RemoteIpAddress?.ToString(),
+                    httpContext.Request.Headers.UserAgent.ToString(),
+                    httpContext.RequestAborted);
 
                 if (!result.Success)
                 {
@@ -165,6 +193,8 @@ public static class ComplianceEndpoints
                 return Results.Ok(new
                 {
                     success = true,
+                    status = NoteStatus.Signed.ToString(),
+                    requiresCoSign = true,
                     coSignedUtc = result.CoSignedUtc
                 });
             })
@@ -174,7 +204,7 @@ public static class ComplianceEndpoints
         // Addendum endpoint — requires licensed clinician (PT or PTA).
         notesGroup.MapPost("/{noteId:guid}/addendum",
             async (Guid noteId, [FromBody] AddendumRequest request,
-                   ISignatureService signatureService, IIdentityContextAccessor identityContext) =>
+                   IAddendumService addendumService, IIdentityContextAccessor identityContext) =>
             {
                 var userId = identityContext.GetCurrentUserId();
                 if (userId == Guid.Empty)
@@ -182,10 +212,15 @@ public static class ComplianceEndpoints
                     return Results.Unauthorized();
                 }
 
-                var result = await signatureService.CreateAddendumAsync(noteId, request.Content, userId);
+                var result = await addendumService.CreateAddendumAsync(noteId, request.Content, userId);
 
                 if (!result.Success)
                 {
+                    if (string.Equals(result.ErrorMessage, "Note not found", StringComparison.Ordinal))
+                    {
+                        return Results.NotFound(new { error = result.ErrorMessage });
+                    }
+
                     return Results.BadRequest(new { error = result.ErrorMessage });
                 }
 
@@ -198,17 +233,86 @@ public static class ComplianceEndpoints
             .WithName("CreateAddendum")
             .RequireAuthorization(AuthorizationPolicies.NoteWrite);
 
+        notesGroup.MapGet("/{noteId:guid}/verify",
+            async (Guid noteId,
+                   ISignatureService signatureService,
+                   IAuditService auditService,
+                   IIdentityContextAccessor identityContext,
+                   HttpContext httpContext) =>
+            {
+                var verification = await signatureService.VerifySignatureAsync(noteId, httpContext.RequestAborted);
+                await auditService.LogSignatureVerificationAsync(
+                    AuditEvent.SignatureAction(
+                        "VERIFY",
+                        noteId,
+                        identityContext.TryGetCurrentUserId(),
+                        verification.Exists && verification.IsValid,
+                        verification.IsValid ? null : verification.Message),
+                    httpContext.RequestAborted);
+
+                if (!verification.Exists)
+                {
+                    return Results.NotFound(new { error = verification.Message });
+                }
+
+                return Results.Ok(new
+                {
+                    isValid = verification.IsValid,
+                    message = verification.Message
+                });
+            })
+            .WithName("VerifyNoteSignature")
+            .RequireAuthorization(AuthorizationPolicies.NoteRead);
+
         // Verify signature — readable by all clinical staff (PT, PTA, Admin).
         notesGroup.MapGet("/{noteId:guid}/verify-signature",
-            async (Guid noteId, ISignatureService signatureService) =>
+            async (Guid noteId,
+                   ISignatureService signatureService,
+                   IAuditService auditService,
+                   IIdentityContextAccessor identityContext,
+                   HttpContext httpContext) =>
             {
-                var isValid = await signatureService.VerifySignatureAsync(noteId);
-                return Results.Ok(new { isValid });
+                var verification = await signatureService.VerifySignatureAsync(noteId, httpContext.RequestAborted);
+                await auditService.LogSignatureVerificationAsync(
+                    AuditEvent.SignatureAction(
+                        "VERIFY",
+                        noteId,
+                        identityContext.TryGetCurrentUserId(),
+                        verification.Exists && verification.IsValid,
+                        verification.IsValid ? null : verification.Message),
+                    httpContext.RequestAborted);
+
+                if (!verification.Exists)
+                {
+                    return Results.NotFound(new { error = verification.Message });
+                }
+
+                return Results.Ok(new
+                {
+                    isValid = verification.IsValid,
+                    message = verification.Message
+                });
             })
             .WithName("VerifySignature")
             .RequireAuthorization(AuthorizationPolicies.NoteRead);
     }
+
+    private static string? ResolveSignerRole(ClaimsPrincipal principal)
+    {
+        if (principal.IsInRole(Roles.PT))
+        {
+            return Roles.PT;
+        }
+
+        if (principal.IsInRole(Roles.PTA))
+        {
+            return Roles.PTA;
+        }
+
+        return null;
+    }
 }
 
-public record EightMinuteRuleRequest(int TotalMinutes, List<CptCodeEntry> CptCodes);
-public record AddendumRequest(string Content);
+public record EightMinuteRuleRequest(List<CptCodeEntry> CptCodes);
+public record AddendumRequest(JsonElement Content);
+public sealed record SignNoteRequest(bool ConsentAccepted, bool IntentConfirmed);

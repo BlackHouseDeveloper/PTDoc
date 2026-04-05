@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using Xunit;
@@ -165,22 +166,71 @@ public class DatabaseProviderMigrationTests : IDisposable
 
     private static async Task AssertPersistenceWorksCoreAsync(ApplicationDbContext context, string providerLabel)
     {
+        var clinic = new Clinic
+        {
+            Name = $"Clinic-{providerLabel}",
+            Slug = $"clinic-{providerLabel.ToLowerInvariant()}-{Guid.NewGuid():N}"
+        };
+        context.Clinics.Add(clinic);
+
         // Insert a patient
         var patient = new Patient
         {
             FirstName = $"CI-{providerLabel}",
             LastName = "MigrationTest",
-            DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            ClinicId = clinic.Id
+        };
+
+        var user = new User
+        {
+            Username = $"override-{providerLabel.ToLowerInvariant()}-{Guid.NewGuid():N}",
+            PinHash = "migration-test-pin-hash",
+            FirstName = "Migration",
+            LastName = "User",
+            Role = Roles.PT,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true,
+            ClinicId = clinic.Id
         };
 
         context.Patients.Add(patient);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = clinic.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 4, 0, 0, 0, DateTimeKind.Utc),
+            ContentJson = "{}",
+            CptCodesJson = "[]",
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
+        context.RuleOverrides.Add(new RuleOverride
+        {
+            NoteId = note.Id,
+            UserId = user.Id,
+            RuleName = "EightMinuteRule",
+            Justification = "Migration smoke test override",
+            AttestationText = ComplianceSettings.DefaultOverrideAttestationText,
+            TimestampUtc = DateTime.UtcNow
+        });
         await context.SaveChangesAsync();
 
         // Retrieve and validate
         var retrieved = await context.Patients.FirstAsync(p => p.LastName == "MigrationTest");
+        var storedOverride = await context.RuleOverrides.Include(row => row.Note).SingleAsync();
         Assert.Equal($"CI-{providerLabel}", retrieved.FirstName);
         Assert.Equal("MigrationTest", retrieved.LastName);
         Assert.NotEqual(Guid.Empty, retrieved.Id);
+        Assert.Equal(note.Id, storedOverride.NoteId);
+        Assert.Equal(note.Id, storedOverride.Note!.Id);
     }
 
     private static async Task AssertSchemaTablesExistAsync(ApplicationDbContext context)
@@ -194,6 +244,9 @@ public class DatabaseProviderMigrationTests : IDisposable
         _ = await context.Sessions.CountAsync();
         _ = await context.LoginAttempts.CountAsync();
         _ = await context.AuditLogs.CountAsync();
+        _ = await context.Signatures.CountAsync();
+        _ = await context.RuleOverrides.CountAsync();
+        _ = await context.ComplianceSettings.CountAsync();
         _ = await context.SyncQueueItems.CountAsync();
         _ = await context.SyncConflictArchives.CountAsync();
         _ = await context.ExternalSystemMappings.CountAsync();
