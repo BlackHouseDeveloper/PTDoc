@@ -28,7 +28,7 @@ public interface ILocalSyncOrchestrator
         CancellationToken cancellationToken = default);
 
     /// <summary>
-     /// Push all locally-pending entities to the server.
+    /// Push all locally-pending entities to the server.
     /// Entities are serialized and sent in a single batch request.
     /// On success each entity is marked <c>SyncState.Synced</c>;
     /// on failure the entity remains <c>SyncState.Pending</c> for the next retry.

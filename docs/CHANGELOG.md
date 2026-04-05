@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - CI: Whitespace Formatting in ILocalSyncOrchestrator
+
+#### Formatting Fix
+- **`ILocalSyncOrchestrator.cs`** — Fixed extra leading space before `///` on the `PushPendingAsync` doc-comment (5 spaces → 4 spaces). Affects: `src/PTDoc.Application/LocalData/ILocalSyncOrchestrator.cs`. Reason: `dotnet format --verify-no-changes` in Core CI was exiting with code 2 due to this single whitespace violation, blocking the build.
+
 ### Fixed - Review Feedback: Sync + Compliance + Notes API Corrections
 
 #### Co-Sign Response Flag
