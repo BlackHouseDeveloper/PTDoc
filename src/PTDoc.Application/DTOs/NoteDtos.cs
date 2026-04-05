@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Application.DTOs;
@@ -39,6 +40,8 @@ public sealed class CreateNoteRequest
     /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
     /// </summary>
     public int? TotalMinutes { get; set; }
+
+    public OverrideSubmission? Override { get; set; }
 }
 
 /// <summary>Request DTO for updating a draft clinical note.</summary>
@@ -59,6 +62,8 @@ public sealed class UpdateNoteRequest
     /// Sprint S: Used by the compliance rules engine to enforce Medicare billing requirements.
     /// </summary>
     public int? TotalMinutes { get; set; }
+
+    public OverrideSubmission? Override { get; set; }
 }
 
 // ─── Objective Metric DTOs ────────────────────────────────────────────────────
@@ -109,11 +114,14 @@ public sealed class NoteResponse
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
+    public Guid? ParentNoteId { get; set; }
+    public bool IsAddendum { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public string ContentJson { get; set; } = "{}";
     public DateTime DateOfService { get; set; }
+    public DateTime CreatedUtc { get; set; }
     public string? SignatureHash { get; set; }
     public DateTime? SignedUtc { get; set; }
     public Guid? SignedByUserId { get; set; }
@@ -127,7 +135,7 @@ public sealed class NoteResponse
 
 /// <summary>
 /// Advisory compliance warning surfaced alongside a note operation.
-/// Returned when a compliance rule fires at <c>Warning</c> severity (e.g., 8-minute rule).
+/// Returned when a compliance rule fires at Warning severity (e.g., 8-minute rule).
 /// A non-null ComplianceWarning does NOT block the operation — it is informational.
 /// </summary>
 public sealed class ComplianceWarning
@@ -139,13 +147,35 @@ public sealed class ComplianceWarning
 
 /// <summary>
 /// Unified response envelope for create and update note operations.
-/// <c>ComplianceWarning</c> is non-null only when an advisory rule fired (e.g., 8-minute rule).
-/// Sprint S: Replaces inconsistent anonymous wrapper shapes with a typed contract.
+/// Includes both validation state and the saved note payload when persistence succeeds.
+/// ComplianceWarning is non-null only when an advisory rule fired (e.g., 8-minute rule).
 /// </summary>
-public sealed class NoteOperationResponse
+public sealed class NoteOperationResponse : ValidatedOperationResponse
 {
-    public NoteResponse Note { get; set; } = null!;
+    public NoteResponse? Note { get; set; }
     public ComplianceWarning? ComplianceWarning { get; set; }
+}
+
+public sealed class NoteDetailResponse
+{
+    public NoteResponse? Note { get; set; }
+    public IReadOnlyCollection<NoteAddendumResponse> Addendums { get; set; } = Array.Empty<NoteAddendumResponse>();
+}
+
+public sealed class NoteAddendumResponse
+{
+    public Guid Id { get; set; }
+    public Guid? ParentNoteId { get; set; }
+    public bool IsLegacy { get; set; }
+    public bool IsSigned { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime LastModifiedUtc { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public string ContentFormat { get; set; } = "json";
+    public string? SignatureHash { get; set; }
+    public DateTime? SignedUtc { get; set; }
+    public Guid? SignedByUserId { get; set; }
+    public NoteType? NoteType { get; set; }
 }
 
 /// <summary>

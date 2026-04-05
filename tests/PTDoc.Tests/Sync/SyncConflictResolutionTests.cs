@@ -194,4 +194,49 @@ public class SyncConflictResolutionTests
         // Item should either be completed or have increased retry count
         Assert.True(item.Status == SyncQueueStatus.Completed || item.RetryCount > 1);
     }
+
+    [Fact]
+    public async Task PushAsync_MarksValidationFailures_AsDeadLetter()
+    {
+        var context = CreateInMemoryContext();
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var failedItem = new SyncQueueItem
+        {
+            EntityType = "Patient",
+            EntityId = Guid.NewGuid(),
+            Status = SyncQueueStatus.Pending,
+            RetryCount = 0,
+            MaxRetries = 5,
+            EnqueuedAt = DateTime.UtcNow.AddMinutes(-2)
+        };
+
+        context.SyncQueueItems.Add(failedItem);
+        await context.SaveChangesAsync();
+
+        var result = await syncEngine.PushAsync();
+
+        var item = await context.SyncQueueItems.FindAsync(failedItem.Id);
+        Assert.NotNull(item);
+        Assert.Equal(1, result.DeadLetterCount);
+        Assert.Equal(SyncQueueStatus.DeadLetter, item.Status);
+        Assert.Equal(SyncFailureType.ValidationError, item.FailureType);
+    }
+
+    [Fact]
+    public async Task GetQueueStatusAsync_UsesSharedRuntimeStateAcrossEngineInstances()
+    {
+        var context = CreateInMemoryContext();
+        var runtimeStateStore = new SyncRuntimeStateStore();
+        var engine1 = new SyncEngine(context, NullLogger<SyncEngine>.Instance, runtimeStateStore);
+        var engine2 = new SyncEngine(context, NullLogger<SyncEngine>.Instance, runtimeStateStore);
+
+        await engine1.PushAsync();
+
+        var status = await engine2.GetQueueStatusAsync();
+
+        Assert.False(status.IsRunning);
+        Assert.NotNull(status.LastSyncAt);
+        Assert.NotNull(status.LastSuccessUtc);
+    }
 }

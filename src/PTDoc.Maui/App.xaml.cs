@@ -3,6 +3,7 @@
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
 using PTDoc.Application.LocalData;
+using PTDoc.Maui.Services;
 
 public partial class App : Microsoft.Maui.Controls.Application
 {
@@ -12,7 +13,11 @@ public partial class App : Microsoft.Maui.Controls.Application
 	/// </summary>
 	public Task LocalDbInitTask { get; }
 
-	public App(ITokenStore tokenStore, ILocalDbInitializer localDbInitializer, ILogger<App> logger)
+	public App(
+		ITokenStore tokenStore,
+		ILocalDbInitializer localDbInitializer,
+		LocalSyncCoordinator syncCoordinator,
+		ILogger<App> logger)
 	{
 		InitializeComponent();
 
@@ -21,6 +26,7 @@ public partial class App : Microsoft.Maui.Controls.Application
 		// Start local encrypted SQLite database initialisation and store the Task so that
 		// components can await it before their first data access, avoiding a race condition.
 		LocalDbInitTask = InitializeLocalDatabaseAsync(localDbInitializer, logger);
+		_ = StartSyncCoordinatorAsync(syncCoordinator, logger);
 
 		// Enterprise security: Validate token on app startup
 		ValidateTokenOnStartup(tokenStore, logger);
@@ -36,6 +42,19 @@ public partial class App : Microsoft.Maui.Controls.Application
 		{
 			// Log but do not crash — offline features will be unavailable
 			logger.LogError(ex, "Failed to initialise local database; offline features may be unavailable");
+		}
+	}
+
+	private async Task StartSyncCoordinatorAsync(LocalSyncCoordinator syncCoordinator, ILogger<App> logger)
+	{
+		try
+		{
+			await LocalDbInitTask;
+			await syncCoordinator.StartAsync();
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to start local sync coordinator");
 		}
 	}
 

@@ -47,6 +47,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid>("ModifiedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("SignatureHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("SyncState")
                         .HasColumnType("integer");
 
@@ -111,7 +115,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -173,15 +177,18 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("CorrelationId");
 
+                    b.HasIndex("EntityId")
+                        .HasFilter("\"EntityId\" IS NOT NULL");
+
                     b.HasIndex("EventType");
 
                     b.HasIndex("TimestampUtc");
 
                     b.HasIndex("UserId")
-                        .HasFilter("UserId IS NOT NULL");
+                        .HasFilter("\"UserId\" IS NOT NULL");
 
                     b.HasIndex("EntityType", "EntityId")
-                        .HasFilter("EntityType IS NOT NULL AND EntityId IS NOT NULL");
+                        .HasFilter("\"EntityType\" IS NOT NULL AND \"EntityId\" IS NOT NULL");
 
                     b.ToTable("AuditLogs");
                 });
@@ -244,8 +251,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("DateOfService")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAddendum")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsReEvaluation")
                         .HasColumnType("boolean");
@@ -261,6 +274,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<int>("NoteType")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("ParentNoteId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid");
@@ -303,17 +319,49 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("AppointmentId");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
+
+                    b.HasIndex("CreatedUtc");
 
                     b.HasIndex("DateOfService");
 
                     b.HasIndex("LastModifiedUtc");
+
+                    b.HasIndex("ParentNoteId");
 
                     b.HasIndex("PatientId");
 
                     b.HasIndex("SignedUtc");
 
                     b.ToTable("ClinicalNotes");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ComplianceSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AllowOverrideTypes")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("[]");
+
+                    b.Property<int>("MinJustificationLength")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(20);
+
+                    b.Property<string>("OverrideAttestationText")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("I acknowledge this override and attest that the justification is accurate and clinically necessary.");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ComplianceSettings");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ExternalIdentityMapping", b =>
@@ -354,7 +402,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("IsActive");
 
                     b.HasIndex("TenantId")
-                        .HasFilter("TenantId IS NOT NULL");
+                        .HasFilter("\"TenantId\" IS NOT NULL");
 
                     b.HasIndex("PrincipalType", "InternalEntityId");
 
@@ -469,7 +517,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -515,7 +563,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("AttemptedAt");
 
                     b.HasIndex("UserId")
-                        .HasFilter("UserId IS NOT NULL");
+                        .HasFilter("\"UserId\" IS NOT NULL");
 
                     b.HasIndex("Username");
 
@@ -640,7 +688,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("DateRecorded");
 
@@ -756,16 +804,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("Email")
-                        .HasFilter("Email IS NOT NULL");
+                        .HasFilter("\"Email\" IS NOT NULL");
 
                     b.HasIndex("LastModifiedUtc");
 
                     b.HasIndex("MedicalRecordNumber")
                         .IsUnique()
-                        .HasFilter("MedicalRecordNumber IS NOT NULL");
+                        .HasFilter("\"MedicalRecordNumber\" IS NOT NULL");
 
                     b.HasIndex("FirstName", "LastName");
 
@@ -836,7 +884,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("ArchivedByNoteId");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("MetByNoteId");
 
@@ -847,6 +895,46 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId", "Status");
 
                     b.ToTable("PatientGoals");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttestationText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Justification")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RuleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoteId")
+                        .HasFilter("\"NoteId\" IS NOT NULL");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RuleOverrides");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -890,6 +978,60 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("IsRevoked", "ExpiresAt");
 
                     b.ToTable("Sessions");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Signature", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttestationText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("ConsentAccepted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("DeviceInfo")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<bool>("IntentConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("SignatureHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SignedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("SignedByUserId");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.ToTable("Signatures");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.StoredRefreshToken", b =>
@@ -1033,6 +1175,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<int?>("FailureType")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("LastAttemptAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1123,11 +1268,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasFilter("Email IS NOT NULL");
+                        .HasFilter("\"Email\" IS NOT NULL");
 
                     b.HasIndex("IsActive");
 
@@ -1236,7 +1381,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("ClinicalNote");
+
+                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
@@ -1269,6 +1422,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ParentNote")
+                        .WithMany("Addendums")
+                        .HasForeignKey("ParentNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("ClinicalNotes")
                         .HasForeignKey("PatientId")
@@ -1278,6 +1436,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Appointment");
 
                     b.Navigation("Clinic");
+
+                    b.Navigation("ParentNote");
 
                     b.Navigation("Patient");
                 });
@@ -1407,6 +1567,24 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.User", "User")
@@ -1416,6 +1594,25 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Signature", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", "SignedByUser")
+                        .WithMany()
+                        .HasForeignKey("SignedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("SignedByUser");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.User", b =>
@@ -1465,6 +1662,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
                 {
+                    b.Navigation("Addendums");
+
                     b.Navigation("ObjectiveMetrics");
 
                     b.Navigation("TaxonomySelections");

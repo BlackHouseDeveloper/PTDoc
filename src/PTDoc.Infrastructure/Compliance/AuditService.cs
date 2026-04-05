@@ -34,6 +34,16 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogSignatureEventAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
+    public async Task LogSignatureVerificationAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     public async Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default)
     {
         await LogEventAsync(auditEvent, ct);
@@ -64,9 +74,20 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogSyncEventAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
-        var auditLog = new AuditLog
+        _context.AuditLogs.Add(CreateAuditLog(auditEvent));
+        await _context.SaveChangesAsync(ct);
+    }
+
+    internal static AuditLog CreateAuditLog(AuditEvent auditEvent)
+    {
+        return new AuditLog
         {
             Id = Guid.NewGuid(),
             TimestampUtc = DateTime.UtcNow,
@@ -80,8 +101,5 @@ public class AuditService : IAuditService
             EntityType = auditEvent.EntityType,
             EntityId = auditEvent.EntityId
         };
-
-        _context.AuditLogs.Add(auditLog);
-        await _context.SaveChangesAsync(ct);
     }
 }

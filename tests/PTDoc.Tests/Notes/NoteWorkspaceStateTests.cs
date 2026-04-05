@@ -1,3 +1,4 @@
+using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 using Xunit;
 
@@ -81,6 +82,20 @@ public class NoteWorkspaceStateTests
     }
 
     [Fact]
+    public void MarkDirty_DoesNotChangeReadonlyNote()
+    {
+        var note = new SoapNoteVm
+        {
+            Status = NoteStatus.PendingCoSign
+        };
+
+        note.MarkDirty();
+
+        Assert.False(note.IsDirty);
+        Assert.Equal(NoteSaveState.Unsaved, note.SaveState);
+    }
+
+    [Fact]
     public void CanSubmit_FailsWhenRequiredPlanFieldsMissing()
     {
         var note = new SoapNoteVm();
@@ -93,6 +108,20 @@ public class NoteWorkspaceStateTests
         var validWithNoDuration = note.CanSubmit(out var messageNoDuration);
         Assert.False(validWithNoDuration);
         Assert.Equal("Treatment Duration is required before submit.", messageNoDuration);
+    }
+
+    [Fact]
+    public void CanSubmit_FailsWhenNoteIsNotDraft()
+    {
+        var note = new SoapNoteVm
+        {
+            Status = NoteStatus.Signed
+        };
+
+        var canSubmit = note.CanSubmit(out var message);
+
+        Assert.False(canSubmit);
+        Assert.Equal("Only draft notes can be submitted from the workspace.", message);
     }
 
     [Fact]

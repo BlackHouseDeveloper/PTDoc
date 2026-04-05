@@ -30,6 +30,7 @@ namespace PTDoc.Infrastructure.LocalData;
 /// </summary>
 public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 {
+    private const int MaxRetryAttempts = 5;
     private readonly LocalDbContext _localContext;
     private readonly HttpClient _httpClient;
     private readonly ILogger<LocalSyncOrchestrator> _logger;
@@ -50,6 +51,56 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         _localContext = localContext;
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <inheritdoc/>
+    public async Task EnqueueChangeAsync(
+        string entityType,
+        Guid entityId,
+        int localEntityId,
+        SyncOperation operation,
+        string payloadJson,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await _localContext.SyncQueueItems
+            .Where(q =>
+                q.EntityType == entityType &&
+                q.LocalEntityId == localEntityId &&
+                // Supersede any non-Completed row, including Failed (stale payload) and
+                // Processing (interrupted mid-flight) rows. Processing rows are safe to
+                // supersede because the server receipt for that attempt already carries the
+                // OperationId; the new enqueue assigns a fresh OperationId, so both records
+                // remain independently idempotent on the server side.
+                q.Status != SyncQueueStatus.Completed)
+            .OrderByDescending(q => q.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing is not null)
+        {
+            existing.EntityId = entityId;
+            existing.Operation = operation;
+            existing.PayloadJson = payloadJson;
+            existing.ErrorMessage = null;
+            existing.LastAttemptUtc = null;
+            existing.RetryCount = 0;
+            existing.Status = SyncQueueStatus.Pending;
+            existing.CreatedUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            _localContext.SyncQueueItems.Add(new LocalSyncQueueItem
+            {
+                EntityType = entityType,
+                EntityId = entityId,
+                LocalEntityId = localEntityId,
+                Operation = operation,
+                PayloadJson = payloadJson,
+                Status = SyncQueueStatus.Pending,
+                CreatedUtc = DateTime.UtcNow
+            });
+        }
+
+        await _localContext.SaveChangesAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -80,318 +131,115 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     public async Task<LocalPushResult> PushPendingAsync(CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
-        int pushedCount = 0, successCount = 0, failedCount = 0, conflictCount = 0;
-        bool patientHadAccepted = false, appointmentHadAccepted = false,
-             intakeHadAccepted = false, noteHadAccepted = false;
+        var now = DateTime.UtcNow;
 
-        // ── Collect pending patients ─────────────────────────────────────────────
-        var pendingPatients = await _localContext.PatientSummaries
-            .Where(p => p.SyncState == SyncState.Pending)
+        await EnsureQueueItemsForPendingEntitiesAsync(cancellationToken);
+        await RecoverInterruptedQueueItemsAsync(cancellationToken);
+
+        var queuedItems = await _localContext.SyncQueueItems
+            .Where(q => q.Status == SyncQueueStatus.Pending || q.Status == SyncQueueStatus.Failed)
+            .OrderBy(q => q.CreatedUtc)
             .ToListAsync(cancellationToken);
 
-        // ── Collect pending appointments ─────────────────────────────────────────
-        var pendingAppointments = await _localContext.AppointmentSummaries
-            .Where(a => a.SyncState == SyncState.Pending)
-            .ToListAsync(cancellationToken);
+        var eligibleItems = queuedItems
+            .Where(q => ShouldAttemptNow(q, now))
+            .ToList();
 
-        // ── Collect pending intake form drafts ───────────────────────────────────
-        var pendingIntakes = await _localContext.IntakeFormDrafts
-            .Where(i => i.SyncState == SyncState.Pending)
-            .ToListAsync(cancellationToken);
-
-        // ── Collect pending clinical note drafts (unsigned only) ─────────────────
-        var pendingNotes = await _localContext.ClinicalNoteDrafts
-            .Where(n => n.SyncState == SyncState.Pending && n.SignatureHash == null)
-            .ToListAsync(cancellationToken);
-
-        var pushItems = new List<ClientSyncPushItem>();
-
-        foreach (var p in pendingPatients)
-        {
-            pushItems.Add(new ClientSyncPushItem
-            {
-                EntityType = "Patient",
-                ServerId = p.ServerId,
-                LocalId = p.LocalId,
-                Operation = p.ServerId == Guid.Empty ? "Create" : "Update",
-                DataJson = JsonSerializer.Serialize(new
-                {
-                    p.ServerId,
-                    p.FirstName,
-                    p.LastName,
-                    p.DateOfBirth,
-                    p.Email,
-                    p.Phone,
-                    p.MedicalRecordNumber,
-                    p.LastModifiedUtc
-                }, _jsonOptions),
-                LastModifiedUtc = p.LastModifiedUtc
-            });
-        }
-
-        foreach (var a in pendingAppointments)
-        {
-            pushItems.Add(new ClientSyncPushItem
-            {
-                EntityType = "Appointment",
-                ServerId = a.ServerId,
-                LocalId = a.LocalId,
-                Operation = a.ServerId == Guid.Empty ? "Create" : "Update",
-                DataJson = JsonSerializer.Serialize(new
-                {
-                    a.ServerId,
-                    a.PatientServerId,
-                    a.PatientFirstName,
-                    a.PatientLastName,
-                    a.StartTimeUtc,
-                    a.EndTimeUtc,
-                    a.Status,
-                    a.Notes,
-                    a.LastModifiedUtc
-                }, _jsonOptions),
-                LastModifiedUtc = a.LastModifiedUtc
-            });
-        }
-
-        foreach (var i in pendingIntakes)
-        {
-            pushItems.Add(new ClientSyncPushItem
-            {
-                EntityType = "IntakeForm",
-                ServerId = i.ServerId,
-                LocalId = i.LocalId,
-                Operation = i.ServerId == Guid.Empty ? "Create" : "Update",
-                DataJson = JsonSerializer.Serialize(new
-                {
-                    i.ServerId,
-                    patientId = i.PatientServerId,
-                    i.ResponseJson,
-                    i.StructuredDataJson,
-                    i.PainMapData,
-                    i.Consents,
-                    i.TemplateVersion,
-                    i.LastModifiedUtc
-                }, _jsonOptions),
-                LastModifiedUtc = i.LastModifiedUtc
-            });
-        }
-
-        foreach (var n in pendingNotes)
-        {
-            pushItems.Add(new ClientSyncPushItem
-            {
-                EntityType = "ClinicalNote",
-                ServerId = n.ServerId,
-                LocalId = n.LocalId,
-                Operation = n.ServerId == Guid.Empty ? "Create" : "Update",
-                DataJson = JsonSerializer.Serialize(new
-                {
-                    n.ServerId,
-                    patientId = n.PatientServerId,
-                    n.NoteType,
-                    n.DateOfService,
-                    n.ContentJson,
-                    n.CptCodesJson,
-                    n.LastModifiedUtc
-                }, _jsonOptions),
-                LastModifiedUtc = n.LastModifiedUtc
-            });
-        }
-
-        if (pushItems.Count == 0)
+        if (eligibleItems.Count == 0)
         {
             _logger.LogDebug("No pending items to push");
             return new LocalPushResult();
         }
 
-        pushedCount = pushItems.Count;
-        _logger.LogInformation("Pushing {Count} pending item(s) to server", pushedCount);
+        var pushedCount = eligibleItems.Count;
+        var successCount = 0;
+        var failedCount = 0;
+        var conflictCount = 0;
 
-        ClientSyncPushResponse serverResponse;
-        try
+        foreach (var queueItem in eligibleItems)
         {
-            var httpResponse = await _httpClient.PostAsJsonAsync(
-                "/api/v1/sync/client/push",
-                new ClientSyncPushRequest { Items = pushItems },
-                _jsonOptions,
-                cancellationToken);
-
-            if (!httpResponse.IsSuccessStatusCode)
+            var pushItem = await BuildPushItemAsync(queueItem, cancellationToken);
+            if (pushItem is null)
             {
-                var body = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Server returned {Status} for client push: {Body}",
-                    httpResponse.StatusCode, body);
-
-                // Leave all items Pending for retry
-                errors.Add($"Server returned {(int)httpResponse.StatusCode}");
-                failedCount = pushedCount;
-
-                return new LocalPushResult
-                {
-                    PushedCount = pushedCount,
-                    SuccessCount = 0,
-                    FailedCount = failedCount,
-                    ConflictCount = 0,
-                    Errors = errors
-                };
+                await MarkFailedAsync(queueItem, "Local entity no longer exists for queued change.", terminal: true, cancellationToken);
+                failedCount++;
+                errors.Add($"{queueItem.EntityType}:{queueItem.LocalEntityId} - Local entity no longer exists");
+                continue;
             }
 
-            serverResponse = await httpResponse.Content.ReadFromJsonAsync<ClientSyncPushResponse>(
-                _jsonOptions, cancellationToken)
-                ?? new ClientSyncPushResponse();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Network error during client push; items remain pending for retry");
-            errors.Add($"Network error: {ex.Message}");
-            return new LocalPushResult
+            queueItem.Status = SyncQueueStatus.Processing;
+            queueItem.LastAttemptUtc = DateTime.UtcNow;
+            queueItem.ErrorMessage = null;
+            await _localContext.SaveChangesAsync(cancellationToken);
+
+            try
             {
-                PushedCount = pushedCount,
-                SuccessCount = 0,
-                FailedCount = pushedCount,
-                ConflictCount = 0,
-                Errors = errors
-            };
-        }
+                var httpResponse = await _httpClient.PostAsJsonAsync(
+                    "/api/v1/sync/client/push",
+                    new ClientSyncPushRequest { Items = [pushItem] },
+                    _jsonOptions,
+                    cancellationToken);
 
-        // ── Apply server response to local entities ───────────────────────────────
-        // Build lookup maps keyed by (EntityType, LocalId) to avoid cross-type LocalId collisions.
-        var patientByLocalId = pendingPatients.ToDictionary(p => p.LocalId);
-        var appointmentByLocalId = pendingAppointments.ToDictionary(a => a.LocalId);
-        var intakeByLocalId = pendingIntakes.ToDictionary(i => i.LocalId);
-        var noteByLocalId = pendingNotes.ToDictionary(n => n.LocalId);
-        var now = DateTime.UtcNow;
+                if (!httpResponse.IsSuccessStatusCode)
+                {
+                    var body = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
+                    _logger.LogWarning("Server returned {Status} for client push: {Body}",
+                        httpResponse.StatusCode, body);
 
-        foreach (var itemResult in serverResponse.Items)
-        {
-            var isPatient = string.Equals(itemResult.EntityType, "Patient", StringComparison.OrdinalIgnoreCase);
-            var isAppointment = string.Equals(itemResult.EntityType, "Appointment", StringComparison.OrdinalIgnoreCase);
-            var isIntake = string.Equals(itemResult.EntityType, "IntakeForm", StringComparison.OrdinalIgnoreCase);
-            var isNote = string.Equals(itemResult.EntityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase);
+                    var terminal = !IsTransientStatusCode((int)httpResponse.StatusCode);
+                    await MarkFailedAsync(
+                        queueItem,
+                        $"Server returned {(int)httpResponse.StatusCode}",
+                        terminal,
+                        cancellationToken);
+                    failedCount++;
+                    errors.Add($"{queueItem.EntityType}:{queueItem.LocalEntityId} - Server returned {(int)httpResponse.StatusCode}");
+                    continue;
+                }
 
-            if (isPatient && patientByLocalId.TryGetValue(itemResult.LocalId, out var localPatient))
-            {
+                var serverResponse = await httpResponse.Content.ReadFromJsonAsync<ClientSyncPushResponse>(
+                    _jsonOptions, cancellationToken)
+                    ?? new ClientSyncPushResponse();
+                var itemResult = serverResponse.Items.FirstOrDefault();
+
+                if (itemResult is null)
+                {
+                    await MarkFailedAsync(queueItem, "Server returned an empty push result.", terminal: false, cancellationToken);
+                    failedCount++;
+                    errors.Add($"{queueItem.EntityType}:{queueItem.LocalEntityId} - Empty push result");
+                    continue;
+                }
+
                 switch (itemResult.Status)
                 {
                     case "Accepted":
-                        localPatient.SyncState = SyncState.Synced;
-                        localPatient.LastSyncedUtc = now;
-                        // Apply assigned server ID if this was a new record
-                        if (localPatient.ServerId == Guid.Empty)
-                            localPatient.ServerId = itemResult.ServerId;
+                        await ApplyAcceptedResultAsync(queueItem, itemResult, cancellationToken);
                         successCount++;
-                        patientHadAccepted = true;
+                        await UpdateSyncMetadataAsync(queueItem.EntityType, lastPushedAt: DateTime.UtcNow, cancellationToken: cancellationToken);
                         break;
 
                     case "Conflict":
-                        localPatient.SyncState = SyncState.Conflict;
+                        await MarkLocalEntityConflictAsync(queueItem, cancellationToken);
+                        await MarkFailedAsync(queueItem, itemResult.Error ?? "Conflict", terminal: true, cancellationToken);
                         conflictCount++;
-                        _logger.LogWarning(
-                            "Push conflict for Patient LocalId={LocalId}: {Error}",
-                            itemResult.LocalId, itemResult.Error);
                         break;
 
                     default:
-                        // Error — leave Pending for retry
+                        await MarkFailedAsync(queueItem, itemResult.Error ?? "Server rejected sync item.", terminal: true, cancellationToken);
                         failedCount++;
-                        errors.Add($"Patient LocalId={itemResult.LocalId}: {itemResult.Error}");
+                        errors.Add($"{queueItem.EntityType}:{queueItem.LocalEntityId} - {itemResult.Error ?? "Server rejected sync item."}");
                         break;
                 }
             }
-            else if (isAppointment && appointmentByLocalId.TryGetValue(itemResult.LocalId, out var localAppointment))
+            catch (Exception ex)
             {
-                switch (itemResult.Status)
-                {
-                    case "Accepted":
-                        localAppointment.SyncState = SyncState.Synced;
-                        localAppointment.LastSyncedUtc = now;
-                        if (localAppointment.ServerId == Guid.Empty)
-                            localAppointment.ServerId = itemResult.ServerId;
-                        successCount++;
-                        appointmentHadAccepted = true;
-                        break;
-
-                    case "Conflict":
-                        localAppointment.SyncState = SyncState.Conflict;
-                        conflictCount++;
-                        _logger.LogWarning(
-                            "Push conflict for Appointment LocalId={LocalId}: {Error}",
-                            itemResult.LocalId, itemResult.Error);
-                        break;
-
-                    default:
-                        failedCount++;
-                        errors.Add($"Appointment LocalId={itemResult.LocalId}: {itemResult.Error}");
-                        break;
-                }
-            }
-            else if (isIntake && intakeByLocalId.TryGetValue(itemResult.LocalId, out var localIntake))
-            {
-                switch (itemResult.Status)
-                {
-                    case "Accepted":
-                        localIntake.SyncState = SyncState.Synced;
-                        localIntake.LastSyncedUtc = now;
-                        if (localIntake.ServerId == Guid.Empty)
-                            localIntake.ServerId = itemResult.ServerId;
-                        successCount++;
-                        intakeHadAccepted = true;
-                        break;
-
-                    case "Conflict":
-                        localIntake.SyncState = SyncState.Conflict;
-                        conflictCount++;
-                        _logger.LogWarning(
-                            "Push conflict for IntakeForm LocalId={LocalId}: {Error}",
-                            itemResult.LocalId, itemResult.Error);
-                        break;
-
-                    default:
-                        failedCount++;
-                        errors.Add($"IntakeForm LocalId={itemResult.LocalId}: {itemResult.Error}");
-                        break;
-                }
-            }
-            else if (isNote && noteByLocalId.TryGetValue(itemResult.LocalId, out var localNote))
-            {
-                switch (itemResult.Status)
-                {
-                    case "Accepted":
-                        localNote.SyncState = SyncState.Synced;
-                        localNote.LastSyncedUtc = now;
-                        if (localNote.ServerId == Guid.Empty)
-                            localNote.ServerId = itemResult.ServerId;
-                        successCount++;
-                        noteHadAccepted = true;
-                        break;
-
-                    case "Conflict":
-                        localNote.SyncState = SyncState.Conflict;
-                        conflictCount++;
-                        _logger.LogWarning(
-                            "Push conflict for ClinicalNote LocalId={LocalId}: {Error}",
-                            itemResult.LocalId, itemResult.Error);
-                        break;
-
-                    default:
-                        failedCount++;
-                        errors.Add($"ClinicalNote LocalId={itemResult.LocalId}: {itemResult.Error}");
-                        break;
-                }
+                _logger.LogWarning(ex, "Network error during client push for {EntityType}:{LocalEntityId}",
+                    queueItem.EntityType, queueItem.LocalEntityId);
+                await MarkFailedAsync(queueItem, $"Network error: {ex.Message}", terminal: false, cancellationToken);
+                failedCount++;
+                errors.Add($"{queueItem.EntityType}:{queueItem.LocalEntityId} - Network error: {ex.Message}");
             }
         }
-
-        await _localContext.SaveChangesAsync(cancellationToken);
-
-        // ── Update push watermarks per entity type (only when that type had accepted items) ──
-        if (patientHadAccepted)
-            await UpdateSyncMetadataAsync("Patient", lastPushedAt: now, cancellationToken: cancellationToken);
-        if (appointmentHadAccepted)
-            await UpdateSyncMetadataAsync("Appointment", lastPushedAt: now, cancellationToken: cancellationToken);
-        if (intakeHadAccepted)
-            await UpdateSyncMetadataAsync("IntakeForm", lastPushedAt: now, cancellationToken: cancellationToken);
-        if (noteHadAccepted)
-            await UpdateSyncMetadataAsync("ClinicalNote", lastPushedAt: now, cancellationToken: cancellationToken);
 
         return new LocalPushResult
         {
@@ -550,6 +398,408 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     // ── Private helpers ──────────────────────────────────────────────────────────
 
     private enum ApplyResult { Applied, Conflict, Skipped }
+
+    private async Task RecoverInterruptedQueueItemsAsync(CancellationToken cancellationToken)
+    {
+        var interruptedItems = await _localContext.SyncQueueItems
+            .Where(q => q.Status == SyncQueueStatus.Processing)
+            .ToListAsync(cancellationToken);
+
+        if (interruptedItems.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in interruptedItems)
+        {
+            item.Status = SyncQueueStatus.Failed;
+            item.ErrorMessage ??= "Sync interrupted before completion.";
+        }
+
+        await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsureQueueItemsForPendingEntitiesAsync(CancellationToken cancellationToken)
+    {
+        var pendingPatients = await _localContext.PatientSummaries
+            .Where(p => p.SyncState == SyncState.Pending)
+            .ToListAsync(cancellationToken);
+        foreach (var patient in pendingPatients)
+        {
+            if (!await HasActiveQueueItemAsync("Patient", patient.LocalId, cancellationToken))
+            {
+                _localContext.SyncQueueItems.Add(new LocalSyncQueueItem
+                {
+                    EntityType = "Patient",
+                    EntityId = patient.ServerId,
+                    LocalEntityId = patient.LocalId,
+                    Operation = patient.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+                    PayloadJson = JsonSerializer.Serialize(new
+                    {
+                        patient.ServerId,
+                        patient.FirstName,
+                        patient.LastName,
+                        patient.DateOfBirth,
+                        patient.Email,
+                        patient.Phone,
+                        patient.MedicalRecordNumber,
+                        patient.LastModifiedUtc
+                    }, _jsonOptions),
+                    Status = SyncQueueStatus.Pending,
+                    CreatedUtc = DateTime.UtcNow
+                });
+            }
+        }
+
+        var pendingAppointments = await _localContext.AppointmentSummaries
+            .Where(a => a.SyncState == SyncState.Pending)
+            .ToListAsync(cancellationToken);
+        foreach (var appointment in pendingAppointments)
+        {
+            if (!await HasActiveQueueItemAsync("Appointment", appointment.LocalId, cancellationToken))
+            {
+                _localContext.SyncQueueItems.Add(new LocalSyncQueueItem
+                {
+                    EntityType = "Appointment",
+                    EntityId = appointment.ServerId,
+                    LocalEntityId = appointment.LocalId,
+                    Operation = appointment.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+                    PayloadJson = JsonSerializer.Serialize(new
+                    {
+                        appointment.ServerId,
+                        appointment.PatientServerId,
+                        appointment.PatientFirstName,
+                        appointment.PatientLastName,
+                        appointment.StartTimeUtc,
+                        appointment.EndTimeUtc,
+                        appointment.Status,
+                        appointment.Notes,
+                        appointment.LastModifiedUtc
+                    }, _jsonOptions),
+                    Status = SyncQueueStatus.Pending,
+                    CreatedUtc = DateTime.UtcNow
+                });
+            }
+        }
+
+        var pendingIntakes = await _localContext.IntakeFormDrafts
+            .Where(i => i.SyncState == SyncState.Pending)
+            .ToListAsync(cancellationToken);
+        foreach (var intake in pendingIntakes)
+        {
+            if (!await HasActiveQueueItemAsync("IntakeForm", intake.LocalId, cancellationToken))
+            {
+                _localContext.SyncQueueItems.Add(new LocalSyncQueueItem
+                {
+                    EntityType = "IntakeForm",
+                    EntityId = intake.ServerId,
+                    LocalEntityId = intake.LocalId,
+                    Operation = intake.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+                    PayloadJson = JsonSerializer.Serialize(new
+                    {
+                        intake.ServerId,
+                        patientId = intake.PatientServerId,
+                        intake.ResponseJson,
+                        intake.StructuredDataJson,
+                        intake.PainMapData,
+                        intake.Consents,
+                        intake.TemplateVersion,
+                        intake.LastModifiedUtc
+                    }, _jsonOptions),
+                    Status = SyncQueueStatus.Pending,
+                    CreatedUtc = DateTime.UtcNow
+                });
+            }
+        }
+
+        var pendingNotes = await _localContext.ClinicalNoteDrafts
+            .Where(n => n.SyncState == SyncState.Pending && n.SignatureHash == null)
+            .ToListAsync(cancellationToken);
+        foreach (var note in pendingNotes)
+        {
+            if (!await HasActiveQueueItemAsync("ClinicalNote", note.LocalId, cancellationToken))
+            {
+                _localContext.SyncQueueItems.Add(new LocalSyncQueueItem
+                {
+                    EntityType = "ClinicalNote",
+                    EntityId = note.ServerId,
+                    LocalEntityId = note.LocalId,
+                    Operation = note.ServerId == Guid.Empty ? SyncOperation.Create : SyncOperation.Update,
+                    PayloadJson = JsonSerializer.Serialize(new
+                    {
+                        note.ServerId,
+                        patientId = note.PatientServerId,
+                        note.NoteType,
+                        note.CreatedUtc,
+                        note.ParentNoteId,
+                        note.IsAddendum,
+                        note.DateOfService,
+                        note.ContentJson,
+                        note.CptCodesJson,
+                        note.LastModifiedUtc
+                    }, _jsonOptions),
+                    Status = SyncQueueStatus.Pending,
+                    CreatedUtc = DateTime.UtcNow
+                });
+            }
+        }
+
+        await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private Task<bool> HasActiveQueueItemAsync(string entityType, int localEntityId, CancellationToken cancellationToken) =>
+        _localContext.SyncQueueItems.AnyAsync(
+            q => q.EntityType == entityType &&
+                 q.LocalEntityId == localEntityId &&
+                 q.Status != SyncQueueStatus.Completed,
+            cancellationToken);
+
+    private static bool ShouldAttemptNow(LocalSyncQueueItem item, DateTime now)
+    {
+        if (item.RetryCount >= MaxRetryAttempts)
+        {
+            return false;
+        }
+
+        if (item.Status == SyncQueueStatus.Pending)
+        {
+            return true;
+        }
+
+        if (item.LastAttemptUtc is null || item.RetryCount < 3)
+        {
+            return true;
+        }
+
+        var backoffDelay = TimeSpan.FromSeconds(Math.Pow(2, item.RetryCount));
+        return item.LastAttemptUtc.Value + backoffDelay <= now;
+    }
+
+    private async Task<ClientSyncPushItem?> BuildPushItemAsync(LocalSyncQueueItem queueItem, CancellationToken cancellationToken)
+    {
+        switch (queueItem.EntityType)
+        {
+            case "Patient":
+                var patient = await _localContext.PatientSummaries
+                    .FirstOrDefaultAsync(p => p.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (patient is null)
+                {
+                    return null;
+                }
+
+                queueItem.EntityId = patient.ServerId;
+                return new ClientSyncPushItem
+                {
+                    OperationId = queueItem.OperationId,
+                    EntityType = queueItem.EntityType,
+                    ServerId = patient.ServerId,
+                    LocalId = patient.LocalId,
+                    Operation = queueItem.Operation.ToString(),
+                    DataJson = queueItem.PayloadJson,
+                    LastModifiedUtc = patient.LastModifiedUtc
+                };
+
+            case "Appointment":
+                var appointment = await _localContext.AppointmentSummaries
+                    .FirstOrDefaultAsync(a => a.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (appointment is null)
+                {
+                    return null;
+                }
+
+                queueItem.EntityId = appointment.ServerId;
+                return new ClientSyncPushItem
+                {
+                    OperationId = queueItem.OperationId,
+                    EntityType = queueItem.EntityType,
+                    ServerId = appointment.ServerId,
+                    LocalId = appointment.LocalId,
+                    Operation = queueItem.Operation.ToString(),
+                    DataJson = queueItem.PayloadJson,
+                    LastModifiedUtc = appointment.LastModifiedUtc
+                };
+
+            case "IntakeForm":
+                var intake = await _localContext.IntakeFormDrafts
+                    .FirstOrDefaultAsync(i => i.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (intake is null)
+                {
+                    return null;
+                }
+
+                queueItem.EntityId = intake.ServerId;
+                return new ClientSyncPushItem
+                {
+                    OperationId = queueItem.OperationId,
+                    EntityType = queueItem.EntityType,
+                    ServerId = intake.ServerId,
+                    LocalId = intake.LocalId,
+                    Operation = queueItem.Operation.ToString(),
+                    DataJson = queueItem.PayloadJson,
+                    LastModifiedUtc = intake.LastModifiedUtc
+                };
+
+            case "ClinicalNote":
+                var note = await _localContext.ClinicalNoteDrafts
+                    .FirstOrDefaultAsync(n => n.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (note is null)
+                {
+                    return null;
+                }
+
+                queueItem.EntityId = note.ServerId;
+                return new ClientSyncPushItem
+                {
+                    OperationId = queueItem.OperationId,
+                    EntityType = queueItem.EntityType,
+                    ServerId = note.ServerId,
+                    LocalId = note.LocalId,
+                    Operation = queueItem.Operation.ToString(),
+                    DataJson = queueItem.PayloadJson,
+                    LastModifiedUtc = note.LastModifiedUtc
+                };
+
+            default:
+                return null;
+        }
+    }
+
+    private async Task ApplyAcceptedResultAsync(
+        LocalSyncQueueItem queueItem,
+        ClientSyncPushItemResult result,
+        CancellationToken cancellationToken)
+    {
+        switch (queueItem.EntityType)
+        {
+            case "Patient":
+                var patient = await _localContext.PatientSummaries
+                    .FirstOrDefaultAsync(p => p.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (patient is not null)
+                {
+                    if (patient.ServerId == Guid.Empty)
+                    {
+                        patient.ServerId = result.ServerId;
+                    }
+
+                    patient.SyncState = SyncState.Synced;
+                    patient.LastSyncedUtc = DateTime.UtcNow;
+                }
+                break;
+
+            case "Appointment":
+                var appointment = await _localContext.AppointmentSummaries
+                    .FirstOrDefaultAsync(a => a.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (appointment is not null)
+                {
+                    if (appointment.ServerId == Guid.Empty)
+                    {
+                        appointment.ServerId = result.ServerId;
+                    }
+
+                    appointment.SyncState = SyncState.Synced;
+                    appointment.LastSyncedUtc = DateTime.UtcNow;
+                }
+                break;
+
+            case "IntakeForm":
+                var intake = await _localContext.IntakeFormDrafts
+                    .FirstOrDefaultAsync(i => i.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (intake is not null)
+                {
+                    if (intake.ServerId == Guid.Empty)
+                    {
+                        intake.ServerId = result.ServerId;
+                    }
+
+                    intake.SyncState = SyncState.Synced;
+                    intake.LastSyncedUtc = DateTime.UtcNow;
+                }
+                break;
+
+            case "ClinicalNote":
+                var note = await _localContext.ClinicalNoteDrafts
+                    .FirstOrDefaultAsync(n => n.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (note is not null)
+                {
+                    if (note.ServerId == Guid.Empty)
+                    {
+                        note.ServerId = result.ServerId;
+                    }
+
+                    note.SyncState = SyncState.Synced;
+                    note.LastSyncedUtc = DateTime.UtcNow;
+                }
+                break;
+        }
+
+        queueItem.Status = SyncQueueStatus.Completed;
+        queueItem.CompletedUtc = DateTime.UtcNow;
+        queueItem.EntityId = result.ServerId;
+        queueItem.ErrorMessage = null;
+        await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task MarkLocalEntityConflictAsync(LocalSyncQueueItem queueItem, CancellationToken cancellationToken)
+    {
+        switch (queueItem.EntityType)
+        {
+            case "Patient":
+                var patient = await _localContext.PatientSummaries
+                    .FirstOrDefaultAsync(p => p.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (patient is not null)
+                {
+                    patient.SyncState = SyncState.Conflict;
+                }
+                break;
+
+            case "Appointment":
+                var appointment = await _localContext.AppointmentSummaries
+                    .FirstOrDefaultAsync(a => a.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (appointment is not null)
+                {
+                    appointment.SyncState = SyncState.Conflict;
+                }
+                break;
+
+            case "IntakeForm":
+                var intake = await _localContext.IntakeFormDrafts
+                    .FirstOrDefaultAsync(i => i.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (intake is not null)
+                {
+                    intake.SyncState = SyncState.Conflict;
+                }
+                break;
+
+            case "ClinicalNote":
+                var note = await _localContext.ClinicalNoteDrafts
+                    .FirstOrDefaultAsync(n => n.LocalId == queueItem.LocalEntityId, cancellationToken);
+                if (note is not null)
+                {
+                    note.SyncState = SyncState.Conflict;
+                }
+                break;
+        }
+
+        await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task MarkFailedAsync(
+        LocalSyncQueueItem queueItem,
+        string errorMessage,
+        bool terminal,
+        CancellationToken cancellationToken)
+    {
+        queueItem.Status = SyncQueueStatus.Failed;
+        queueItem.CompletedUtc = null;
+        queueItem.ErrorMessage = errorMessage;
+        queueItem.RetryCount = terminal
+            ? MaxRetryAttempts
+            : Math.Min(MaxRetryAttempts, queueItem.RetryCount + 1);
+        await _localContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsTransientStatusCode(int statusCode) =>
+        statusCode == 408 || statusCode == 429 || statusCode >= 500;
 
     private async Task<ApplyResult> ApplyPulledPatientAsync(
         ClientSyncPullItem item,
@@ -818,6 +1068,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         var root = doc.RootElement;
 
         var serverSignatureHash = GetStringCaseInsensitive(root, "SignatureHash");
+        var serverCreatedUtc = GetDateTimeCaseInsensitive(root, "CreatedUtc") ?? item.LastModifiedUtc;
+        var serverParentNoteId = GetGuidCaseInsensitive(root, "ParentNoteId");
+        var serverIsAddendum = GetBoolCaseInsensitive(root, "IsAddendum") ?? false;
 
         if (local is null)
         {
@@ -827,6 +1080,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
                 NoteType = GetNoteTypeString(root),
                 DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc,
+                CreatedUtc = serverCreatedUtc,
+                ParentNoteId = serverParentNoteId,
+                IsAddendum = serverIsAddendum,
                 ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? "{}",
                 CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? "[]",
                 SignatureHash = serverSignatureHash,
@@ -843,6 +1099,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         // to alert the clinician that their local edits cannot be applied.
         if (local.SyncState == SyncState.Pending && serverSignatureHash != null)
         {
+            local.CreatedUtc = serverCreatedUtc;
+            local.ParentNoteId = serverParentNoteId;
+            local.IsAddendum = serverIsAddendum;
             local.SyncState = SyncState.Conflict;
             local.SignatureHash = serverSignatureHash;
             _logger.LogWarning(
@@ -862,6 +1121,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         }
 
         // Apply server version — signed notes are immutable so always take server signature state
+        local.CreatedUtc = serverCreatedUtc;
+        local.ParentNoteId = serverParentNoteId;
+        local.IsAddendum = serverIsAddendum;
         local.ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson;
         local.CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? local.CptCodesJson;
         local.DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService;
@@ -911,12 +1173,43 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             ? g
             : null;
 
+    private static Guid? GetGuidCaseInsensitive(JsonElement root, string propertyName)
+    {
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+        var result = GetGuid(root, camelCase);
+        if (result.HasValue) return result;
+        var pascalCase = char.ToUpperInvariant(propertyName[0]) + propertyName[1..];
+        return GetGuid(root, pascalCase);
+    }
+
     private static DateTime? GetDateTime(JsonElement root, string propertyName) =>
         root.TryGetProperty(propertyName, out var el)
             && el.ValueKind == JsonValueKind.String
             && el.TryGetDateTime(out var dt)
             ? dt
             : null;
+
+    private static bool? GetBoolCaseInsensitive(JsonElement root, string propertyName)
+    {
+        foreach (var key in new[]
+                 {
+                     char.ToLowerInvariant(propertyName[0]) + propertyName[1..],
+                     char.ToUpperInvariant(propertyName[0]) + propertyName[1..]
+                 })
+        {
+            if (!root.TryGetProperty(key, out var el))
+            {
+                continue;
+            }
+
+            if (el.ValueKind == JsonValueKind.True) return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var value))
+                return value;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Reads NoteType from the payload handling both numeric (System.Text.Json default) and string forms.

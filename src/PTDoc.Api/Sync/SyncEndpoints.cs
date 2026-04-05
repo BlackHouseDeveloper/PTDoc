@@ -34,6 +34,18 @@ public static class SyncEndpoints
         syncGroup.MapGet("/status", GetSyncStatus)
             .WithName("GetSyncStatus");
 
+        syncGroup.MapGet("/queue", GetSyncQueue)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
+            .WithName("GetSyncQueue");
+
+        syncGroup.MapGet("/dead-letters", GetDeadLetters)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
+            .WithName("GetSyncDeadLetters");
+
+        syncGroup.MapGet("/health", GetSyncHealth)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
+            .WithName("GetSyncHealth");
+
         // ── MAUI client sync endpoints ────────────────────────────────────────────
         // POST /api/v1/sync/client/push - Receive entity changes from a MAUI client
         syncGroup.MapPost("/client/push", ReceiveClientPush)
@@ -54,6 +66,7 @@ public static class SyncEndpoints
             return Results.Ok(new
             {
                 success = true,
+                skipped = result.Skipped,
                 completedAt = result.CompletedAt,
                 durationMs = result.Duration.TotalMilliseconds,
                 push = new
@@ -95,10 +108,13 @@ public static class SyncEndpoints
             return Results.Ok(new
             {
                 success = true,
+                skipped = result.Skipped,
                 total = result.TotalPushed,
                 successCount = result.SuccessCount,
                 failureCount = result.FailureCount,
                 conflictCount = result.ConflictCount,
+                deadLetterCount = result.DeadLetterCount,
+                batchCount = result.BatchCount,
                 conflicts = result.Conflicts,
                 errors = result.Errors
             });
@@ -155,9 +171,13 @@ public static class SyncEndpoints
             var status = await syncEngine.GetQueueStatusAsync();
             return Results.Ok(new
             {
+                isRunning = status.IsRunning,
                 pending = status.PendingCount,
-                processing = status.ProcessingCount,
                 failed = status.FailedCount,
+                lastSync = status.LastSuccessUtc,
+                lastError = status.LastError,
+                processing = status.ProcessingCount,
+                deadLetterCount = status.DeadLetterCount,
                 oldestPendingAt = status.OldestPendingAt,
                 lastSyncAt = status.LastSyncAt
             });
@@ -283,6 +303,91 @@ public static class SyncEndpoints
                 detail: "An error occurred while serving client pull. Please try again.",
                 statusCode: 500,
                 title: "Client pull failed");
+        }
+    }
+
+    private static async Task<IResult> GetSyncQueue(
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
+    {
+        try
+        {
+            var items = await syncEngine.GetQueueItemsAsync();
+            return Results.Ok(items.Select(item => new
+            {
+                id = item.Id,
+                entityType = item.EntityType,
+                entityId = item.EntityId,
+                operationType = item.OperationType.ToString(),
+                status = item.Status.ToString(),
+                retryCount = item.RetryCount,
+                lastAttempt = item.LastAttemptAt,
+                failureType = item.FailureType?.ToString(),
+                errorMessage = item.ErrorMessage
+            }));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to retrieve sync queue");
+            return Results.Problem(
+                detail: "An error occurred while retrieving the sync queue. Please try again.",
+                statusCode: 500,
+                title: "Failed to get sync queue");
+        }
+    }
+
+    private static async Task<IResult> GetDeadLetters(
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
+    {
+        try
+        {
+            var items = await syncEngine.GetDeadLetterItemsAsync();
+            return Results.Ok(items.Select(item => new
+            {
+                id = item.Id,
+                entityType = item.EntityType,
+                entityId = item.EntityId,
+                operationType = item.OperationType.ToString(),
+                status = item.Status.ToString(),
+                retryCount = item.RetryCount,
+                lastAttempt = item.LastAttemptAt,
+                failureType = item.FailureType?.ToString(),
+                errorMessage = item.ErrorMessage
+            }));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to retrieve dead-letter sync items");
+            return Results.Problem(
+                detail: "An error occurred while retrieving dead-letter sync items. Please try again.",
+                statusCode: 500,
+                title: "Failed to get dead letters");
+        }
+    }
+
+    private static async Task<IResult> GetSyncHealth(
+        [FromServices] ISyncEngine syncEngine,
+        [FromServices] ILogger<ISyncEngine> logger)
+    {
+        try
+        {
+            var health = await syncEngine.GetHealthStatusAsync();
+            return Results.Ok(new
+            {
+                isHealthy = health.IsHealthy,
+                pendingCount = health.PendingCount,
+                failedCount = health.FailedCount,
+                deadLetterCount = health.DeadLetterCount
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to retrieve sync health");
+            return Results.Problem(
+                detail: "An error occurred while retrieving sync health. Please try again.",
+                statusCode: 500,
+                title: "Failed to get sync health");
         }
     }
 }

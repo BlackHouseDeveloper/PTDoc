@@ -5,7 +5,7 @@ namespace PTDoc.Application.Notes.Workspace;
 public interface INoteWorkspaceV2Service
 {
     Task<NoteWorkspaceV2LoadResponse?> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
-    Task<NoteWorkspaceV2LoadResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceV2SaveResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default);
 }
 
 public interface IWorkspaceReferenceCatalogService

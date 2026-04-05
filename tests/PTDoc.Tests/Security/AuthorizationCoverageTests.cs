@@ -192,6 +192,8 @@ public class AuthorizationCoverageTests
 
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
         new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
+        new("POST", "/api/v1/intake/drafts/{patientId:guid}",                     AuthorizationPolicies.IntakeWrite),
+        new("GET",  "/api/v1/intake/patients/eligible",                           AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/patient/{patientId:guid}/draft",              AuthorizationPolicies.IntakeRead),
         new("PUT",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeWrite),
@@ -224,6 +226,8 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/reference-data/treatment-taxonomy/{categoryId}",     AuthorizationPolicies.ClinicalStaff),
 
         // ── Notes draft CRUD (Notes/NoteEndpoints.cs) ─────────────────────────
+        new("GET",  "/api/v1/notes",            AuthorizationPolicies.NoteRead),
+        new("GET",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteRead),
         new("POST", "/api/v1/notes",            AuthorizationPolicies.NoteWrite),
         new("PUT",  "/api/v1/notes/{id:guid}",  AuthorizationPolicies.NoteWrite),
 
@@ -257,6 +261,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/notes/{noteId:guid}/sign",             AuthorizationPolicies.NoteWrite),
         new("POST", "/api/v1/notes/{noteId:guid}/co-sign",          AuthorizationPolicies.NoteCoSign),
         new("POST", "/api/v1/notes/{noteId:guid}/addendum",         AuthorizationPolicies.NoteWrite),
+        new("GET",  "/api/v1/notes/{noteId:guid}/verify",           AuthorizationPolicies.NoteRead),
         new("GET",  "/api/v1/notes/{noteId:guid}/verify-signature", AuthorizationPolicies.NoteRead),
 
         // ── Sync (Sync/SyncEndpoints.cs) ──────────────────────────────────────
@@ -264,6 +269,9 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/sync/push",         AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/pull",         AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/status",       AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/sync/queue",        AuthorizationPolicies.AdminOnly),
+        new("GET",  "/api/v1/sync/dead-letters", AuthorizationPolicies.AdminOnly),
+        new("GET",  "/api/v1/sync/health",       AuthorizationPolicies.AdminOnly),
         new("POST", "/api/v1/sync/client/push",  AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/client/pull",  AuthorizationPolicies.ClinicalStaff),
 

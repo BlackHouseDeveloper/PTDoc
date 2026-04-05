@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PTDoc.Application.BackgroundJobs;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -16,35 +20,75 @@ namespace PTDoc.Infrastructure.Sync;
 /// </summary>
 public class SyncEngine : ISyncEngine
 {
+    private const int MaxBatchSize = 10;
+    private const int MaxRetryAttempts = 5;
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan QueueItemProcessingTimeout = TimeSpan.FromSeconds(15);
+    private const int MaxReceiptRetries = 5;
+    private const string SyncConflictAddendumSource = "offline-sync-conflict";
+    private const string InterruptedProcessingMessage = "Sync interrupted before completion.";
+
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
-    private DateTime? _lastSyncAt;
+    private readonly IAuditService? _auditService;
+    private readonly ISignatureService? _signatureService;
+    private readonly ISyncRuntimeStateStore _runtimeStateStore;
+    private readonly ITelemetrySink? _telemetrySink;
+    private readonly TimeSpan _retryDelay;
+    private static readonly JsonSerializerOptions ConflictJsonOptions = new()
+    {
+        ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
 
     public SyncEngine(
         ApplicationDbContext context,
         ILogger<SyncEngine> logger,
-        IIdentityContextAccessor? identityContext = null)
+        ISyncRuntimeStateStore? runtimeStateStore = null,
+        IIdentityContextAccessor? identityContext = null,
+        IAuditService? auditService = null,
+        ISignatureService? signatureService = null,
+        ITelemetrySink? telemetrySink = null,
+        IOptions<SyncRetryOptions>? retryOptions = null)
     {
         _context = context;
         _logger = logger;
+        _runtimeStateStore = runtimeStateStore ?? new SyncRuntimeStateStore();
         _identityContext = identityContext;
+        _auditService = auditService;
+        _signatureService = signatureService;
+        _telemetrySink = telemetrySink;
+        _retryDelay = retryOptions?.Value.MinRetryDelay ?? DefaultRetryDelay;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
     {
         var startTime = DateTime.UtcNow;
+        if (!_runtimeStateStore.TryBeginRun(startTime))
+        {
+            _logger.LogInformation("Skipping full sync cycle because another sync run is already active");
+            return new SyncResult
+            {
+                PushResult = new PushResult { Skipped = true },
+                PullResult = new PullResult(),
+                CompletedAt = DateTime.UtcNow,
+                Duration = TimeSpan.Zero,
+                Skipped = true
+            };
+        }
+
         _logger.LogInformation("Starting full sync cycle");
 
         try
         {
             // First push local changes
-            var pushResult = await PushAsync(cancellationToken);
+            var pushResult = await PushInternalAsync(cancellationToken);
 
             // Then pull server changes
-            var pullResult = await PullAsync(_lastSyncAt, cancellationToken);
-
-            _lastSyncAt = DateTime.UtcNow;
+            var pullResult = await PullAsync(_runtimeStateStore.Snapshot().LastSuccessUtc, cancellationToken);
+            var completedAt = DateTime.UtcNow;
 
             var duration = DateTime.UtcNow - startTime;
             _logger.LogInformation(
@@ -52,84 +96,61 @@ public class SyncEngine : ISyncEngine
                 duration.TotalMilliseconds, pushResult.SuccessCount, pullResult.AppliedCount,
                 pushResult.ConflictCount + pullResult.ConflictCount);
 
+            var runSucceeded = pushResult.FailureCount == 0 && pushResult.DeadLetterCount == 0;
+            _runtimeStateStore.CompleteRun(
+                completedAt,
+                success: runSucceeded,
+                lastError: runSucceeded ? null : SanitizeError(pushResult.Errors.FirstOrDefault()));
+
             return new SyncResult
             {
                 PushResult = pushResult,
                 PullResult = pullResult,
-                CompletedAt = DateTime.UtcNow,
-                Duration = duration
+                CompletedAt = completedAt,
+                Duration = duration,
+                Skipped = false
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Sync cycle failed");
+            _runtimeStateStore.CompleteRun(DateTime.UtcNow, success: false, lastError: SanitizeError(ex.Message));
+            if (_telemetrySink is not null)
+            {
+                await _telemetrySink.LogExceptionAsync(ex, Guid.NewGuid().ToString(), new Dictionary<string, object>
+                {
+                    ["Component"] = "SyncEngine",
+                    ["Operation"] = "SyncNow"
+                });
+            }
             throw;
         }
     }
 
     public async Task<PushResult> PushAsync(CancellationToken cancellationToken = default)
     {
-        var conflicts = new List<SyncConflict>();
-        var errors = new List<string>();
-        int successCount = 0;
-        int failureCount = 0;
-
-        // Get pending sync queue items
-        var pendingItems = await _context.SyncQueueItems
-            .Where(q => q.Status == SyncQueueStatus.Pending || (q.Status == SyncQueueStatus.Failed && q.RetryCount < q.MaxRetries))
-            .OrderBy(q => q.EnqueuedAt)
-            .ToListAsync(cancellationToken);
-
-        _logger.LogInformation("Pushing {Count} pending items", pendingItems.Count);
-
-        foreach (var item in pendingItems)
+        var startedAt = DateTime.UtcNow;
+        if (!_runtimeStateStore.TryBeginRun(startedAt))
         {
-            try
-            {
-                item.Status = SyncQueueStatus.Processing;
-                item.LastAttemptAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // In a real implementation, this would call the server API
-                // For now, we'll simulate success and mark as completed
-                var success = await ProcessQueueItemAsync(item, cancellationToken);
-
-                if (success)
-                {
-                    item.Status = SyncQueueStatus.Completed;
-                    item.CompletedAt = DateTime.UtcNow;
-                    successCount++;
-                }
-                else
-                {
-                    item.Status = SyncQueueStatus.Failed;
-                    item.RetryCount++;
-                    failureCount++;
-                }
-
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to push item {ItemId}", item.Id);
-                item.Status = SyncQueueStatus.Failed;
-                item.RetryCount++;
-                item.ErrorMessage = ex.Message;
-                errors.Add($"{item.EntityType}:{item.EntityId} - {ex.Message}");
-                failureCount++;
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            _logger.LogInformation("Skipping push cycle because another sync run is already active");
+            return new PushResult { Skipped = true };
         }
 
-        return new PushResult
+        try
         {
-            TotalPushed = pendingItems.Count,
-            SuccessCount = successCount,
-            FailureCount = failureCount,
-            ConflictCount = conflicts.Count,
-            Conflicts = conflicts,
-            Errors = errors
-        };
+            var result = await PushInternalAsync(cancellationToken);
+            var runSucceeded = result.FailureCount == 0 && result.DeadLetterCount == 0;
+            _runtimeStateStore.CompleteRun(
+                DateTime.UtcNow,
+                success: runSucceeded,
+                lastError: runSucceeded ? null : SanitizeError(result.Errors.FirstOrDefault()));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _runtimeStateStore.CompleteRun(DateTime.UtcNow, success: false, lastError: SanitizeError(ex.Message));
+            throw;
+        }
     }
 
     public Task<PullResult> PullAsync(DateTime? sinceUtc = null, CancellationToken cancellationToken = default)
@@ -179,7 +200,8 @@ public class SyncEngine : ISyncEngine
                 EntityId = entityId,
                 Operation = operation,
                 EnqueuedAt = DateTime.UtcNow,
-                Status = SyncQueueStatus.Pending
+                Status = SyncQueueStatus.Pending,
+                MaxRetries = MaxRetryAttempts
             };
 
             _context.SyncQueueItems.Add(queueItem);
@@ -187,6 +209,7 @@ public class SyncEngine : ISyncEngine
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+        await RefreshRuntimeCountsAsync(cancellationToken);
     }
 
     public async Task<SyncQueueSummary> GetQueueStatusAsync(CancellationToken cancellationToken = default)
@@ -194,20 +217,448 @@ public class SyncEngine : ISyncEngine
         var pending = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
         var processing = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Processing, cancellationToken);
         var failed = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed, cancellationToken);
+        var deadLetter = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
         var oldestPending = await _context.SyncQueueItems
             .Where(q => q.Status == SyncQueueStatus.Pending)
             .OrderBy(q => q.EnqueuedAt)
             .Select(q => (DateTime?)q.EnqueuedAt)
             .FirstOrDefaultAsync(cancellationToken);
+        _runtimeStateStore.UpdateQueueCounts(pending, failed, deadLetter);
+        var runtimeStatus = _runtimeStateStore.Snapshot();
 
         return new SyncQueueSummary
         {
             PendingCount = pending,
             ProcessingCount = processing,
             FailedCount = failed,
+            DeadLetterCount = deadLetter,
             OldestPendingAt = oldestPending,
-            LastSyncAt = _lastSyncAt
+            LastSyncAt = runtimeStatus.LastSuccessUtc,
+            IsRunning = runtimeStatus.IsRunning,
+            LastSyncStartUtc = runtimeStatus.LastSyncStartUtc,
+            LastSyncEndUtc = runtimeStatus.LastSyncEndUtc,
+            LastSuccessUtc = runtimeStatus.LastSuccessUtc,
+            LastFailureUtc = runtimeStatus.LastFailureUtc,
+            LastError = runtimeStatus.LastError
         };
+    }
+
+    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetQueueItemsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.SyncQueueItems
+            .AsNoTracking()
+            .Where(q => q.Status != SyncQueueStatus.Completed && q.Status != SyncQueueStatus.DeadLetter)
+            .OrderBy(q => q.EnqueuedAt)
+            .Select(q => new SyncQueueItemStatus
+            {
+                Id = q.Id,
+                EntityType = q.EntityType,
+                EntityId = q.EntityId,
+                OperationType = q.Operation,
+                Status = q.Status,
+                RetryCount = q.RetryCount,
+                LastAttemptAt = q.LastAttemptAt,
+                FailureType = q.FailureType,
+                ErrorMessage = q.ErrorMessage
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetDeadLetterItemsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.SyncQueueItems
+            .AsNoTracking()
+            .Where(q => q.Status == SyncQueueStatus.DeadLetter)
+            .OrderBy(q => q.EnqueuedAt)
+            .Select(q => new SyncQueueItemStatus
+            {
+                Id = q.Id,
+                EntityType = q.EntityType,
+                EntityId = q.EntityId,
+                OperationType = q.Operation,
+                Status = q.Status,
+                RetryCount = q.RetryCount,
+                LastAttemptAt = q.LastAttemptAt,
+                FailureType = q.FailureType,
+                ErrorMessage = q.ErrorMessage
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<SyncHealthStatus> GetHealthStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var pendingCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
+        var failedCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed || q.Status == SyncQueueStatus.Processing, cancellationToken);
+        var deadLetterCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
+
+        return new SyncHealthStatus
+        {
+            IsHealthy = failedCount == 0 && deadLetterCount == 0,
+            PendingCount = pendingCount,
+            FailedCount = failedCount,
+            DeadLetterCount = deadLetterCount
+        };
+    }
+
+    public async Task<int> RecoverInterruptedQueueItemsAsync(CancellationToken cancellationToken = default)
+    {
+        var interruptedItems = await _context.SyncQueueItems
+            .Where(q => q.Status == SyncQueueStatus.Processing)
+            .ToListAsync(cancellationToken);
+
+        if (interruptedItems.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var item in interruptedItems)
+        {
+            item.Status = SyncQueueStatus.Failed;
+            item.FailureType = SyncFailureType.ServerError;
+            item.ErrorMessage = InterruptedProcessingMessage;
+            item.LastAttemptAt ??= DateTime.UtcNow;
+            item.MaxRetries = Math.Max(item.MaxRetries, MaxRetryAttempts);
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await RefreshRuntimeCountsAsync(cancellationToken);
+        return interruptedItems.Count;
+    }
+
+    private async Task<PushResult> PushInternalAsync(CancellationToken cancellationToken)
+    {
+        var conflicts = new List<SyncConflict>();
+        var errors = new List<string>();
+        var batchCount = 0;
+        var totalPushed = 0;
+        var successCount = 0;
+        var failureCount = 0;
+        var deadLetterCount = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var batch = await GetNextBatchAsync(cancellationToken);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            batchCount++;
+            totalPushed += batch.Count;
+
+            _logger.LogInformation(
+                "Processing sync batch {BatchNumber} with {BatchSize} item(s)",
+                batchCount,
+                batch.Count);
+
+            foreach (var item in batch)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var outcome = await ProcessQueuedItemWithTimeoutAsync(item, batch.Count, cancellationToken);
+
+                if (outcome.Success)
+                {
+                    successCount++;
+                    continue;
+                }
+
+                errors.Add($"{item.EntityType}:{item.EntityId} - {outcome.ErrorMessage}");
+                if (outcome.FailureType == SyncFailureType.ConflictError)
+                {
+                    conflicts.Add(new SyncConflict
+                    {
+                        EntityType = item.EntityType,
+                        EntityId = item.EntityId,
+                        Resolution = ConflictResolution.ManualRequired,
+                        Reason = outcome.ErrorMessage ?? "Conflict detected during sync queue processing."
+                    });
+                }
+
+                if (outcome.DeadLettered)
+                {
+                    deadLetterCount++;
+                }
+                else
+                {
+                    failureCount++;
+                }
+            }
+
+            await RefreshRuntimeCountsAsync(cancellationToken);
+        }
+
+        if (_telemetrySink is not null)
+        {
+            await _telemetrySink.LogMetricAsync("SyncBatchCount", batchCount, new Dictionary<string, object>
+            {
+                ["TotalPushed"] = totalPushed,
+                ["SuccessCount"] = successCount,
+                ["FailureCount"] = failureCount,
+                ["DeadLetterCount"] = deadLetterCount
+            });
+        }
+
+        return new PushResult
+        {
+            TotalPushed = totalPushed,
+            SuccessCount = successCount,
+            FailureCount = failureCount,
+            ConflictCount = conflicts.Count,
+            Conflicts = conflicts,
+            Errors = errors,
+            DeadLetterCount = deadLetterCount,
+            BatchCount = batchCount
+        };
+    }
+
+    private async Task<List<SyncQueueItem>> GetNextBatchAsync(CancellationToken cancellationToken)
+    {
+        var cutoff = DateTime.UtcNow - _retryDelay;
+        var batch = await _context.SyncQueueItems
+            .Where(q =>
+                q.Status == SyncQueueStatus.Pending ||
+                (q.Status == SyncQueueStatus.Failed &&
+                 q.RetryCount < q.MaxRetries &&
+                 (q.LastAttemptAt == null || q.LastAttemptAt < cutoff)))
+            .OrderBy(q => q.EnqueuedAt)
+            .Take(MaxBatchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var item in batch)
+        {
+            item.MaxRetries = Math.Max(item.MaxRetries, MaxRetryAttempts);
+        }
+
+        if (batch.Count > 0)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return batch;
+    }
+
+    private async Task<QueueProcessingOutcome> ProcessQueuedItemWithTimeoutAsync(
+        SyncQueueItem item,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = DateTime.UtcNow;
+        item.Status = SyncQueueStatus.Processing;
+        item.LastAttemptAt = startedAt;
+        item.ErrorMessage = null;
+        item.FailureType = null;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(QueueItemProcessingTimeout);
+
+        try
+        {
+            var result = await ProcessQueueItemAsync(item, timeoutCts.Token);
+            if (result.Success)
+            {
+                item.Status = SyncQueueStatus.Completed;
+                item.CompletedAt = DateTime.UtcNow;
+                item.ErrorMessage = null;
+                item.FailureType = null;
+                await _context.SaveChangesAsync(cancellationToken);
+
+                await LogQueueItemAuditAsync(
+                    "ITEM_PROCESSED",
+                    item,
+                    "Completed",
+                    batchSize,
+                    startedAt,
+                    success: true,
+                    errorMessage: null,
+                    failureType: null,
+                    cancellationToken);
+
+                return QueueProcessingOutcome.SuccessResult();
+            }
+
+            return await ApplyQueueFailureAsync(item, result, batchSize, startedAt, cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            return await ApplyQueueFailureAsync(
+                item,
+                QueueItemProcessingResult.ServerFailure("Sync queue item timed out.", ex),
+                batchSize,
+                startedAt,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process queued sync item {ItemId}", item.Id);
+            return await ApplyQueueFailureAsync(
+                item,
+                QueueItemProcessingResult.ServerFailure("Unhandled server error processing sync item.", ex),
+                batchSize,
+                startedAt,
+                cancellationToken);
+        }
+    }
+
+    private async Task<QueueProcessingOutcome> ApplyQueueFailureAsync(
+        SyncQueueItem item,
+        QueueItemProcessingResult result,
+        int batchSize,
+        DateTime startedAt,
+        CancellationToken cancellationToken)
+    {
+        item.ErrorMessage = SanitizeError(result.ErrorMessage);
+        item.FailureType = result.FailureType;
+        item.CompletedAt = null;
+
+        var shouldDeadLetter = result.Terminal;
+        if (!shouldDeadLetter)
+        {
+            item.RetryCount = Math.Min(item.MaxRetries, item.RetryCount + 1);
+            shouldDeadLetter = item.RetryCount >= item.MaxRetries;
+        }
+        else
+        {
+            item.RetryCount = Math.Max(item.RetryCount, item.MaxRetries);
+        }
+
+        item.Status = shouldDeadLetter ? SyncQueueStatus.DeadLetter : SyncQueueStatus.Failed;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await LogQueueItemAuditAsync(
+            shouldDeadLetter ? "DEAD_LETTER_CREATED" : "ITEM_FAILED",
+            item,
+            item.Status.ToString(),
+            batchSize,
+            startedAt,
+            success: false,
+            errorMessage: item.ErrorMessage,
+            failureType: item.FailureType,
+            cancellationToken);
+
+        if (_telemetrySink is not null)
+        {
+            await _telemetrySink.LogEventAsync(
+                shouldDeadLetter ? "DeadLetterCreated" : "SyncItemFailed",
+                item.Id.ToString(),
+                new Dictionary<string, object>
+                {
+                    ["EntityType"] = item.EntityType,
+                    ["EntityId"] = item.EntityId,
+                    ["FailureType"] = item.FailureType?.ToString() ?? "Unknown",
+                    ["RetryCount"] = item.RetryCount,
+                    ["Status"] = item.Status.ToString()
+                });
+        }
+
+        return new QueueProcessingOutcome
+        {
+            Success = false,
+            FailureType = item.FailureType,
+            ErrorMessage = item.ErrorMessage,
+            DeadLettered = shouldDeadLetter
+        };
+    }
+
+    private async Task RefreshRuntimeCountsAsync(CancellationToken cancellationToken)
+    {
+        var pending = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
+        var failed = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed, cancellationToken);
+        var deadLetter = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
+        _runtimeStateStore.UpdateQueueCounts(pending, failed, deadLetter);
+    }
+
+    private async Task LogQueueItemAuditAsync(
+        string eventType,
+        SyncQueueItem item,
+        string status,
+        int batchSize,
+        DateTime startedAt,
+        bool success,
+        string? errorMessage,
+        SyncFailureType? failureType,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["OperationType"] = item.Operation.ToString(),
+            ["RetryCount"] = item.RetryCount,
+            ["BatchSize"] = batchSize,
+            ["DurationMs"] = (DateTime.UtcNow - startedAt).TotalMilliseconds
+        };
+
+        if (failureType.HasValue)
+        {
+            metadata["FailureType"] = failureType.Value.ToString();
+        }
+
+        await LogSyncEventAsync(
+            AuditEvent.SyncEvent(
+                eventType,
+                item.EntityType,
+                item.EntityId,
+                item.Id,
+                status,
+                _identityContext?.TryGetCurrentUserId(),
+                success,
+                errorMessage,
+                metadata),
+            cancellationToken);
+    }
+
+    private static string SanitizeError(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            return "Sync processing failed.";
+        }
+
+        return errorMessage.Length <= 500
+            ? errorMessage
+            : errorMessage[..500];
+    }
+
+    private sealed class QueueItemProcessingResult
+    {
+        public bool Success { get; init; }
+        public SyncFailureType? FailureType { get; init; }
+        public string? ErrorMessage { get; init; }
+        public bool Terminal { get; init; }
+
+        public static QueueItemProcessingResult SuccessResult() => new() { Success = true };
+        public static QueueItemProcessingResult ValidationFailure(string message) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ValidationError,
+            ErrorMessage = message,
+            Terminal = true
+        };
+
+        public static QueueItemProcessingResult ConflictFailure(string message) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ConflictError,
+            ErrorMessage = message,
+            Terminal = true
+        };
+
+        public static QueueItemProcessingResult ServerFailure(string message, Exception? exception = null) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ServerError,
+            ErrorMessage = exception is null ? message : $"{message} {SanitizeError(exception.Message)}",
+            Terminal = false
+        };
+    }
+
+    private sealed class QueueProcessingOutcome
+    {
+        public bool Success { get; init; }
+        public SyncFailureType? FailureType { get; init; }
+        public string? ErrorMessage { get; init; }
+        public bool DeadLettered { get; init; }
+
+        public static QueueProcessingOutcome SuccessResult() => new() { Success = true };
     }
 
     /// <summary>
@@ -216,7 +667,7 @@ public class SyncEngine : ISyncEngine
     /// change has been fully processed and is safe to consider synchronised.
     /// Returns true if the item was processed successfully, false otherwise.
     /// </summary>
-    private async Task<bool> ProcessQueueItemAsync(SyncQueueItem item, CancellationToken cancellationToken)
+    private async Task<QueueItemProcessingResult> ProcessQueueItemAsync(SyncQueueItem item, CancellationToken cancellationToken)
     {
         switch (item.EntityType)
         {
@@ -228,7 +679,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 patient.SyncState = SyncState.Synced;
                 break;
@@ -241,7 +692,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 appointment.SyncState = SyncState.Synced;
                 break;
@@ -254,7 +705,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 intakeForm.SyncState = SyncState.Synced;
                 break;
@@ -267,7 +718,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 clinicalNote.SyncState = SyncState.Synced;
                 break;
@@ -275,83 +726,34 @@ public class SyncEngine : ISyncEngine
             default:
                 _logger.LogWarning("Unknown entity type in sync queue: {EntityType}:{EntityId}",
                     item.EntityType, item.EntityId);
-                return false;
+                return QueueItemProcessingResult.ValidationFailure("Unknown entity type in sync queue.");
         }
 
-        return true;
+        return QueueItemProcessingResult.SuccessResult();
     }
 
-    /// <summary>
-    /// Detect and resolve conflicts when applying remote changes.
-    /// </summary>
-    private async Task<SyncConflict?> DetectAndResolveConflictAsync<TEntity>(
-        TEntity localEntity,
-        TEntity remoteEntity,
-        CancellationToken cancellationToken)
-        where TEntity : class, ISyncTrackedEntity
+    private sealed class ServerSyncSnapshot
     {
-        // Check for signed entity (immutable)
-        if (localEntity is ISignedEntity signedLocal && signedLocal.SignatureHash != null)
-        {
-            _logger.LogWarning("Conflict: Attempted to modify signed entity {Type}:{Id}",
-                typeof(TEntity).Name, localEntity.Id);
+        public string EntityType { get; init; } = string.Empty;
+        public Guid EntityId { get; init; }
+        public bool Exists { get; init; }
+        public DateTime? LastModifiedUtc { get; init; }
+        public NoteStatus? NoteStatus { get; init; }
+        public bool HasSignature { get; init; }
+        public bool IsLocked { get; init; }
+        public bool IsDeleted { get; init; }
+        public string? CurrentDataJson { get; init; }
+        public Guid? ModifiedByUserId { get; init; }
+    }
 
-            return new SyncConflict
-            {
-                EntityType = typeof(TEntity).Name,
-                EntityId = localEntity.Id,
-                Resolution = ConflictResolution.RejectedImmutable,
-                Reason = "Entity is signed and immutable"
-            };
-        }
-
-        // Check for locked intake form
-        if (localEntity is IntakeForm intake && intake.IsLocked)
-        {
-            _logger.LogWarning("Conflict: Attempted to modify locked intake form {Id}", intake.Id);
-
-            return new SyncConflict
-            {
-                EntityType = typeof(TEntity).Name,
-                EntityId = localEntity.Id,
-                Resolution = ConflictResolution.RejectedLocked,
-                Reason = "Intake form is locked"
-            };
-        }
-
-        // Draft entities: Last-Write-Wins with archiving
-        if (remoteEntity.LastModifiedUtc > localEntity.LastModifiedUtc)
-        {
-            // Archive local version
-            await ArchiveConflictVersionAsync(localEntity, remoteEntity, "ServerWins", cancellationToken);
-
-            _logger.LogInformation("Conflict resolved: Server wins for {Type}:{Id} (remote is newer)",
-                typeof(TEntity).Name, localEntity.Id);
-
-            return new SyncConflict
-            {
-                EntityType = typeof(TEntity).Name,
-                EntityId = localEntity.Id,
-                Resolution = ConflictResolution.ServerWins,
-                Reason = "Server version is newer (last-write-wins)"
-            };
-        }
-        else
-        {
-            // Archive remote version
-            await ArchiveConflictVersionAsync(remoteEntity, localEntity, "LocalWins", cancellationToken);
-
-            _logger.LogInformation("Conflict resolved: Local wins for {Type}:{Id} (local is newer)",
-                typeof(TEntity).Name, localEntity.Id);
-
-            return new SyncConflict
-            {
-                EntityType = typeof(TEntity).Name,
-                EntityId = localEntity.Id,
-                Resolution = ConflictResolution.LocalWins,
-                Reason = "Local version is newer (last-write-wins)"
-            };
-        }
+    private sealed class ConflictReceiptEnvelope
+    {
+        public bool WasConflict { get; init; }
+        public ConflictType ConflictType { get; init; }
+        public ConflictResolution ResolutionType { get; init; }
+        public string Message { get; init; } = string.Empty;
+        public Guid? NewEntityId { get; init; }
+        public DateTime? ServerModifiedUtc { get; init; }
     }
 
     /// <inheritdoc/>
@@ -377,68 +779,174 @@ public class SyncEngine : ISyncEngine
             else if (entityType.Length == 1)
                 entityType = char.ToUpperInvariant(entityType[0]).ToString();
 
+            if (item.OperationId == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Each client sync item must provide a non-empty OperationId so retries remain idempotent.",
+                    nameof(request));
+            }
+
+            var operationId = item.OperationId;
+            var auditUserId = _identityContext?.GetCurrentUserId()
+                ?? _identityContext?.TryGetCurrentUserId()
+                ?? IIdentityContextAccessor.SystemUserId;
+
+            var existingReceipt = await _context.SyncQueueItems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == operationId, cancellationToken);
+
+            if (existingReceipt is not null)
+            {
+                var replayConflict = ParseConflictReceipt(existingReceipt);
+                results.Add(BuildReplayResult(existingReceipt, entityType, item.LocalId));
+                if (existingReceipt.Status == SyncQueueStatus.Completed)
+                {
+                    acceptedCount++;
+                }
+                else if (replayConflict is not null)
+                {
+                    conflictCount++;
+                }
+                else
+                {
+                    errorCount++;
+                }
+
+                continue;
+            }
+
+            // Resolve the server ID outside the try block so the catch can reference it.
+            var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
+
+            // Processing placeholder — persisted before the entity write so that a concurrent
+            // request arriving with the same OperationId hits a PK conflict and enters the
+            // replay path instead of duplicating the write.
+            var processingNow = DateTime.UtcNow;
+            var processingReceipt = new SyncQueueItem
+            {
+                Id = operationId,
+                EntityType = entityType,
+                EntityId = serverId,
+                Operation = Enum.TryParse<SyncOperation>(item.Operation, out var pendingOp) ? pendingOp : SyncOperation.Update,
+                EnqueuedAt = processingNow,
+                LastAttemptAt = processingNow,
+                Status = SyncQueueStatus.Processing,
+                MaxRetries = MaxReceiptRetries,
+                PayloadJson = item.DataJson,
+                FailureType = null
+            };
+            _context.SyncQueueItems.Add(processingReceipt);
             try
             {
-                // Resolve the server ID: new records arrive with Guid.Empty
-                var serverId = item.ServerId == Guid.Empty ? Guid.NewGuid() : item.ServerId;
-
-                // Check for conflict: does a more-recent server version already exist?
-                var existing = await FindExistingEntityLastModifiedAsync(entityType, serverId, cancellationToken);
-                if (existing.HasValue && existing.Value > item.LastModifiedUtc)
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // A concurrent request already persisted a receipt for this OperationId.
+                _context.Entry(processingReceipt).State = EntityState.Detached;
+                var concurrentReceipt = await _context.SyncQueueItems
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(q => q.Id == operationId, cancellationToken);
+                if (concurrentReceipt is not null)
                 {
-                    _logger.LogWarning(
-                        "Client push conflict: server version is newer for {EntityType}:{ServerId}",
-                        entityType, serverId);
+                    var replayConflict = ParseConflictReceipt(concurrentReceipt);
+                    results.Add(BuildReplayResult(concurrentReceipt, entityType, item.LocalId));
+                    if (concurrentReceipt.Status == SyncQueueStatus.Completed) acceptedCount++;
+                    else if (replayConflict is not null) conflictCount++;
+                    else errorCount++;
+                }
 
-                    conflictCount++;
-                    results.Add(new ClientSyncPushItemResult
+                continue;
+            }
+
+            try
+            {
+                var syncStartMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1
+                };
+
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_START", entityType, serverId, operationId, "Processing", auditUserId, additionalMetadata: syncStartMetadata),
+                    cancellationToken);
+
+                var snapshot = await LoadServerSyncSnapshotAsync(entityType, serverId, cancellationToken);
+                var conflictType = DetectConflict(item, snapshot);
+                if (conflictType.HasValue)
+                {
+                    var conflict = await ResolveConflictAsync(
+                        item,
+                        snapshot,
+                        conflictType.Value,
+                        operationId,
+                        auditUserId,
+                        cancellationToken);
+
+                    if (conflict.ResolutionType == ConflictResolution.LocalWins)
                     {
-                        EntityType = entityType,
-                        LocalId = item.LocalId,
-                        ServerId = serverId,
-                        Status = "Conflict",
-                        Error = "Server version is newer",
-                        ServerModifiedUtc = existing.Value
-                    });
+                        var conflictAppliedAt = DateTime.UtcNow;
+                        await ApplyEntityFromPayloadAsync(entityType, serverId, item, cancellationToken);
+
+                        processingReceipt.Status = SyncQueueStatus.Completed;
+                        processingReceipt.CompletedAt = conflictAppliedAt;
+                        processingReceipt.LastAttemptAt = conflictAppliedAt;
+                        processingReceipt.ErrorMessage = SerializeConflictReceipt(conflict);
+                        processingReceipt.FailureType = SyncFailureType.ConflictError;
+                        await _context.SaveChangesAsync(cancellationToken);
+
+                        acceptedCount++;
+                        results.Add(BuildConflictResult(entityType, item.LocalId, serverId, conflict));
+                        continue;
+                    }
+
+                    await PersistConflictReceiptAsync(processingReceipt, conflict, cancellationToken);
+                    await LogSyncEventAsync(
+                        AuditEvent.SyncEvent(
+                            "DEAD_LETTER_CREATED",
+                            entityType,
+                            serverId,
+                            operationId,
+                            "DeadLetter",
+                            auditUserId,
+                            success: false,
+                            errorMessage: conflict.Message,
+                            additionalMetadata: new Dictionary<string, object>
+                            {
+                                ["OperationType"] = processingReceipt.Operation.ToString(),
+                                ["RetryCount"] = processingReceipt.RetryCount,
+                                ["BatchSize"] = 1,
+                                ["FailureType"] = SyncFailureType.ConflictError.ToString()
+                            }),
+                        cancellationToken);
+                    conflictCount++;
+                    results.Add(BuildConflictResult(entityType, item.LocalId, serverId, conflict));
                     continue;
                 }
 
-                // Check entity-specific immutability rules (signed notes, locked intake)
-                var entityConflictReason = await CheckEntitySpecificConflictAsync(entityType, serverId, cancellationToken);
-                if (entityConflictReason != null)
-                {
-                    conflictCount++;
-                    results.Add(new ClientSyncPushItemResult
-                    {
-                        EntityType = entityType,
-                        LocalId = item.LocalId,
-                        ServerId = serverId,
-                        Status = "Conflict",
-                        Error = entityConflictReason,
-                        ServerModifiedUtc = existing
-                    });
-                    continue;
-                }
-
-                // Apply the entity change to the server database and record receipt in the sync queue.
-                // Sprint UC-Epsilon: entity changes are now applied immediately so the server database
-                // reflects the client's offline work when it reconnects.
+                // Apply the entity change to the server database and promote the
+                // Processing receipt to Completed in the same SaveChanges call.
                 var appliedAt = DateTime.UtcNow;
                 await ApplyEntityFromPayloadAsync(entityType, serverId, item, cancellationToken);
 
-                var queueItem = new SyncQueueItem
-                {
-                    EntityType = entityType,
-                    EntityId = serverId,
-                    Operation = Enum.TryParse<SyncOperation>(item.Operation, out var op) ? op : SyncOperation.Update,
-                    EnqueuedAt = appliedAt,
-                    Status = SyncQueueStatus.Completed,
-                    CompletedAt = appliedAt,
-                    PayloadJson = item.DataJson
-                };
-                _context.SyncQueueItems.Add(queueItem);
+                processingReceipt.Status = SyncQueueStatus.Completed;
+                processingReceipt.CompletedAt = appliedAt;
+                processingReceipt.LastAttemptAt = appliedAt;
+                processingReceipt.FailureType = null;
+                await _context.SaveChangesAsync(cancellationToken);
 
                 acceptedCount++;
+                var syncSuccessMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1,
+                    ["DurationMs"] = (appliedAt - processingNow).TotalMilliseconds
+                };
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_SUCCESS", entityType, serverId, operationId, "Completed", auditUserId, additionalMetadata: syncSuccessMetadata),
+                    cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
                     EntityType = entityType,
@@ -452,7 +960,37 @@ public class SyncEngine : ISyncEngine
             {
                 _logger.LogError(ex, "Error processing client push item {EntityType}:{ServerId}",
                     entityType, item.ServerId);
+
+                // Update the Processing placeholder to Failed so the next receipt lookup
+                // returns a deterministic replay rather than leaving a stale Processing row.
+                processingReceipt.Status = SyncQueueStatus.DeadLetter;
+                processingReceipt.RetryCount = MaxReceiptRetries;
+                processingReceipt.FailureType = SyncFailureType.ServerError;
+                processingReceipt.ErrorMessage = "Server error processing item";
+                try
+                {
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+                catch (DbUpdateException)
+                {
+                    _context.Entry(processingReceipt).State = EntityState.Detached;
+                }
+
                 errorCount++;
+                var syncFailureMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1,
+                    ["FailureType"] = SyncFailureType.ServerError.ToString(),
+                    ["DurationMs"] = (DateTime.UtcNow - processingNow).TotalMilliseconds
+                };
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "DeadLetter", auditUserId, success: false, errorMessage: "Server error processing item", additionalMetadata: syncFailureMetadata),
+                    cancellationToken);
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("DEAD_LETTER_CREATED", entityType, serverId, operationId, "DeadLetter", auditUserId, success: false, errorMessage: "Server error processing item", additionalMetadata: syncFailureMetadata),
+                    cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
                     EntityType = entityType,
@@ -464,8 +1002,6 @@ public class SyncEngine : ISyncEngine
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         return new ClientSyncPushResponse
         {
             AcceptedCount = acceptedCount,
@@ -474,6 +1010,114 @@ public class SyncEngine : ISyncEngine
             Items = results
         };
     }
+
+    private async Task LogSyncEventAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
+    {
+        if (_auditService is null)
+        {
+            return;
+        }
+
+        await _auditService.LogSyncEventAsync(auditEvent, cancellationToken);
+    }
+
+    private static ConflictReceiptEnvelope? ParseConflictReceipt(SyncQueueItem receipt)
+    {
+        if (string.IsNullOrWhiteSpace(receipt.ErrorMessage))
+        {
+            return null;
+        }
+
+        var errorMessage = receipt.ErrorMessage.Trim();
+
+        try
+        {
+            var envelope = JsonSerializer.Deserialize<ConflictReceiptEnvelope>(errorMessage);
+            if (envelope is not null && !string.IsNullOrWhiteSpace(envelope.Message))
+            {
+                return envelope;
+            }
+        }
+        catch (JsonException)
+        {
+            // Fall back to legacy plain-text conflict receipts stored before the JSON envelope format.
+        }
+
+        return TryParseLegacyConflictReceipt(errorMessage);
+    }
+
+    private static ConflictReceiptEnvelope? TryParseLegacyConflictReceipt(string errorMessage)
+    {
+        if (!LooksLikeLegacyConflictMessage(errorMessage))
+        {
+            return null;
+        }
+
+        return new ConflictReceiptEnvelope
+        {
+            Message = errorMessage
+        };
+    }
+
+    private static bool LooksLikeLegacyConflictMessage(string errorMessage)
+    {
+        return errorMessage.Contains("server version is newer", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("immutable", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("locked", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("conflict", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ClientSyncPushItemResult BuildReplayResult(SyncQueueItem receipt, string entityType, int localId)
+    {
+        var replayConflict = ParseConflictReceipt(receipt);
+        if (receipt.Status == SyncQueueStatus.Completed)
+        {
+            return new ClientSyncPushItemResult
+            {
+                EntityType = entityType,
+                LocalId = localId,
+                ServerId = receipt.EntityId,
+                Status = "Accepted",
+                Error = null,
+                ServerModifiedUtc = replayConflict?.ServerModifiedUtc ?? receipt.CompletedAt ?? receipt.LastAttemptAt ?? receipt.EnqueuedAt,
+                Conflict = replayConflict is null ? null : ToConflictResult(replayConflict)
+            };
+        }
+
+        return new ClientSyncPushItemResult
+        {
+            EntityType = entityType,
+            LocalId = localId,
+            ServerId = receipt.EntityId,
+            Status = replayConflict is null ? "Error" : "Conflict",
+            Error = replayConflict?.Message ?? receipt.ErrorMessage,
+            ServerModifiedUtc = replayConflict?.ServerModifiedUtc ?? receipt.LastAttemptAt ?? receipt.EnqueuedAt,
+            Conflict = replayConflict is null ? null : ToConflictResult(replayConflict)
+        };
+    }
+
+    private static ConflictResult ToConflictResult(ConflictReceiptEnvelope envelope) =>
+        new()
+        {
+            WasConflict = envelope.WasConflict,
+            ConflictType = envelope.ConflictType,
+            ResolutionType = envelope.ResolutionType,
+            Message = envelope.Message,
+            NewEntityId = envelope.NewEntityId,
+            ServerModifiedUtc = envelope.ServerModifiedUtc
+        };
+
+    private static ClientSyncPushItemResult BuildConflictResult(string entityType, int localId, Guid serverId, ConflictResult conflict) =>
+        new()
+        {
+            EntityType = entityType,
+            LocalId = localId,
+            ServerId = serverId,
+            Status = conflict.ResolutionType == ConflictResolution.LocalWins ? "Accepted" : "Conflict",
+            Error = conflict.ResolutionType == ConflictResolution.LocalWins ? null : conflict.Message,
+            ServerModifiedUtc = conflict.ServerModifiedUtc,
+            Conflict = conflict
+        };
 
     /// <inheritdoc/>
     public async Task<ClientSyncPullResponse> GetClientDeltaAsync(
@@ -632,6 +1276,9 @@ public class SyncEngine : ISyncEngine
                         n.SignatureHash,
                         n.SignedUtc,
                         n.SignedByUserId,
+                        n.CreatedUtc,
+                        n.ParentNoteId,
+                        n.IsAddendum,
                         n.CptCodesJson,
                         n.LastModifiedUtc
                     }, jsonOptions),
@@ -725,88 +1372,520 @@ public class SyncEngine : ISyncEngine
         };
     }
 
-    /// <summary>
-    /// Returns the <see cref="ISyncTrackedEntity.LastModifiedUtc"/> for a named entity type and ID,
-    /// or <c>null</c> if the record does not exist on the server.
-    /// Uses case-insensitive comparison to handle varying client casing (e.g. "clinicalnote", "ClinicalNote").
-    /// </summary>
-    private async Task<DateTime?> FindExistingEntityLastModifiedAsync(
+    private async Task<ServerSyncSnapshot> LoadServerSyncSnapshotAsync(
         string entityType,
         Guid serverId,
         CancellationToken cancellationToken)
     {
         if (string.Equals(entityType, "Patient", StringComparison.OrdinalIgnoreCase))
-            return await _context.Patients.AsNoTracking()
-                .Where(p => p.Id == serverId)
-                .Select(p => (DateTime?)p.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+        {
+            var patient = await _context.Patients.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+
+            if (patient is null)
+            {
+                return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+            }
+
+            return new ServerSyncSnapshot
+            {
+                EntityType = entityType,
+                EntityId = patient.Id,
+                Exists = true,
+                LastModifiedUtc = patient.LastModifiedUtc,
+                ModifiedByUserId = patient.ModifiedByUserId,
+                IsDeleted = patient.IsArchived,
+                CurrentDataJson = JsonSerializer.Serialize(new
+                {
+                    patient.Id,
+                    patient.FirstName,
+                    patient.LastName,
+                    patient.DateOfBirth,
+                    patient.Email,
+                    patient.Phone,
+                    patient.MedicalRecordNumber,
+                    patient.IsArchived,
+                    patient.LastModifiedUtc
+                }, ConflictJsonOptions)
+            };
+        }
 
         if (string.Equals(entityType, "Appointment", StringComparison.OrdinalIgnoreCase))
-            return await _context.Appointments.AsNoTracking()
-                .Where(a => a.Id == serverId)
-                .Select(a => (DateTime?)a.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+        {
+            var appointment = await _context.Appointments.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == serverId, cancellationToken);
+
+            if (appointment is null)
+            {
+                return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+            }
+
+            return new ServerSyncSnapshot
+            {
+                EntityType = entityType,
+                EntityId = appointment.Id,
+                Exists = true,
+                LastModifiedUtc = appointment.LastModifiedUtc,
+                ModifiedByUserId = appointment.ModifiedByUserId,
+                CurrentDataJson = JsonSerializer.Serialize(new
+                {
+                    appointment.Id,
+                    appointment.PatientId,
+                    appointment.StartTimeUtc,
+                    appointment.EndTimeUtc,
+                    appointment.Status,
+                    appointment.LastModifiedUtc
+                }, ConflictJsonOptions)
+            };
+        }
 
         if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
-            return await _context.IntakeForms.AsNoTracking()
-                .Where(i => i.Id == serverId)
-                .Select(i => (DateTime?)i.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+        {
+            var intake = await _context.IntakeForms.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == serverId, cancellationToken);
+
+            if (intake is null)
+            {
+                return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+            }
+
+            return new ServerSyncSnapshot
+            {
+                EntityType = entityType,
+                EntityId = intake.Id,
+                Exists = true,
+                LastModifiedUtc = intake.LastModifiedUtc,
+                ModifiedByUserId = intake.ModifiedByUserId,
+                IsLocked = intake.IsLocked,
+                CurrentDataJson = JsonSerializer.Serialize(new
+                {
+                    intake.Id,
+                    intake.PatientId,
+                    intake.IsLocked,
+                    intake.ResponseJson,
+                    intake.StructuredDataJson,
+                    intake.PainMapData,
+                    intake.Consents,
+                    intake.TemplateVersion,
+                    intake.LastModifiedUtc
+                }, ConflictJsonOptions)
+            };
+        }
 
         if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
-            return await _context.ClinicalNotes.AsNoTracking()
-                .Where(n => n.Id == serverId)
-                .Select(n => (DateTime?)n.LastModifiedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+        {
+            var note = await _context.ClinicalNotes.AsNoTracking()
+                .FirstOrDefaultAsync(n => n.Id == serverId, cancellationToken);
+
+            if (note is null)
+            {
+                return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+            }
+
+            return new ServerSyncSnapshot
+            {
+                EntityType = entityType,
+                EntityId = note.Id,
+                Exists = true,
+                LastModifiedUtc = note.LastModifiedUtc,
+                ModifiedByUserId = note.ModifiedByUserId,
+                NoteStatus = note.NoteStatus,
+                HasSignature = note.SignatureHash != null,
+                CurrentDataJson = JsonSerializer.Serialize(new
+                {
+                    note.Id,
+                    note.PatientId,
+                    note.NoteType,
+                    note.NoteStatus,
+                    note.ContentJson,
+                    note.CptCodesJson,
+                    note.DateOfService,
+                    note.SignatureHash,
+                    note.SignedUtc,
+                    note.LastModifiedUtc
+                }, ConflictJsonOptions)
+            };
+        }
 
         if (string.Equals(entityType, "AuditLog", StringComparison.OrdinalIgnoreCase))
-            return await _context.AuditLogs.AsNoTracking()
-                .Where(a => a.Id == serverId)
-                .Select(a => (DateTime?)a.TimestampUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+        {
+            var auditLog = await _context.AuditLogs.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == serverId, cancellationToken);
+
+            if (auditLog is null)
+            {
+                return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+            }
+
+            return new ServerSyncSnapshot
+            {
+                EntityType = entityType,
+                EntityId = auditLog.Id,
+                Exists = true,
+                LastModifiedUtc = auditLog.TimestampUtc,
+                ModifiedByUserId = auditLog.UserId,
+                CurrentDataJson = JsonSerializer.Serialize(new
+                {
+                    auditLog.Id,
+                    auditLog.EventType,
+                    auditLog.TimestampUtc,
+                    auditLog.CorrelationId
+                }, ConflictJsonOptions)
+            };
+        }
+
+        return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
+    }
+
+    private static ConflictType? DetectConflict(ClientSyncPushItem item, ServerSyncSnapshot snapshot)
+    {
+        if (!snapshot.Exists)
+        {
+            return null;
+        }
+
+        if (snapshot.IsDeleted && !item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+        {
+            return ConflictType.DeletedConflict;
+        }
+
+        if (string.Equals(snapshot.EntityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase) &&
+            (snapshot.HasSignature || snapshot.NoteStatus == NoteStatus.PendingCoSign || snapshot.NoteStatus == NoteStatus.Signed))
+        {
+            return ConflictType.SignedConflict;
+        }
+
+        if (string.Equals(snapshot.EntityType, "IntakeForm", StringComparison.OrdinalIgnoreCase) && snapshot.IsLocked)
+        {
+            return ConflictType.IntakeLockedConflict;
+        }
+
+        if (snapshot.LastModifiedUtc.HasValue && snapshot.LastModifiedUtc.Value != item.LastModifiedUtc)
+        {
+            return ConflictType.DraftConflict;
+        }
 
         return null;
     }
 
-    /// <summary>
-    /// Check entity-specific immutability constraints for a push item.
-    /// Returns a non-PHI conflict reason string if the push must be rejected, or null if the push is permitted.
-    /// </summary>
-    private async Task<string?> CheckEntitySpecificConflictAsync(
-        string entityType,
-        Guid serverId,
+    private async Task<ConflictResult> ResolveConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        ConflictType conflictType,
+        Guid operationId,
+        Guid? auditUserId,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(entityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase))
+        await LogConflictEventAsync("CONFLICT_DETECTED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, conflictType, "Detected", cancellationToken);
+
+        return conflictType switch
         {
-            var signatureHash = await _context.ClinicalNotes.AsNoTracking()
-                .Where(n => n.Id == serverId)
-                .Select(n => n.SignatureHash)
-                .FirstOrDefaultAsync(cancellationToken);
+            ConflictType.DraftConflict => await ResolveDraftConflictAsync(item, snapshot, operationId, auditUserId, cancellationToken),
+            ConflictType.SignedConflict => await ResolveSignedConflictAsync(item, snapshot, operationId, auditUserId, cancellationToken),
+            ConflictType.IntakeLockedConflict => await ResolveIntakeLockedConflictAsync(item, snapshot, operationId, auditUserId, cancellationToken),
+            ConflictType.DeletedConflict => await ResolveDeletedConflictAsync(item, snapshot, operationId, auditUserId, cancellationToken),
+            _ => await ResolveUnknownConflictAsync(item, snapshot, operationId, auditUserId, cancellationToken)
+        };
+    }
 
-            if (signatureHash != null)
-            {
-                _logger.LogWarning(
-                    "Client push rejected: signed ClinicalNote {ServerId} is immutable", serverId);
-                return "Signed notes are immutable";
-            }
-        }
-        else if (string.Equals(entityType, "IntakeForm", StringComparison.OrdinalIgnoreCase))
+    private async Task<ConflictResult> ResolveDraftConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        Guid operationId,
+        Guid? auditUserId,
+        CancellationToken cancellationToken)
+    {
+        var serverModifiedUtc = snapshot.LastModifiedUtc;
+        if (serverModifiedUtc.HasValue && item.LastModifiedUtc > serverModifiedUtc.Value)
         {
-            var isLocked = await _context.IntakeForms.AsNoTracking()
-                .Where(i => i.Id == serverId)
-                .Select(i => (bool?)i.IsLocked)
-                .FirstOrDefaultAsync(cancellationToken);
+            await ArchiveConflictPayloadAsync(
+                snapshot.EntityType,
+                snapshot.EntityId,
+                "LocalWins",
+                "Client version is newer (last-write-wins)",
+                snapshot.CurrentDataJson,
+                snapshot.LastModifiedUtc,
+                snapshot.ModifiedByUserId,
+                item.DataJson,
+                item.LastModifiedUtc,
+                auditUserId,
+                cancellationToken);
 
-            if (isLocked == true)
+            await LogConflictEventAsync("DRAFT_RESOLVED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.DraftConflict, "LocalWins", cancellationToken);
+
+            return new ConflictResult
             {
-                _logger.LogWarning(
-                    "Client push rejected: IntakeForm {ServerId} is locked after evaluation", serverId);
-                return "Intake form is locked after evaluation";
-            }
+                WasConflict = true,
+                ConflictType = ConflictType.DraftConflict,
+                ResolutionType = ConflictResolution.LocalWins,
+                Message = "Client version is newer and was applied",
+                ServerModifiedUtc = item.LastModifiedUtc
+            };
         }
 
-        return null;
+        await ArchiveConflictPayloadAsync(
+            snapshot.EntityType,
+            snapshot.EntityId,
+            "ServerWins",
+            "Server version is newer (last-write-wins)",
+            item.DataJson,
+            item.LastModifiedUtc,
+            auditUserId,
+            snapshot.CurrentDataJson,
+            snapshot.LastModifiedUtc,
+            snapshot.ModifiedByUserId,
+            cancellationToken);
+
+        await LogConflictEventAsync("DRAFT_RESOLVED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.DraftConflict, "ServerWins", cancellationToken);
+
+        return new ConflictResult
+        {
+            WasConflict = true,
+            ConflictType = ConflictType.DraftConflict,
+            ResolutionType = ConflictResolution.ServerWins,
+            Message = "Server version is newer",
+            ServerModifiedUtc = snapshot.LastModifiedUtc
+        };
+    }
+
+    private async Task<ConflictResult> ResolveSignedConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        Guid operationId,
+        Guid? auditUserId,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(snapshot.EntityType, "ClinicalNote", StringComparison.OrdinalIgnoreCase) &&
+            snapshot.NoteStatus == NoteStatus.PendingCoSign &&
+            !snapshot.HasSignature)
+        {
+            return await ResolveUnknownConflictAsync(
+                item,
+                snapshot,
+                operationId,
+                auditUserId,
+                cancellationToken,
+                "Pending notes are read-only while awaiting PT co-signature");
+        }
+
+        await ArchiveConflictPayloadAsync(
+            snapshot.EntityType,
+            snapshot.EntityId,
+            "AddendumCreated",
+            "Signed note conflict preserved as addendum",
+            item.DataJson,
+            item.LastModifiedUtc,
+            auditUserId,
+            snapshot.CurrentDataJson,
+            snapshot.LastModifiedUtc,
+            snapshot.ModifiedByUserId,
+            cancellationToken);
+
+        var addendumPayload = JsonSerializer.Serialize(new
+        {
+            source = SyncConflictAddendumSource,
+            entityType = item.EntityType,
+            noteId = snapshot.EntityId,
+            operationId,
+            capturedAtUtc = DateTime.UtcNow,
+            clientLastModifiedUtc = item.LastModifiedUtc,
+            serverLastModifiedUtc = snapshot.LastModifiedUtc,
+            clientPayloadJson = item.DataJson
+        }, ConflictJsonOptions);
+
+        if (_signatureService is null)
+        {
+            throw new InvalidOperationException("Signed conflict resolution requires ISignatureService.");
+        }
+
+        var addendumResult = await _signatureService.CreateAddendumAsync(
+            snapshot.EntityId,
+            addendumPayload,
+            auditUserId ?? IIdentityContextAccessor.SystemUserId,
+            cancellationToken);
+
+        if (!addendumResult.Success || !addendumResult.AddendumId.HasValue)
+        {
+            throw new InvalidOperationException(addendumResult.ErrorMessage ?? "Unable to create addendum for signed conflict.");
+        }
+
+        await LogConflictEventAsync("ADDENDUM_CREATED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.SignedConflict, "AddendumCreated", cancellationToken);
+
+        return new ConflictResult
+        {
+            WasConflict = true,
+            ConflictType = ConflictType.SignedConflict,
+            ResolutionType = ConflictResolution.AddendumCreated,
+            Message = "Addendum created due to signed-note conflict",
+            NewEntityId = addendumResult.AddendumId,
+            ServerModifiedUtc = snapshot.LastModifiedUtc
+        };
+    }
+
+    private async Task<ConflictResult> ResolveIntakeLockedConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        Guid operationId,
+        Guid? auditUserId,
+        CancellationToken cancellationToken)
+    {
+        await ArchiveConflictPayloadAsync(
+            snapshot.EntityType,
+            snapshot.EntityId,
+            "RejectedLocked",
+            "Intake is locked and cannot be modified",
+            item.DataJson,
+            item.LastModifiedUtc,
+            auditUserId,
+            snapshot.CurrentDataJson,
+            snapshot.LastModifiedUtc,
+            snapshot.ModifiedByUserId,
+            cancellationToken);
+
+        await LogConflictEventAsync("INTAKE_REJECTED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.IntakeLockedConflict, "RejectedLocked", cancellationToken);
+
+        return new ConflictResult
+        {
+            WasConflict = true,
+            ConflictType = ConflictType.IntakeLockedConflict,
+            ResolutionType = ConflictResolution.RejectedLocked,
+            Message = "Intake is locked and cannot be modified",
+            ServerModifiedUtc = snapshot.LastModifiedUtc
+        };
+    }
+
+    private async Task<ConflictResult> ResolveDeletedConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        Guid operationId,
+        Guid? auditUserId,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot.IsDeleted)
+        {
+            await ArchiveConflictPayloadAsync(
+                snapshot.EntityType,
+                snapshot.EntityId,
+                "ServerWins",
+                "Server deletion wins over local changes",
+                item.DataJson,
+                item.LastModifiedUtc,
+                auditUserId,
+                snapshot.CurrentDataJson,
+                snapshot.LastModifiedUtc,
+                snapshot.ModifiedByUserId,
+                cancellationToken);
+
+            await LogConflictEventAsync("DELETE_CONFLICT_SERVER_WINS", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.DeletedConflict, "ServerWins", cancellationToken);
+
+            return new ConflictResult
+            {
+                WasConflict = true,
+                ConflictType = ConflictType.DeletedConflict,
+                ResolutionType = ConflictResolution.ServerWins,
+                Message = "Server deletion wins over local changes",
+                ServerModifiedUtc = snapshot.LastModifiedUtc
+            };
+        }
+
+        if (item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ResolveUnknownConflictAsync(
+                item,
+                snapshot,
+                operationId,
+                auditUserId,
+                cancellationToken,
+                "Local delete conflicts with newer server version");
+        }
+
+        return await ResolveUnknownConflictAsync(
+            item,
+            snapshot,
+            operationId,
+            auditUserId,
+            cancellationToken,
+            "Delete conflict could not be resolved safely");
+    }
+
+    private async Task<ConflictResult> ResolveUnknownConflictAsync(
+        ClientSyncPushItem item,
+        ServerSyncSnapshot snapshot,
+        Guid operationId,
+        Guid? auditUserId,
+        CancellationToken cancellationToken,
+        string? message = null)
+    {
+        var finalMessage = message ?? "Conflict requires manual resolution";
+
+        await ArchiveConflictPayloadAsync(
+            snapshot.EntityType,
+            snapshot.EntityId,
+            "ManualRequired",
+            finalMessage,
+            item.DataJson,
+            item.LastModifiedUtc,
+            auditUserId,
+            snapshot.CurrentDataJson,
+            snapshot.LastModifiedUtc,
+            snapshot.ModifiedByUserId,
+            cancellationToken);
+
+        await LogConflictEventAsync("CONFLICT_MANUAL_REQUIRED", snapshot.EntityType, snapshot.EntityId, operationId, auditUserId, ConflictType.Unknown, "ManualRequired", cancellationToken);
+
+        return new ConflictResult
+        {
+            WasConflict = true,
+            ConflictType = ConflictType.Unknown,
+            ResolutionType = ConflictResolution.ManualRequired,
+            Message = finalMessage,
+            ServerModifiedUtc = snapshot.LastModifiedUtc
+        };
+    }
+
+    private async Task PersistConflictReceiptAsync(
+        SyncQueueItem processingReceipt,
+        ConflictResult conflict,
+        CancellationToken cancellationToken)
+    {
+        processingReceipt.Status = SyncQueueStatus.DeadLetter;
+        processingReceipt.RetryCount = MaxReceiptRetries;
+        processingReceipt.FailureType = SyncFailureType.ConflictError;
+        processingReceipt.ErrorMessage = SerializeConflictReceipt(conflict);
+        processingReceipt.LastAttemptAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string SerializeConflictReceipt(ConflictResult conflict) =>
+        JsonSerializer.Serialize(new ConflictReceiptEnvelope
+        {
+            WasConflict = conflict.WasConflict,
+            ConflictType = conflict.ConflictType,
+            ResolutionType = conflict.ResolutionType,
+            Message = conflict.Message,
+            NewEntityId = conflict.NewEntityId,
+            ServerModifiedUtc = conflict.ServerModifiedUtc
+        });
+
+    private async Task LogConflictEventAsync(
+        string eventType,
+        string entityType,
+        Guid entityId,
+        Guid operationId,
+        Guid? userId,
+        ConflictType conflictType,
+        string resolution,
+        CancellationToken cancellationToken)
+    {
+        if (_auditService is null)
+        {
+            return;
+        }
+
+        var auditEvent = AuditEvent.SyncEvent(eventType, entityType, entityId, operationId, resolution, userId);
+        auditEvent.Metadata["ConflictType"] = conflictType.ToString();
+        auditEvent.Metadata["Resolution"] = resolution;
+        await LogSyncEventAsync(auditEvent, cancellationToken);
     }
 
     /// <summary>
@@ -820,7 +1899,8 @@ public class SyncEngine : ISyncEngine
         ClientSyncPushItem item,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(item.DataJson) || item.DataJson == "{}")
+        if (string.IsNullOrWhiteSpace(item.DataJson) ||
+            (item.DataJson == "{}" && !item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogWarning(
                 "Client push rejected: empty or blank DataJson payload for {EntityType} with ServerId {ServerId}",
@@ -842,6 +1922,20 @@ public class SyncEngine : ISyncEngine
         {
             var existing = await _context.Patients
                 .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+
+            if (item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+            {
+                if (existing is null)
+                {
+                    return;
+                }
+
+                existing.IsArchived = true;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+                return;
+            }
 
             if (existing is null)
             {
@@ -931,6 +2025,14 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
+                var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+                if (patientId == Guid.Empty)
+                {
+                    throw new InvalidOperationException(
+                        $"IntakeForm push rejected: patient {patientId} could not be resolved.");
+                }
+
                 var form = new IntakeForm
                 {
                     Id = serverId,
@@ -974,14 +2076,37 @@ public class SyncEngine : ISyncEngine
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
-                var noteTypeRaw = TryGetInt(root, "noteType") ?? TryGetInt(root, "NoteType") ?? 0;
+                var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
+
+                if (patientId == Guid.Empty)
+                {
+                    throw new InvalidOperationException(
+                        $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
+                }
+
+                // Use improved parsing from Foundation
+                var noteType = TryGetNoteType(root) ?? NoteType.Daily;
+
+                // Keep additional metadata fields (Foundation)
+                var createdUtc = TryGetDateTime(root, "createdUtc")
+                ?? TryGetDateTime(root, "CreatedUtc")
+                ?? item.LastModifiedUtc;
+
+                var parentNoteId = TryGetGuid(root, "parentNoteId")
+                ?? TryGetGuid(root, "ParentNoteId");
+
+                var isAddendum = TryGetBool(root, "isAddendum")
+                ?? TryGetBool(root, "IsAddendum")
+                ?? false;
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
-                    NoteType = Enum.IsDefined(typeof(NoteType), noteTypeRaw)
-                        ? (NoteType)noteTypeRaw
-                        : NoteType.Daily,
+                    ClinicId = clinicId,
+                    NoteType = noteType,
+                    CreatedUtc = createdUtc,
+                    ParentNoteId = parentNoteId,
+                    IsAddendum = isAddendum,
                     ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
                     DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
@@ -995,8 +2120,11 @@ public class SyncEngine : ISyncEngine
             else
             {
                 // Only update unsigned (draft) notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
-                if (existing.SignatureHash is null)
+                if (!existing.IsFinalized)
                 {
+                    existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
+                    existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
+                    existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
                     existing.ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? existing.ContentJson;
                     existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
                     existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
@@ -1041,6 +2169,19 @@ public class SyncEngine : ISyncEngine
         return null;
     }
 
+    private static bool? TryGetBool(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var el))
+        {
+            if (el.ValueKind == JsonValueKind.True) return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var value))
+                return value;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Reads an integer property, supporting both numeric JSON values and string-encoded integers.
     /// Used for enum fields (NoteType, AppointmentType, AppointmentStatus) which are serialised
@@ -1053,40 +2194,83 @@ public class SyncEngine : ISyncEngine
         if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
         return null;
     }
-    private async Task ArchiveConflictVersionAsync<TEntity>(
-        TEntity archivedVersion,
-        TEntity chosenVersion,
-        string resolutionType,
-        CancellationToken cancellationToken)
-        where TEntity : class, ISyncTrackedEntity
-    {
-        // Configure JSON serialization to handle circular references and navigation properties
-        var jsonOptions = new JsonSerializerOptions
-        {
-            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-            WriteIndented = false
-        };
 
+    private static NoteType? TryGetNoteType(JsonElement root)
+    {
+        foreach (var propertyName in new[] { "noteType", "NoteType" })
+        {
+            if (!root.TryGetProperty(propertyName, out var el))
+            {
+                continue;
+            }
+
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var numericValue))
+            {
+                return Enum.IsDefined(typeof(NoteType), numericValue)
+                    ? (NoteType)numericValue
+                    : null;
+            }
+
+            if (el.ValueKind == JsonValueKind.String)
+            {
+                var stringValue = el.GetString();
+                if (int.TryParse(stringValue, out var numericStringValue))
+                {
+                    return Enum.IsDefined(typeof(NoteType), numericStringValue)
+                        ? (NoteType)numericStringValue
+                        : null;
+                }
+
+                if (Enum.TryParse<NoteType>(stringValue, ignoreCase: true, out var parsedEnum))
+                {
+                    return parsedEnum;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private async Task ArchiveConflictPayloadAsync(
+        string entityType,
+        Guid entityId,
+        string resolutionType,
+        string reason,
+        string? archivedDataJson,
+        DateTime? archivedLastModifiedUtc,
+        Guid? archivedModifiedByUserId,
+        string? chosenDataJson,
+        DateTime? chosenLastModifiedUtc,
+        Guid? chosenModifiedByUserId,
+        CancellationToken cancellationToken)
+    {
         var archive = new SyncConflictArchive
         {
-            EntityType = typeof(TEntity).Name,
-            EntityId = archivedVersion.Id,
+            EntityType = entityType,
+            EntityId = entityId,
             DetectedAt = DateTime.UtcNow,
             ResolutionType = resolutionType,
-            Reason = "Conflict during sync",
-            ArchivedDataJson = JsonSerializer.Serialize(archivedVersion, jsonOptions),
-            ArchivedVersionLastModifiedUtc = archivedVersion.LastModifiedUtc,
-            ArchivedVersionModifiedByUserId = archivedVersion.ModifiedByUserId,
-            ChosenDataJson = JsonSerializer.Serialize(chosenVersion, jsonOptions),
-            ChosenVersionLastModifiedUtc = chosenVersion.LastModifiedUtc,
-            ChosenVersionModifiedByUserId = chosenVersion.ModifiedByUserId,
+            Reason = reason,
+            ArchivedDataJson = archivedDataJson ?? "{}",
+            ArchivedVersionLastModifiedUtc = archivedLastModifiedUtc ?? DateTime.MinValue,
+            ArchivedVersionModifiedByUserId = archivedModifiedByUserId ?? Guid.Empty,
+            ChosenDataJson = chosenDataJson ?? "{}",
+            ChosenVersionLastModifiedUtc = chosenLastModifiedUtc ?? DateTime.MinValue,
+            ChosenVersionModifiedByUserId = chosenModifiedByUserId ?? Guid.Empty,
             IsResolved = false
         };
 
         _context.Add(archive);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Archived conflict version for {Type}:{Id}", typeof(TEntity).Name, archivedVersion.Id);
+        _logger.LogInformation("Archived conflict version for {Type}:{Id}", entityType, entityId);
+    }
+
+    private async Task<Guid?> ResolvePatientClinicIdAsync(Guid patientId, CancellationToken cancellationToken)
+    {
+        return await _context.Patients
+            .Where(p => p.Id == patientId)
+            .Select(p => p.ClinicId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 }

@@ -20,6 +20,7 @@ public class LocalDbContext : DbContext
     public DbSet<LocalAppointmentSummary> AppointmentSummaries => Set<LocalAppointmentSummary>();
     public DbSet<LocalIntakeFormDraft> IntakeFormDrafts => Set<LocalIntakeFormDraft>();
     public DbSet<LocalClinicalNoteDraft> ClinicalNoteDrafts => Set<LocalClinicalNoteDraft>();
+    public DbSet<LocalSyncQueueItem> SyncQueueItems => Set<LocalSyncQueueItem>();
     public DbSet<LocalSyncMetadata> SyncMetadata => Set<LocalSyncMetadata>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -93,11 +94,25 @@ public class LocalDbContext : DbContext
             entity.Property(e => e.LocalId).ValueGeneratedOnAdd();
             entity.HasIndex(e => e.ServerId);
             entity.HasIndex(e => e.PatientServerId);
+            entity.HasIndex(e => e.ParentNoteId);
             entity.HasIndex(e => e.SyncState);
             entity.HasIndex(e => e.DateOfService);
 
             entity.Property(e => e.NoteType).HasMaxLength(50).IsRequired();
             entity.Property(e => e.SignatureHash).HasMaxLength(500);
+        });
+
+        // LocalSyncQueueItem
+        modelBuilder.Entity<LocalSyncQueueItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.OperationId).IsUnique();
+            entity.HasIndex(e => new { e.Status, e.CreatedUtc });
+            entity.HasIndex(e => new { e.EntityType, e.LocalEntityId, e.Status });
+
+            entity.Property(e => e.EntityType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.PayloadJson).IsRequired();
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
         });
 
         // LocalSyncMetadata

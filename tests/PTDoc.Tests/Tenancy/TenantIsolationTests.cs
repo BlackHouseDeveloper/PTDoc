@@ -466,4 +466,215 @@ public class TenantIsolationTests
         ITenantContextAccessor accessor = new FixedTenantAccessor(null);
         Assert.False(accessor.HasTenantScope);
     }
+
+    // ─── Signature isolation (Sprint II) ─────────────────────────────────────
+
+    [Fact]
+    public async Task Signature_Query_Returns_Only_Current_Clinic_Signatures()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "P", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        seedCtx.Signatures.AddRange(
+            new Signature { NoteId = noteA.Id, SignedByUserId = userA.Id, Role = "PT", SignatureHash = "hash-a", AttestationText = "attest" },
+            new Signature { NoteId = noteB.Id, SignedByUserId = userB.Id, Role = "PT", SignatureHash = "hash-b", AttestationText = "attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var sigs = await ctxA.Signatures.ToListAsync();
+
+        Assert.Single(sigs);
+        Assert.Equal(noteA.Id, sigs[0].NoteId);
+    }
+
+    [Fact]
+    public async Task Signature_SystemContext_Returns_All_Signatures()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        seedCtx.Patients.Add(patientA);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        var noteB = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var user = new User { Username = "u", PinHash = "h", FirstName = "U", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        seedCtx.Users.Add(user);
+
+        seedCtx.Signatures.AddRange(
+            new Signature { NoteId = noteA.Id, SignedByUserId = user.Id, Role = "PT", SignatureHash = "hash-a", AttestationText = "attest" },
+            new Signature { NoteId = noteB.Id, SignedByUserId = user.Id, Role = "PT", SignatureHash = "hash-b", AttestationText = "attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var sysCtx = CreateSystemContext(dbName);
+        var sigs = await sysCtx.Signatures.ToListAsync();
+
+        Assert.Equal(2, sigs.Count);
+    }
+
+    // ─── RuleOverride isolation (Sprint II) ──────────────────────────────────
+
+    [Fact]
+    public async Task RuleOverride_Query_Returns_Only_Current_Clinic_Overrides()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        seedCtx.RuleOverrides.AddRange(
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var overrides = await ctxA.RuleOverrides.ToListAsync();
+
+        Assert.Single(overrides);
+        Assert.Equal(userA.Id, overrides[0].UserId);
+    }
+
+    [Fact]
+    public async Task RuleOverride_SystemContext_Returns_All_Overrides()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "Pat", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "Pat", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB, NoteType = NoteType.Daily, LastModifiedUtc = DateTime.UtcNow };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var userA = new User { Username = "ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        seedCtx.RuleOverrides.AddRange(
+            new RuleOverride { NoteId = noteA.Id, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" },
+            new RuleOverride { NoteId = noteB.Id, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Medical necessity", AttestationText = "I attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var sysCtx = CreateSystemContext(dbName);
+        var overrides = await sysCtx.RuleOverrides.ToListAsync();
+
+        Assert.Equal(2, overrides.Count);
+    }
+
+    [Fact]
+    public async Task RuleOverride_LegacyRows_WithoutNoteId_AreQueryable_Via_UserClinicId()
+    {
+        // Legacy rows created before NoteId was added will have NoteId == null.
+        // The query filter must fall back to User.ClinicId so they remain visible
+        // to the correct clinic context and invisible to other clinics.
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var userA = new User { Username = "legacy-ua", PinHash = "h", FirstName = "A", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        var userB = new User { Username = "legacy-ub", PinHash = "h", FirstName = "B", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.Users.AddRange(userA, userB);
+
+        // Legacy rows: NoteId is null, scoped only by User.ClinicId
+        seedCtx.RuleOverrides.AddRange(
+            new RuleOverride { NoteId = null, UserId = userA.Id, RuleName = "EightMinuteRule", Justification = "Legacy A", AttestationText = "I attest" },
+            new RuleOverride { NoteId = null, UserId = userB.Id, RuleName = "EightMinuteRule", Justification = "Legacy B", AttestationText = "I attest" }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var overrides = await ctxA.RuleOverrides.ToListAsync();
+
+        Assert.Single(overrides);
+        Assert.Equal(userA.Id, overrides[0].UserId);
+    }
+
+    // ─── Addendum isolation (Sprint II) ──────────────────────────────────────
+
+    [Fact]
+    public async Task Addendum_Query_Returns_Only_Current_Clinic_Addendums()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        var patientB = new Patient { FirstName = "P", LastName = "B", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicB };
+        seedCtx.Patients.AddRange(patientA, patientB);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        var noteB = new ClinicalNote { PatientId = patientB.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var user = new User { Username = "u", PinHash = "h", FirstName = "U", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        seedCtx.Users.Add(user);
+
+        seedCtx.Addendums.AddRange(
+            new Addendum { ClinicalNoteId = noteA.Id, Content = "Addendum for A", CreatedByUserId = user.Id },
+            new Addendum { ClinicalNoteId = noteB.Id, Content = "Addendum for B", CreatedByUserId = user.Id }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+        var addendums = await ctxA.Addendums.ToListAsync();
+
+        Assert.Single(addendums);
+        Assert.Equal(noteA.Id, addendums[0].ClinicalNoteId);
+    }
+
+    [Fact]
+    public async Task Addendum_SystemContext_Returns_All_Addendums()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+
+        var patientA = new Patient { FirstName = "P", LastName = "A", DateOfBirth = DateTime.UtcNow.AddYears(-30), ClinicId = ClinicA };
+        seedCtx.Patients.Add(patientA);
+
+        var noteA = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicA };
+        var noteB = new ClinicalNote { PatientId = patientA.Id, DateOfService = DateTime.UtcNow, ClinicId = ClinicB };
+        seedCtx.ClinicalNotes.AddRange(noteA, noteB);
+
+        var user = new User { Username = "u", PinHash = "h", FirstName = "U", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
+        seedCtx.Users.Add(user);
+
+        seedCtx.Addendums.AddRange(
+            new Addendum { ClinicalNoteId = noteA.Id, Content = "Addendum for A", CreatedByUserId = user.Id },
+            new Addendum { ClinicalNoteId = noteB.Id, Content = "Addendum for B", CreatedByUserId = user.Id }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        await using var sysCtx = CreateSystemContext(dbName);
+        var addendums = await sysCtx.Addendums.ToListAsync();
+
+        Assert.Equal(2, addendums.Count);
+    }
 }

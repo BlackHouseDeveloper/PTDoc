@@ -1,3 +1,4 @@
+using PTDoc.Core.Models;
 using PTDoc.Application.Sync;
 
 namespace PTDoc.Application.LocalData;
@@ -15,6 +16,17 @@ namespace PTDoc.Application.LocalData;
 /// </summary>
 public interface ILocalSyncOrchestrator
 {
+    /// <summary>
+    /// Add or coalesce a pending local change in the durable outbound sync queue.
+    /// </summary>
+    Task EnqueueChangeAsync(
+        string entityType,
+        Guid entityId,
+        int localEntityId,
+        SyncOperation operation,
+        string payloadJson,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Push all locally-pending entities to the server.
     /// Entities are serialized and sent in a single batch request.

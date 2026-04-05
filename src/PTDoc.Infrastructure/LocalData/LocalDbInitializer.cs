@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.LocalData;
 
@@ -32,6 +33,7 @@ public class LocalDbInitializer : ILocalDbInitializer
             // migrations require a migration history table that adds complexity with no benefit
             // for a single-user offline store.
             await _context.Database.EnsureCreatedAsync(cancellationToken);
+            await EnsureLocalSyncQueueSchemaAsync(cancellationToken);
 
             _logger.LogInformation("Local encrypted SQLite database ready");
         }
@@ -40,5 +42,43 @@ public class LocalDbInitializer : ILocalDbInitializer
             _logger.LogError(ex, "Failed to initialise local encrypted SQLite database");
             throw;
         }
+    }
+
+    private async Task EnsureLocalSyncQueueSchemaAsync(CancellationToken cancellationToken)
+    {
+        if (!_context.Database.IsRelational())
+        {
+            return;
+        }
+
+        await _context.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "SyncQueueItems" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_SyncQueueItems" PRIMARY KEY AUTOINCREMENT,
+                "OperationId" TEXT NOT NULL,
+                "EntityType" TEXT NOT NULL,
+                "EntityId" TEXT NOT NULL,
+                "LocalEntityId" INTEGER NOT NULL,
+                "Operation" INTEGER NOT NULL,
+                "PayloadJson" TEXT NOT NULL,
+                "Status" INTEGER NOT NULL,
+                "RetryCount" INTEGER NOT NULL,
+                "LastAttemptUtc" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "CompletedUtc" TEXT NULL,
+                "ErrorMessage" TEXT NULL
+            );
+            """,
+            cancellationToken);
+
+        await _context.Database.ExecuteSqlRawAsync(
+            "CREATE UNIQUE INDEX IF NOT EXISTS \"IX_SyncQueueItems_OperationId\" ON \"SyncQueueItems\" (\"OperationId\");",
+            cancellationToken);
+        await _context.Database.ExecuteSqlRawAsync(
+            "CREATE INDEX IF NOT EXISTS \"IX_SyncQueueItems_Status_CreatedUtc\" ON \"SyncQueueItems\" (\"Status\", \"CreatedUtc\");",
+            cancellationToken);
+        await _context.Database.ExecuteSqlRawAsync(
+            "CREATE INDEX IF NOT EXISTS \"IX_SyncQueueItems_EntityType_LocalEntityId_Status\" ON \"SyncQueueItems\" (\"EntityType\", \"LocalEntityId\", \"Status\");",
+            cancellationToken);
     }
 }

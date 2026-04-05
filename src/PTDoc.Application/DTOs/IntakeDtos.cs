@@ -28,6 +28,26 @@ public sealed class CreateIntakeRequest
     public string TemplateVersion { get; set; } = "1.0";
 }
 
+/// <summary>Request DTO for ensuring an intake draft exists for a patient.</summary>
+public sealed class EnsureIntakeDraftRequest
+{
+    /// <summary>Optional body-region pain map data to seed a new draft.</summary>
+    public string PainMapData { get; set; } = "{}";
+
+    /// <summary>Optional patient consents payload to seed a new draft.</summary>
+    public string Consents { get; set; } = "{}";
+
+    /// <summary>Optional response payload used only when a new draft must be created.</summary>
+    public string ResponseJson { get; set; } = "{}";
+
+    /// <summary>Optional typed structured intake selections validated against server reference data.</summary>
+    public IntakeStructuredDataDto? StructuredData { get; set; }
+
+    /// <summary>Template version identifier.</summary>
+    [MaxLength(50)]
+    public string TemplateVersion { get; set; } = "1.0";
+}
+
 /// <summary>Request DTO for updating an existing intake draft.</summary>
 public sealed class UpdateIntakeRequest
 {

@@ -35,8 +35,37 @@ public static class DailyNoteEndpoints
             if (errors.Count > 0)
                 return Results.ValidationProblem(errors);
 
-            var (result, error) = await service.SaveDraftAsync(request, ct);
-            return error is not null ? Results.NotFound(new { error }) : Results.Ok(result);
+            try
+            {
+                var result = await service.SaveDraftAsync(request, ct);
+                return result.IsValid
+                    ? Results.Ok(result)
+                    : Results.UnprocessableEntity(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new DailyNoteSaveResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new DailyNoteSaveResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new DailyNoteSaveResponse
+                {
+                    IsValid = false,
+                    Errors = [ex.Message]
+                });
+            }
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
           .WithName("SaveDailyNoteDraft");
 
