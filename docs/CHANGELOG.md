@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - CI: Whitespace Formatting in SyncEngine
+
+#### Formatting Fix
+- **`SyncEngine.cs`** — Fixed over-indented `if (patientId == Guid.Empty)` guard block (22 spaces → 16) and removed trailing spaces on multi-line `??` expressions in the `ClinicalNote` push path. Affects: `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`. Reason: `dotnet format --verify-no-changes` was exiting with code 2 on these lines, blocking Core CI.
+
 ### Fixed - CI: Whitespace Formatting in ILocalSyncOrchestrator
 
 #### Formatting Fix

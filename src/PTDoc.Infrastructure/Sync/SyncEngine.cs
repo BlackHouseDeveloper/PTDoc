@@ -2078,25 +2078,25 @@ public class SyncEngine : ISyncEngine
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
                 var clinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken);
 
-                      if (patientId == Guid.Empty)
-                      {
-                            throw new InvalidOperationException(
-                            $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
-                       }
+                if (patientId == Guid.Empty)
+                {
+                    throw new InvalidOperationException(
+                        $"ClinicalNote push rejected: patient {patientId} could not be resolved.");
+                }
 
                 // Use improved parsing from Foundation
                 var noteType = TryGetNoteType(root) ?? NoteType.Daily;
 
                 // Keep additional metadata fields (Foundation)
-                var createdUtc = TryGetDateTime(root, "createdUtc") 
-                ?? TryGetDateTime(root, "CreatedUtc") 
+                var createdUtc = TryGetDateTime(root, "createdUtc")
+                ?? TryGetDateTime(root, "CreatedUtc")
                 ?? item.LastModifiedUtc;
 
-                var parentNoteId = TryGetGuid(root, "parentNoteId") 
+                var parentNoteId = TryGetGuid(root, "parentNoteId")
                 ?? TryGetGuid(root, "ParentNoteId");
 
-                var isAddendum = TryGetBool(root, "isAddendum") 
-                ?? TryGetBool(root, "IsAddendum") 
+                var isAddendum = TryGetBool(root, "isAddendum")
+                ?? TryGetBool(root, "IsAddendum")
                 ?? false;
                 var note = new ClinicalNote
                 {
