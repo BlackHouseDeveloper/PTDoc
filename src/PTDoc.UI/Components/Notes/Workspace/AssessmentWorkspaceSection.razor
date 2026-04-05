@@ -2,6 +2,7 @@
 @using PTDoc.Application.AI
 @using PTDoc.Application.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Models
+@implements IDisposable
 
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
@@ -417,6 +418,8 @@
     private bool _isSearchingIcd;
     private string? _icdLookupError;
     private List<CodeLookupEntry> _icdResults = [];
+    private CancellationTokenSource? _icdSearchCts;
+    private bool _disposed;
 
     // Placeholder deficit items populated by Auto-Generate.
     private List<(string Name, string Severity)> _deficitItems = new();
@@ -635,9 +638,24 @@
         _icdSearchQuery = args.Value?.ToString() ?? string.Empty;
         _icdLookupError = null;
 
+        _icdSearchCts?.Cancel();
+        _icdSearchCts?.Dispose();
+        _icdSearchCts = new CancellationTokenSource();
+        var cts = _icdSearchCts;
+
         if (string.IsNullOrWhiteSpace(_icdSearchQuery) || _icdSearchQuery.Trim().Length < 2)
         {
             _icdResults = [];
+            _isSearchingIcd = false;
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(300, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
             return;
         }
 
@@ -646,10 +664,17 @@
 
         try
         {
-            var results = await NoteWorkspaceService.SearchIcd10Async(_icdSearchQuery, take: 8);
-            _icdResults = results
-                .Where(result => Vm.DiagnosisCodes.All(code => !string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
+            var results = await NoteWorkspaceService.SearchIcd10Async(_icdSearchQuery, take: 8, cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _icdResults = results
+                    .Where(result => Vm.DiagnosisCodes.All(code => !string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer keystroke; leave state for the newer request.
         }
         catch (Exception ex)
         {
@@ -659,7 +684,10 @@
         }
         finally
         {
-            _isSearchingIcd = false;
+            if (!cts.IsCancellationRequested)
+            {
+                _isSearchingIcd = false;
+            }
         }
     }
 
@@ -678,5 +706,13 @@
         _icdResults = [];
         _icdLookupError = null;
         return VmChanged.InvokeAsync(Vm);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _icdSearchCts?.Cancel();
+        _icdSearchCts?.Dispose();
     }
 }

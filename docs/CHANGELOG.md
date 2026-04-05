@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Admin approval service robustness and ICD-10 search debouncing
+
+#### AdminApprovalApiService non-JSON error handling
+- **`src/PTDoc.UI/Services/AdminApprovalApiService.cs`** — `GetPendingDetailAsync` now uses `ApiErrorReader` instead of `EnsureSuccessStatusCode()` so non-success responses produce an actionable `HttpRequestException` the modal can display. `UpdateAsync` and `SubmitActionAsync` now read the failure response body as a string once, attempt JSON deserialization in a try/catch, and fall back to `ApiErrorReader.ReadMessage` — preventing `JsonException` from escaping when the API returns HTML, plain text, or gateway error pages. Reason: proxy or server errors returning non-JSON bodies would throw an unhandled exception and hide the real error from the user.
+
+#### ApprovalsDashboard filter state validation
+- **`src/PTDoc.UI/Components/Settings/ApprovalsDashboard.razor`** — After loading pending registrations, `roleFilter` and `clinicFilter` are re-validated against `AvailableRoleFilters`/`AvailableClinicFilters`; values not present in the populated dropdown are reset to their defaults (`DefaultRoleFilter`/`DefaultClinicFilter`). Reason: an invalid `role=` or `clinic=` querystring value would be silently accepted and sent to the API as a filter, causing the selected dropdown option to differ from what was actually available.
+
+#### ICD-10 search debounce and cancellation
+- **`src/PTDoc.UI/Components/Notes/Workspace/DailyTreatment/AssessmentSection.razor`**, **`src/PTDoc.UI/Components/Notes/Workspace/AssessmentWorkspaceSection.razor`** — `HandleIcdQueryChangedAsync` and `HandleIcdSearchChangedAsync` now cancel any previous in-flight search and wait 300 ms before issuing a new request. Both components implement `IDisposable` to cancel and dispose the `CancellationTokenSource` when torn down. Reason: every keystroke was dispatching an independent API call, which could cause race conditions (stale results overwriting newer ones) and unnecessary backend load.
+
 ### Fixed - Admin approval registration data integrity
 
 #### Pending registration detail, editing, and approval validation

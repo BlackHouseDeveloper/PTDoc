@@ -685,6 +685,22 @@
                     item.MissingFields))
                 .ToList();
 
+            // Re-validate dynamic filters against loaded data to prevent querystring
+            // values that are not present in the dropdown from desynchronizing state.
+            var availableRoles = AvailableRoleFilters.ToHashSet(StringComparer.Ordinal);
+            if (!string.Equals(roleFilter, DefaultRoleFilter, StringComparison.Ordinal)
+                && !availableRoles.Contains(roleFilter))
+            {
+                roleFilter = DefaultRoleFilter;
+            }
+
+            var availableClinics = AvailableClinicFilters.ToHashSet(StringComparer.Ordinal);
+            if (!string.Equals(clinicFilter, DefaultClinicFilter, StringComparison.Ordinal)
+                && !availableClinics.Contains(clinicFilter))
+            {
+                clinicFilter = DefaultClinicFilter;
+            }
+
             totalServerCount = response.TotalCount;
             currentPage = Math.Clamp(response.Page, 1, TotalPages);
             pageSize = response.PageSize;

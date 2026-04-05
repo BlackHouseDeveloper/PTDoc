@@ -84,7 +84,13 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorMessage = await ApiErrorReader.ReadMessageAsync(response, cancellationToken)
+                ?? $"Failed to load registration details (HTTP {(int)response.StatusCode}).";
+            throw new HttpRequestException(errorMessage, inner: null, response.StatusCode);
+        }
+
         return await response.Content.ReadFromJsonAsync<PendingUserDetail>(SerializerOptions, cancellationToken);
     }
 
@@ -101,8 +107,9 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
             return new AdminApprovalUpdateResult(true, payload?.Detail, payload?.Status, null);
         }
 
-        var failurePayload = await response.Content.ReadFromJsonAsync<AdminApprovalPayload>(SerializerOptions, cancellationToken);
-        var fallbackError = await ApiErrorReader.ReadMessageAsync(response, cancellationToken)
+        var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var failurePayload = TryDeserializePayload(failureBody);
+        var fallbackError = ApiErrorReader.ReadMessage(failureBody, response.StatusCode)
             ?? "Unable to save registration changes.";
 
         return new AdminApprovalUpdateResult(
@@ -135,10 +142,11 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
             return new AdminApprovalActionResult(true, payload?.Status, null);
         }
 
-        var failurePayload = await response.Content.ReadFromJsonAsync<AdminApprovalPayload>(SerializerOptions, cancellationToken);
+        var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var failurePayload = TryDeserializePayload(failureBody);
         var fallbackError = response.StatusCode == HttpStatusCode.Forbidden
             ? "You do not have permission to perform this admin action."
-            : await ApiErrorReader.ReadMessageAsync(response, cancellationToken)
+            : ApiErrorReader.ReadMessage(failureBody, response.StatusCode)
                 ?? "Unable to complete the approval action.";
 
         return new AdminApprovalActionResult(
@@ -158,6 +166,18 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
         string? Status,
         Guid? UserId,
         PendingUserDetail? Detail);
+
+    private static AdminApprovalPayload? TryDeserializePayload(string body)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<AdminApprovalPayload>(body, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static string BuildPendingRequestUri(AdminApprovalQuery query)
     {
