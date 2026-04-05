@@ -415,8 +415,24 @@ public class AuditEvent
         string status,
         Guid? userId = null,
         bool success = true,
-        string? errorMessage = null)
+        string? errorMessage = null,
+        Dictionary<string, object>? additionalMetadata = null)
     {
+        var metadata = new Dictionary<string, object>
+        {
+            ["OperationId"] = operationId,
+            ["Status"] = status,
+            ["Timestamp"] = DateTime.UtcNow
+        };
+
+        if (additionalMetadata is not null)
+        {
+            foreach (var pair in additionalMetadata)
+            {
+                metadata[pair.Key] = pair.Value;
+            }
+        }
+
         return new AuditEvent
         {
             EventType = eventType,
@@ -426,12 +442,7 @@ public class AuditEvent
             UserId = userId,
             EntityType = entityType,
             EntityId = entityId,
-            Metadata = new Dictionary<string, object>
-            {
-                ["OperationId"] = operationId,
-                ["Status"] = status,
-                ["Timestamp"] = DateTime.UtcNow
-            }
+            Metadata = metadata
         };
     }
 }

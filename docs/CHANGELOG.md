@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed - Sprint 3: PR Review Feedback (Conflict Resolution Engine)
+### Added - Sprint 3: Sync Hardening + Observability + Reliability
+
+#### Server Sync Runtime Status + Overlap Prevention (`src/PTDoc.Application/Sync/ISyncEngine.cs`, `src/PTDoc.Application/Sync/ISyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Api/Program.cs`)
+- **`ISyncRuntimeStateStore` / `SyncRuntimeStateStore`** — Added a singleton in-memory runtime tracker for server-side sync execution state, including `IsRunning`, start/end timestamps, last success/failure timestamps, queue counters, and the last sanitized error. Reason: the previous scoped `SyncEngine` timestamp state was not durable across requests, so sync status was not operationally reliable.
+- **`SyncEngine.cs` / `PushAsync` / `SyncNowAsync`** — Added shared run-lock behavior so overlapping manual/background sync cycles return `Skipped` instead of double-processing the queue. Reason: prevent concurrent sync runs from racing the same queue and creating unreliable operational state.
+
+#### Queue Hardening: Batching, Retry Visibility, Failure Classification, Dead Letters (`src/PTDoc.Core/Models/SyncQueueItem.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncQueueItem.cs`** — Added persisted nullable `FailureType` plus `SyncQueueStatus.DeadLetter` and `SyncFailureType` (`NetworkError`, `ValidationError`, `ConflictError`, `ServerError`). Reason: queue failures and terminal items must be queryable and restart-safe without introducing a second ledger table.
+- **`SyncEngine.cs` / queue processing path** — Reworked server queue processing around repeated ordered batches of 10 items, 15-second per-item timeouts, normalized `MaxRetries = 5`, structured per-item outcomes, and explicit dead-letter transitions. Reason: improve throughput and resilience while preserving same-entity ordering and avoiding silent retry loops.
+- **`SyncEngine.cs` / audit + telemetry metadata** — Added `ITEM_PROCESSED`, `ITEM_FAILED`, and `DEAD_LETTER_CREATED` observability events plus non-PHI metadata such as `OperationType`, `RetryCount`, `BatchSize`, `FailureType`, and duration. Reason: sync activity must be diagnosable in production without adding PHI to logs.
+
+#### Crash Recovery + Background Queue Driving (`src/PTDoc.Infrastructure/BackgroundJobs/SyncRetryBackgroundService.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncRetryBackgroundService.cs`** — Expanded the existing retry hosted service into the operational queue driver: it now recovers stale `Processing` rows, delegates queue draining back to `ISyncEngine.PushAsync()`, logs cycle summaries including dead-letter counts, and respects the shared overlap lock. Reason: background sync processing should use the same hardened server path as manual sync runs instead of maintaining separate retry semantics.
+- **`SyncEngine.cs` / `RecoverInterruptedQueueItemsAsync`** — Added startup-cycle recovery for interrupted `Processing` rows, moving them back into visible failed state with sanitized server-error classification. Reason: queue state must survive app/API restarts without data loss or invisible stuck rows.
+
+#### Sync API Status, Queue, Dead-Letter, and Health Endpoints (`src/PTDoc.Api/Sync/SyncEndpoints.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`)
+- **`SyncEndpoints.cs` / `/api/v1/sync/status`** — Kept `lastSyncAt` for backward compatibility while adding `isRunning`, `pending`, `failed`, `lastSync`, `lastError`, and `deadLetterCount`. Reason: existing web callers keep working while operators gain real-time sync visibility.
+- **`SyncEndpoints.cs` / `/api/v1/sync/queue` / `/api/v1/sync/dead-letters` / `/api/v1/sync/health`** — Added new ClinicalStaff-protected sync inspection endpoints returning sanitized queue state, retry visibility, dead-letter visibility, and an operational health summary. Reason: production support needs API-level observability without introducing UI dashboards in this sprint.
+- **`ISyncEngine.cs`** — Added sync read models for queue items, dead letters, health, richer queue status, and skip-aware push/full-sync results. Reason: the hardened API surface requires explicit contracts instead of anonymous ad hoc state.
+
+#### Schema + Regression Coverage (`src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `src/PTDoc.Infrastructure.Migrations.Postgres/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `src/PTDoc.Infrastructure.Migrations.SqlServer/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `tests/PTDoc.Tests/Sync/SyncConflictResolutionTests.cs`, `tests/PTDoc.Tests/BackgroundJobs/BackgroundJobTests.cs`, `tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`, `tests/PTDoc.Tests/Security/AuthorizationCoverageTests.cs`)
+- **Provider migrations** — Added the single schema change for Sprint 3: nullable `FailureType` on `SyncQueueItems` across SQLite, Postgres, and SQL Server migration projects. Reason: failure classification must survive restarts and support queue/dead-letter inspection APIs.
+- **Tests** — Added coverage for dead-letter promotion on terminal validation failures, shared runtime status across scoped engine instances, background recovery of interrupted items, background skip behavior during overlapping runs, and RBAC coverage for the new sync queue/health endpoints. Reason: the hardened queue state machine and observability surface are release-critical and must remain regression-protected.
+
+### Fixed - Sprint 3: PR Review Feedback (Sync Pipeline Hardening)
+
+#### SyncRetryBackgroundService — Skip Recovery When Run Is Active (`src/PTDoc.Infrastructure/BackgroundJobs/SyncRetryBackgroundService.cs`)
+- **`SyncRetryBackgroundService.cs`** — Injected `ISyncRuntimeStateStore` into the constructor; `RecoverInterruptedQueueItemsAsync` is now skipped when a sync run is already active. Reason: items in `Processing` state may be legitimately held by a running cycle, and promoting them to `Failed` mid-run corrupts the pipeline state.
+
+#### SyncEngine — Honour Configured `MinRetryDelay` (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Application/BackgroundJobs/IBackgroundJobService.cs`)
+- **`SyncEngine.cs`** — The previously hardcoded `RetryDelay = 60s` constant is replaced by an instance field `_retryDelay` sourced from `IOptions<SyncRetryOptions>.MinRetryDelay`. Reason: the configured value was documented but silently ignored by `GetNextBatchAsync`; configuration now controls actual retry-window behaviour.
+
+#### SyncEndpoints — Restrict Inspection Endpoints to `AdminOnly` (`src/PTDoc.Api/Sync/SyncEndpoints.cs`)
+- **`SyncEndpoints.cs` / `/api/v1/sync/queue`, `/api/v1/sync/dead-letters`, `/api/v1/sync/health`** — Override authorization from the group `ClinicalStaff` policy to `AdminOnly`. Reason: these endpoints expose raw entity IDs and error details that can leak cross-clinic operational metadata in a multi-tenant deployment; administrator-only access is the appropriate scope.
+
+
 
 #### SyncEngine — Delete Conflict Detection (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
 - **`SyncEngine.cs` / `DetectConflict`** — Client delete against a missing server record now returns `null` (treated as already-applied/Accepted) instead of `DeletedConflict`, making idempotent deletes safe for retries. `DeletedConflict` is now only raised when the server record exists, is archived/deleted, and the client is attempting an update — not when both sides agree on deletion. Reason: prevent clients from getting stuck in a permanent conflict loop when retrying deletes for already-removed rows.

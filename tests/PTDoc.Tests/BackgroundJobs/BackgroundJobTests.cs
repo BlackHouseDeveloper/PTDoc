@@ -61,7 +61,7 @@ public class BackgroundJobTests
         var scopeFactory = BuildScopeFactory(context);
 
         var options = Options.Create(new SyncRetryOptions { Interval = TimeSpan.FromSeconds(1), MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -91,7 +91,7 @@ public class BackgroundJobTests
 
         var scopeFactory = BuildScopeFactory(context);
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -124,7 +124,7 @@ public class BackgroundJobTests
         var scopeFactory = BuildScopeFactory(context);
         // MinRetryDelay = 60 s means the item above should not be retried
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.FromSeconds(60) });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -164,7 +164,7 @@ public class BackgroundJobTests
 
         var scopeFactory = BuildScopeFactory(context);
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -221,9 +221,81 @@ public class BackgroundJobTests
         var job = new SyncRetryBackgroundService(
             scopeFactory,
             NullLogger<SyncRetryBackgroundService>.Instance,
-            Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero }));
+            Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero }),
+            new SyncRuntimeStateStore());
 
         await job.ExecuteJobAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SyncRetryJob_RecoversInterruptedProcessingItems_BeforePush()
+    {
+        var context = CreateInMemoryContext();
+        context.SyncQueueItems.Add(new SyncQueueItem
+        {
+            EntityType = "Patient",
+            EntityId = Guid.NewGuid(),
+            Status = SyncQueueStatus.Processing,
+            EnqueuedAt = DateTime.UtcNow.AddMinutes(-10)
+        });
+        await context.SaveChangesAsync();
+
+        var scopeFactory = BuildScopeFactory(context);
+        var svc = new SyncRetryBackgroundService(
+            scopeFactory,
+            NullLogger<SyncRetryBackgroundService>.Instance,
+            Options.Create(new SyncRetryOptions()),
+            new SyncRuntimeStateStore());
+
+        await svc.ExecuteJobAsync(CancellationToken.None);
+
+        var item = await context.SyncQueueItems.SingleAsync();
+        Assert.NotEqual(SyncQueueStatus.Processing, item.Status);
+        Assert.Equal(SyncFailureType.ServerError, item.FailureType);
+    }
+
+    [Fact]
+    public async Task SyncRetryJob_Skips_WhenAnotherRunIsActive()
+    {
+        var context = CreateInMemoryContext();
+        var runtimeStateStore = new SyncRuntimeStateStore();
+        runtimeStateStore.TryBeginRun(DateTime.UtcNow);
+
+        var userId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            FirstName = "Pending",
+            LastName = "Queue",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = userId
+        };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+
+        context.SyncQueueItems.Add(new SyncQueueItem
+        {
+            EntityType = "Patient",
+            EntityId = patient.Id,
+            Status = SyncQueueStatus.Pending,
+            EnqueuedAt = DateTime.UtcNow.AddMinutes(-5)
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance, runtimeStateStore);
+        var scopeFactory = BuildScopeFactory(context, syncEngine);
+        var svc = new SyncRetryBackgroundService(
+            scopeFactory,
+            NullLogger<SyncRetryBackgroundService>.Instance,
+            Options.Create(new SyncRetryOptions()),
+            runtimeStateStore);
+
+        await svc.ExecuteJobAsync(CancellationToken.None);
+
+        var item = await context.SyncQueueItems.SingleAsync();
+        Assert.Equal(SyncQueueStatus.Pending, item.Status);
+
+        runtimeStateStore.CompleteRun(DateTime.UtcNow, success: true, lastError: null);
     }
 
     [Fact]

@@ -500,6 +500,35 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
     [Fact]
     [Trait("Category", "RBAC")]
+    public async Task Admin_Can_Access_Sync_Queue_And_Health_Return_200()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+
+        using var queueResponse = await client.GetAsync("/api/v1/sync/queue");
+        using var healthResponse = await client.GetAsync("/api/v1/sync/health");
+
+        Assert.Equal(HttpStatusCode.OK, queueResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task PT_Cannot_Access_Sync_Queue_Or_Health_Returns_403()
+    {
+        // Sync inspection endpoints are restricted to AdminOnly (Admin, Owner).
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var queueResponse = await client.GetAsync("/api/v1/sync/queue");
+        using var healthResponse = await client.GetAsync("/api/v1/sync/health");
+        using var deadLettersResponse = await client.GetAsync("/api/v1/sync/dead-letters");
+
+        Assert.Equal(HttpStatusCode.Forbidden, queueResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, healthResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, deadLettersResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Access_Sync_Returns_403()
     {
         // Billing is NOT in ClinicalStaff policy.
@@ -517,6 +546,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
 
         using var response = await client.GetAsync("/api/v1/sync/status");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task Billing_Cannot_Access_Sync_Queue_Returns_403()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Billing);
+
+        using var response = await client.GetAsync("/api/v1/sync/queue");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

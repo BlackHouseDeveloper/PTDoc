@@ -7,6 +7,7 @@ using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Sync;
 
 namespace PTDoc.Infrastructure.BackgroundJobs;
 
@@ -20,16 +21,19 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SyncRetryBackgroundService> _logger;
     private readonly SyncRetryOptions _options;
+    private readonly ISyncRuntimeStateStore _runtimeStateStore;
     private bool _schemaNotReadyLogged;
 
     public SyncRetryBackgroundService(
         IServiceScopeFactory scopeFactory,
         ILogger<SyncRetryBackgroundService> logger,
-        IOptions<SyncRetryOptions> options)
+        IOptions<SyncRetryOptions> options,
+        ISyncRuntimeStateStore runtimeStateStore)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _options = options.Value;
+        _runtimeStateStore = runtimeStateStore;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,40 +99,39 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
 
         var syncEngine = scope.ServiceProvider.GetRequiredService<ISyncEngine>();
 
-        var cutoff = DateTime.UtcNow - _options.MinRetryDelay;
-
-        var toReset = await context.SyncQueueItems
-            .Where(q =>
-                q.Status == SyncQueueStatus.Failed &&
-                q.RetryCount < q.MaxRetries &&
-                (q.LastAttemptAt == null || q.LastAttemptAt < cutoff))
-            .ToListAsync(cancellationToken);
-
-        if (toReset.Count == 0)
+        // Skip recovery when a sync cycle is currently active. Items in Processing
+        // state may be legitimately held by the running cycle; promoting them to Failed
+        // mid-run would corrupt the pipeline state.
+        if (_runtimeStateStore.Snapshot().IsRunning)
         {
-            _logger.LogDebug("SyncRetryBackgroundService: no eligible failed items to retry");
+            _logger.LogDebug(
+                "SyncRetryBackgroundService: skipping interrupted-item recovery because a sync run is already active");
+        }
+        else
+        {
+            var recoveredCount = await syncEngine.RecoverInterruptedQueueItemsAsync(cancellationToken);
+            if (recoveredCount > 0)
+            {
+                _logger.LogWarning(
+                    "SyncRetryBackgroundService: recovered {Count} interrupted sync item(s) before processing",
+                    recoveredCount);
+            }
+        }
+
+        var result = await syncEngine.PushAsync(cancellationToken);
+        if (result.Skipped)
+        {
+            _logger.LogDebug("SyncRetryBackgroundService: skipped cycle because another sync run is already active");
             return;
         }
 
         _logger.LogInformation(
-            "SyncRetryBackgroundService: retrying {Count} failed sync item(s)",
-            toReset.Count);
-
-        foreach (var item in toReset)
-        {
-            item.Status = SyncQueueStatus.Pending;
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
-
-        // Execute a push cycle to process the newly-reset items
-        var result = await syncEngine.PushAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "SyncRetryBackgroundService: push cycle complete. Success={Success}, Failures={Failures}, Conflicts={Conflicts}",
+            "SyncRetryBackgroundService: push cycle complete. Success={Success}, Failures={Failures}, Conflicts={Conflicts}, DeadLetters={DeadLetters}, Batches={Batches}",
             result.SuccessCount,
             result.FailureCount,
-            result.ConflictCount);
+            result.ConflictCount,
+            result.DeadLetterCount,
+            result.BatchCount);
     }
 
     private void LogSchemaNotReady(DatabaseSchemaStatus schemaStatus)

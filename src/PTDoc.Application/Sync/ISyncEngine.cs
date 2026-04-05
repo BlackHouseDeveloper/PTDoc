@@ -38,6 +38,26 @@ public interface ISyncEngine
     Task<SyncQueueSummary> GetQueueStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns queue items for operational inspection.
+    /// </summary>
+    Task<IReadOnlyList<SyncQueueItemStatus>> GetQueueItemsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns dead-lettered queue items for operational inspection.
+    /// </summary>
+    Task<IReadOnlyList<SyncQueueItemStatus>> GetDeadLetterItemsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns health details for the server-side sync pipeline.
+    /// </summary>
+    Task<SyncHealthStatus> GetHealthStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recovers stale processing rows left behind by interrupted runs.
+    /// </summary>
+    Task<int> RecoverInterruptedQueueItemsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Receive entity changes pushed from a MAUI client.
     /// Validates, records receipt, and returns per-item acceptance status.
     /// Conflict detection is performed against the server's current entity state.
@@ -62,6 +82,7 @@ public class SyncResult
     public required PullResult PullResult { get; init; }
     public DateTime CompletedAt { get; init; } = DateTime.UtcNow;
     public TimeSpan Duration { get; init; }
+    public bool Skipped { get; init; }
 }
 
 /// <summary>
@@ -75,6 +96,9 @@ public class PushResult
     public int ConflictCount { get; init; }
     public List<SyncConflict> Conflicts { get; init; } = new();
     public List<string> Errors { get; init; } = new();
+    public bool Skipped { get; init; }
+    public int DeadLetterCount { get; init; }
+    public int BatchCount { get; init; }
 }
 
 /// <summary>
@@ -146,6 +170,34 @@ public class SyncQueueSummary
     public int PendingCount { get; init; }
     public int ProcessingCount { get; init; }
     public int FailedCount { get; init; }
+    public int DeadLetterCount { get; init; }
     public DateTime? OldestPendingAt { get; init; }
     public DateTime? LastSyncAt { get; init; }
+    public bool IsRunning { get; init; }
+    public DateTime? LastSyncStartUtc { get; init; }
+    public DateTime? LastSyncEndUtc { get; init; }
+    public DateTime? LastSuccessUtc { get; init; }
+    public DateTime? LastFailureUtc { get; init; }
+    public string? LastError { get; init; }
+}
+
+public sealed class SyncQueueItemStatus
+{
+    public Guid Id { get; init; }
+    public string EntityType { get; init; } = string.Empty;
+    public Guid EntityId { get; init; }
+    public SyncOperation OperationType { get; init; }
+    public SyncQueueStatus Status { get; init; }
+    public int RetryCount { get; init; }
+    public DateTime? LastAttemptAt { get; init; }
+    public SyncFailureType? FailureType { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+
+public sealed class SyncHealthStatus
+{
+    public bool IsHealthy { get; init; }
+    public int PendingCount { get; init; }
+    public int FailedCount { get; init; }
+    public int DeadLetterCount { get; init; }
 }
