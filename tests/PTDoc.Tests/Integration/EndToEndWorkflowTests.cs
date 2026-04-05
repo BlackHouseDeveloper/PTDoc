@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -1119,6 +1120,21 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
         builder.ConfigureTestServices(services =>
         {
+            // ── Suppress background hosted services to prevent race conditions ─────────
+            // The SyncRetryBackgroundService and SessionCleanupBackgroundService both
+            // access the shared in-memory SQLite connection. Running concurrently with
+            // HTTP-request scopes causes SQLite Error 5 ('unable to delete/modify
+            // user-function due to active statements') when EF Core's SqliteRelational-
+            // Connection tries to register custom functions on an already-open connection
+            // that has active prepared statements. Integration tests do not depend on
+            // background sync processing — the manual /api/v1/sync/run endpoint exercises
+            // the full push path without the background scheduler.
+            var hostedServices = services
+                .Where(d => d.ServiceType == typeof(IHostedService))
+                .ToList();
+            foreach (var d in hostedServices)
+                services.Remove(d);
+
             // ── Replace ApplicationDbContext with a shared in-memory SQLite database ──
             var descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>) ||
