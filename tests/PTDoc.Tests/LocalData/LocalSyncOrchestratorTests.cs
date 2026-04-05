@@ -92,6 +92,19 @@ public class LocalSyncOrchestratorTests
             LastModifiedUtc = DateTime.UtcNow
         };
 
+    private static LocalClinicalNoteDraft MakePendingNote(Guid patientServerId)
+        => new()
+        {
+            ServerId = Guid.Empty,
+            PatientServerId = patientServerId,
+            NoteType = NoteType.Daily.ToString(),
+            DateOfService = DateTime.UtcNow.Date,
+            ContentJson = "{\"subjective\":\"offline\"}",
+            CptCodesJson = "[]",
+            SyncState = SyncState.Pending,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
     // ── GetPendingCountAsync ──────────────────────────────────────────────────────
 
     [Fact]
@@ -161,6 +174,103 @@ public class LocalSyncOrchestratorTests
         Assert.Equal(0, result.SuccessCount);
         Assert.Equal(0, result.FailedCount);
         Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public async Task EnqueueChangeAsync_Coalesces_UnattemptedPendingQueueItems()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var patient = MakePendingPatient();
+        ctx.PatientSummaries.Add(patient);
+        await ctx.SaveChangesAsync();
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        await orch.EnqueueChangeAsync("Patient", patient.ServerId, patient.LocalId, SyncOperation.Update, "{\"version\":1}");
+        await orch.EnqueueChangeAsync("Patient", patient.ServerId, patient.LocalId, SyncOperation.Update, "{\"version\":2}");
+
+        var queueItems = await ctx.SyncQueueItems.ToListAsync();
+        Assert.Single(queueItems);
+        Assert.Equal("{\"version\":2}", queueItems[0].PayloadJson);
+        Assert.Equal(SyncQueueStatus.Pending, queueItems[0].Status);
+    }
+
+    [Fact]
+    public async Task PushPendingAsync_Skips_BackoffWindow_ForFailedItems()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var patient = MakePendingPatient();
+        ctx.PatientSummaries.Add(patient);
+        await ctx.SaveChangesAsync();
+
+        ctx.SyncQueueItems.Add(new LocalSyncQueueItem
+        {
+            OperationId = Guid.NewGuid(),
+            EntityType = "Patient",
+            EntityId = patient.ServerId,
+            LocalEntityId = patient.LocalId,
+            Operation = SyncOperation.Update,
+            PayloadJson = "{\"version\":1}",
+            Status = SyncQueueStatus.Failed,
+            RetryCount = 3,
+            LastAttemptUtc = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-5)
+        });
+        await ctx.SaveChangesAsync();
+
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PushPendingAsync();
+
+        Assert.Equal(0, result.PushedCount);
+        Assert.Equal(SyncQueueStatus.Failed, (await ctx.SyncQueueItems.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task PushPendingAsync_Recovers_InterruptedProcessingItem()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var note = MakePendingNote(Guid.NewGuid());
+        ctx.ClinicalNoteDrafts.Add(note);
+        await ctx.SaveChangesAsync();
+
+        ctx.SyncQueueItems.Add(new LocalSyncQueueItem
+        {
+            OperationId = Guid.NewGuid(),
+            EntityType = "ClinicalNote",
+            EntityId = Guid.Empty,
+            LocalEntityId = note.LocalId,
+            Operation = SyncOperation.Create,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                note.ServerId,
+                patientId = note.PatientServerId,
+                note.NoteType,
+                note.DateOfService,
+                note.ContentJson,
+                note.CptCodesJson,
+                note.LastModifiedUtc
+            }),
+            Status = SyncQueueStatus.Processing,
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await ctx.SaveChangesAsync();
+
+        var serverResponse = new ClientSyncPushResponse
+        {
+            AcceptedCount = 1,
+            Items = new List<ClientSyncPushItemResult>
+            {
+                new() { EntityType = "ClinicalNote", LocalId = note.LocalId, ServerId = Guid.NewGuid(), Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+            }
+        };
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PushPendingAsync();
+
+        Assert.Equal(1, result.PushedCount);
+        var queueItem = await ctx.SyncQueueItems.SingleAsync();
+        Assert.Equal(SyncQueueStatus.Completed, queueItem.Status);
     }
 
     [Fact]
@@ -362,7 +472,9 @@ public class LocalSyncOrchestratorTests
         using var doc = JsonDocument.Parse(pushedItem.DataJson);
         var root = doc.RootElement;
 
-        Assert.Equal(createdUtc.ToString("O"), root.GetProperty("createdUtc").GetString());
+        var createdUtcJson = root.GetProperty("createdUtc").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(createdUtcJson));
+        Assert.Equal(createdUtc, DateTime.Parse(createdUtcJson!, null, System.Globalization.DateTimeStyles.RoundtripKind));
         Assert.Equal(parentNoteId.ToString(), root.GetProperty("parentNoteId").GetString());
         Assert.True(root.GetProperty("isAddendum").GetBoolean());
     }
@@ -890,18 +1002,51 @@ public class LocalSyncOrchestratorTests
         var assignedAppointmentServerId = Guid.NewGuid();
         var patientServerId = patient.ServerId;
 
-        var serverResponse = new ClientSyncPushResponse
-        {
-            AcceptedCount = 2,
-            Items = new List<ClientSyncPushItemResult>
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns(async (HttpRequestMessage request, CancellationToken _) =>
             {
-                // Both items may share the same LocalId integer across tables — EntityType disambiguates
-                new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patientServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow },
-                new() { EntityType = "Appointment", LocalId = appointment.LocalId, ServerId = assignedAppointmentServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
-            }
+                var payload = await request.Content!.ReadFromJsonAsync<ClientSyncPushRequest>();
+                var item = Assert.Single(payload!.Items);
+
+                ClientSyncPushResponse response = item.EntityType switch
+                {
+                    "Patient" => new ClientSyncPushResponse
+                    {
+                        AcceptedCount = 1,
+                        Items = new List<ClientSyncPushItemResult>
+                        {
+                            new() { EntityType = "Patient", LocalId = patient.LocalId, ServerId = patientServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+                        }
+                    },
+                    "Appointment" => new ClientSyncPushResponse
+                    {
+                        AcceptedCount = 1,
+                        Items = new List<ClientSyncPushItemResult>
+                        {
+                            new() { EntityType = "Appointment", LocalId = appointment.LocalId, ServerId = assignedAppointmentServerId, Status = "Accepted", ServerModifiedUtc = DateTime.UtcNow }
+                        }
+                    },
+                    _ => new ClientSyncPushResponse()
+                };
+
+                return new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = JsonContent.Create(response)
+                };
+            });
+
+        var httpClient = new HttpClient(handler.Object)
+        {
+            BaseAddress = new Uri("http://localhost:5170")
         };
 
-        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+        var orch = new LocalSyncOrchestrator(ctx, httpClient, NullLogger<LocalSyncOrchestrator>.Instance);
 
         var result = await orch.PushPendingAsync();
 

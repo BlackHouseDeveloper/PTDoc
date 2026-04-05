@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Sync;
 using System.Text.Json;
@@ -32,6 +36,24 @@ public class SyncEpsilonTests
         return new ApplicationDbContext(options);
     }
 
+    private static ISignatureService CreateSignatureService(ApplicationDbContext context)
+    {
+        var auditService = Mock.Of<IAuditService>();
+        var clinicalRules = new Mock<IClinicalRulesEngine>();
+        clinicalRules
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        var addendumService = new AddendumService(context, auditService);
+
+        return new SignatureService(
+            context,
+            auditService,
+            clinicalRules.Object,
+            new HashService(),
+            addendumService);
+    }
+
     // ── ProcessQueueItemAsync ─────────────────────────────────────────────────
 
     [Fact]
@@ -54,7 +76,10 @@ public class SyncEpsilonTests
         await context.SaveChangesAsync();
 
         // Enqueue the note for processing
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create);
 
         // Act: run push which calls ProcessQueueItemAsync
@@ -87,7 +112,10 @@ public class SyncEpsilonTests
         context.IntakeForms.Add(intake);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Create);
 
         // Act
@@ -118,6 +146,7 @@ public class SyncEpsilonTests
                     EntityType = "Patient",
                     ServerId = patientId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -182,6 +211,7 @@ public class SyncEpsilonTests
                     EntityType = "IntakeForm",
                     ServerId = intake.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -240,6 +270,7 @@ public class SyncEpsilonTests
                     EntityType = "IntakeForm",
                     ServerId = intake.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new { responseJson = "{\"attempt\":\"hack\"}" }),
                     LastModifiedUtc = DateTime.UtcNow
@@ -291,6 +322,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = note.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -339,7 +371,10 @@ public class SyncEpsilonTests
         context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
 
-        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
 
         var request = new ClientSyncPushRequest
         {
@@ -350,6 +385,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = note.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new { contentJson = "{\"subjective\":\"tampered\"}" }),
                     LastModifiedUtc = DateTime.UtcNow
@@ -360,15 +396,22 @@ public class SyncEpsilonTests
         // Act
         var response = await syncEngine.ReceiveClientPushAsync(request);
 
-        // Assert: rejected
+        // Assert: conflict preserved through addendum creation
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
-        Assert.Equal("Signed notes cannot be modified. Create addendum.", response.Items[0].Error);
+        Assert.Contains("addendum", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+        var conflict = Assert.IsType<ConflictResult>(response.Items[0].Conflict);
+        Assert.Equal(ConflictResolution.AddendumCreated, conflict.ResolutionType);
+        Assert.NotNull(conflict.NewEntityId);
 
         // Assert: ContentJson was NOT changed — signed note remains immutable
         var notUpdated = await context.ClinicalNotes.AsNoTracking().FirstAsync(n => n.Id == note.Id);
         Assert.Equal(originalContent, notUpdated.ContentJson);
         Assert.Equal("sha256-fakehash", notUpdated.SignatureHash);
+
+        var addendum = await context.ClinicalNotes.FindAsync(conflict.NewEntityId);
+        Assert.NotNull(addendum);
+        Assert.True(addendum!.IsAddendum);
     }
 
     [Fact]
@@ -389,6 +432,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = newNoteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     // Client tries to submit a pre-signed note — server must ignore SignatureHash
                     DataJson = JsonSerializer.Serialize(new
@@ -437,6 +481,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = Guid.Empty, // new record
                     LocalId = 42,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -557,6 +602,7 @@ public class SyncEpsilonTests
         Assert.NotNull(queueItem);
         Assert.Equal(SyncQueueStatus.Pending, queueItem.Status);
         Assert.Equal(SyncOperation.Create, queueItem.Operation);
+        Assert.NotEqual(Guid.Empty, queueItem.Id);
     }
 
     [Fact]

@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
-using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -16,7 +15,6 @@ public sealed class SignatureServiceTests : IDisposable
     private readonly ApplicationDbContext _context;
     private readonly Mock<IAuditService> _mockAuditService;
     private readonly Mock<IClinicalRulesEngine> _mockClinicalRulesEngine;
-    private readonly Mock<ISyncEngine> _mockSyncEngine;
     private readonly SignatureService _signatureService;
 
     public SignatureServiceTests()
@@ -28,15 +26,13 @@ public sealed class SignatureServiceTests : IDisposable
         _context = new ApplicationDbContext(options);
         _mockAuditService = new Mock<IAuditService>();
         _mockClinicalRulesEngine = new Mock<IClinicalRulesEngine>();
-        _mockSyncEngine = new Mock<ISyncEngine>();
         _mockClinicalRulesEngine
             .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
         var addendumService = new AddendumService(
             _context,
-            _mockAuditService.Object,
-            _mockSyncEngine.Object);
+            _mockAuditService.Object);
 
         _signatureService = new SignatureService(
             _context,
@@ -252,9 +248,12 @@ public sealed class SignatureServiceTests : IDisposable
         Assert.Equal(signer.Id, addendum.ModifiedByUserId);
         Assert.Equal("\"Additional assessment findings\"", addendum.ContentJson);
 
-        _mockSyncEngine.Verify(
-            engine => engine.EnqueueAsync("ClinicalNote", addendum.Id, SyncOperation.Create, It.IsAny<CancellationToken>()),
-            Times.Once);
+        var queued = await _context.SyncQueueItems
+            .SingleOrDefaultAsync(q => q.EntityType == "ClinicalNote" && q.EntityId == addendum.Id);
+        Assert.NotNull(queued);
+        Assert.Equal(SyncOperation.Create, queued!.Operation);
+        Assert.Equal(SyncQueueStatus.Pending, queued.Status);
+
         _mockAuditService.Verify(
             audit => audit.LogAddendumCreatedAsync(
                 It.Is<AuditEvent>(evt =>

@@ -7,6 +7,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Sync Addendum Runtime + Test Regression
+
+#### Addendum Service DI Cycle + Queue Enqueue
+- **`AddendumService.cs` / `CreateAddendumAsync`** — Removed the direct `ISyncEngine` dependency from `AddendumService` and switched to direct enqueue writes on `SyncQueueItems` after addendum note persistence. Affects: `src/PTDoc.Infrastructure/Compliance/AddendumService.cs`. Reason: break the runtime circular dependency path (`ISyncEngine -> ISignatureService -> IAddendumService -> ISyncEngine`) that surfaced as broad `500 InternalServerError` failures in integration tests.
+
+#### Local Offline Push Payload Completeness
+- **`LocalSyncOrchestrator.cs` / pending clinical-note payload generation** — Restored addendum metadata fields (`CreatedUtc`, `ParentNoteId`, `IsAddendum`) in the serialized clinical-note push payload generated from local pending drafts. Affects: `src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`. Reason: fix missing-key failures in local sync protocol tests expecting addendum metadata propagation.
+- **`LocalSyncOrchestratorTests.cs` / `PushPendingAsync_IncludesAddendumMetadata_ForClinicalNotes`** — Relaxed `createdUtc` assertion to compare parsed round-trip `DateTime` values instead of exact string formatting, so semantically equal ISO-8601 timestamps with trimmed trailing fractional zeros are accepted. Affects: `tests/PTDoc.Tests/LocalData/LocalSyncOrchestratorTests.cs`. Reason: prevent brittle failures caused by equivalent serializer formatting differences (`.3274820Z` vs `.327482Z`).
+
+#### Sync Test Harness Compatibility With New Addendum Flow
+- **`SyncClientProtocolTests.cs` / `SyncEpsilonTests.cs`** — Updated signature-service test helpers to use a real `AddendumService` instead of a bare `IAddendumService` mock; updated addendum assertions to validate addendum clinical notes (`ClinicalNote.IsAddendum`) instead of the legacy `Addendums` table. Affects: `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`. Reason: `SignatureService.CreateAddendumAsync` now delegates to `IAddendumService`; default mocks returned non-usable results and caused signed-conflict paths to fail.
+- **`SignatureServiceTests.cs` / constructor + addendum queue assertion** — Updated compliance tests to use the 2-argument `AddendumService(ApplicationDbContext, IAuditService)` constructor and replaced `ISyncEngine.EnqueueAsync` mock verification with direct `SyncQueueItems` persistence assertions. Affects: `tests/PTDoc.Tests/Compliance/SignatureServiceTests.cs`. Reason: `AddendumService` now enqueues directly via `ApplicationDbContext` and no longer depends on `ISyncEngine`.
+
+### Fixed - Test Compilation Compatibility
+
+#### SignatureService Constructor Alignment in Sync Tests
+- **`SyncEpsilonTests.cs` / `CreateSignatureService`** — Updated test wiring to use the current `SignatureService(ApplicationDbContext, IAuditService, IClinicalRulesEngine, IHashService, IAddendumService)` signature by passing `HashService` and a mocked `IAddendumService` instead of the removed identity accessor argument. Affects: `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`. Reason: restore compile compatibility after signature service dependency expansion.
+- **`SyncClientProtocolTests.cs` / `CreateSignatureService`** — Updated test helper to construct `SignatureService` with `HashService` and mocked `IAddendumService`, and removed the obsolete identity accessor dependency import. Affects: `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`. Reason: fix CS7036 constructor-argument failures in sync protocol test builds.
+
+### Added - Sprint 3: Sync Hardening + Observability + Reliability
+
+#### Server Sync Runtime Status + Overlap Prevention (`src/PTDoc.Application/Sync/ISyncEngine.cs`, `src/PTDoc.Application/Sync/ISyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Api/Program.cs`)
+- **`ISyncRuntimeStateStore` / `SyncRuntimeStateStore`** — Added a singleton in-memory runtime tracker for server-side sync execution state, including `IsRunning`, start/end timestamps, last success/failure timestamps, queue counters, and the last sanitized error. Reason: the previous scoped `SyncEngine` timestamp state was not durable across requests, so sync status was not operationally reliable.
+- **`SyncEngine.cs` / `PushAsync` / `SyncNowAsync`** — Added shared run-lock behavior so overlapping manual/background sync cycles return `Skipped` instead of double-processing the queue. Reason: prevent concurrent sync runs from racing the same queue and creating unreliable operational state.
+
+#### Queue Hardening: Batching, Retry Visibility, Failure Classification, Dead Letters (`src/PTDoc.Core/Models/SyncQueueItem.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncQueueItem.cs`** — Added persisted nullable `FailureType` plus `SyncQueueStatus.DeadLetter` and `SyncFailureType` (`NetworkError`, `ValidationError`, `ConflictError`, `ServerError`). Reason: queue failures and terminal items must be queryable and restart-safe without introducing a second ledger table.
+- **`SyncEngine.cs` / queue processing path** — Reworked server queue processing around repeated ordered batches of 10 items, 15-second per-item timeouts, normalized `MaxRetries = 5`, structured per-item outcomes, and explicit dead-letter transitions. Reason: improve throughput and resilience while preserving same-entity ordering and avoiding silent retry loops.
+- **`SyncEngine.cs` / audit + telemetry metadata** — Added `ITEM_PROCESSED`, `ITEM_FAILED`, and `DEAD_LETTER_CREATED` observability events plus non-PHI metadata such as `OperationType`, `RetryCount`, `BatchSize`, `FailureType`, and duration. Reason: sync activity must be diagnosable in production without adding PHI to logs.
+
+#### Crash Recovery + Background Queue Driving (`src/PTDoc.Infrastructure/BackgroundJobs/SyncRetryBackgroundService.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncRetryBackgroundService.cs`** — Expanded the existing retry hosted service into the operational queue driver: it now recovers stale `Processing` rows, delegates queue draining back to `ISyncEngine.PushAsync()`, logs cycle summaries including dead-letter counts, and respects the shared overlap lock. Reason: background sync processing should use the same hardened server path as manual sync runs instead of maintaining separate retry semantics.
+- **`SyncEngine.cs` / `RecoverInterruptedQueueItemsAsync`** — Added startup-cycle recovery for interrupted `Processing` rows, moving them back into visible failed state with sanitized server-error classification. Reason: queue state must survive app/API restarts without data loss or invisible stuck rows.
+
+#### Sync API Status, Queue, Dead-Letter, and Health Endpoints (`src/PTDoc.Api/Sync/SyncEndpoints.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`)
+- **`SyncEndpoints.cs` / `/api/v1/sync/status`** — Kept `lastSyncAt` for backward compatibility while adding `isRunning`, `pending`, `failed`, `lastSync`, `lastError`, and `deadLetterCount`. Reason: existing web callers keep working while operators gain real-time sync visibility.
+- **`SyncEndpoints.cs` / `/api/v1/sync/queue` / `/api/v1/sync/dead-letters` / `/api/v1/sync/health`** — Added new ClinicalStaff-protected sync inspection endpoints returning sanitized queue state, retry visibility, dead-letter visibility, and an operational health summary. Reason: production support needs API-level observability without introducing UI dashboards in this sprint.
+- **`ISyncEngine.cs`** — Added sync read models for queue items, dead letters, health, richer queue status, and skip-aware push/full-sync results. Reason: the hardened API surface requires explicit contracts instead of anonymous ad hoc state.
+
+#### Schema + Regression Coverage (`src/PTDoc.Infrastructure.Migrations.Sqlite/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `src/PTDoc.Infrastructure.Migrations.Postgres/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `src/PTDoc.Infrastructure.Migrations.SqlServer/Migrations/20260404120000_AddSyncQueueFailureType.cs`, `tests/PTDoc.Tests/Sync/SyncConflictResolutionTests.cs`, `tests/PTDoc.Tests/BackgroundJobs/BackgroundJobTests.cs`, `tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`, `tests/PTDoc.Tests/Security/AuthorizationCoverageTests.cs`)
+- **Provider migrations** — Added the single schema change for Sprint 3: nullable `FailureType` on `SyncQueueItems` across SQLite, Postgres, and SQL Server migration projects. Reason: failure classification must survive restarts and support queue/dead-letter inspection APIs.
+- **Tests** — Added coverage for dead-letter promotion on terminal validation failures, shared runtime status across scoped engine instances, background recovery of interrupted items, background skip behavior during overlapping runs, and RBAC coverage for the new sync queue/health endpoints. Reason: the hardened queue state machine and observability surface are release-critical and must remain regression-protected.
+
+### Fixed - Sprint 3: PR Review Feedback (Sync Pipeline Hardening)
+
+#### SyncRetryBackgroundService — Skip Recovery When Run Is Active (`src/PTDoc.Infrastructure/BackgroundJobs/SyncRetryBackgroundService.cs`)
+- **`SyncRetryBackgroundService.cs`** — Injected `ISyncRuntimeStateStore` into the constructor; `RecoverInterruptedQueueItemsAsync` is now skipped when a sync run is already active. Reason: items in `Processing` state may be legitimately held by a running cycle, and promoting them to `Failed` mid-run corrupts the pipeline state.
+
+#### SyncEngine — Honour Configured `MinRetryDelay` (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Application/BackgroundJobs/IBackgroundJobService.cs`)
+- **`SyncEngine.cs`** — The previously hardcoded `RetryDelay = 60s` constant is replaced by an instance field `_retryDelay` sourced from `IOptions<SyncRetryOptions>.MinRetryDelay`. Reason: the configured value was documented but silently ignored by `GetNextBatchAsync`; configuration now controls actual retry-window behaviour.
+
+#### SyncEndpoints — Restrict Inspection Endpoints to `AdminOnly` (`src/PTDoc.Api/Sync/SyncEndpoints.cs`)
+- **`SyncEndpoints.cs` / `/api/v1/sync/queue`, `/api/v1/sync/dead-letters`, `/api/v1/sync/health`** — Override authorization from the group `ClinicalStaff` policy to `AdminOnly`. Reason: these endpoints expose raw entity IDs and error details that can leak cross-clinic operational metadata in a multi-tenant deployment; administrator-only access is the appropriate scope.
+
+
+
+#### SyncEngine — Delete Conflict Detection (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `DetectConflict`** — Client delete against a missing server record now returns `null` (treated as already-applied/Accepted) instead of `DeletedConflict`, making idempotent deletes safe for retries. `DeletedConflict` is now only raised when the server record exists, is archived/deleted, and the client is attempting an update — not when both sides agree on deletion. Reason: prevent clients from getting stuck in a permanent conflict loop when retrying deletes for already-removed rows.
+
+#### SyncEngine — Duplicate Audit Events (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ResolveUnknownConflictAsync`** — Renamed internal audit event from `CONFLICT_DETECTED` to `CONFLICT_MANUAL_REQUIRED` to eliminate duplicate audit log rows for unknown/manual-required conflicts, since `ResolveConflictAsync` already emits `CONFLICT_DETECTED` unconditionally before dispatching to each resolver. Reason: one conflict event per resolution path — no duplicate rows.
+
+#### SyncEngine — Legacy Conflict Receipt Backward Compatibility (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ParseConflictReceipt`** — Added a `TryParseLegacyConflictReceipt` / `LooksLikeLegacyConflictMessage` fallback so pre-JSON plain-text conflict messages (e.g. "Server version is newer", "immutable", "locked") stored before the JSON envelope format are parsed as conflict receipts rather than treated as non-conflict errors. Reason: prevent behavior change for existing devices upgrading through this release where old receipts were stored as plain text.
+
+#### SyncEngine — `BuildConflictResult` Error Field Contract (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `BuildConflictResult`** — `Error` field is now `null` when `ResolutionType == LocalWins` (result `Status == "Accepted"`), matching the `ClientSyncPushItemResult.Error` contract that reserves this field for `Error`/`Conflict` statuses only. Reason: avoid confusing clients that inspect `Error` for success path filtering.
+
+#### SyncEngine — Replay Result `Error` Field Contract (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `BuildReplayResult`** — `Error` is now unconditionally `null` for `Status == "Accepted"` replay results, even when a conflict receipt is attached. Conflict details are available exclusively via the `Conflict` object. Reason: setting `Error` for an `Accepted` replay violated the push-result contract and could cause clients to treat a successful replay as an error.
+
+#### SyncEngine — Missing `OperationId` Validation (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Replaced silent `Guid.NewGuid()` generation for `OperationId == Guid.Empty` with an `ArgumentException`, forcing clients to supply an idempotency key so retries remain safe. Reason: generating a new GUID for missing keys made every retry a distinct operation, breaking the idempotency guarantee for Create operations where `ServerId` may also be empty.
+- **`SyncClientProtocolTests.cs` / `SyncEpsilonTests.cs`** — Added `OperationId = Guid.NewGuid()` to all `ClientSyncPushItem` test instances that omitted it; added `ReceiveClientPushAsync_ThrowsArgumentException_WhenOperationIdIsEmpty` test to assert the new validation behavior. Reason: tests must comply with the now-required idempotency key contract.
+
+#### Integration Test Factory — Suppress Background Services (`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`)
+- **`PtDocApiFactory.ConfigureTestServices`** — Removed all `IHostedService` registrations from the test DI container to prevent `SyncRetryBackgroundService` and `SessionCleanupBackgroundService` from racing with HTTP-request scopes on the shared in-memory SQLite connection. Reason: both services execute queries that leave SQLite prepared-statement caches active; when a new `SqliteRelationalConnection` was created by an HTTP handler, EF Core's function-registration call (`CreateFunctionCore`) failed with `SQLite Error 5: unable to delete/modify user-function due to active statements`. The `/api/v1/sync/run` endpoint exercises the full push path without requiring the background scheduler.
+
+#### Test Coverage — Delete Semantics (`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`)
+- **`SyncClientProtocolTests.cs`** — Added three delete-semantics tests: delete existing patient (accepted, entity archived), idempotent delete of missing entity (accepted, no conflict), and update of archived/server-deleted patient (DeletedConflict). Reason: ensure deterministic pipeline does not regress delete behavior.
+
+
+
+#### Deterministic Sync Conflict Resolution (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Added a single server-side conflict pipeline that loads a normalized server snapshot, detects deterministic conflict types, resolves conflicts before payload mutation, persists replayable conflict receipts, and archives the losing side in `SyncConflictArchives`. Reason: enforce one authoritative sync conflict path without duplicating logic across services.
+- **`SyncEngine.cs` / signed-note conflict handling** — Signed clinical note conflicts now fail safe by preserving the original note and creating an addendum through the existing signature/addendum flow, with deterministic JSON payload capture and non-PHI audit events. Reason: signed clinical documentation must remain immutable while still preserving offline edits.
+- **`SyncEngine.cs` / draft, intake, and delete conflict handling** — Draft conflicts now resolve via deterministic last-write-wins using `LastModifiedUtc`, locked intake conflicts reject overwrite attempts, and supported patient delete conflicts keep server deletion or mark manual resolution while preserving data. Reason: provide predictable conflict outcomes with no silent data loss.
+
+#### Shared Sync Conflict Contracts (`src/PTDoc.Application/Sync/ClientSyncProtocol.cs`, `src/PTDoc.Application/Sync/ISyncEngine.cs`)
+- **`ClientSyncProtocol.cs`** — Added structured sync conflict contracts: `ConflictType`, `ConflictResult`, and nullable `ClientSyncPushItemResult.Conflict` metadata while preserving existing response status semantics. Reason: return explicit API conflict outcomes without breaking existing sync clients.
+- **`ISyncEngine.cs`** — Extended `ConflictResolution` with `AddendumCreated`. Reason: represent signed-note conflict fallback without introducing a parallel resolution model.
+
+#### Test Coverage (`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`)
+- **Sync tests** — Added and updated coverage for draft local-wins/server-wins behavior, signed-note addendum creation, duplicate `OperationId` replay, archive preservation, and audit metadata safety. Reason: the new sync conflict rules are acceptance-critical and must stay deterministic.
+
+### Fixed - Sprint 3: PR Review Feedback (Sync Queue + Idempotency)
+
+#### SyncEngine — Processing Placeholder Before Entity Write (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Inserts a `SyncQueueStatus.Processing` receipt placeholder **before** calling `ApplyEntityFromPayloadAsync`, then promotes it to `Completed`/`Failed` in place. Concurrent requests arriving with the same `OperationId` hit a PK unique constraint on the placeholder insert and fall through to the existing replay path instead of both writing the entity. Conflict paths now update the placeholder rather than inserting a new receipt. Reason: close the race window where two concurrent retries could both pass the `existingReceipt` check and duplicate-write a create.
+
+#### LocalSyncOrchestrator — Coalesce Non-Completed Items (`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`)
+- **`LocalSyncOrchestrator.cs` / `EnqueueChangeAsync`** — Coalescing now supersedes **any** non-`Completed` queue row for the same `(EntityType, LocalEntityId)` pair — including `Failed` and `Processing` rows — not only unattempted `Pending` rows. The superseded row is reset to `Pending` with cleared retry state so it gets processed as fresh. Reason: prevent stale Failed payloads from being retried ahead of a newer update for the same entity, preserving last-write-wins semantics.
+
+#### MauiNoteDraftLocalPersistenceService — Best-Effort Enqueue (`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`)
+- **`MauiNoteDraftLocalPersistenceService.cs` / `SaveDraftAsync`** — Wrapped `EnqueueChangeAsync` in `try/catch` so a queue DB error does not bubble up and undo the already-committed `UpsertAsync` result. The draft remains persisted locally and marked `Pending`; the periodic sync scan (`EnsureQueueItemsForPendingEntitiesAsync`) will recover missing queue items. Reason: preserve offline-first UX — local save must succeed even when the sync queue DB is temporarily unavailable.
+
+#### LocalSyncCoordinator — Deterministic Loop Shutdown (`src/PTDoc.Maui/Services/LocalSyncCoordinator.cs`)
+- **`LocalSyncCoordinator.cs` / `RunLoopAsync` / `DisposeAsync`** — Added a `CancellationTokenSource` (`_loopCts`) that is created at `StartAsync` time. `WaitForNextTickAsync` now receives the loop cancellation token, and `DisposeAsync` cancels the source before awaiting `_loopTask`. `OperationCanceledException` surfaced from the cancelled tick is swallowed as normal shutdown. Reason: prevent a faulted or unobserved-exception `_loopTask` when the timer is disposed mid-await; shutdown is now deterministic and the loop exits cleanly on cancellation.
+
+### Added - Sprint 3: Offline Sync Queue Foundation
+
+#### MAUI Local Sync Queue + Background Processing
+- **`src/PTDoc.Application/LocalData/Entities/LocalSyncQueueItem.cs`**, **`src/PTDoc.Infrastructure/LocalData/LocalDbContext.cs`**, **`src/PTDoc.Infrastructure/LocalData/LocalDbInitializer.cs`** — Added a durable MAUI-side outbound sync queue persisted in local SQLite with `OperationId`, retry state, timestamps, payload JSON, and status indexes. `LocalDbInitializer` now performs idempotent schema creation for the queue table and indexes on existing device databases. Reason: offline changes must survive app restarts and be retried safely.
+- **`src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`**, **`src/PTDoc.Application/LocalData/ILocalSyncOrchestrator.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`** — Reworked the local sync orchestrator around ordered queue execution instead of scanning all pending entities, added `EnqueueChangeAsync`, crash recovery for interrupted `Processing` rows, bounded retry/backoff, and queue-driven note draft enqueueing. Reason: provide a real offline-first sync pipeline foundation without introducing a second sync system.
+
+#### MAUI Sync Runtime Wiring
+- **`src/PTDoc.Maui/Services/LocalSyncCoordinator.cs`**, **`src/PTDoc.Maui/Services/MauiConnectivityService.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`src/PTDoc.Maui/App.xaml.cs`** — Added an app-lifetime MAUI sync coordinator with a 15-second background loop, MAUI-native connectivity detection, singleton sync state sharing, and startup wiring that begins background sync after local DB initialization. Reason: automatic sync should run continuously when the device is online without blocking the UI thread.
+
+#### Server Idempotency + Sync Audit Events
+- **`src/PTDoc.Application/Sync/ClientSyncProtocol.cs`**, **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`**, **`src/PTDoc.Application/Compliance/IAuditService.cs`**, **`src/PTDoc.Infrastructure/Compliance/AuditService.cs`** — Added `OperationId` to the client push protocol, implemented duplicate-operation replay on the server receipt path using the existing `SyncQueueItem` ledger, and introduced `SYNC_START` / `SYNC_SUCCESS` / `SYNC_FAILURE` audit events with non-PHI metadata only. Reason: retries must not create duplicate records and sync activity must be observable without leaking PHI.
+
+#### Test Coverage
+- **`tests/PTDoc.Tests/LocalData/LocalSyncOrchestratorTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`**, **`tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`** — Added coverage for local queue coalescing, retry backoff gating, interrupted-processing recovery, duplicate `OperationId` replay, and sync audit-event PHI safety. Reason: sync queue state transitions and idempotent receipt behavior are acceptance-critical.
 ### Fixed - CI test failures from Sprint II security hardening
 
 - **`tests/PTDoc.Tests/Compliance/HashServiceTests.cs`** — Replaced `GenerateHash_ContentOrTimestampChange_ReturnsDifferentHash` with two precise tests: `GenerateHash_ContentChange_ReturnsDifferentHash` (content changes produce a different hash) and `GenerateHash_MetadataOnlyChange_ReturnsSameHash` (changing only `LastModifiedUtc` now correctly produces the *same* hash, documenting the intentional exclusion of sync metadata from the canonical signature document). Reason: after `LastModifiedUtc` was removed from the canonical hash the original test, which asserted both content and timestamp changes produce different hashes, began failing.

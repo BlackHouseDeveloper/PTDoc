@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -724,6 +725,35 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
     [Fact]
     [Trait("Category", "RBAC")]
+    public async Task Admin_Can_Access_Sync_Queue_And_Health_Return_200()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+
+        using var queueResponse = await client.GetAsync("/api/v1/sync/queue");
+        using var healthResponse = await client.GetAsync("/api/v1/sync/health");
+
+        Assert.Equal(HttpStatusCode.OK, queueResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task PT_Cannot_Access_Sync_Queue_Or_Health_Returns_403()
+    {
+        // Sync inspection endpoints are restricted to AdminOnly (Admin, Owner).
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var queueResponse = await client.GetAsync("/api/v1/sync/queue");
+        using var healthResponse = await client.GetAsync("/api/v1/sync/health");
+        using var deadLettersResponse = await client.GetAsync("/api/v1/sync/dead-letters");
+
+        Assert.Equal(HttpStatusCode.Forbidden, queueResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, healthResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, deadLettersResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Access_Sync_Returns_403()
     {
         // Billing is NOT in ClinicalStaff policy.
@@ -741,6 +771,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
 
         using var response = await client.GetAsync("/api/v1/sync/status");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task Billing_Cannot_Access_Sync_Queue_Returns_403()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Billing);
+
+        using var response = await client.GetAsync("/api/v1/sync/queue");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -1079,6 +1120,21 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
         builder.ConfigureTestServices(services =>
         {
+            // ── Suppress background hosted services to prevent race conditions ─────────
+            // The SyncRetryBackgroundService and SessionCleanupBackgroundService both
+            // access the shared in-memory SQLite connection. Running concurrently with
+            // HTTP-request scopes causes SQLite Error 5 ('unable to delete/modify
+            // user-function due to active statements') when EF Core's SqliteRelational-
+            // Connection tries to register custom functions on an already-open connection
+            // that has active prepared statements. Integration tests do not depend on
+            // background sync processing — the manual /api/v1/sync/run endpoint exercises
+            // the full push path without the background scheduler.
+            var hostedServices = services
+                .Where(d => d.ServiceType == typeof(IHostedService))
+                .ToList();
+            foreach (var d in hostedServices)
+                services.Remove(d);
+
             // ── Replace ApplicationDbContext with a shared in-memory SQLite database ──
             var descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>) ||

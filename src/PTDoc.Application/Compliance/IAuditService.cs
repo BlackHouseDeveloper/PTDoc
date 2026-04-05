@@ -64,6 +64,12 @@ public interface IAuditService
     /// NO PHI — only intake identity and action metadata.
     /// </summary>
     Task LogIntakeEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs a sync pipeline event.
+    /// NO PHI — only entity identity, operation identity, status, and timestamps.
+    /// </summary>
+    Task LogSyncEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -484,6 +490,45 @@ public class AuditEvent
                 ["HasWrittenReference"] = hasWrittenReference,
                 ["Timestamp"] = DateTime.UtcNow
             }
+        };
+    }
+
+    public static AuditEvent SyncEvent(
+        string eventType,
+        string entityType,
+        Guid entityId,
+        Guid operationId,
+        string status,
+        Guid? userId = null,
+        bool success = true,
+        string? errorMessage = null,
+        Dictionary<string, object>? additionalMetadata = null)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["OperationId"] = operationId,
+            ["Status"] = status,
+            ["Timestamp"] = DateTime.UtcNow
+        };
+
+        if (additionalMetadata is not null)
+        {
+            foreach (var pair in additionalMetadata)
+            {
+                metadata[pair.Key] = pair.Value;
+            }
+        }
+
+        return new AuditEvent
+        {
+            EventType = eventType,
+            Severity = success ? "Info" : "Warning",
+            Success = success,
+            ErrorMessage = errorMessage,
+            UserId = userId,
+            EntityType = entityType,
+            EntityId = entityId,
+            Metadata = metadata
         };
     }
 }
