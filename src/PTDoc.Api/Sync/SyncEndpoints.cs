@@ -315,6 +315,7 @@ public static class SyncEndpoints
             var items = await syncEngine.GetQueueItemsAsync();
             return Results.Ok(items.Select(item => new
             {
+                id = item.Id,
                 entityType = item.EntityType,
                 entityId = item.EntityId,
                 operationType = item.OperationType.ToString(),
@@ -344,6 +345,7 @@ public static class SyncEndpoints
             var items = await syncEngine.GetDeadLetterItemsAsync();
             return Results.Ok(items.Select(item => new
             {
+                id = item.Id,
                 entityType = item.EntityType,
                 entityId = item.EntityId,
                 operationType = item.OperationType.ToString(),
@@ -351,8 +353,7 @@ public static class SyncEndpoints
                 retryCount = item.RetryCount,
                 lastAttempt = item.LastAttemptAt,
                 failureType = item.FailureType?.ToString(),
-                errorMessage = item.ErrorMessage,
-                finalFailureReason = item.ErrorMessage
+                errorMessage = item.ErrorMessage
             }));
         }
         catch (Exception ex)

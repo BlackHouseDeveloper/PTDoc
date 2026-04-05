@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Review Feedback: Sync + Compliance + Notes API Corrections
+
+#### Co-Sign Response Flag
+- **`ComplianceEndpoints.cs` / `CoSignNote`** — Fixed `requiresCoSign` in the success response from `true` to `false`. Affects: `src/PTDoc.Api/Compliance/ComplianceEndpoints.cs`. Reason: after a successful PT co-sign the note no longer requires co-signature; returning `true` was misleading clients and could keep notes stuck in a "pending co-sign" UX state.
+
+#### Sync Queue Inspection — Item Identifier
+- **`SyncEndpoints.cs` / `GetSyncQueue` + `GetDeadLetters`** — Added `id = item.Id` to the projection returned by both `/api/v1/sync/queue` and `/api/v1/sync/dead-letters`. Affects: `src/PTDoc.Api/Sync/SyncEndpoints.cs`. Reason: without the record identifier operators cannot correlate an API row to a specific persisted `SyncQueueItem` for support or debugging, especially when multiple items share the same `entityId` across operations.
+
+#### Dead-Letters Response — Removed Duplicate Field
+- **`SyncEndpoints.cs` / `GetDeadLetters`** — Removed the duplicate `finalFailureReason` field that was set to the same value as `errorMessage`. Affects: `src/PTDoc.Api/Sync/SyncEndpoints.cs`. Reason: identical fields increase payload noise and create ambiguity about which field clients should read.
+
+#### Addendum ParentNoteId — Nullable Type
+- **`NoteDtos.cs` / `NoteAddendumResponse`** — Changed `ParentNoteId` from `Guid` to `Guid?`. Affects: `src/PTDoc.Application/DTOs/NoteDtos.cs`. Reason: the previous `Guid` type required a `?? Guid.Empty` fallback that produced a misleading valid-looking identifier for addendums whose parent link is absent.
+- **`NoteEndpoints.cs` / `MapLinkedAddendum`** — Removed the `?? Guid.Empty` fallback and assigns `note.ParentNoteId` directly. Affects: `src/PTDoc.Api/Notes/NoteEndpoints.cs`. Reason: `Guid.Empty` silently obscured missing-parent data; nullable propagation makes the absence explicit and easier to diagnose downstream.
+
 ### Fixed - Sync Addendum Runtime + Test Regression
 
 #### Addendum Service DI Cycle + Queue Enqueue

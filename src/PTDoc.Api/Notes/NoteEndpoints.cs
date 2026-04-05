@@ -890,7 +890,7 @@ public static class NoteEndpoints
     private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note) => new()
     {
         Id = note.Id,
-        ParentNoteId = note.ParentNoteId ?? Guid.Empty,
+        ParentNoteId = note.ParentNoteId,
         IsLegacy = false,
         IsSigned = note.IsFinalized,
         CreatedUtc = note.CreatedUtc,

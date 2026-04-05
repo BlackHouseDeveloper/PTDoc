@@ -194,7 +194,7 @@ public static class ComplianceEndpoints
                 {
                     success = true,
                     status = NoteStatus.Signed.ToString(),
-                    requiresCoSign = true,
+                    requiresCoSign = false,
                     coSignedUtc = result.CoSignedUtc
                 });
             })

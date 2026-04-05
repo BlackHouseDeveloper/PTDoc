@@ -165,7 +165,7 @@ public sealed class NoteDetailResponse
 public sealed class NoteAddendumResponse
 {
     public Guid Id { get; set; }
-    public Guid ParentNoteId { get; set; }
+    public Guid? ParentNoteId { get; set; }
     public bool IsLegacy { get; set; }
     public bool IsSigned { get; set; }
     public DateTime CreatedUtc { get; set; }
