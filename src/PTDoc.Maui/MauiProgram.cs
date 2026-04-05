@@ -10,6 +10,7 @@ using PTDoc.Application.LocalData;
 using PTDoc.Application.Security;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
+using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.LocalData;
 using PTDoc.Infrastructure.Services;
 using PTDoc.UI.Services;
@@ -62,14 +63,15 @@ public static class MauiProgram
 		// to generate and retrieve the per-device SQLCipher encryption key.
 		//
 		// The SqliteConnection is registered as a Singleton because:
-		//   • It holds the SQLCipher authentication state (PRAGMA key).
-		//   • Closing and reopening it would require re-authenticating.
+		//   • It holds the SQLCipher-authenticated open connection state.
+		//   • Closing and reopening it would require rebuilding the encrypted connection.
 		//
 		// LocalDbContext is registered as Scoped so each DI scope (UI component,
 		// background task) gets its own EF Core context instance.  EF Core does not
 		// dispose connections it does not own, so the shared Singleton connection
 		// remains open across all context lifetimes.
 		// ----------------------------------------------------------------
+		SqliteProviderBootstrapper.EnsureInitialized();
 		builder.Services.AddSingleton<IDbKeyProvider, SecureStorageDbKeyProvider>();
 
 		builder.Services.AddSingleton<SqliteConnection>(sp =>
@@ -82,20 +84,15 @@ public static class MauiProgram
 
 			var dbPath = Path.Combine(FileSystem.AppDataDirectory, "ptdoc_local.db");
 
-			// Open the connection manually so we can run PRAGMA key before EF Core
-			// sees the connection.  This is required for SQLCipher encryption.
-			var connection = new SqliteConnection($"Data Source={dbPath}");
-			connection.Open();
-
-			using (var command = connection.CreateCommand())
+			// Open the encrypted connection before EF Core sees it so the
+			// SQLCipher password is applied at connection-open time.
+			var connectionString = new SqliteConnectionStringBuilder
 			{
-				command.CommandText = "PRAGMA key = $key;";
-				var param = command.CreateParameter();
-				param.ParameterName = "$key";
-				param.Value = key;
-				command.Parameters.Add(param);
-				command.ExecuteNonQuery();
-			}
+				DataSource = dbPath,
+				Password = key
+			}.ToString();
+			var connection = new SqliteConnection(connectionString);
+			connection.Open();
 
 			return connection;
 		});

@@ -29,6 +29,7 @@ and single-node deployments are safe.
 | Tenant Isolation | `tenant-gate` | `[Category=Tenancy]` | Must pass |
 | Offline Sync / Conflict Resolution | `offline-sync-gate` | `[Category=OfflineSync]` | Must pass |
 | Clinical Compliance Rules | `compliance-gate` | `[Category=Compliance]` | Must pass |
+| End-to-End Workflow | `e2e-workflow-gate` | `[Category=EndToEnd]` | Must pass |
 | Release Summary + Artifact | `release-summary` | (aggregates above) | Must pass |
 
 ### 2.2 Database Migration Gates (`ci-db.yml`)
@@ -51,9 +52,9 @@ and single-node deployments are safe.
 
 | Gate | Job | Scope |
 |------|-----|-------|
-| Build + all tests | `build-and-test` | All projects, full test suite |
+| Build test dependency graph | `build-and-test` | `tests/PTDoc.Tests/PTDoc.Tests.csproj` and project references |
 | Format check | `build-and-test` | `dotnet format --verify-no-changes` |
-| MAUI iOS build | `maui-ios-validation` | `net8.0-ios` simulator build |
+| Core owner tests | `build-and-test` | `[Category=CoreCi]` |
 
 ---
 
@@ -63,15 +64,15 @@ and single-node deployments are safe.
 
 | Category | Test Files | CI Gate |
 |----------|-----------|---------|
-| `RBAC` | `Security/RbacRoleMatrixTests.cs` | `ci-release-gate.yml` — `rbac-gate` |
+| `RBAC` | `Security/RbacRoleMatrixTests.cs`, `Security/AuthorizationCoverageTests.cs`, `Security/RbacHttpSmokeTests.cs` | `ci-release-gate.yml` — `rbac-gate` |
 | `Tenancy` | `Tenancy/TenantIsolationTests.cs` | `ci-release-gate.yml` — `tenant-gate` |
-| `OfflineSync` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `Integration/SyncIntegrationTests.cs` | `ci-release-gate.yml` — `offline-sync-gate` |
+| `OfflineSync` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `LocalData/LocalSyncOrchestratorTests.cs` | `ci-release-gate.yml` — `offline-sync-gate` |
 | `Compliance` | `Compliance/RulesEngineTests.cs`, `Compliance/SignatureServiceTests.cs`, `Compliance/NoteComplianceIntegrationTests.cs` | `ci-release-gate.yml` — `compliance-gate` |
-| `DatabaseProvider` | `Integration/DatabaseProviderMigrationTests.cs`, `Integration/SprintQSmokeCrudTests.cs`, `Integration/ProviderCompatibilityTests.cs` | `ci-db.yml` |
+| `EndToEnd` | `Integration/EndToEndWorkflowTests.cs` | `ci-release-gate.yml` — `e2e-workflow-gate` |
+| `DatabaseProvider` | `Integration/DatabaseProviderSmokeTests.cs` | `ci-db.yml` |
 | `Observability` | `Integration/ObservabilityTests.cs` | `ci-db.yml` — `db-migration-validate` |
-| `SecretPolicy` | `Security/ConfigurationValidationTests.cs` | `ci-secret-policy.yml` |
-| `Security` | `Security/AuthAuditTests.cs`, `Security/SecurityHeadersTests.cs` | `ci-core.yml` (all tests) |
-| `ProductionConfig` | `Integration/ProductionConfigurationTests.cs` | `ci-core.yml` (all tests) |
+| `SecretPolicy` | `Security/SecretPolicyScanTests.cs` | `ci-secret-policy.yml` |
+| `CoreCi` | `Security/AuthAuditTests.cs`, `Security/SecurityHeadersTests.cs`, `Integration/ProductionConfigurationTests.cs`, `Integration/SqlCipherAccessTests.cs` | `ci-core.yml` |
 
 ### 3.2 RBAC Coverage
 
@@ -185,7 +186,7 @@ alerts should be open at release time. See `codeql.yml` for current status.
 | Item | Status | Rationale |
 |------|--------|-----------|
 | Multi-node distributed lock (background jobs) | ⚠️ Single-node only | Sprint T prohibits new dev scope. Background services (`SyncRetryBackgroundService`, `SessionCleanupBackgroundService`) are safe in single-node deployments. Distributed lock (e.g., Redis) would be required for horizontal scaling. |
-| MAUI iOS/Android device-level testing | ⚠️ Simulator only | CI builds for `net8.0-ios` simulator; physical device testing is a manual pre-release step. |
+| MAUI iOS/Android device-level testing | ⚠️ Manual only | No active CI workflow builds `PTDoc.Maui`; simulator/device validation remains a manual pre-release step. |
 
 ---
 
@@ -195,10 +196,10 @@ The following checklist must be satisfied before tagging a release:
 
 ### Automated (CI must be green)
 
-- [ ] `ci-release-gate.yml` — all gates pass (`rbac-gate`, `tenant-gate`, `offline-sync-gate`, `compliance-gate`, `release-summary`)
+- [ ] `ci-release-gate.yml` — all gates pass (`rbac-gate`, `tenant-gate`, `offline-sync-gate`, `compliance-gate`, `e2e-workflow-gate`, `release-summary`)
 - [ ] `ci-db.yml` — all jobs pass (`db-sqlite`, `db-sqlserver`, `db-postgres`, `db-migration-validate`)
 - [ ] `ci-secret-policy.yml` — `secret-policy-scan` job passes
-- [ ] `ci-core.yml` — `build-and-test` job passes (all tests, format check)
+- [ ] `ci-core.yml` — `build-and-test` job passes (`[Category=CoreCi]` + format check)
 - [ ] `codeql.yml` — no new critical/high alerts
 
 ### Documentation and Manual Verification

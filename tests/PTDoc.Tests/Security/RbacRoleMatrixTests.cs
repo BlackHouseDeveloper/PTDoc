@@ -208,6 +208,15 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, Roles.Patient));
     }
 
+    [Theory]
+    [InlineData(Roles.Billing)]
+    [InlineData(Roles.Owner)]
+    [InlineData(Roles.FrontDesk)]
+    public async Task NoteWrite_NonClinicalRoles_AreNotAuthorized(string role)
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.NoteWrite, role));
+    }
+
     // ─── PatientRead policy role matrix ─────────────────────────────────────
 
     [Fact]
@@ -231,6 +240,22 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     {
         // Therapy aide is view-only for patient demographics
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, Roles.Aide));
+    }
+
+    [Fact]
+    public async Task PatientWrite_Owner_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, Roles.Owner));
+    }
+
+    [Theory]
+    [InlineData(Roles.Billing)]
+    [InlineData(Roles.FrontDesk)]
+    [InlineData(Roles.Patient)]
+    [InlineData(Roles.Aide)]
+    public async Task PatientWrite_NonWriterRoles_AreNotAuthorized(string role)
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, role));
     }
 
     // ─── NoteRead policy role matrix ─────────────────────────────────────────
@@ -269,6 +294,21 @@ public class RbacRoleMatrixTests : IAsyncDisposable
     public async Task IntakeRead_Aide_IsNotAuthorized()
     {
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeRead, Roles.Aide));
+    }
+
+    [Fact]
+    public async Task IntakeWrite_Owner_IsNotAuthorized()
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeWrite, Roles.Owner));
+    }
+
+    [Theory]
+    [InlineData(Roles.Billing)]
+    [InlineData(Roles.Aide)]
+    [InlineData(Roles.Patient)]
+    public async Task IntakeWrite_NonWriterRoles_AreNotAuthorized(string role)
+    {
+        Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.IntakeWrite, role));
     }
 
     // ─── PTA domain guard: cannot sign Eval/PN/DC notes ─────────────────────
@@ -490,6 +530,31 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.False(await EvaluatePolicyAsync(AuthorizationPolicies.AdminOnly, Roles.Patient));
     }
 
+    [Theory]
+    [InlineData(Roles.PT, true)]
+    [InlineData(Roles.PTA, false)]
+    [InlineData(Roles.Admin, false)]
+    [InlineData(Roles.Owner, false)]
+    [InlineData(Roles.Billing, false)]
+    public async Task NoteCoSign_Roles_MatchPolicy(string role, bool expectedAuthorized)
+    {
+        Assert.Equal(expectedAuthorized, await EvaluatePolicyAsync(AuthorizationPolicies.NoteCoSign, role));
+    }
+
+    [Theory]
+    [InlineData(Roles.PT, true)]
+    [InlineData(Roles.PTA, true)]
+    [InlineData(Roles.Admin, true)]
+    [InlineData(Roles.Patient, false)]
+    [InlineData(Roles.FrontDesk, false)]
+    [InlineData(Roles.Aide, false)]
+    [InlineData(Roles.Billing, false)]
+    [InlineData(Roles.Owner, false)]
+    public async Task NoteExport_Roles_MatchPolicy(string role, bool expectedAuthorized)
+    {
+        Assert.Equal(expectedAuthorized, await EvaluatePolicyAsync(AuthorizationPolicies.NoteExport, role));
+    }
+
     [Fact]
     public void RegisteredPolicies_IncludesAdminOnlyPolicy()
     {
@@ -517,51 +582,6 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.DoesNotContain(Roles.Aide, adminOnlyRoles);
         Assert.DoesNotContain(Roles.Patient, adminOnlyRoles);
         Assert.DoesNotContain(Roles.FrontDesk, adminOnlyRoles);
-    }
-
-    // ─── Encryption key policy ───────────────────────────────────────────────
-
-    [Fact]
-    public async Task EnvironmentDbKeyProvider_WithoutEnvVar_ThrowsWithoutDevFallback()
-    {
-        // Sprint P: the deterministic dev fallback key has been removed.
-        // The provider must fail-closed in all environments when the key is not set.
-        var previousKey = Environment.GetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY");
-        var previousEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-
-        Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", null);
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-
-        try
-        {
-            var provider = new PTDoc.Infrastructure.Security.EnvironmentDbKeyProvider();
-            await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetKeyAsync());
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", previousKey);
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", previousEnv);
-        }
-    }
-
-    [Fact]
-    public async Task EnvironmentDbKeyProvider_WithValidEnvVar_ReturnsKey()
-    {
-        var testKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-        var previousKey = Environment.GetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY");
-
-        Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", testKey);
-
-        try
-        {
-            var provider = new PTDoc.Infrastructure.Security.EnvironmentDbKeyProvider();
-            var key = await provider.GetKeyAsync();
-            Assert.Equal(testKey, key);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("PTDOC_DB_ENCRYPTION_KEY", previousKey);
-        }
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────

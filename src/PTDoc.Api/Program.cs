@@ -275,6 +275,7 @@ else if (string.Equals(dbProvider, "Postgres", StringComparison.OrdinalIgnoreCas
 else if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase) && encryptionEnabled)
 {
     // Encrypted SQLite mode
+    SqliteProviderBootstrapper.EnsureInitialized();
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
         // Get and validate encryption key
@@ -289,20 +290,15 @@ else if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase)
                 $"Database encryption key must be at least {minKeyLength} characters for SQLCipher.");
         }
 
-        // Create connection and set encryption key BEFORE opening
-        var connection = new SqliteConnection($"Data Source={dbPath}");
-        connection.Open();
-
-        // Set SQLCipher PRAGMA key
-        using (var command = connection.CreateCommand())
+        var connectionString = new SqliteConnectionStringBuilder
         {
-            command.CommandText = "PRAGMA key = $key;";
-            var keyParameter = command.CreateParameter();
-            keyParameter.ParameterName = "$key";
-            keyParameter.Value = key;
-            command.Parameters.Add(keyParameter);
-            command.ExecuteNonQuery();
-        }
+            DataSource = dbPath,
+            Password = key
+        }.ToString();
+
+        // Open the encrypted connection before handing it to EF Core
+        var connection = new SqliteConnection(connectionString);
+        connection.Open();
 
         // Pass the pre-opened, encrypted connection to EF
         options.UseSqlite(connection,

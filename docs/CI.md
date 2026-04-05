@@ -30,10 +30,10 @@ This document outlines continuous integration and deployment standards for PTDoc
 
 ### `ci-core.yml` – Core Build & Test
 Runs on every pull request against `main`. Validates:
-- Build of all core projects (Core, Application, Infrastructure, AI, Integrations, API)
-- All unit and integration tests in `tests/PTDoc.Tests/`
+- Restore/build of the single `tests/PTDoc.Tests/PTDoc.Tests.csproj` dependency graph
 - `dotnet format` style checks
-- MAUI iOS simulator build on macOS
+- `[Category=CoreCi]` tests only
+- Superseded PR runs are canceled via workflow concurrency
 
 ### `ci-db.yml` – Database Provider CI (Sprint C) + Migration Validation (Sprint F)
 Runs on every pull request against `main`. Validates database schema and persistence across all supported providers using a **provider matrix**. See [Database Provider Testing](#database-provider-testing) below.
@@ -44,9 +44,9 @@ The workflow also includes the `db-migration-validate` job (Sprint F) that verif
 Static analysis via GitHub CodeQL on every pull request.
 
 ### `ci-secret-policy.yml` – Secret Policy Enforcement (Sprint K)
-Runs on every pull request against `main`. Enforces the PFPT secret management policy:
+Runs on every pull request against `main` and every push to `main`. Enforces the PFPT secret management policy:
 - Scans tracked JSON config files for real signing keys (non-placeholder, non-empty values).
-- Runs `[Category=SecretPolicy]` tests, which assert the same invariant via the .NET configuration stack.
+- Runs `[Category=SecretPolicy]` tests, which enumerate the same tracked files and apply the shared rules manifest used by the workflow helper.
 
 See [Secret Policy CI (Sprint K)](#secret-policy-ci-sprint-k) below.
 
@@ -63,8 +63,10 @@ Add this check as a **required status check** in your branch protection / rulese
 - If the change genuinely needs no changelog entry (e.g., a typo fix, CI-only change), apply the `no-changelog` label to the PR to bypass the gate.
 
 ### `ci-release-gate.yml` – Release Gate Suite (Sprint T)
-Runs on every pull request against `main` and on every push to `main`. The final CI gate
+Runs on every pull request against `main` and on manual dispatch. The final CI gate
 suite required for release readiness. See [Release Gate CI (Sprint T)](#release-gate-ci-sprint-t) below.
+
+Legacy workflows `phase8-validation.yml` and `update-docs-on-merge.yml` have been retired. Current CI uses the workflows above plus reusable gate logic under `.github/workflows/_dotnet-category-gate.yml`.
 
 ---
 
@@ -76,26 +78,27 @@ suite required for release readiness. See [Release Gate CI (Sprint T)](#release-
 
 | Job | Provider | Container Service | Tests |
 |---|---|---|---|
-| `db-sqlite` | SQLite (in-memory) | None | `MigrateAsync()` + persistence |
-| `db-sqlserver` | Microsoft SQL Server 2022 | `mcr.microsoft.com/mssql/server:2022-latest` | `EnsureCreated()` + persistence |
-| `db-postgres` | PostgreSQL 16 | `postgres:16-alpine` | `EnsureCreated()` + persistence |
+| `db-sqlite` | SQLite (in-memory) | None | `DatabaseProviderSmokeTests` |
+| `db-sqlserver` | Microsoft SQL Server 2022 | `mcr.microsoft.com/mssql/server:2022-latest` | `DatabaseProviderSmokeTests` |
+| `db-postgres` | PostgreSQL 16 | `postgres:16-alpine` | `DatabaseProviderSmokeTests` |
 
 ### What Is Validated
 
 For each provider, the tests assert that:
 
-1. **Schema creation** – All entity tables (`Patients`, `Users`, `ClinicalNotes`, etc.) can be created.
-2. **Migration application** – SQLite uses `MigrateAsync()` to apply all existing EF migrations. SQL Server and PostgreSQL use `EnsureCreated()` (provider-specific migrations are planned for a future sprint).
-3. **Data persistence** – A `Patient` entity can be inserted and retrieved from the database.
-4. **Schema completeness** – Every `DbSet<T>` in `ApplicationDbContext` is queryable without error.
+1. **Migration application** – SQLite applies migrations through `MigrateAsync()`. SQL Server and PostgreSQL first validate the provider-specific `dotnet ef database update` path in CI, then the smoke test verifies the already-migrated schema without applying migrations a second time.
+2. **Schema queryability** – Core sets such as `Clinics`, `Patients`, `Users`, `IntakeForms`, `ClinicalNotes`, `ObjectiveMetrics`, and `RuleOverrides` can all be queried without schema errors.
+3. **Data persistence** – A clinic/patient/user/intake/note/objective-metric/override graph can be inserted and retrieved successfully.
+4. **Provider portability** – The same smoke assertions execute against SQLite, SQL Server, and PostgreSQL using the provider selected by `DB_PROVIDER`.
 
 ### CI Failure Conditions
 
 CI fails (and the PR is blocked) if:
 
 - Any migration cannot be applied.
-- `EnsureCreated()` fails for SQL Server or PostgreSQL (indicates a model incompatibility).
-- Persistence operations fail (insert/retrieve round-trip).
+- The SQL Server or PostgreSQL design-time `dotnet-ef` path cannot resolve the provider-specific migration assembly or startup wiring.
+- Queryability fails for any required set.
+- Persistence operations fail for the smoke graph.
 - Provider-specific SQL syntax errors surface.
 
 ### Container Services Configuration
@@ -135,7 +138,7 @@ The integration tests read:
 | `DB_PROVIDER` | Selects provider: `sqlite`, `sqlserver`, `postgres` |
 | `Database__ConnectionString` | Connection string for SQL Server or PostgreSQL |
 
-When `DB_PROVIDER` is not set (local dev), all SQL Server and PostgreSQL tests skip automatically.
+When `DB_PROVIDER` is not set (local dev), the suite defaults to SQLite. Unsupported `DB_PROVIDER` values fail fast instead of silently falling back to SQLite.
 
 ### How to Reproduce CI Database Tests Locally
 
@@ -161,9 +164,19 @@ docker exec sqlserver-ci \
   -S localhost -U sa -P 'CI_Strong!Passw0rd' -C \
   -Q "CREATE DATABASE PTDoc_CI;"
 
+# Validate EF CLI migrations (matches CI)
+EF_PROVIDER=sqlserver \
+Database__ConnectionString="Server=localhost,1433;Database=PTDoc_CI;User Id=sa;Password=CI_Strong!Passw0rd;TrustServerCertificate=True" \
+Jwt__SigningKey=ci-sqlserver-ephemeral-key-migration-apply-placeholder \
+dotnet tool run dotnet-ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.SqlServer \
+  -s src/PTDoc.Api \
+  --context PTDoc.Infrastructure.Data.ApplicationDbContext
+
 # Run tests
 DB_PROVIDER=sqlserver \
 Database__ConnectionString="Server=localhost,1433;Database=PTDoc_CI;User Id=sa;Password=CI_Strong!Passw0rd;TrustServerCertificate=True" \
+CI_DB_MIGRATIONS_ALREADY_APPLIED=true \
 dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=DatabaseProvider" \
   --verbosity normal
@@ -179,9 +192,19 @@ docker run -d --name postgres-ci \
   -p 5432:5432 \
   postgres:16-alpine
 
+# Validate EF CLI migrations (matches CI)
+EF_PROVIDER=postgres \
+Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_ci;Username=ptdoc_ci;Password=ci_postgres_pass" \
+Jwt__SigningKey=ci-postgres-ephemeral-key-migration-apply-placeholder \
+dotnet tool run dotnet-ef database update \
+  -p src/PTDoc.Infrastructure.Migrations.Postgres \
+  -s src/PTDoc.Api \
+  --context PTDoc.Infrastructure.Data.ApplicationDbContext
+
 # Run tests
 DB_PROVIDER=postgres \
 Database__ConnectionString="Host=localhost;Port=5432;Database=ptdoc_ci;Username=ptdoc_ci;Password=ci_postgres_pass" \
+CI_DB_MIGRATIONS_ALREADY_APPLIED=true \
 dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=DatabaseProvider" \
   --verbosity normal
@@ -226,14 +249,15 @@ EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes \
 ## Secret Policy CI (Sprint K)
 
 **Sprint K** introduced `ci-secret-policy.yml` to enforce the PFPT secret management policy on every
-pull request. The policy and its rationale are documented in `docs/REMEDIATION_BASELINE.md`.
+pull request to `main` and every push to `main`. The policy and its rationale are documented in
+`docs/REMEDIATION_BASELINE.md`.
 
 ### What the Job Does
 
 | Step | Description |
 |------|-------------|
-| Config file scan | Uses `git ls-files` to enumerate all tracked `appsettings*.json` files, then verifies that any `Jwt:SigningKey` or `IntakeInvite:SigningKey` present is either empty or a known placeholder. JSON parse errors cause an explicit failure (not a silent pass). |
-| `[Category=SecretPolicy]` tests | Runs `ConfigurationValidationTests` tests tagged `SecretPolicy`, which assert the same invariant independently through the .NET configuration stack. |
+| Config file scan | Uses `git ls-files` to enumerate all tracked `appsettings*.json` files, then verifies that any `Jwt:SigningKey` or `IntakeInvite:SigningKey` present is either empty or a known placeholder. JSON parse errors cause an explicit failure (not a silent pass). The workflow helper reads both tracked-file globs and placeholder rules from `.github/scripts/secret_policy_rules.json`. |
+| `[Category=SecretPolicy]` tests | Runs `SecretPolicyScanTests`, which execute the same tracked-file enumeration (`git ls-files`) and shared rules manifest as the workflow helper. |
 
 ### When It Fails
 
@@ -252,6 +276,9 @@ The job blocks merging when:
 ### Running Locally
 
 ```bash
+# Run the workflow helper directly
+python3 .github/scripts/scan_secret_policy.py
+
 # Run SecretPolicy tests
 dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=SecretPolicy" \
@@ -263,27 +290,32 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
 ## Release Gate CI (Sprint T)
 
 **Sprint T** introduced `ci-release-gate.yml` to serve as the final CI gate suite for
-release readiness validation. It runs on every pull request against `main` and on every
-push to `main`.
+release readiness validation. It runs on every pull request against `main` and on
+manual dispatch.
 
 ### Gate Jobs
 
 | Job | Filter | Purpose |
 |-----|--------|---------|
-| `rbac-gate` | `Category=RBAC` | Validates RBAC policy enforcement (role matrix, PTA restrictions, policy constants) |
+| `rbac-gate` | `Category=RBAC` | Validates the RBAC owner suites: policy matrix, route authorization coverage, and HTTP smoke checks |
 | `tenant-gate` | `Category=Tenancy` | Validates tenant isolation (EF query filters, ClinicId scoping, cross-clinic data gating) |
-| `offline-sync-gate` | `Category=OfflineSync` | Validates offline sync protocol, conflict resolution (LWW, signed immutability, intake locking), and encrypted sync queue persistence |
-| `compliance-gate` | `Category=Compliance` | Validates Medicare rules engine (PN frequency, eval/discharge timing), note immutability, and audit trail |
+| `offline-sync-gate` | `Category=OfflineSync` | Validates offline sync protocol, conflict resolution (LWW, signed immutability, intake locking), queue state handling, and role-based sync scoping |
+| `compliance-gate` | `Category=Compliance` | Validates compliance rule orchestration, signature/co-sign flows, and audit trail behavior |
+| `e2e-workflow-gate` | `Category=EndToEnd` | Validates the full HTTP workflow harness without double-counting RBAC owner tests |
 | `release-summary` | (aggregates above) | Checks all gates passed, generates a timestamped release readiness checklist artifact |
 
 ### Test Category Coverage
 
-The following test files are tagged and must pass their respective gate:
+The CI owner categories are intentionally exclusive. `ci-core.yml` runs `[Category=CoreCi]`, and each release/database workflow filters one of the gate categories below.
 
-| `[Category=RBAC]` | `Security/RbacRoleMatrixTests.cs` |
+| `[Category=RBAC]` | `Security/RbacRoleMatrixTests.cs`, `Security/AuthorizationCoverageTests.cs`, `Security/RbacHttpSmokeTests.cs` |
 | `[Category=Tenancy]` | `Tenancy/TenantIsolationTests.cs` |
-| `[Category=OfflineSync]` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `Integration/SyncIntegrationTests.cs` |
+| `[Category=OfflineSync]` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `LocalData/LocalSyncOrchestratorTests.cs` |
 | `[Category=Compliance]` | `Compliance/RulesEngineTests.cs`, `Compliance/SignatureServiceTests.cs`, `Compliance/NoteComplianceIntegrationTests.cs` |
+| `[Category=EndToEnd]` | `Integration/EndToEndWorkflowTests.cs` |
+| `[Category=SecretPolicy]` | `Security/SecretPolicyScanTests.cs` |
+| `[Category=Observability]` | `Integration/ObservabilityTests.cs` |
+| `[Category=DatabaseProvider]` | `Integration/DatabaseProviderSmokeTests.cs` |
 
 ### Release Readiness Artifact
 
@@ -293,7 +325,7 @@ manual sign-off items.
 
 ### When It Fails
 
-The `release-summary` job fails (and blocks merging) when any of the four gate jobs did
+The `release-summary` job fails (and blocks merging) when any of the five gate jobs did
 not succeed. Each gate job also fails individually if its `dotnet test` run reports any
 failing tests.
 
@@ -315,6 +347,10 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
 # Compliance tests
 dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
   --filter "Category=Compliance" --verbosity normal
+
+# End-to-end workflow tests
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+  --filter "Category=EndToEnd" --verbosity normal
 ```
 
 ### Related Documentation
