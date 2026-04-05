@@ -8,6 +8,7 @@ using PTDoc.Web.Auth;
 
 namespace PTDoc.Tests.Identity;
 
+[Trait("Category", "CoreCi")]
 public sealed class WebUserServiceTests
 {
     [Fact]

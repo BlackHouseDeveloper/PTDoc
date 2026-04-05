@@ -12,6 +12,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Integrations;
 
+[Trait("Category", "CoreCi")]
 public class IntegrationServicesTests
 {
     private ApplicationDbContext CreateInMemoryContext()

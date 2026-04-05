@@ -14,8 +14,8 @@ This report modifies the PTDocs+ blueprint to be **branch-specific** and gives a
 - HIPAA-oriented technical safeguards mapped to actual branch insertion points (encryption, secret management, audit controls), anchored to HIPAA Security Rule requirements for access control, audit controls, integrity, authentication, and transmission security. citeturn2search1turn3search0
 
 Assumptions (declared)
-- CI is GitHub Actions (confirmed in repo workflow). fileciteturn208file1  
-- Cloud/provider is not enforced by repo code; where cloud is referenced, this plan assumes **Azure SQL** or **Azure Database for PostgreSQL Flexible Server** as production DB targets. fileciteturn208file1  
+- CI is GitHub Actions (confirmed in repo workflow). fileciteturn208file1
+- Cloud/provider is not enforced by repo code; where cloud is referenced, this plan assumes **Azure SQL** or **Azure Database for PostgreSQL Flexible Server** as production DB targets. fileciteturn208file1
 - App stack: .NET 8, EF Core, MAUI client, encrypted SQLite local, server API (per your instruction).
 
 ## Branch analysis (files changed, DbContext, migrations, schema differences, config)
@@ -26,17 +26,17 @@ This section corresponds to **1) Branch analysis**.
 
 These are the primary branch artifacts reviewed for database architecture, migrations, security, and deploy readiness:
 
-- API composition and DB wiring: `src/PTDoc.Api/Program.cs` fileciteturn208file1  
-- EF Core model: `src/PTDoc.Infrastructure/Data/ApplicationDbContext.cs` fileciteturn208file1  
-- Sync metadata stamping: `src/PTDoc.Infrastructure/Data/Interceptors/SyncMetadataInterceptor.cs` fileciteturn208file1  
-- Migrations + snapshot: `src/PTDoc.Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs` fileciteturn208file1  
-- Migration workflow doc: `docs/EF_MIGRATIONS.md` fileciteturn208file1  
-- MAUI DI entrypoint: `src/PTDoc.Maui/MauiProgram.cs` (not currently registering EF Core local DB) fileciteturn208file1  
-- Encryption key abstractions: `IDbKeyProvider`, `EnvironmentDbKeyProvider`, `SecureStorageDbKeyProvider` fileciteturn208file1  
-- Security posture docs: `docs/SECURITY.md` fileciteturn208file1  
-- Sync posture docs and implementation: `docs/SYNC_ENGINE.md`, `SyncEngine.cs`, `SyncEndpoints.cs` fileciteturn208file1  
-- CI workflow: `.github/workflows/phase8-validation.yml` fileciteturn208file1  
-- Integration tests: encryption/no-PHI/sync persistence test suites fileciteturn208file1  
+- API composition and DB wiring: `src/PTDoc.Api/Program.cs` fileciteturn208file1
+- EF Core model: `src/PTDoc.Infrastructure/Data/ApplicationDbContext.cs` fileciteturn208file1
+- Sync metadata stamping: `src/PTDoc.Infrastructure/Data/Interceptors/SyncMetadataInterceptor.cs` fileciteturn208file1
+- Migrations + snapshot: `src/PTDoc.Infrastructure/Data/Migrations/ApplicationDbContextModelSnapshot.cs` fileciteturn208file1
+- Migration workflow doc: `docs/EF_MIGRATIONS.md` fileciteturn208file1
+- MAUI DI entrypoint: `src/PTDoc.Maui/MauiProgram.cs` (not currently registering EF Core local DB) fileciteturn208file1
+- Encryption key abstractions: `IDbKeyProvider`, `EnvironmentDbKeyProvider`, `SecureStorageDbKeyProvider` fileciteturn208file1
+- Security posture docs: `docs/SECURITY.md` fileciteturn208file1
+- Sync posture docs and implementation: `docs/SYNC_ENGINE.md`, `SyncEngine.cs`, `SyncEndpoints.cs` fileciteturn208file1
+- CI workflows: `.github/workflows/ci-core.yml` and `.github/workflows/ci-db.yml` (the older `phase8-validation.yml` workflow has been retired) fileciteturn208file1
+- Integration tests: encryption/no-PHI/sync persistence test suites fileciteturn208file1
 
 ### What changed from `main` to `UI-Completion`
 
@@ -46,14 +46,14 @@ Using the GitHub compare between `main` and `UI-Completion`, the branch is **ahe
 
 The canonical EF Core context is:
 
-- `PTDoc.Infrastructure.Data.ApplicationDbContext` fileciteturn208file1  
+- `PTDoc.Infrastructure.Data.ApplicationDbContext` fileciteturn208file1
 
-Per the model snapshot, the schema is **SQLite-shaped** (e.g., typical `TEXT`/`INTEGER` storage and SQLite-friendly constructs like filtered indexes). fileciteturn208file1  
+Per the model snapshot, the schema is **SQLite-shaped** (e.g., typical `TEXT`/`INTEGER` storage and SQLite-friendly constructs like filtered indexes). fileciteturn208file1
 This is not “wrong”—it matches current provider usage—but it becomes a future risk if you deploy to SQL Server/Postgres without explicitly adopting EF Core’s multi-provider migrations strategy. EF Core tools scaffold migrations for the active provider; when using more than one provider, EF Core recommends **multiple sets of migrations** (one per provider) and adding migrations to each when the model changes. citeturn5search6turn0search0
 
 ### Migrations workflow state
 
-Current migration documentation instructs developers to set the environment variable `EF_PROVIDER=sqlite` when running `dotnet ef` commands. That is explicitly SQLite-first and does not define a workflow for SQL Server/Postgres parity. fileciteturn208file1  
+Current migration documentation instructs developers to set the environment variable `EF_PROVIDER=sqlite` when running `dotnet ef` commands. That is explicitly SQLite-first and does not define a workflow for SQL Server/Postgres parity. fileciteturn208file1
 
 EF Core’s official guidance for multi-provider support is to maintain multiple migration sets, either by using multiple DbContext types or by using one DbContext and moving migrations to separate assemblies. citeturn5search6turn0search0
 
@@ -61,8 +61,8 @@ EF Core’s official guidance for multi-provider support is to maintain multiple
 
 Key observed configuration behaviors and issues (branch-specific):
 
-- DB path is selected from `PTDoc_DB_PATH` env var or `Database:Path` setting; encryption is toggled via `Database:Encryption:Enabled`; encryption key is read via an `IDbKeyProvider` (env-based in API). fileciteturn208file1  
-- JWT configuration including `Jwt:SigningKey` is present in config files, which is a critical security risk: secrets should not be committed. fileciteturn208file1 citeturn0search8  
+- DB path is selected from `PTDoc_DB_PATH` env var or `Database:Path` setting; encryption is toggled via `Database:Encryption:Enabled`; encryption key is read via an `IDbKeyProvider` (env-based in API). fileciteturn208file1
+- JWT configuration including `Jwt:SigningKey` is present in config files, which is a critical security risk: secrets should not be committed. fileciteturn208file1 citeturn0search8
 
 ## Updated local DB architecture tied to branch (exact DbContext names, provider registrations, sample appsettings snippets)
 
@@ -72,9 +72,9 @@ This section corresponds to **2) Updated local DB architecture tied to branch**.
 
 To maximize compatibility with `UI-Completion`’s current implementation while enabling a production-hosted DB, the recommended architecture is:
 
-- **Canonical EF Core model and context** remains: `ApplicationDbContext` fileciteturn208file1  
-- **Local device database (MAUI)**: SQLite (encrypted with SQLCipher; key via `SecureStorageDbKeyProvider`) fileciteturn208file1  
-- **Server database (API)**: SQL Server (Azure SQL) or PostgreSQL (Azure Database for PostgreSQL Flexible Server) fileciteturn208file1  
+- **Canonical EF Core model and context** remains: `ApplicationDbContext` fileciteturn208file1
+- **Local device database (MAUI)**: SQLite (encrypted with SQLCipher; key via `SecureStorageDbKeyProvider`) fileciteturn208file1
+- **Server database (API)**: SQL Server (Azure SQL) or PostgreSQL (Azure Database for PostgreSQL Flexible Server) fileciteturn208file1
 
 This preserves the repo’s Clean Architecture layering and avoids refactors throughout Infrastructure/Application services.
 
@@ -122,16 +122,14 @@ public static class DbRegistration
                     var keyProvider = sp.GetRequiredService<IDbKeyProvider>();
                     var key = keyProvider.GetKeyAsync().GetAwaiter().GetResult();
 
-                    var conn = new SqliteConnection($"Data Source={dbPath};");
+                    SqliteProviderBootstrapper.EnsureInitialized();
+                    var conn = new SqliteConnection(
+                        new SqliteConnectionStringBuilder
+                        {
+                            DataSource = dbPath,
+                            Password = key
+                        }.ToString());
                     conn.Open();
-
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "PRAGMA key = $key;";
-                    var p = cmd.CreateParameter();
-                    p.ParameterName = "$key";
-                    p.Value = key;
-                    cmd.Parameters.Add(p);
-                    cmd.ExecuteNonQuery();
 
                     options.UseSqlite(conn, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
                 }
@@ -180,9 +178,9 @@ public static class DbRegistration
 ```
 
 Why these configuration choices are production-grade:
-- EF Core expects connection strings under `ConnectionStrings:<name>` and `GetConnectionString(name)` reads that key. citeturn0search1  
-- SQL Server provider guidance discusses connection resiliency and references `EnableRetryOnFailure` patterns. citeturn1search1  
-- Npgsql EF Core provider exposes `EnableRetryOnFailure()` for transient faults. citeturn9search1  
+- EF Core expects connection strings under `ConnectionStrings:<name>` and `GetConnectionString(name)` reads that key. citeturn0search1
+- SQL Server provider guidance discusses connection resiliency and references `EnableRetryOnFailure` patterns. citeturn1search1
+- Npgsql EF Core provider exposes `EnableRetryOnFailure()` for transient faults. citeturn9search1
 
 ### Sample `appsettings` snippets aligned to current branch keys
 
@@ -263,12 +261,12 @@ Recommended environment variable names (cross-platform) use `__` to denote neste
 
 EF Core’s guidance:
 - Store connection strings in configuration and access them via `GetConnectionString`.
-- Treat connection strings as sensitive when they contain credentials and protect them appropriately. citeturn0search1  
+- Treat connection strings as sensitive when they contain credentials and protect them appropriately. citeturn0search1
 
 For prod:
 - Avoid embedding DB credentials in files.
 - Prefer managed identity / federated credential patterns where possible.
-- Use Key Vault (directly or via App Configuration Key Vault references). citeturn9search2turn2search5turn2search0  
+- Use Key Vault (directly or via App Configuration Key Vault references). citeturn9search2turn2search5turn2search0
 
 ### DI registration pattern
 
@@ -277,7 +275,7 @@ Adopt a single extension method approach (e.g., `AddPtDocsDb(...)` as above) so:
 - providers can be swapped without refactors,
 - migrations assembly selection stays centralized.
 
-This also aligns with EF Core “multiple providers using one context” guidance, which requires moving migrations into separate assemblies/projects. citeturn5search6turn0search0  
+This also aligns with EF Core “multiple providers using one context” guidance, which requires moving migrations into separate assemblies/projects. citeturn5search6turn0search0
 
 ## Migration & deployment readiness (CI checks, test matrix, migration commands, provider compatibility tests)
 
@@ -288,7 +286,7 @@ This section corresponds to **4) Migration & deployment readiness**.
 EF Core is explicit: the tools scaffold migrations for the active provider, and if you want multiple providers (e.g., SQL Server and SQLite) you should maintain **multiple migration sets**—one per provider—and update each set on every model change. citeturn5search6
 
 There are two EF-supported approaches:
-- **Multiple context types** (one DbContext type per provider)  
+- **Multiple context types** (one DbContext type per provider)
 - **One context type** with migrations in a **separate assembly** (recommended for PTDocs+ to avoid widespread refactoring) citeturn5search6turn0search0
 
 For PTDocs+ (given `ApplicationDbContext` is already the canonical context everywhere), use:
@@ -297,7 +295,7 @@ For PTDocs+ (given `ApplicationDbContext` is already the canonical context every
 - `PTDoc.Infrastructure.Migrations.SqlServer` (class library)
 - optional `PTDoc.Infrastructure.Migrations.Postgres` (class library)
 
-EF Core documents “Using a Separate Migrations Project” and shows configuring `MigrationsAssembly(...)`. citeturn0search0  
+EF Core documents “Using a Separate Migrations Project” and shows configuring `MigrationsAssembly(...)`. citeturn0search0
 
 ### Migration commands (copy/paste)
 
@@ -324,15 +322,15 @@ dotnet ef database update \
 
 ### Deployment safety and SQLite-specific caveats
 
-EF Core documents limitations for SQLite migrations scripting and runtime migration locking details (e.g., idempotent script limitations and the `__EFMigrationsLock` table behavior). These details matter if you rely on `Database.Migrate()` at runtime. citeturn5search3  
+EF Core documents limitations for SQLite migrations scripting and runtime migration locking details (e.g., idempotent script limitations and the `__EFMigrationsLock` table behavior). These details matter if you rely on `Database.Migrate()` at runtime. citeturn5search3
 
 Branch alignment recommendation:
-- keep `Database.MigrateAsync()` in **Development only** (already the pattern in the branch),  
+- keep `Database.MigrateAsync()` in **Development only** (already the pattern in the branch),
 - in staging/production, apply migrations via CI/CD as an explicit step, not on app startup.
 
 ### CI checks and test matrix
 
-Current GitHub Actions workflow runs build and tests; it does not validate migrations against a production-grade provider. fileciteturn208file1  
+Current GitHub Actions workflow runs build and tests; it does not validate migrations against a production-grade provider. fileciteturn208file1
 
 Recommended CI additions:
 
@@ -362,47 +360,47 @@ HIPAA 45 CFR § 164.312 requires technical safeguards including:
 - audit controls,
 - integrity controls,
 - person/entity authentication,
-- transmission security (including addressable encryption). citeturn2search1  
+- transmission security (including addressable encryption). citeturn2search1
 
-HHS emphasizes risk analysis as foundational (and “addressable” specifications like encryption are not “optional” in practice; decisions must be justified and documented). citeturn3search0  
+HHS emphasizes risk analysis as foundational (and “addressable” specifications like encryption are not “optional” in practice; decisions must be justified and documented). citeturn3search0
 
 ### Encryption at rest
 
 Branch already contains a strong local encryption concept:
-- SQLite encryption toggled by configuration, key retrieved via `IDbKeyProvider`, SQLCipher-style `PRAGMA key` pattern in API. fileciteturn208file1  
+- SQLite encryption toggled by configuration, key retrieved via `IDbKeyProvider`, applied through SQLCipher-aware connection initialization in API. fileciteturn208file1
 
 What to add:
-- MAUI local DB registration (encrypted SQLite) in `MauiProgram.cs` using `SecureStorageDbKeyProvider` and the same `PRAGMA key` pattern (branch already has key provider abstraction ready). fileciteturn208file1  
+- MAUI local DB registration (encrypted SQLite) in `MauiProgram.cs` using `SecureStorageDbKeyProvider` and the same SQLCipher connection-string pattern (branch already has key provider abstraction ready). fileciteturn208file1
 
 Server-side encryption (production DB):
-- Azure SQL: enable TDE; if compliance requires customer-managed keys, use database-level TDE with CMK stored in Azure Key Vault / Managed HSM. citeturn2search5  
-- Azure Database for PostgreSQL Flexible Server: data is always encrypted at rest; supports SMK or CMK (CMK must be selected at creation time). citeturn2search0  
+- Azure SQL: enable TDE; if compliance requires customer-managed keys, use database-level TDE with CMK stored in Azure Key Vault / Managed HSM. citeturn2search5
+- Azure Database for PostgreSQL Flexible Server: data is always encrypted at rest; supports SMK or CMK (CMK must be selected at creation time). citeturn2search0
 
 Optional advanced protection (defense-in-depth):
-- SQL Server / Azure SQL “Always Encrypted” can keep column master keys outside the DB engine; queries against encrypted columns require key access and an Always Encrypted-enabled client connection. citeturn4search4  
+- SQL Server / Azure SQL “Always Encrypted” can keep column master keys outside the DB engine; queries against encrypted columns require key access and an Always Encrypted-enabled client connection. citeturn4search4
 This is higher complexity and should be driven by threat model (e.g., protecting PHI from privileged DB operators).
 
 ### Secrets management and configuration hygiene
 
-Branch reality includes committed JWT signing keys (and dev config includes empty API keys). This must be corrected before release. fileciteturn208file1  
+Branch reality includes committed JWT signing keys (and dev config includes empty API keys). This must be corrected before release. fileciteturn208file1
 
 Recommended approach:
-- Dev: use ASP.NET Core Secret Manager / user secrets so secrets aren’t in repo. citeturn0search8  
-- Prod: use Key Vault (directly or via Azure App Configuration references). Microsoft’s reference tutorial shows `DefaultAzureCredential` and Key Vault configuration. citeturn9search2turn9search5  
+- Dev: use ASP.NET Core Secret Manager / user secrets so secrets aren’t in repo. citeturn0search8
+- Prod: use Key Vault (directly or via Azure App Configuration references). Microsoft’s reference tutorial shows `DefaultAzureCredential` and Key Vault configuration. citeturn9search2turn9search5
 
 ### Audit logging hooks
 
 Branch already includes an audit log table and patterns; strengthen by implementing:
-- PHI access auditing (read access) at API endpoints that return patient profile, note content, PDFs, sync pulls.  
-- Write auditing can be implemented with EF Core interceptors; EF Core documents SaveChanges interceptors and includes an “auditing” example. citeturn1search0  
+- PHI access auditing (read access) at API endpoints that return patient profile, note content, PDFs, sync pulls.
+- Write auditing can be implemented with EF Core interceptors; EF Core documents SaveChanges interceptors and includes an “auditing” example. citeturn1search0
 
 Practical branch mapping:
-- Keep the existing `SyncMetadataInterceptor` for sync stamps. fileciteturn208file1  
+- Keep the existing `SyncMetadataInterceptor` for sync stamps. fileciteturn208file1
 - Add a second interceptor or a service-level audit call pattern for read events (SaveChanges interceptors don’t capture reads, so you need explicit endpoint-level audit writes for access events).
 
 ### Transmission security
 
-HIPAA includes transmission security requirements. citeturn2search1  
+HIPAA includes transmission security requirements. citeturn2search1
 Implementation guidance:
 - Enforce TLS for all production API endpoints.
 - Ensure mobile and web clients prohibit plaintext `http://` in release builds (dev exception only).
@@ -428,12 +426,12 @@ Sprint cadence: 2 weeks (assumption). Start date: 2026-03-12.
 
 Sprint A — secrets + config
 - Implement: remove JWT signing keys from `appsettings*.json`; enforce “fail fast” if placeholder keys detected.
-- Add: documented dev secret setup (`dotnet user-secrets`) per Microsoft guidance. citeturn0search8  
+- Add: documented dev secret setup (`dotnet user-secrets`) per Microsoft guidance. citeturn0search8
 - Acceptance: a clean clone can run locally with a one-command secrets bootstrap script (see scripts below).
 
 Sprint B — provider selection + migrations split
 - Implement `Database:Provider` switch in DI; keep current SQLite encryption toggle intact.
-- Create migrations projects per provider (SQLite + SQL Server; optional Postgres). citeturn5search6turn0search0  
+- Create migrations projects per provider (SQLite + SQL Server; optional Postgres). citeturn5search6turn0search0
 - Acceptance: `dotnet ef database update` runs successfully for SQLite and SQL Server using the correct migrations assembly.
 
 Sprint C — CI parity
@@ -445,15 +443,15 @@ Sprint D — MAUI encrypted local DB
 - Acceptance: offline patient/intake draft survives app restart; wrong key means DB cannot be opened.
 
 Sprint E — production DB readiness
-- Provision Azure SQL with TDE (CMK if required). citeturn2search5  
-- Or provision Azure Postgres flexible server (SMK default or CMK set at creation). citeturn2search0  
-- Integrate secrets retrieval (Key Vault refs + `DefaultAzureCredential`). citeturn9search2  
-- Acceptance: staging deploy uses no secrets in files; rotate secrets without redeploy (Key Vault reference refresh pattern if used). citeturn9search5  
+- Provision Azure SQL with TDE (CMK if required). citeturn2search5
+- Or provision Azure Postgres flexible server (SMK default or CMK set at creation). citeturn2search0
+- Integrate secrets retrieval (Key Vault refs + `DefaultAzureCredential`). citeturn9search2
+- Acceptance: staging deploy uses no secrets in files; rotate secrets without redeploy (Key Vault reference refresh pattern if used). citeturn9search5
 
 Sprint F — audit + HIPAA-oriented hardening
 - Add endpoint-level access audit events for PHI reads; add write audit as needed.
 - Ensure audit logs exclude PHI payloads (store only identifiers and event types).
-- Acceptance: HIPAA-oriented audit controls exist and are demonstrable; risk analysis updated and mapped to mitigations. citeturn2search1turn3search0  
+- Acceptance: HIPAA-oriented audit controls exist and are demonstrable; risk analysis updated and mapped to mitigations. citeturn2search1turn3search0
 
 ### One-command scripts (recommended)
 
@@ -502,11 +500,11 @@ This section corresponds to **7) Risk/gap analysis and remediation steps**.
 
 ### High-priority remediation checklist
 
-- Remove all committed secrets (JWT key, integration/API keys) from config; rotate any keys that may have been exposed. citeturn0search8  
-- Implement `Database:Provider` and provider-specific migrations assemblies. citeturn5search6turn0search0  
-- Add server-provider migration validation in CI (SQL Server/Postgres).  
-- Add MAUI encrypted SQLite persistence using secure storage key provider.  
-- Implement PHI access auditing aligned to HIPAA technical safeguards. citeturn2search1turn3search0  
+- Remove all committed secrets (JWT key, integration/API keys) from config; rotate any keys that may have been exposed. citeturn0search8
+- Implement `Database:Provider` and provider-specific migrations assemblies. citeturn5search6turn0search0
+- Add server-provider migration validation in CI (SQL Server/Postgres).
+- Add MAUI encrypted SQLite persistence using secure storage key provider.
+- Implement PHI access auditing aligned to HIPAA technical safeguards. citeturn2search1turn3search0
 
 ### Mermaid diagram: architecture and migration flow
 
@@ -549,4 +547,3 @@ sequenceDiagram
   CI->>DB2: Apply migrations + smoke tests
   CI-->>Dev: Gate merge on pass
 ```
-

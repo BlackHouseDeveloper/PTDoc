@@ -4,7 +4,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Notes;
 
-[Trait("Category", "Unit")]
+[Trait("Category", "CoreCi")]
 public class NoteWorkspaceStateTests
 {
     [Fact]

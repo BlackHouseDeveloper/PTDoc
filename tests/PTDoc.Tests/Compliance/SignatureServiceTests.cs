@@ -211,6 +211,87 @@ public sealed class SignatureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CoSignNote_PtaDailyNote_PT_CanCoSign()
+    {
+        var ptaSigner = await CreateUserAsync(Roles.PTA);
+        var ptSigner = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+
+        var signResult = await _signatureService.SignNoteAsync(note.Id, ptaSigner.Id, Roles.PTA, true, true);
+        Assert.True(signResult.Success);
+        Assert.True(signResult.RequiresCoSign);
+
+        var coSignResult = await _signatureService.CoSignNoteAsync(note.Id, ptSigner.Id, true, true);
+
+        Assert.True(coSignResult.Success);
+        Assert.NotNull(coSignResult.CoSignedUtc);
+
+        var updatedNote = await _context.ClinicalNotes.FindAsync(note.Id);
+        Assert.NotNull(updatedNote);
+        Assert.Equal(NoteStatus.Signed, updatedNote!.NoteStatus);
+        Assert.Equal(ptSigner.Id, updatedNote.CoSignedByUserId);
+        Assert.NotNull(updatedNote.SignatureHash);
+        Assert.Equal(2, await _context.Signatures.CountAsync(s => s.NoteId == note.Id));
+    }
+
+    [Fact]
+    public async Task CoSignNote_NoteWithoutPendingCoSign_ReturnsError()
+    {
+        var ptSigner = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation);
+
+        var signResult = await _signatureService.SignNoteAsync(note.Id, ptSigner.Id, Roles.PT, true, true);
+        Assert.True(signResult.Success);
+        Assert.False(signResult.RequiresCoSign);
+
+        var coSignResult = await _signatureService.CoSignNoteAsync(note.Id, ptSigner.Id, true, true);
+
+        Assert.False(coSignResult.Success);
+        Assert.Contains("does not require a co-sign", coSignResult.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SignNote_WhenPatientHasNoDiagnoses_ReturnsError()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync("[]");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SignNote_WhenPatientDiagnosisJsonIsWhitespace_ReturnsError()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync("   ");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SignNote_WhenPatientDiagnosisJsonIsInvalid_ReturnsError()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync("not-valid-json");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
     public async Task CreateAddendum_SignedNote_CreatesLinkedDraftAddendumSuccessfully()
     {
         var signer = await CreateUserAsync(Roles.PT);
@@ -561,7 +642,7 @@ public sealed class SignatureServiceTests : IDisposable
         return user;
     }
 
-    private async Task<Patient> CreatePatientAsync()
+    private async Task<Patient> CreatePatientAsync(string? diagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]")
     {
         var patient = new Patient
         {
@@ -569,7 +650,7 @@ public sealed class SignatureServiceTests : IDisposable
             FirstName = "Jane",
             LastName = "Doe",
             DateOfBirth = new DateTime(1980, 1, 1),
-            DiagnosisCodesJson = "[{\"code\":\"M54.5\",\"description\":\"Low back pain\"}]",
+            DiagnosisCodesJson = diagnosisCodesJson!,
             LastModifiedUtc = DateTime.UtcNow
         };
 

@@ -10,6 +10,7 @@ namespace PTDoc.Tests.LocalData;
 /// <summary>
 /// Tests for LocalRepository CRUD operations and sync-state tracking.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class LocalRepositoryTests
 {
     private static LocalDbContext CreateInMemoryContext()

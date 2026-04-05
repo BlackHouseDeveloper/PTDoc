@@ -8,6 +8,7 @@ using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Identity;
 
+[Trait("Category", "CoreCi")]
 public class LegacyApiCredentialValidatorTests
 {
     [Fact]

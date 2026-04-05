@@ -55,10 +55,16 @@ if (encryptionEnabled)
             "Database encryption key must be at least 32 characters for SQLCipher.");
     }
     
+    SqliteProviderBootstrapper.EnsureInitialized();
+
     // Use encrypted connection
-    var connection = new SqliteConnection($"Data Source={dbPath}");
+    var connectionString = new SqliteConnectionStringBuilder
+    {
+        DataSource = dbPath,
+        Password = key
+    }.ToString();
+    var connection = new SqliteConnection(connectionString);
     await connection.OpenAsync();
-    await connection.ExecuteNonQueryAsync($"PRAGMA key = '{key}'");
     
     options.UseSqlite(connection);
 }
@@ -82,20 +88,21 @@ else
 
 ### Critical Flow
 
-**Problem:** If EF opens the connection internally, SQLCipher PRAGMA key is never applied → DB appears to work but is NOT encrypted.
+**Problem:** If the SQLCipher provider is not selected before the first SQLite connection, or if EF opens the connection internally without the password in the connection string, the database can appear to work with the wrong native provider behavior.
 
-**Solution:** Pre-open connection and set PRAGMA key BEFORE handing to EF.
+**Solution:** Initialize the SQLCipher provider first, then pre-open a connection whose `Password` is set before handing it to EF.
 
 ### Implementation Pattern
 
 ```csharp
-// WRONG - EF opens connection internally, PRAGMA never applied
+// WRONG - EF opens connection internally without selecting SQLCipher first
 options.UseSqlite($"Data Source={dbPath};Password={key}");
 
-// CORRECT - Pre-open, set PRAGMA, hand to EF
-var connection = new SqliteConnection($"Data Source={dbPath}");
+// CORRECT - select SQLCipher provider, pre-open, then hand to EF
+SqliteProviderBootstrapper.EnsureInitialized();
+var connection = new SqliteConnection(
+    new SqliteConnectionStringBuilder { DataSource = dbPath, Password = key }.ToString());
 await connection.OpenAsync();
-await connection.ExecuteNonQueryAsync($"PRAGMA key = '{key}'");
 options.UseSqlite(connection);
 ```
 
@@ -108,9 +115,9 @@ options.UseSqlite(connection);
    b. Await ValidateAsync() → throws if misconfigured
    c. Await GetKeyAsync() → retrieve key
    d. Validate key length ≥ 32 chars
-   e. Create SqliteConnection with Data Source only
-   f. OpenAsync() the connection
-   g. ExecuteNonQueryAsync("PRAGMA key = '...'")
+   e. Call SqliteProviderBootstrapper.EnsureInitialized()
+   f. Create SqliteConnection with Data Source + Password
+   g. OpenAsync() the connection
    h. Pass open connection to UseSqlite(connection)
 3. If false:
    a. Use existing UseSqlite($"Data Source={dbPath}")
@@ -364,17 +371,18 @@ builder.Services.AddScoped<IPdfRenderer, QuestPdfRenderer>();
 
 ### 1. Encryption Tests
 
-**File:** `tests/PTDoc.Tests/Infrastructure/EncryptionIntegrationTests.cs`
+**File:** `tests/PTDoc.Tests/Integration/SqlCipherAccessTests.cs`
 
 ```csharp
 [Fact]
 public async Task Migrations_Succeed_When_Encryption_Enabled()
 {
     // Arrange: Create encrypted connection
+    SqliteProviderBootstrapper.EnsureInitialized();
     var key = GenerateTestKey();
-    var connection = new SqliteConnection("Data Source=:memory:");
+    var connection = new SqliteConnection(
+        new SqliteConnectionStringBuilder { DataSource = dbPath, Password = key }.ToString());
     await connection.OpenAsync();
-    await connection.ExecuteNonQueryAsync($"PRAGMA key = '{key}'");
     
     // Act: Apply migrations
     var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -396,9 +404,10 @@ public async Task Migrations_Succeed_When_Encryption_Enabled()
 public async Task Migrations_Fail_When_Key_Invalid()
 {
     // Arrange: Create connection with wrong key
-    var connection = new SqliteConnection("Data Source=test.db");
+    SqliteProviderBootstrapper.EnsureInitialized();
+    var connection = new SqliteConnection(
+        new SqliteConnectionStringBuilder { DataSource = dbPath, Password = "wrong-key" }.ToString());
     await connection.OpenAsync();
-    await connection.ExecuteNonQueryAsync("PRAGMA key = 'wrong-key'");
     
     // Act/Assert: Migration fails
     var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -416,7 +425,7 @@ public async Task Plain_Mode_Still_Works()
     var connection = new SqliteConnection("Data Source=:memory:");
     await connection.OpenAsync();
     
-    // Act: Apply migrations without PRAGMA key
+    // Act: Apply migrations without SQLCipher password
     var options = new DbContextOptionsBuilder<ApplicationDbContext>()
         .UseSqlite(connection)
         .Options;
@@ -607,39 +616,24 @@ public async Task Export_Does_Not_Change_SyncState()
 
 ### 5. Sync Tests
 
-**File:** `tests/PTDoc.Tests/Sync/SyncIntegrationTests.cs`
+**File:** `tests/PTDoc.Tests/Integration/SqlCipherAccessTests.cs`
 
 ```csharp
 [Fact]
-public async Task Encrypted_DB_Does_Not_Break_Queue_Persistence()
+public async Task SqlCipher_WithCorrectKey_ReopensAndReadsPersistedData()
 {
-    // Arrange: Encrypted DB setup
-    var key = GenerateTestKey();
-    var connection = new SqliteConnection("Data Source=:memory:");
-    await connection.OpenAsync();
-    await connection.ExecuteNonQueryAsync($"PRAGMA key = '{key}'");
-    
-    var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-        .UseSqlite(connection)
-        .Options;
-    
-    using var context = new ApplicationDbContext(options);
-    await context.Database.MigrateAsync();
-    
-    // Act: Create sync queue item
-    var queueItem = new SyncQueueItem
+    await SeedEncryptedDatabaseAsync();
+
+    await WithContextAsync(CorrectKey, async context =>
     {
-        EntityType = "Patient",
-        EntityId = Guid.NewGuid(),
-        Operation = SyncOperation.Update
-    };
-    
-    context.SyncQueueItems.Add(queueItem);
-    await context.SaveChangesAsync();
-    
-    // Assert: Queue item persisted in encrypted DB
-    var retrieved = await context.SyncQueueItems.FirstAsync();
-    Assert.Equal(queueItem.EntityId, retrieved.EntityId);
+        var patient = await context.Patients.AsNoTracking().SingleAsync();
+        var queueItem = await context.SyncQueueItems.AsNoTracking().SingleAsync();
+        var conflict = await context.SyncConflictArchives.AsNoTracking().SingleAsync();
+
+        Assert.Equal("Encrypted", patient.FirstName);
+        Assert.Equal(SyncQueueStatus.Pending, queueItem.Status);
+        Assert.Contains("newer", conflict.ChosenDataJson);
+    });
 }
 ```
 
@@ -649,7 +643,7 @@ public async Task Encrypted_DB_Does_Not_Break_Queue_Persistence()
 
 ### Build Matrix Configuration
 
-**File:** `.github/workflows/phase8-validation.yml`
+**Historical file:** `.github/workflows/phase8-validation.yml` (retired). The active CI replacement is the combination of `.github/workflows/ci-core.yml` and `.github/workflows/ci-db.yml`.
 
 ```yaml
 name: Phase 8 Platform Validation
@@ -814,4 +808,3 @@ Before writing ANY SQLCipher code, confirm:
 This design specification addresses all 6 guardrails from comment #3915836341.
 
 **Ready to proceed with Phase 8A: SQLCipher Wiring**
-

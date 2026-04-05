@@ -8,7 +8,7 @@ using Xunit;
 
 namespace PTDoc.Tests.AI;
 
-[Trait("Category", "AI")]
+[Trait("Category", "CoreCi")]
 public class ClinicalGenerationServiceTests
 {
     private readonly IAiClinicalGenerationService _service;

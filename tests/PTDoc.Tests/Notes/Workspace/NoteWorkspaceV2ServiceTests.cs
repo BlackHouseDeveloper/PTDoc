@@ -12,7 +12,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
 
-[Trait("Category", "Unit")]
+[Trait("Category", "CoreCi")]
 public sealed class NoteWorkspaceV2ServiceTests : IDisposable
 {
     private readonly ApplicationDbContext _context;

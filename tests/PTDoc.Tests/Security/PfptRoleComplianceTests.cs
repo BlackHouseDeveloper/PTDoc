@@ -48,7 +48,7 @@ namespace PTDoc.Tests.Security;
 /// Sprint U-C5: Offline + Sync
 ///   - Role-based data scoping (Aide/FrontDesk/Patient excluded from clinical entities)
 /// </summary>
-[Trait("Category", "RBAC")]
+[Trait("Category", "CoreCi")]
 public class PfptRoleComplianceTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;
@@ -1394,7 +1394,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonIsNull()
+    public async Task RQ033_SignNote_BlockedWhenDiagnosisJsonIsWhitespace()
     {
         var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
@@ -1407,7 +1407,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
             SyncState = SyncState.Pending,
-            DiagnosisCodesJson = null!
+            DiagnosisCodesJson = "   "
         };
         _db.Patients.Add(patient);
 

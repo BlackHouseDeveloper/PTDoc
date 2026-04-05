@@ -14,6 +14,7 @@ namespace PTDoc.Tests.Integration;
 /// Integration tests for PDF export functionality using QuestPDF.
 /// Validates signature blocks, watermarks, and Medicare compliance sections.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class PdfIntegrationTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;

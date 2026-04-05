@@ -30,8 +30,7 @@ Each row records:
 | JWT signing key null/empty detected and fails startup | Test | `Security/ConfigurationValidationTests.cs` — `JwtKey_NullOrEmpty_FailsValidation` | ✅ | — |
 | IntakeInvite signing key placeholder detected | Test | `Security/ConfigurationValidationTests.cs` — `IntakeInviteKey_PlaceholderValues_FailValidation` | ✅ | — |
 | Environment variable overrides appsettings value | Test | `Security/ConfigurationValidationTests.cs` — `JwtKey_EnvironmentVariable_OverridesAppsettingsValue` | ✅ | — |
-| Tracked `appsettings.json` contains only placeholder JWT key | Test + CI Gate | `ConfigurationValidationTests.cs` — `ApiAppsettings_JwtSigningKey_MustBeAPlaceholderOrEmpty` **+ `ci-secret-policy.yml`** | ✅ | — |
-| Tracked `appsettings.Development.json` contains only placeholder IntakeInvite key | Test + CI Gate | `ConfigurationValidationTests.cs` — `WebAppsettingsDevelopment_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty` **+ `ci-secret-policy.yml`** | ✅ | — |
+| Tracked `appsettings*.json` files contain only placeholder signing keys | Test + CI Gate | `Security/SecretPolicyScanTests.cs` **+ `ci-secret-policy.yml`** | ✅ | — |
 | Developer workflow documented for real secrets | Manual | `docs/REMEDIATION_BASELINE.md §1.4`, `docs/SECURITY.md`, `setup-dev-secrets.sh` | ✅ | — |
 
 ---
@@ -41,10 +40,10 @@ Each row records:
 | Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
 |---|---|---|---|---|
 | EF Core migrations exist for SQLite | CI Gate | `ci-db.yml` — `db-sqlite` job (`MigrateAsync()`) | ✅ | — |
-| EF Core schema compatible with SQL Server | CI Gate | `ci-db.yml` — `db-sqlserver` job (`EnsureCreated()`) | ✅ | — |
-| EF Core schema compatible with PostgreSQL | CI Gate | `ci-db.yml` — `db-postgres` job (`EnsureCreated()`) | ✅ | — |
+| EF Core schema compatible with SQL Server | CI Gate | `ci-db.yml` — `db-sqlserver` job (`dotnet ef database update` + provider smoke test) | ✅ | — |
+| EF Core schema compatible with PostgreSQL | CI Gate | `ci-db.yml` — `db-postgres` job (`dotnet ef database update` + provider smoke test) | ✅ | — |
 | Provider-specific migration assemblies exist and are selectable | CI Gate | `ci-db.yml` — all provider jobs | ✅ | — |
-| ObjectiveMetric entity exists and persists | Test | `Integration/SprintOIntegrationTests.cs` + `Integration/SprintQSmokeCrudTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
+| ObjectiveMetric entity exists and persists | Test | `Integration/SprintOIntegrationTests.cs` + `Integration/DatabaseProviderSmokeTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
 | IntakeResponse contract aligned to PFPT spec | Test | `Integration/SprintOIntegrationTests.cs` — IntakeForm/PainMapData/Consents fields verified | ✅ | — |
 
 ---
@@ -56,8 +55,8 @@ Each row records:
 | SQLite migration + persistence tests pass in CI | CI Gate | `ci-db.yml` — `db-sqlite` job | ✅ | — |
 | SQL Server schema + persistence tests pass in CI | CI Gate | `ci-db.yml` — `db-sqlserver` job | ✅ | — |
 | PostgreSQL schema + persistence tests pass in CI | CI Gate | `ci-db.yml` — `db-postgres` job | ✅ | — |
-| Provider environment variable selection works | Test | `Integration/DatabaseProviderMigrationTests.cs` — `[Category=DatabaseProvider]` tests | ✅ | — |
-| Tests skip gracefully when provider not configured | Test | `DatabaseProviderMigrationTests.cs` — SkippableFact skip conditions | ✅ | — |
+| Provider environment variable selection works | Test | `Integration/DatabaseProviderSmokeTests.cs` — `[Category=DatabaseProvider]` test selects provider from `DB_PROVIDER` | ✅ | — |
+| Tests skip gracefully when provider not configured | Test | `Integration/DatabaseProviderSmokeTests.cs` — `SkippableFact` skip conditions | ✅ | — |
 
 ---
 
@@ -76,7 +75,7 @@ Each row records:
 
 | Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
 |---|---|---|---|---|
-| `Database:AutoMigrate` defaults to `IsDevelopment()` | Test | `Integration/ProductionConfigurationTests.cs` — `[Category=ProductionConfig]` | ✅ | — |
+| `Database:AutoMigrate` defaults to `IsDevelopment()` | Test | `Integration/ProductionConfigurationTests.cs` — `[Category=CoreCi]` | ✅ | — |
 | `Database__AutoMigrate` env var overrides config | Test | `Integration/ProductionConfigurationTests.cs` | ✅ | — |
 | Production appsettings disables AutoMigrate | Manual | `src/PTDoc.Api/appsettings.Production.json` — `"AutoMigrate": false` | ✅ | — |
 | MAUI platform secret storage used (no dev fallback in prod) | Manual | `docs/MOBILE_ARCHITECTURE.md`, `PTDoc.Maui/MauiProgram.cs` | ✅ | — |
@@ -101,7 +100,7 @@ Each row records:
 
 | Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
 |---|---|---|---|---|
-| Auth events logged (login, logout, failure) | Test | `Security/AuthAuditTests.cs` — `[Category=Security]` | ✅ | — |
+| Auth events logged (login, logout, failure) | Test | `Security/AuthAuditTests.cs` — `[Category=CoreCi]` | ✅ | — |
 | Audit events contain no PHI | Test | `Integration/NoPHIIntegrationTests.cs` | ✅ | — |
 | Audit trail persistent in database | Test | `AuthAuditTests.cs` + DB tests | ✅ | — |
 | CRUD audit events (patient/note access) | Test | `Compliance/NoteComplianceIntegrationTests.cs` — `[Category=Compliance]` (note edit audit trail) | ✅ | — |
@@ -190,7 +189,7 @@ Each row records:
 | Acceptance Criterion | Evidence Type | Location / Reference | Status | Remediation Sprint |
 |---|---|---|---|---|
 | ClinicalNote lifecycle supports Eval/Daily/Progress/Discharge | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
-| PatientEpisode and ClinicalVisit entities persist correctly | Test | `Integration/SprintQSmokeCrudTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
+| PatientEpisode and ClinicalVisit entities persist correctly | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
 | Goal tracking and updates persist between notes | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
 | Progress note trigger logic supported by domain model | Test | `Compliance/NoteComplianceIntegrationTests.cs` | ✅ | — |
 | Discharge workflow supported in domain model | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
@@ -226,7 +225,7 @@ Each row records:
 |---|---|---|---|---|
 | ObjectiveMetric entity, FK, and cascade delete exist | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
 | IntakeForm PainMapData and Consents JSON fields exist | Test | `Integration/SprintOIntegrationTests.cs` | ✅ | — |
-| Patient, IntakeForm, ClinicalNote, ObjectiveMetric CRUD via API | Test | `Integration/SprintQSmokeCrudTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
+| Patient, IntakeForm, ClinicalNote, ObjectiveMetric persistence smoke coverage | Test | `Integration/DatabaseProviderSmokeTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
 | CRUD audit events emitted for note creation/editing | Test | `Compliance/NoteComplianceIntegrationTests.cs` — `[Category=Compliance]` | ✅ | — |
 
 ---
@@ -248,7 +247,7 @@ Each row records:
 |---|---|---|---|---|
 | SQL Server `InitialCreate` migration applied via EF CLI in CI | CI Gate | `ci-db.yml` — `db-sqlserver` job (`dotnet ef database update`) | ✅ | — |
 | PostgreSQL `InitialCreate` migration applied via EF CLI in CI | CI Gate | `ci-db.yml` — `db-postgres` job (`dotnet ef database update`) | ✅ | — |
-| CRUD smoke tests pass on all three providers | Test + CI Gate | `Integration/SprintQSmokeCrudTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
+| CRUD smoke tests pass on all three providers | Test + CI Gate | `Integration/DatabaseProviderSmokeTests.cs` — `[Category=DatabaseProvider]` | ✅ | — |
 
 ---
 

@@ -21,7 +21,7 @@ namespace PTDoc.Tests.Notes;
 /// signed-note immutability (upsert skips signed notes), CPT billing-unit calculation,
 /// medical-necessity checks, FK validation, and AI-first narrative generation.
 /// </summary>
-[Trait("Category", "DailyNote")]
+[Trait("Category", "CoreCi")]
 public class DailyNoteServiceTests : IDisposable
 {
     private readonly SqliteConnection _connection;

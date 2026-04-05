@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review: missing System import and SQLite connection leak
+
+#### SecretPolicyScanTests compile fix
+- **`tests/PTDoc.Tests/Security/SecretPolicyScanTests.cs`** — Added `using System;` so `Environment.NewLine` resolves at compile time. Reason: the file referenced `Environment.NewLine` without importing the `System` namespace, causing a build failure.
+
+#### SQLite encrypted connection lifetime fix
+- **`src/PTDoc.Api/Program.cs`** — Replaced the manually created/opened `SqliteConnection` passed to `UseSqlite(connection)` with a direct `UseSqlite(connectionString)` call using the `SqliteConnectionStringBuilder`-produced string (which already contains `Password`). EF Core now owns connection creation and disposal for each `DbContext` scope, eliminating the connection/file-handle leak that occurred with the pre-opened connection approach. Reason: connections that EF Core does not own are never disposed, leaking open handles per DI scope.
+
+### Fixed - CI evidence alignment and SQLite startup validation
+
+#### Evidence/docs reconciliation
+- **`docs/CI.md`**, **`docs/RELEASE_READINESS_REPORT.md`**, **`docs/ACCEPTANCE_EVIDENCE_MAP.md`**, **`docs/ROLE_CAPABILITY_VERIFICATION_MAP.md`**, **`docs/MOBILE_ARCHITECTURE.md`**, **`docs/PHASE_8_DESIGN_SPECIFICATIONS.md`**, **`docs/PTDocs+ Branch-Specific Database Blueprint and Phased Plan for UI-Completiondeep-research-report.md`** — Reconciled workflow and release-evidence docs with the current CI gates, owner categories, provider-validation mechanics, and SQLCipher connection flow; removed stale references to deleted jobs/tests and obsolete `PRAGMA key` setup guidance. Reason: the prior documentation materially overstated what CI validated and pointed readers at superseded encryption patterns.
+
+#### SQLite startup/test hardening
+- **`src/PTDoc.Infrastructure/Data/SqliteProviderBootstrapper.cs`**, **`src/PTDoc.Api/Program.cs`**, **`tests/PTDoc.Tests/Integration/SqliteStartupInitializationTests.cs`**, **`tests/PTDoc.Tests/Integration/DatabaseProviderSmokeTests.cs`**, **`tests/PTDoc.Tests/Security/SecretPolicyScanner.cs`**, **`tests/PTDoc.Tests/Security/RbacRoleMatrixTests.cs`**, **`tests/PTDoc.Tests/SqliteProviderModuleInitializer.cs`** — Removed the test-assembly-wide SQLite provider bootstrap mask, added focused API startup coverage for plain and encrypted SQLite paths, made unsupported `DB_PROVIDER` values fail fast, broadened provider smoke queryability coverage, aligned the C# secret-policy scanner with CI’s non-string handling, expanded RBAC deny-path policy assertions, and changed the bootstrapper to mark itself initialized only after successful SQLCipher setup. Reason: restore meaningful startup validation, reduce false-green provider behavior, and close the review gaps in local-vs-CI enforcement and evidence accuracy.
+
+### Changed - CI workflow rationalization and test ownership cleanup
+
+#### Workflow consolidation and category ownership
+- **`.github/workflows/ci-core.yml`**, **`.github/workflows/ci-db.yml`**, **`.github/workflows/ci-release-gate.yml`**, **`.github/workflows/ci-secret-policy.yml`**, **`.github/workflows/_dotnet-category-gate.yml`**, **`.github/scripts/scan_secret_policy.py`** — Removed merged-PR reruns, added workflow concurrency cancellation, standardized .NET setup on `global.json`, introduced NuGet package caching, consolidated repeated gate job logic into a reusable workflow, and moved the secret-policy scan into a shared helper script. `ci-core` now runs only `[Category=CoreCi]`; release/database workflows now target single owner categories without cross-gate overlap. Reason: reduce CI duplication, keep check names stable, and make workflow behavior cheaper and easier to maintain.
+- **`tests/PTDoc.Tests/**`** — Introduced the `CoreCi` owner category, added `CiCategoryConventionsTests` to enforce one CI owner category per test file, split secret-policy coverage into `SecretPolicyScanTests`, added `DbKeyProviderTests`, `RbacHttpSmokeTests`, `DatabaseProviderSmokeTests`, and `SqlCipherAccessTests`, consolidated provider/encryption/offline-sync coverage into owner suites, and retired legacy duplicate suites and obsolete workflow-specific test wrappers. Reason: align the test inventory with the workflow rationalization so CI gates execute only their intended suites.
+- **`tests/PTDoc.Tests/Compliance/SignatureServiceTests.cs`**, **`tests/PTDoc.Tests/Security/PfptRoleComplianceTests.cs`** — Replaced null diagnosis-code fixtures with whitespace fixtures in signature validation tests so they still exercise the “missing diagnosis” branch without violating the `Patient.DiagnosisCodesJson` required-column constraint enforced by EF Core. Reason: the prior null fixture represented an impossible persisted state and failed before the signature service logic ran.
+- **`.github/workflows/ci-release-gate.yml`**, **`.github/workflows/ci-db.yml`**, **`.github/scripts/secret_policy_rules.json`**, **`tests/PTDoc.Tests/Security/SecretPolicyScanner.cs`**, **`tests/PTDoc.Tests/Security/SecretPolicyScanTests.cs`** — Removed the redundant `push` trigger from the heavy release gate workflow, restored SQL Server/PostgreSQL `dotnet-ef` coverage in database CI, and replaced the Python-spawned secret-policy test path with a native scanner that enumerates the exact same tracked files and rules manifest as the workflow helper. Reason: remove leftover duplicate CI work without dropping design-time provider validation or allowing local/CI secret-policy drift.
+- **`tests/PTDoc.Tests/Security/CiCategoryConventionsTests.cs`** — Expanded the owner-category regex to recognize qualified xUnit trait attributes such as `[Xunit.Trait(...)]` in addition to bare `[Trait(...)]`, while still matching only real attribute lines. Reason: the stricter cleanup regex missed valid owner tags in sync suites and caused a false convention-test failure.
+- **`tests/PTDoc.Tests/Integration/SqlCipherAccessTests.cs`**, **`docs/CI.md`**, **`docs/RELEASE_READINESS_REPORT.md`**, **`docs/PHASE_8_DESIGN_SPECIFICATIONS.md`** — Replaced the prior in-memory SQLite bootstrap test with file-backed SQLCipher access tests that require the correct key to reopen encrypted data, fail explicitly when the environment behaves like plain SQLite, and update the CI/docs references to the renamed suite. Reason: make the encryption coverage truthful instead of implying SQLCipher enforcement without actually proving it.
+- **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`tests/PTDoc.Tests/Integration/SqlCipherAccessTests.cs`** — Changed SQLCipher key application from an ad hoc PRAGMA command to `SqliteConnectionStringBuilder.Password`, which applies encryption at connection-open time and surfaces a clear error if the loaded native SQLite library does not support encryption. Reason: the prior PRAGMA-based path first failed with `near "$key": syntax error`, and even after fixing that syntax it still left room for plaintext database creation in the SQLCipher verification path.
+- **`src/PTDoc.Infrastructure/Data/SqliteProviderBootstrapper.cs`**, **`tests/PTDoc.Tests/SqliteProviderModuleInitializer.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`tests/PTDoc.Tests/Integration/SqlCipherAccessTests.cs`** — Moved SQLCipher bundle initialization to a shared bootstrapper and invoked it before encrypted SQLite connections can freeze the global provider choice; API and MAUI now bootstrap explicitly in their real startup paths instead of relying on a test-assembly initializer. Reason: the SQLCipher tests proved the process was still loading plain `e_sqlite3`, which made `PRAGMA key` a no-op and left encrypted reopen checks ineffective.
+
 ### Fixed - Admin approval service robustness and ICD-10 search debouncing
 
 #### AdminApprovalApiService non-JSON error handling
@@ -405,7 +433,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### SQLCipher End-to-End Encryption
 - **Database.Encryption.Enabled** - Toggleable encryption via appsettings (default: false)
-- **Connection pre-open flow** - PRAGMA key set before EF uses connection (prevents silent encryption failure)
+- **Connection pre-open flow** - SQLCipher password applied via `SqliteConnectionStringBuilder` before EF uses connection (prevents silent encryption failure)
 - **Microsoft.Data.Sqlite.Core** - SQLCipher support package
 - **SQLitePCLRaw.bundle_e_sqlcipher** - SQLCipher encryption bundle
 - **SecureStorageDbKeyProvider** - MAUI platform-specific key provider with fail-closed behavior

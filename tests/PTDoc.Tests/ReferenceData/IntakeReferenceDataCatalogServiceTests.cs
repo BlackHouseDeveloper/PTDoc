@@ -3,7 +3,7 @@ using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Tests.ReferenceData;
 
-[Trait("Category", "ReferenceData")]
+[Trait("Category", "CoreCi")]
 public sealed class IntakeReferenceDataCatalogServiceTests
 {
     private readonly IIntakeReferenceDataCatalogService _service = new IntakeReferenceDataCatalogService();

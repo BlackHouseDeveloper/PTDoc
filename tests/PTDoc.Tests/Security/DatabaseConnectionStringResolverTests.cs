@@ -3,6 +3,7 @@ using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Tests.Security;
 
+[Trait("Category", "CoreCi")]
 public class DatabaseConnectionStringResolverTests
 {
     [Fact]

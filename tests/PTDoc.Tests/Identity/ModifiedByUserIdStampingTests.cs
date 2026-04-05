@@ -11,6 +11,7 @@ namespace PTDoc.Tests.Identity;
 /// <summary>
 /// Tests for ModifiedByUserId stamping via SyncMetadataInterceptor.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class ModifiedByUserIdStampingTests
 {
     [Fact]

@@ -3,6 +3,7 @@ using PTDoc.Application.Intake;
 
 namespace PTDoc.Tests.Application;
 
+[Trait("Category", "CoreCi")]
 public sealed class IntakeConsentJsonTests
 {
     [Fact]

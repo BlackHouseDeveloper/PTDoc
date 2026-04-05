@@ -13,6 +13,7 @@ namespace PTDoc.Tests.Identity;
 /// <summary>
 /// Tests for AuthService covering PIN hash verification, session expiry logic.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class AuthServiceTests
 {
     private ApplicationDbContext CreateInMemoryContext()

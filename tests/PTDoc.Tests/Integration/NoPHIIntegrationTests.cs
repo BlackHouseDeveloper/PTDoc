@@ -16,6 +16,7 @@ namespace PTDoc.Tests.Integration;
 /// Integration tests to ensure NO PHI appears in telemetry, audit logs, or sync queue.
 /// Critical for HIPAA compliance.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class NoPHIIntegrationTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;

@@ -12,7 +12,7 @@ using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Intake;
 
-[Trait("Category", "Intake")]
+[Trait("Category", "CoreCi")]
 public sealed class JwtIntakeInviteServiceTests
 {
     [Fact]

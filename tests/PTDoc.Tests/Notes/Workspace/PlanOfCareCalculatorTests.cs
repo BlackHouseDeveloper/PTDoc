@@ -4,7 +4,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
 
-[Trait("Category", "Unit")]
+[Trait("Category", "CoreCi")]
 public sealed class PlanOfCareCalculatorTests
 {
     private readonly IPlanOfCareCalculator _calculator = new PlanOfCareCalculator();

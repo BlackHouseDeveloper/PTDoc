@@ -52,12 +52,12 @@ Each row records:
 | View patient list/profile | FrontDesk | Allow (admin scope) | API policy | `AuthorizationCoverageTests` |
 | View patient list/profile | Aide | Allow (limited) | API policy | `AuthorizationCoverageTests` |
 | Edit patient demographics | PT | Allow | API policy (`PatientWrite`) | `AuthorizationCoverageTests` |
-| Edit patient demographics | PTA | Deny | API policy + service | `RbacEnforcementTests.PTA_Cannot_Write_Patient` |
+| Edit patient demographics | PTA | Allow | API policy (`PatientWrite`) | `AuthorizationCoverageTests` |
 | Edit patient demographics | Billing | Deny | API policy + service | `EndToEndWorkflowTests.Billing_Cannot_Edit_Patient_Demographics_Returns_403` ✅ |
 | Edit patient demographics | Owner | Deny | API policy + service | `EndToEndWorkflowTests.Owner_Cannot_Edit_Patient_Demographics_Returns_403` ✅ |
-| Edit patient demographics | FrontDesk | Deny | API policy | `RbacEnforcementTests` |
-| Edit patient demographics | Aide | Deny | API policy | `RbacEnforcementTests` |
-| Edit patient demographics | Patient | Deny | API policy | `RbacEnforcementTests` |
+| Edit patient demographics | FrontDesk | Deny | API policy | `RbacRoleMatrixTests.PatientWrite_NonWriterRoles_AreNotAuthorized` |
+| Edit patient demographics | Aide | Deny | API policy | `RbacRoleMatrixTests.PatientWrite_NonWriterRoles_AreNotAuthorized` |
+| Edit patient demographics | Patient | Deny | API policy | `RbacRoleMatrixTests.PatientWrite_NonWriterRoles_AreNotAuthorized` |
 
 ---
 
@@ -68,13 +68,13 @@ Each row records:
 | Start intake invite | PT | Allow | API policy (`IntakeWrite`) | `AuthorizationCoverageTests` |
 | Start intake invite | PTA | Allow (if permitted by policy) | API policy | `AuthorizationCoverageTests` |
 | Start intake invite | Billing | Deny | API policy | `EndToEndWorkflowTests.Intake_Billing_Cannot_Create_Returns_403` ✅ |
-| Start intake invite | Owner | Deny | API policy | `RbacEnforcementTests` |
+| Start intake invite | Owner | Deny | API policy | `RbacRoleMatrixTests.IntakeWrite_Owner_IsNotAuthorized` |
 | Start intake invite | FrontDesk | Allow | API policy | `EndToEndWorkflowTests.Intake_Workflow_FrontDesk_Creates_PT_Reviews` ✅ |
-| Start intake invite | Aide | Deny | API policy | `RbacEnforcementTests` |
+| Start intake invite | Aide | Deny | API policy | `RbacRoleMatrixTests.IntakeWrite_NonWriterRoles_AreNotAuthorized` |
 | Fill intake | Patient | Allow (input only) | API policy (`IntakeRead`) + service | `IntakeEndpointsTests` |
-| Fill intake | FrontDesk | Deny (except admin resend) | API policy | `RbacEnforcementTests` |
+| Fill intake | FrontDesk | Deny (except admin resend) | API policy | `RbacRoleMatrixTests / RbacHttpSmokeTests` |
 | Review intake | PT | Allow | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.Intake_Workflow_FrontDesk_Creates_PT_Reviews` ✅ |
-| Review intake | Billing | Deny | API policy | `RbacEnforcementTests` |
+| Review intake | Billing | Deny | API policy | `RbacRoleMatrixTests / RbacHttpSmokeTests` |
 
 ---
 
@@ -102,15 +102,15 @@ Each row records:
 | Capability | Role | Decision | Enforcement Layer | Test Reference |
 |---|---|---|---|---|
 | Sign Eval/PN/DC note | PT | Allow | API policy (`NoteWrite`) | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` ✅ |
-| Sign Eval/PN/DC note | PTA | Deny | API policy | `RbacEnforcementTests.PTA_Cannot_Sign_Eval` |
+| Sign Eval/PN/DC note | PTA | Deny | API policy | `RbacHttpSmokeTests.PTA_Cannot_Create_EvalNote_Returns_403` |
 | Sign Eval/PN/DC note | Billing | Deny | API policy | `EndToEndWorkflowTests.Billing_Cannot_Sign_Note_Returns_403` ✅ |
 | Sign Daily note | PT | Allow | API policy (`NoteWrite`) | `EndToEndWorkflowTests.PT_Creates_Note_Then_Signs_Successfully` ✅ |
-| Sign Daily note | PTA | Allow → Pending Co-sign | API policy (`NoteWrite`) + service guard | `RbacEnforcementTests` |
+| Sign Daily note | PTA | Allow → Pending Co-sign | API policy (`NoteWrite`) + service guard | `SignatureServiceTests.SignNote_PtaDailyNote_CreatesLegalSignatureWithoutFinalizingNote` |
 | PT co-sign PTA Daily | PT | Allow | API policy (`NoteCoSign`) | `AuthorizationCoverageTests` |
 | PT co-sign PTA Daily | PTA | Deny | API policy | `EndToEndWorkflowTests.PTA_Cannot_CoSign_Note_Returns_403` ✅ |
-| PT co-sign PTA Daily | Billing | Deny | API policy | `RbacEnforcementTests` |
+| PT co-sign PTA Daily | Billing | Deny | API policy | `RbacRoleMatrixTests.NoteCoSign_Roles_MatchPolicy` |
 | Add addendum | PT | Allow | API policy (`NoteWrite`) | `AuthorizationCoverageTests` |
-| Add addendum | Billing | Deny | API policy | `RbacEnforcementTests` |
+| Add addendum | Billing | Deny | API policy | `RbacRoleMatrixTests.NoteWrite_NonClinicalRoles_AreNotAuthorized` |
 
 ---
 
@@ -122,9 +122,9 @@ Each row records:
 | Export PDF | PTA | Allow (if permitted) | API policy | `AuthorizationCoverageTests` |
 | Export PDF | Billing | Deny | API policy (`NoteExport`) | `EndToEndWorkflowTests.Billing_Cannot_Export_Note_Returns_403` ✅ |
 | Export PDF | Owner | Deny | API policy | `EndToEndWorkflowTests.Owner_Cannot_Export_Note_Returns_403` ✅ |
-| Export PDF | Patient | Deny | API policy | `RbacEnforcementTests` |
-| Export PDF | FrontDesk | Deny | API policy | `RbacEnforcementTests` |
-| Export PDF | Aide | Deny | API policy | `RbacEnforcementTests` |
+| Export PDF | Patient | Deny | API policy | `RbacRoleMatrixTests.NoteExport_Roles_MatchPolicy` |
+| Export PDF | FrontDesk | Deny | API policy | `RbacRoleMatrixTests.NoteExport_Roles_MatchPolicy` |
+| Export PDF | Aide | Deny | API policy | `RbacRoleMatrixTests.NoteExport_Roles_MatchPolicy` |
 
 ---
 
@@ -138,8 +138,8 @@ Each row records:
 | Run/trigger sync | Owner | Allow | API policy (`ClinicalStaff`) | `AuthorizationCoverageTests` |
 | Run/trigger sync | Patient | Deny | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.Patient_Cannot_Access_Sync_Status_Returns_403` ✅ |
 | Run/trigger sync | FrontDesk | Deny | API policy (`ClinicalStaff`) | `EndToEndWorkflowTests.FrontDesk_Cannot_Access_Sync_Returns_403` ✅ |
-| Run/trigger sync | Aide | Deny | API policy (`ClinicalStaff`) | `RbacEnforcementTests` |
-| Sync excludes clinical data | Aide/FrontDesk/Patient | Enforced by scoping | SyncEngine service | `SyncEngineTests.GetClientDelta_ExcludesClinicalNoteForNonClinicalRoles` |
+| Run/trigger sync | Aide | Deny | API policy (`ClinicalStaff`) | `RbacRoleMatrixTests / RbacHttpSmokeTests` |
+| Sync excludes clinical data | Aide/FrontDesk/Patient | Enforced by scoping | SyncEngine service | `SyncClientProtocolTests` |
 
 ---
 
@@ -148,9 +148,9 @@ Each row records:
 | Capability | Role | Decision | Enforcement Layer | Test Reference |
 |---|---|---|---|---|
 | View audit trail | PT | Allow (as permitted) | API policy (`AuditRead`) | `AuthorizationCoverageTests` |
-| View audit trail | Billing | Deny | API policy | `RbacEnforcementTests` |
+| View audit trail | Billing | Deny | API policy | `RbacRoleMatrixTests / RbacHttpSmokeTests` |
 | View audit trail | Owner | Allow (read-only) | API policy | `AuthorizationCoverageTests` |
-| View audit trail | Patient | Deny | API policy | `RbacEnforcementTests` |
+| View audit trail | Patient | Deny | API policy | `RbacRoleMatrixTests / RbacHttpSmokeTests` |
 
 ---
 

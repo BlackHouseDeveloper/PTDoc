@@ -3,7 +3,7 @@ using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Tests.ReferenceData;
 
-[Trait("Category", "ReferenceData")]
+[Trait("Category", "CoreCi")]
 public class TreatmentTaxonomyCatalogServiceTests
 {
     private readonly ITreatmentTaxonomyCatalogService _service = new TreatmentTaxonomyCatalogService();

@@ -8,6 +8,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Identity;
 
+[Trait("Category", "CoreCi")]
 public class UserRegistrationServiceTests
 {
     private static ApplicationDbContext CreateInMemoryContext()

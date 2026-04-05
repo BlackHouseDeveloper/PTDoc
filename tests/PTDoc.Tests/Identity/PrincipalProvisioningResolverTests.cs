@@ -10,6 +10,7 @@ using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Tests.Identity;
 
+[Trait("Category", "CoreCi")]
 public class PrincipalProvisioningResolverTests
 {
     [Fact]

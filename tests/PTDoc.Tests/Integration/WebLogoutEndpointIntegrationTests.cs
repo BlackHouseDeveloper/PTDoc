@@ -17,7 +17,7 @@ namespace PTDoc.Tests.Integration;
 public sealed class WebLogoutEndpointIntegrationTests
 {
     [Fact]
-    [Trait("Category", "Integration")]
+    [Trait("Category", "CoreCi")]
     public async Task AuthLogout_RedirectsToLogin_ForLocalSession_WhenExternalIdentityIsEnabled()
     {
         await using var factory = new PTDocWebFactory();

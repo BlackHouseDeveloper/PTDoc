@@ -3,6 +3,7 @@ using PTDoc.Api.AI;
 
 namespace PTDoc.Tests.Security;
 
+[Trait("Category", "CoreCi")]
 public class AzureRuntimeConfigurationValidatorTests
 {
     [Fact]

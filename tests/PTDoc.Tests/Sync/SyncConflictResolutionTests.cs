@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using PTDoc.Application.Compliance;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Sync;
 using Xunit;
@@ -112,6 +115,90 @@ public class SyncConflictResolutionTests
             .Where(q => q.Status == SyncQueueStatus.Completed)
             .CountAsync();
         Assert.Equal(3, completedItems);
+    }
+
+    [Fact]
+    public async Task PushAsync_MarksClinicalNoteSyncState_AsSynced()
+    {
+        var context = CreateInMemoryContext();
+        var patient = new Patient
+        {
+            FirstName = "Sync",
+            LastName = "Note",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.Patients.Add(patient);
+
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{\"subjective\":\"draft content\"}",
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
+        await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create);
+
+        var result = await syncEngine.PushAsync();
+
+        Assert.True(result.SuccessCount >= 1);
+
+        var updatedNote = await context.ClinicalNotes.AsNoTracking().FirstAsync(n => n.Id == note.Id);
+        Assert.Equal(SyncState.Synced, updatedNote.SyncState);
+    }
+
+    [Fact]
+    public async Task PushAsync_MarksIntakeFormSyncState_AsSynced()
+    {
+        var context = CreateInMemoryContext();
+        var patient = new Patient
+        {
+            FirstName = "Sync",
+            LastName = "Intake",
+            DateOfBirth = new DateTime(1981, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString("N"),
+            ResponseJson = "{\"q1\":\"answer\"}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.IntakeForms.Add(intake);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Create);
+
+        var result = await syncEngine.PushAsync();
+
+        Assert.True(result.SuccessCount >= 1);
+
+        var updatedIntake = await context.IntakeForms.AsNoTracking().FirstAsync(row => row.Id == intake.Id);
+        Assert.Equal(SyncState.Synced, updatedIntake.SyncState);
     }
 
     [Fact]
@@ -238,5 +325,21 @@ public class SyncConflictResolutionTests
         Assert.False(status.IsRunning);
         Assert.NotNull(status.LastSyncAt);
         Assert.NotNull(status.LastSuccessUtc);
+    }
+
+    private static ISignatureService CreateSignatureService(ApplicationDbContext context)
+    {
+        var auditService = Mock.Of<IAuditService>();
+        var clinicalRules = new Mock<IClinicalRulesEngine>();
+        clinicalRules
+            .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+
+        return new SignatureService(
+            context,
+            auditService,
+            clinicalRules.Object,
+            new HashService(),
+            new AddendumService(context, auditService));
     }
 }

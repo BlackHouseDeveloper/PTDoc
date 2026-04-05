@@ -5,6 +5,7 @@ using PTDoc.Api.ReferenceData;
 
 namespace PTDoc.Tests.ReferenceData;
 
+[Trait("Category", "CoreCi")]
 public class ReferenceDataEndpointRegistrationTests
 {
     [Fact]

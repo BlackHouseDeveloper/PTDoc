@@ -13,7 +13,7 @@ namespace PTDoc.Tests.Outcomes;
 /// Validates that <see cref="IAiClinicalGenerationService.GenerateGoalNarrativesAsync"/>
 /// uses outcome data to produce outcome-informed goal narratives.
 /// </summary>
-[Trait("Category", "OutcomeMeasures")]
+[Trait("Category", "CoreCi")]
 public class GoalGenerationOutcomeIntegrationTests
 {
     private readonly IAiClinicalGenerationService _service;
