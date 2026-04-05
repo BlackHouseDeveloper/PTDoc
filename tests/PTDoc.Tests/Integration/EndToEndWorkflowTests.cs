@@ -500,6 +500,19 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
     [Fact]
     [Trait("Category", "RBAC")]
+    public async Task PT_Can_Access_Sync_Queue_And_Health_Return_200()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var queueResponse = await client.GetAsync("/api/v1/sync/queue");
+        using var healthResponse = await client.GetAsync("/api/v1/sync/health");
+
+        Assert.Equal(HttpStatusCode.OK, queueResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Access_Sync_Returns_403()
     {
         // Billing is NOT in ClinicalStaff policy.
@@ -517,6 +530,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
 
         using var response = await client.GetAsync("/api/v1/sync/status");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "RBAC")]
+    public async Task Billing_Cannot_Access_Sync_Queue_Returns_403()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Billing);
+
+        using var response = await client.GetAsync("/api/v1/sync/queue");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

@@ -1028,6 +1028,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("FailureType")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastAttemptAt")
                         .HasColumnType("TEXT");
 

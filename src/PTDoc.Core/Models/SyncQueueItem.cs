@@ -26,6 +26,7 @@ public class SyncQueueItem
 
     // Error tracking
     public string? ErrorMessage { get; set; }
+    public SyncFailureType? FailureType { get; set; }
 
     /// <summary>
     /// JSON payload of the entity as received from the client.
@@ -52,5 +53,14 @@ public enum SyncQueueStatus
     Processing = 1,
     Completed = 2,
     Failed = 3,
-    Cancelled = 4
+    Cancelled = 4,
+    DeadLetter = 5
+}
+
+public enum SyncFailureType
+{
+    NetworkError = 0,
+    ValidationError = 1,
+    ConflictError = 2,
+    ServerError = 3
 }

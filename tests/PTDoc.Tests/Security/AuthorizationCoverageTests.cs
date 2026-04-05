@@ -266,6 +266,9 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/sync/push",         AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/pull",         AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/status",       AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/sync/queue",        AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/sync/dead-letters", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/sync/health",       AuthorizationPolicies.ClinicalStaff),
         new("POST", "/api/v1/sync/client/push",  AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/sync/client/pull",  AuthorizationPolicies.ClinicalStaff),
 

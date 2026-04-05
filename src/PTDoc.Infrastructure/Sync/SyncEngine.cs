@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -17,15 +18,21 @@ namespace PTDoc.Infrastructure.Sync;
 /// </summary>
 public class SyncEngine : ISyncEngine
 {
+    private const int MaxBatchSize = 10;
+    private const int MaxRetryAttempts = 5;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan QueueItemProcessingTimeout = TimeSpan.FromSeconds(15);
     private const int MaxReceiptRetries = 5;
     private const string SyncConflictAddendumSource = "offline-sync-conflict";
+    private const string InterruptedProcessingMessage = "Sync interrupted before completion.";
 
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
     private readonly IAuditService? _auditService;
     private readonly ISignatureService? _signatureService;
-    private DateTime? _lastSyncAt;
+    private readonly ISyncRuntimeStateStore _runtimeStateStore;
+    private readonly ITelemetrySink? _telemetrySink;
     private static readonly JsonSerializerOptions ConflictJsonOptions = new()
     {
         ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
@@ -36,31 +43,47 @@ public class SyncEngine : ISyncEngine
     public SyncEngine(
         ApplicationDbContext context,
         ILogger<SyncEngine> logger,
+        ISyncRuntimeStateStore? runtimeStateStore = null,
         IIdentityContextAccessor? identityContext = null,
         IAuditService? auditService = null,
-        ISignatureService? signatureService = null)
+        ISignatureService? signatureService = null,
+        ITelemetrySink? telemetrySink = null)
     {
         _context = context;
         _logger = logger;
+        _runtimeStateStore = runtimeStateStore ?? new SyncRuntimeStateStore();
         _identityContext = identityContext;
         _auditService = auditService;
         _signatureService = signatureService;
+        _telemetrySink = telemetrySink;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
     {
         var startTime = DateTime.UtcNow;
+        if (!_runtimeStateStore.TryBeginRun(startTime))
+        {
+            _logger.LogInformation("Skipping full sync cycle because another sync run is already active");
+            return new SyncResult
+            {
+                PushResult = new PushResult { Skipped = true },
+                PullResult = new PullResult(),
+                CompletedAt = DateTime.UtcNow,
+                Duration = TimeSpan.Zero,
+                Skipped = true
+            };
+        }
+
         _logger.LogInformation("Starting full sync cycle");
 
         try
         {
             // First push local changes
-            var pushResult = await PushAsync(cancellationToken);
+            var pushResult = await PushInternalAsync(cancellationToken);
 
             // Then pull server changes
-            var pullResult = await PullAsync(_lastSyncAt, cancellationToken);
-
-            _lastSyncAt = DateTime.UtcNow;
+            var pullResult = await PullAsync(_runtimeStateStore.Snapshot().LastSuccessUtc, cancellationToken);
+            var completedAt = DateTime.UtcNow;
 
             var duration = DateTime.UtcNow - startTime;
             _logger.LogInformation(
@@ -68,84 +91,61 @@ public class SyncEngine : ISyncEngine
                 duration.TotalMilliseconds, pushResult.SuccessCount, pullResult.AppliedCount,
                 pushResult.ConflictCount + pullResult.ConflictCount);
 
+            var runSucceeded = pushResult.FailureCount == 0 && pushResult.DeadLetterCount == 0;
+            _runtimeStateStore.CompleteRun(
+                completedAt,
+                success: runSucceeded,
+                lastError: runSucceeded ? null : SanitizeError(pushResult.Errors.FirstOrDefault()));
+
             return new SyncResult
             {
                 PushResult = pushResult,
                 PullResult = pullResult,
-                CompletedAt = DateTime.UtcNow,
-                Duration = duration
+                CompletedAt = completedAt,
+                Duration = duration,
+                Skipped = false
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Sync cycle failed");
+            _runtimeStateStore.CompleteRun(DateTime.UtcNow, success: false, lastError: SanitizeError(ex.Message));
+            if (_telemetrySink is not null)
+            {
+                await _telemetrySink.LogExceptionAsync(ex, Guid.NewGuid().ToString(), new Dictionary<string, object>
+                {
+                    ["Component"] = "SyncEngine",
+                    ["Operation"] = "SyncNow"
+                });
+            }
             throw;
         }
     }
 
     public async Task<PushResult> PushAsync(CancellationToken cancellationToken = default)
     {
-        var conflicts = new List<SyncConflict>();
-        var errors = new List<string>();
-        int successCount = 0;
-        int failureCount = 0;
-
-        // Get pending sync queue items
-        var pendingItems = await _context.SyncQueueItems
-            .Where(q => q.Status == SyncQueueStatus.Pending || (q.Status == SyncQueueStatus.Failed && q.RetryCount < q.MaxRetries))
-            .OrderBy(q => q.EnqueuedAt)
-            .ToListAsync(cancellationToken);
-
-        _logger.LogInformation("Pushing {Count} pending items", pendingItems.Count);
-
-        foreach (var item in pendingItems)
+        var startedAt = DateTime.UtcNow;
+        if (!_runtimeStateStore.TryBeginRun(startedAt))
         {
-            try
-            {
-                item.Status = SyncQueueStatus.Processing;
-                item.LastAttemptAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(cancellationToken);
-
-                // In a real implementation, this would call the server API
-                // For now, we'll simulate success and mark as completed
-                var success = await ProcessQueueItemAsync(item, cancellationToken);
-
-                if (success)
-                {
-                    item.Status = SyncQueueStatus.Completed;
-                    item.CompletedAt = DateTime.UtcNow;
-                    successCount++;
-                }
-                else
-                {
-                    item.Status = SyncQueueStatus.Failed;
-                    item.RetryCount++;
-                    failureCount++;
-                }
-
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to push item {ItemId}", item.Id);
-                item.Status = SyncQueueStatus.Failed;
-                item.RetryCount++;
-                item.ErrorMessage = ex.Message;
-                errors.Add($"{item.EntityType}:{item.EntityId} - {ex.Message}");
-                failureCount++;
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            _logger.LogInformation("Skipping push cycle because another sync run is already active");
+            return new PushResult { Skipped = true };
         }
 
-        return new PushResult
+        try
         {
-            TotalPushed = pendingItems.Count,
-            SuccessCount = successCount,
-            FailureCount = failureCount,
-            ConflictCount = conflicts.Count,
-            Conflicts = conflicts,
-            Errors = errors
-        };
+            var result = await PushInternalAsync(cancellationToken);
+            var runSucceeded = result.FailureCount == 0 && result.DeadLetterCount == 0;
+            _runtimeStateStore.CompleteRun(
+                DateTime.UtcNow,
+                success: runSucceeded,
+                lastError: runSucceeded ? null : SanitizeError(result.Errors.FirstOrDefault()));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _runtimeStateStore.CompleteRun(DateTime.UtcNow, success: false, lastError: SanitizeError(ex.Message));
+            throw;
+        }
     }
 
     public Task<PullResult> PullAsync(DateTime? sinceUtc = null, CancellationToken cancellationToken = default)
@@ -195,7 +195,8 @@ public class SyncEngine : ISyncEngine
                 EntityId = entityId,
                 Operation = operation,
                 EnqueuedAt = DateTime.UtcNow,
-                Status = SyncQueueStatus.Pending
+                Status = SyncQueueStatus.Pending,
+                MaxRetries = MaxRetryAttempts
             };
 
             _context.SyncQueueItems.Add(queueItem);
@@ -203,6 +204,7 @@ public class SyncEngine : ISyncEngine
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+        await RefreshRuntimeCountsAsync(cancellationToken);
     }
 
     public async Task<SyncQueueSummary> GetQueueStatusAsync(CancellationToken cancellationToken = default)
@@ -210,20 +212,448 @@ public class SyncEngine : ISyncEngine
         var pending = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
         var processing = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Processing, cancellationToken);
         var failed = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed, cancellationToken);
+        var deadLetter = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
         var oldestPending = await _context.SyncQueueItems
             .Where(q => q.Status == SyncQueueStatus.Pending)
             .OrderBy(q => q.EnqueuedAt)
             .Select(q => (DateTime?)q.EnqueuedAt)
             .FirstOrDefaultAsync(cancellationToken);
+        _runtimeStateStore.UpdateQueueCounts(pending, failed, deadLetter);
+        var runtimeStatus = _runtimeStateStore.Snapshot();
 
         return new SyncQueueSummary
         {
             PendingCount = pending,
             ProcessingCount = processing,
             FailedCount = failed,
+            DeadLetterCount = deadLetter,
             OldestPendingAt = oldestPending,
-            LastSyncAt = _lastSyncAt
+            LastSyncAt = runtimeStatus.LastSuccessUtc,
+            IsRunning = runtimeStatus.IsRunning,
+            LastSyncStartUtc = runtimeStatus.LastSyncStartUtc,
+            LastSyncEndUtc = runtimeStatus.LastSyncEndUtc,
+            LastSuccessUtc = runtimeStatus.LastSuccessUtc,
+            LastFailureUtc = runtimeStatus.LastFailureUtc,
+            LastError = runtimeStatus.LastError
         };
+    }
+
+    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetQueueItemsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.SyncQueueItems
+            .AsNoTracking()
+            .Where(q => q.Status != SyncQueueStatus.Completed && q.Status != SyncQueueStatus.DeadLetter)
+            .OrderBy(q => q.EnqueuedAt)
+            .Select(q => new SyncQueueItemStatus
+            {
+                Id = q.Id,
+                EntityType = q.EntityType,
+                EntityId = q.EntityId,
+                OperationType = q.Operation,
+                Status = q.Status,
+                RetryCount = q.RetryCount,
+                LastAttemptAt = q.LastAttemptAt,
+                FailureType = q.FailureType,
+                ErrorMessage = q.ErrorMessage
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetDeadLetterItemsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.SyncQueueItems
+            .AsNoTracking()
+            .Where(q => q.Status == SyncQueueStatus.DeadLetter)
+            .OrderBy(q => q.EnqueuedAt)
+            .Select(q => new SyncQueueItemStatus
+            {
+                Id = q.Id,
+                EntityType = q.EntityType,
+                EntityId = q.EntityId,
+                OperationType = q.Operation,
+                Status = q.Status,
+                RetryCount = q.RetryCount,
+                LastAttemptAt = q.LastAttemptAt,
+                FailureType = q.FailureType,
+                ErrorMessage = q.ErrorMessage
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<SyncHealthStatus> GetHealthStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var pendingCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
+        var failedCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed || q.Status == SyncQueueStatus.Processing, cancellationToken);
+        var deadLetterCount = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
+
+        return new SyncHealthStatus
+        {
+            IsHealthy = failedCount == 0 && deadLetterCount == 0,
+            PendingCount = pendingCount,
+            FailedCount = failedCount,
+            DeadLetterCount = deadLetterCount
+        };
+    }
+
+    public async Task<int> RecoverInterruptedQueueItemsAsync(CancellationToken cancellationToken = default)
+    {
+        var interruptedItems = await _context.SyncQueueItems
+            .Where(q => q.Status == SyncQueueStatus.Processing)
+            .ToListAsync(cancellationToken);
+
+        if (interruptedItems.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var item in interruptedItems)
+        {
+            item.Status = SyncQueueStatus.Failed;
+            item.FailureType = SyncFailureType.ServerError;
+            item.ErrorMessage = InterruptedProcessingMessage;
+            item.LastAttemptAt ??= DateTime.UtcNow;
+            item.MaxRetries = Math.Max(item.MaxRetries, MaxRetryAttempts);
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await RefreshRuntimeCountsAsync(cancellationToken);
+        return interruptedItems.Count;
+    }
+
+    private async Task<PushResult> PushInternalAsync(CancellationToken cancellationToken)
+    {
+        var conflicts = new List<SyncConflict>();
+        var errors = new List<string>();
+        var batchCount = 0;
+        var totalPushed = 0;
+        var successCount = 0;
+        var failureCount = 0;
+        var deadLetterCount = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var batch = await GetNextBatchAsync(cancellationToken);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            batchCount++;
+            totalPushed += batch.Count;
+
+            _logger.LogInformation(
+                "Processing sync batch {BatchNumber} with {BatchSize} item(s)",
+                batchCount,
+                batch.Count);
+
+            foreach (var item in batch)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var outcome = await ProcessQueuedItemWithTimeoutAsync(item, batch.Count, cancellationToken);
+
+                if (outcome.Success)
+                {
+                    successCount++;
+                    continue;
+                }
+
+                errors.Add($"{item.EntityType}:{item.EntityId} - {outcome.ErrorMessage}");
+                if (outcome.FailureType == SyncFailureType.ConflictError)
+                {
+                    conflicts.Add(new SyncConflict
+                    {
+                        EntityType = item.EntityType,
+                        EntityId = item.EntityId,
+                        Resolution = ConflictResolution.ManualRequired,
+                        Reason = outcome.ErrorMessage ?? "Conflict detected during sync queue processing."
+                    });
+                }
+
+                if (outcome.DeadLettered)
+                {
+                    deadLetterCount++;
+                }
+                else
+                {
+                    failureCount++;
+                }
+            }
+
+            await RefreshRuntimeCountsAsync(cancellationToken);
+        }
+
+        if (_telemetrySink is not null)
+        {
+            await _telemetrySink.LogMetricAsync("SyncBatchCount", batchCount, new Dictionary<string, object>
+            {
+                ["TotalPushed"] = totalPushed,
+                ["SuccessCount"] = successCount,
+                ["FailureCount"] = failureCount,
+                ["DeadLetterCount"] = deadLetterCount
+            });
+        }
+
+        return new PushResult
+        {
+            TotalPushed = totalPushed,
+            SuccessCount = successCount,
+            FailureCount = failureCount,
+            ConflictCount = conflicts.Count,
+            Conflicts = conflicts,
+            Errors = errors,
+            DeadLetterCount = deadLetterCount,
+            BatchCount = batchCount
+        };
+    }
+
+    private async Task<List<SyncQueueItem>> GetNextBatchAsync(CancellationToken cancellationToken)
+    {
+        var cutoff = DateTime.UtcNow - RetryDelay;
+        var batch = await _context.SyncQueueItems
+            .Where(q =>
+                q.Status == SyncQueueStatus.Pending ||
+                (q.Status == SyncQueueStatus.Failed &&
+                 q.RetryCount < q.MaxRetries &&
+                 (q.LastAttemptAt == null || q.LastAttemptAt < cutoff)))
+            .OrderBy(q => q.EnqueuedAt)
+            .Take(MaxBatchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var item in batch)
+        {
+            item.MaxRetries = Math.Max(item.MaxRetries, MaxRetryAttempts);
+        }
+
+        if (batch.Count > 0)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return batch;
+    }
+
+    private async Task<QueueProcessingOutcome> ProcessQueuedItemWithTimeoutAsync(
+        SyncQueueItem item,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = DateTime.UtcNow;
+        item.Status = SyncQueueStatus.Processing;
+        item.LastAttemptAt = startedAt;
+        item.ErrorMessage = null;
+        item.FailureType = null;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(QueueItemProcessingTimeout);
+
+        try
+        {
+            var result = await ProcessQueueItemAsync(item, timeoutCts.Token);
+            if (result.Success)
+            {
+                item.Status = SyncQueueStatus.Completed;
+                item.CompletedAt = DateTime.UtcNow;
+                item.ErrorMessage = null;
+                item.FailureType = null;
+                await _context.SaveChangesAsync(cancellationToken);
+
+                await LogQueueItemAuditAsync(
+                    "ITEM_PROCESSED",
+                    item,
+                    "Completed",
+                    batchSize,
+                    startedAt,
+                    success: true,
+                    errorMessage: null,
+                    failureType: null,
+                    cancellationToken);
+
+                return QueueProcessingOutcome.SuccessResult();
+            }
+
+            return await ApplyQueueFailureAsync(item, result, batchSize, startedAt, cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            return await ApplyQueueFailureAsync(
+                item,
+                QueueItemProcessingResult.ServerFailure("Sync queue item timed out.", ex),
+                batchSize,
+                startedAt,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process queued sync item {ItemId}", item.Id);
+            return await ApplyQueueFailureAsync(
+                item,
+                QueueItemProcessingResult.ServerFailure("Unhandled server error processing sync item.", ex),
+                batchSize,
+                startedAt,
+                cancellationToken);
+        }
+    }
+
+    private async Task<QueueProcessingOutcome> ApplyQueueFailureAsync(
+        SyncQueueItem item,
+        QueueItemProcessingResult result,
+        int batchSize,
+        DateTime startedAt,
+        CancellationToken cancellationToken)
+    {
+        item.ErrorMessage = SanitizeError(result.ErrorMessage);
+        item.FailureType = result.FailureType;
+        item.CompletedAt = null;
+
+        var shouldDeadLetter = result.Terminal;
+        if (!shouldDeadLetter)
+        {
+            item.RetryCount = Math.Min(item.MaxRetries, item.RetryCount + 1);
+            shouldDeadLetter = item.RetryCount >= item.MaxRetries;
+        }
+        else
+        {
+            item.RetryCount = Math.Max(item.RetryCount, item.MaxRetries);
+        }
+
+        item.Status = shouldDeadLetter ? SyncQueueStatus.DeadLetter : SyncQueueStatus.Failed;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        await LogQueueItemAuditAsync(
+            shouldDeadLetter ? "DEAD_LETTER_CREATED" : "ITEM_FAILED",
+            item,
+            item.Status.ToString(),
+            batchSize,
+            startedAt,
+            success: false,
+            errorMessage: item.ErrorMessage,
+            failureType: item.FailureType,
+            cancellationToken);
+
+        if (_telemetrySink is not null)
+        {
+            await _telemetrySink.LogEventAsync(
+                shouldDeadLetter ? "DeadLetterCreated" : "SyncItemFailed",
+                item.Id.ToString(),
+                new Dictionary<string, object>
+                {
+                    ["EntityType"] = item.EntityType,
+                    ["EntityId"] = item.EntityId,
+                    ["FailureType"] = item.FailureType?.ToString() ?? "Unknown",
+                    ["RetryCount"] = item.RetryCount,
+                    ["Status"] = item.Status.ToString()
+                });
+        }
+
+        return new QueueProcessingOutcome
+        {
+            Success = false,
+            FailureType = item.FailureType,
+            ErrorMessage = item.ErrorMessage,
+            DeadLettered = shouldDeadLetter
+        };
+    }
+
+    private async Task RefreshRuntimeCountsAsync(CancellationToken cancellationToken)
+    {
+        var pending = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Pending, cancellationToken);
+        var failed = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.Failed, cancellationToken);
+        var deadLetter = await _context.SyncQueueItems.CountAsync(q => q.Status == SyncQueueStatus.DeadLetter, cancellationToken);
+        _runtimeStateStore.UpdateQueueCounts(pending, failed, deadLetter);
+    }
+
+    private async Task LogQueueItemAuditAsync(
+        string eventType,
+        SyncQueueItem item,
+        string status,
+        int batchSize,
+        DateTime startedAt,
+        bool success,
+        string? errorMessage,
+        SyncFailureType? failureType,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["OperationType"] = item.Operation.ToString(),
+            ["RetryCount"] = item.RetryCount,
+            ["BatchSize"] = batchSize,
+            ["DurationMs"] = (DateTime.UtcNow - startedAt).TotalMilliseconds
+        };
+
+        if (failureType.HasValue)
+        {
+            metadata["FailureType"] = failureType.Value.ToString();
+        }
+
+        await LogSyncEventAsync(
+            AuditEvent.SyncEvent(
+                eventType,
+                item.EntityType,
+                item.EntityId,
+                item.Id,
+                status,
+                _identityContext?.TryGetCurrentUserId(),
+                success,
+                errorMessage,
+                metadata),
+            cancellationToken);
+    }
+
+    private static string SanitizeError(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            return "Sync processing failed.";
+        }
+
+        return errorMessage.Length <= 500
+            ? errorMessage
+            : errorMessage[..500];
+    }
+
+    private sealed class QueueItemProcessingResult
+    {
+        public bool Success { get; init; }
+        public SyncFailureType? FailureType { get; init; }
+        public string? ErrorMessage { get; init; }
+        public bool Terminal { get; init; }
+
+        public static QueueItemProcessingResult SuccessResult() => new() { Success = true };
+        public static QueueItemProcessingResult ValidationFailure(string message) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ValidationError,
+            ErrorMessage = message,
+            Terminal = true
+        };
+
+        public static QueueItemProcessingResult ConflictFailure(string message) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ConflictError,
+            ErrorMessage = message,
+            Terminal = true
+        };
+
+        public static QueueItemProcessingResult ServerFailure(string message, Exception? exception = null) => new()
+        {
+            Success = false,
+            FailureType = SyncFailureType.ServerError,
+            ErrorMessage = exception is null ? message : $"{message} {SanitizeError(exception.Message)}",
+            Terminal = false
+        };
+    }
+
+    private sealed class QueueProcessingOutcome
+    {
+        public bool Success { get; init; }
+        public SyncFailureType? FailureType { get; init; }
+        public string? ErrorMessage { get; init; }
+        public bool DeadLettered { get; init; }
+
+        public static QueueProcessingOutcome SuccessResult() => new() { Success = true };
     }
 
     /// <summary>
@@ -232,7 +662,7 @@ public class SyncEngine : ISyncEngine
     /// change has been fully processed and is safe to consider synchronised.
     /// Returns true if the item was processed successfully, false otherwise.
     /// </summary>
-    private async Task<bool> ProcessQueueItemAsync(SyncQueueItem item, CancellationToken cancellationToken)
+    private async Task<QueueItemProcessingResult> ProcessQueueItemAsync(SyncQueueItem item, CancellationToken cancellationToken)
     {
         switch (item.EntityType)
         {
@@ -244,7 +674,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 patient.SyncState = SyncState.Synced;
                 break;
@@ -257,7 +687,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 appointment.SyncState = SyncState.Synced;
                 break;
@@ -270,7 +700,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 intakeForm.SyncState = SyncState.Synced;
                 break;
@@ -283,7 +713,7 @@ public class SyncEngine : ISyncEngine
                     _logger.LogWarning(
                         "Sync queue: {EntityType} entity {EntityId} not found while processing.",
                         item.EntityType, item.EntityId);
-                    return false;
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
                 }
                 clinicalNote.SyncState = SyncState.Synced;
                 break;
@@ -291,10 +721,10 @@ public class SyncEngine : ISyncEngine
             default:
                 _logger.LogWarning("Unknown entity type in sync queue: {EntityType}:{EntityId}",
                     item.EntityType, item.EntityId);
-                return false;
+                return QueueItemProcessingResult.ValidationFailure("Unknown entity type in sync queue.");
         }
 
-        return true;
+        return QueueItemProcessingResult.SuccessResult();
     }
 
     private sealed class ServerSyncSnapshot
@@ -390,7 +820,8 @@ public class SyncEngine : ISyncEngine
                 LastAttemptAt = processingNow,
                 Status = SyncQueueStatus.Processing,
                 MaxRetries = MaxReceiptRetries,
-                PayloadJson = item.DataJson
+                PayloadJson = item.DataJson,
+                FailureType = null
             };
             _context.SyncQueueItems.Add(processingReceipt);
             try
@@ -418,8 +849,15 @@ public class SyncEngine : ISyncEngine
 
             try
             {
+                var syncStartMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1
+                };
+
                 await LogSyncEventAsync(
-                    AuditEvent.SyncEvent("SYNC_START", entityType, serverId, operationId, "Processing", auditUserId),
+                    AuditEvent.SyncEvent("SYNC_START", entityType, serverId, operationId, "Processing", auditUserId, additionalMetadata: syncStartMetadata),
                     cancellationToken);
 
                 var snapshot = await LoadServerSyncSnapshotAsync(entityType, serverId, cancellationToken);
@@ -443,6 +881,7 @@ public class SyncEngine : ISyncEngine
                         processingReceipt.CompletedAt = conflictAppliedAt;
                         processingReceipt.LastAttemptAt = conflictAppliedAt;
                         processingReceipt.ErrorMessage = SerializeConflictReceipt(conflict);
+                        processingReceipt.FailureType = SyncFailureType.ConflictError;
                         await _context.SaveChangesAsync(cancellationToken);
 
                         acceptedCount++;
@@ -451,6 +890,24 @@ public class SyncEngine : ISyncEngine
                     }
 
                     await PersistConflictReceiptAsync(processingReceipt, conflict, cancellationToken);
+                    await LogSyncEventAsync(
+                        AuditEvent.SyncEvent(
+                            "DEAD_LETTER_CREATED",
+                            entityType,
+                            serverId,
+                            operationId,
+                            "DeadLetter",
+                            auditUserId,
+                            success: false,
+                            errorMessage: conflict.Message,
+                            additionalMetadata: new Dictionary<string, object>
+                            {
+                                ["OperationType"] = processingReceipt.Operation.ToString(),
+                                ["RetryCount"] = processingReceipt.RetryCount,
+                                ["BatchSize"] = 1,
+                                ["FailureType"] = SyncFailureType.ConflictError.ToString()
+                            }),
+                        cancellationToken);
                     conflictCount++;
                     results.Add(BuildConflictResult(entityType, item.LocalId, serverId, conflict));
                     continue;
@@ -464,11 +921,19 @@ public class SyncEngine : ISyncEngine
                 processingReceipt.Status = SyncQueueStatus.Completed;
                 processingReceipt.CompletedAt = appliedAt;
                 processingReceipt.LastAttemptAt = appliedAt;
+                processingReceipt.FailureType = null;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 acceptedCount++;
+                var syncSuccessMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1,
+                    ["DurationMs"] = (appliedAt - processingNow).TotalMilliseconds
+                };
                 await LogSyncEventAsync(
-                    AuditEvent.SyncEvent("SYNC_SUCCESS", entityType, serverId, operationId, "Completed", auditUserId),
+                    AuditEvent.SyncEvent("SYNC_SUCCESS", entityType, serverId, operationId, "Completed", auditUserId, additionalMetadata: syncSuccessMetadata),
                     cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
@@ -486,8 +951,9 @@ public class SyncEngine : ISyncEngine
 
                 // Update the Processing placeholder to Failed so the next receipt lookup
                 // returns a deterministic replay rather than leaving a stale Processing row.
-                processingReceipt.Status = SyncQueueStatus.Failed;
+                processingReceipt.Status = SyncQueueStatus.DeadLetter;
                 processingReceipt.RetryCount = MaxReceiptRetries;
+                processingReceipt.FailureType = SyncFailureType.ServerError;
                 processingReceipt.ErrorMessage = "Server error processing item";
                 try
                 {
@@ -499,8 +965,19 @@ public class SyncEngine : ISyncEngine
                 }
 
                 errorCount++;
+                var syncFailureMetadata = new Dictionary<string, object>
+                {
+                    ["OperationType"] = processingReceipt.Operation.ToString(),
+                    ["RetryCount"] = processingReceipt.RetryCount,
+                    ["BatchSize"] = 1,
+                    ["FailureType"] = SyncFailureType.ServerError.ToString(),
+                    ["DurationMs"] = (DateTime.UtcNow - processingNow).TotalMilliseconds
+                };
                 await LogSyncEventAsync(
-                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "Failed", auditUserId, success: false, errorMessage: "Server error processing item"),
+                    AuditEvent.SyncEvent("SYNC_FAILURE", entityType, serverId, operationId, "DeadLetter", auditUserId, success: false, errorMessage: "Server error processing item", additionalMetadata: syncFailureMetadata),
+                    cancellationToken);
+                await LogSyncEventAsync(
+                    AuditEvent.SyncEvent("DEAD_LETTER_CREATED", entityType, serverId, operationId, "DeadLetter", auditUserId, success: false, errorMessage: "Server error processing item", additionalMetadata: syncFailureMetadata),
                     cancellationToken);
                 results.Add(new ClientSyncPushItemResult
                 {
@@ -1356,8 +1833,9 @@ public class SyncEngine : ISyncEngine
         ConflictResult conflict,
         CancellationToken cancellationToken)
     {
-        processingReceipt.Status = SyncQueueStatus.Failed;
+        processingReceipt.Status = SyncQueueStatus.DeadLetter;
         processingReceipt.RetryCount = MaxReceiptRetries;
+        processingReceipt.FailureType = SyncFailureType.ConflictError;
         processingReceipt.ErrorMessage = SerializeConflictReceipt(conflict);
         processingReceipt.LastAttemptAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);

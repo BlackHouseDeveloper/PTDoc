@@ -94,41 +94,28 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
         }
 
         var syncEngine = scope.ServiceProvider.GetRequiredService<ISyncEngine>();
-
-        var cutoff = DateTime.UtcNow - _options.MinRetryDelay;
-
-        var toReset = await context.SyncQueueItems
-            .Where(q =>
-                q.Status == SyncQueueStatus.Failed &&
-                q.RetryCount < q.MaxRetries &&
-                (q.LastAttemptAt == null || q.LastAttemptAt < cutoff))
-            .ToListAsync(cancellationToken);
-
-        if (toReset.Count == 0)
+        var recoveredCount = await syncEngine.RecoverInterruptedQueueItemsAsync(cancellationToken);
+        if (recoveredCount > 0)
         {
-            _logger.LogDebug("SyncRetryBackgroundService: no eligible failed items to retry");
+            _logger.LogWarning(
+                "SyncRetryBackgroundService: recovered {Count} interrupted sync item(s) before processing",
+                recoveredCount);
+        }
+
+        var result = await syncEngine.PushAsync(cancellationToken);
+        if (result.Skipped)
+        {
+            _logger.LogDebug("SyncRetryBackgroundService: skipped cycle because another sync run is already active");
             return;
         }
 
         _logger.LogInformation(
-            "SyncRetryBackgroundService: retrying {Count} failed sync item(s)",
-            toReset.Count);
-
-        foreach (var item in toReset)
-        {
-            item.Status = SyncQueueStatus.Pending;
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
-
-        // Execute a push cycle to process the newly-reset items
-        var result = await syncEngine.PushAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "SyncRetryBackgroundService: push cycle complete. Success={Success}, Failures={Failures}, Conflicts={Conflicts}",
+            "SyncRetryBackgroundService: push cycle complete. Success={Success}, Failures={Failures}, Conflicts={Conflicts}, DeadLetters={DeadLetters}, Batches={Batches}",
             result.SuccessCount,
             result.FailureCount,
-            result.ConflictCount);
+            result.ConflictCount,
+            result.DeadLetterCount,
+            result.BatchCount);
     }
 
     private void LogSchemaNotReady(DatabaseSchemaStatus schemaStatus)
