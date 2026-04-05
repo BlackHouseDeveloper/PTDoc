@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PTDoc.Application.BackgroundJobs;
-using PTDoc.Application.Compliance;
-using Microsoft.Extensions.Logging;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Observability;
@@ -2258,5 +2257,13 @@ public class SyncEngine : ISyncEngine
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Archived conflict version for {Type}:{Id}", entityType, entityId);
+    }
+
+    private async Task<Guid?> ResolvePatientClinicIdAsync(Guid patientId, CancellationToken cancellationToken)
+    {
+        return await _context.Patients
+            .Where(p => p.Id == patientId)
+            .Select(p => p.ClinicId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 }

@@ -472,7 +472,9 @@ public class LocalSyncOrchestratorTests
         using var doc = JsonDocument.Parse(pushedItem.DataJson);
         var root = doc.RootElement;
 
-        Assert.Equal(createdUtc.ToString("O"), root.GetProperty("createdUtc").GetString());
+        var createdUtcJson = root.GetProperty("createdUtc").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(createdUtcJson));
+        Assert.Equal(createdUtc, DateTime.Parse(createdUtcJson!, null, System.Globalization.DateTimeStyles.RoundtripKind));
         Assert.Equal(parentNoteId.ToString(), root.GetProperty("parentNoteId").GetString());
         Assert.True(root.GetProperty("isAddendum").GetBoolean());
     }

@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
@@ -36,13 +36,19 @@ public class SyncClientProtocolTests
     private static ISignatureService CreateSignatureService(ApplicationDbContext context, Mock<IAuditService>? auditMock = null)
     {
         var audit = auditMock?.Object ?? Mock.Of<IAuditService>();
-        var identity = Mock.Of<IIdentityContextAccessor>();
         var clinicalRules = new Mock<IClinicalRulesEngine>();
         clinicalRules
             .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
-        return new SignatureService(context, audit, identity, clinicalRules.Object);
+        var addendumService = new AddendumService(context, audit);
+
+        return new SignatureService(
+            context,
+            audit,
+            clinicalRules.Object,
+            new HashService(),
+            addendumService);
     }
 
     // ── GetClientDeltaAsync – entity allowlist tests ──────────────────────────
@@ -506,8 +512,9 @@ public class SyncClientProtocolTests
         Assert.Equal(ConflictResolution.AddendumCreated, conflict.ResolutionType);
         Assert.NotNull(conflict.NewEntityId);
 
-        var addendum = await context.Addendums.FindAsync(conflict.NewEntityId);
+        var addendum = await context.ClinicalNotes.FindAsync(conflict.NewEntityId);
         Assert.NotNull(addendum);
+        Assert.True(addendum!.IsAddendum);
     }
 
     [Fact]
@@ -621,7 +628,7 @@ public class SyncClientProtocolTests
         var first = await syncEngine.ReceiveClientPushAsync(request);
         var second = await syncEngine.ReceiveClientPushAsync(request);
 
-        Assert.Equal(1, await context.Addendums.CountAsync());
+        Assert.Equal(1, await context.ClinicalNotes.CountAsync(n => n.IsAddendum));
         Assert.Equal("Conflict", first.Items[0].Status);
         Assert.Equal("Conflict", second.Items[0].Status);
         var firstConflict = Assert.IsType<ConflictResult>(first.Items[0].Conflict);

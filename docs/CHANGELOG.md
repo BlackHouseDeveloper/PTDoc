@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Sync Addendum Runtime + Test Regression
+
+#### Addendum Service DI Cycle + Queue Enqueue
+- **`AddendumService.cs` / `CreateAddendumAsync`** — Removed the direct `ISyncEngine` dependency from `AddendumService` and switched to direct enqueue writes on `SyncQueueItems` after addendum note persistence. Affects: `src/PTDoc.Infrastructure/Compliance/AddendumService.cs`. Reason: break the runtime circular dependency path (`ISyncEngine -> ISignatureService -> IAddendumService -> ISyncEngine`) that surfaced as broad `500 InternalServerError` failures in integration tests.
+
+#### Local Offline Push Payload Completeness
+- **`LocalSyncOrchestrator.cs` / pending clinical-note payload generation** — Restored addendum metadata fields (`CreatedUtc`, `ParentNoteId`, `IsAddendum`) in the serialized clinical-note push payload generated from local pending drafts. Affects: `src/PTDoc.Infrastructure/LocalData/LocalSyncOrchestrator.cs`. Reason: fix missing-key failures in local sync protocol tests expecting addendum metadata propagation.
+- **`LocalSyncOrchestratorTests.cs` / `PushPendingAsync_IncludesAddendumMetadata_ForClinicalNotes`** — Relaxed `createdUtc` assertion to compare parsed round-trip `DateTime` values instead of exact string formatting, so semantically equal ISO-8601 timestamps with trimmed trailing fractional zeros are accepted. Affects: `tests/PTDoc.Tests/LocalData/LocalSyncOrchestratorTests.cs`. Reason: prevent brittle failures caused by equivalent serializer formatting differences (`.3274820Z` vs `.327482Z`).
+
+#### Sync Test Harness Compatibility With New Addendum Flow
+- **`SyncClientProtocolTests.cs` / `SyncEpsilonTests.cs`** — Updated signature-service test helpers to use a real `AddendumService` instead of a bare `IAddendumService` mock; updated addendum assertions to validate addendum clinical notes (`ClinicalNote.IsAddendum`) instead of the legacy `Addendums` table. Affects: `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`. Reason: `SignatureService.CreateAddendumAsync` now delegates to `IAddendumService`; default mocks returned non-usable results and caused signed-conflict paths to fail.
+- **`SignatureServiceTests.cs` / constructor + addendum queue assertion** — Updated compliance tests to use the 2-argument `AddendumService(ApplicationDbContext, IAuditService)` constructor and replaced `ISyncEngine.EnqueueAsync` mock verification with direct `SyncQueueItems` persistence assertions. Affects: `tests/PTDoc.Tests/Compliance/SignatureServiceTests.cs`. Reason: `AddendumService` now enqueues directly via `ApplicationDbContext` and no longer depends on `ISyncEngine`.
+
+### Fixed - Test Compilation Compatibility
+
+#### SignatureService Constructor Alignment in Sync Tests
+- **`SyncEpsilonTests.cs` / `CreateSignatureService`** — Updated test wiring to use the current `SignatureService(ApplicationDbContext, IAuditService, IClinicalRulesEngine, IHashService, IAddendumService)` signature by passing `HashService` and a mocked `IAddendumService` instead of the removed identity accessor argument. Affects: `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`. Reason: restore compile compatibility after signature service dependency expansion.
+- **`SyncClientProtocolTests.cs` / `CreateSignatureService`** — Updated test helper to construct `SignatureService` with `HashService` and mocked `IAddendumService`, and removed the obsolete identity accessor dependency import. Affects: `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`. Reason: fix CS7036 constructor-argument failures in sync protocol test builds.
+
 ### Added - Sprint 3: Sync Hardening + Observability + Reliability
 
 #### Server Sync Runtime Status + Overlap Prevention (`src/PTDoc.Application/Sync/ISyncEngine.cs`, `src/PTDoc.Application/Sync/ISyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncRuntimeStateStore.cs`, `src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Api/Program.cs`)

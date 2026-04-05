@@ -1,6 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -8,8 +8,7 @@ namespace PTDoc.Infrastructure.Compliance;
 
 public sealed class AddendumService(
     ApplicationDbContext context,
-    IAuditService auditService,
-    ISyncEngine syncEngine) : IAddendumService
+    IAuditService auditService) : IAddendumService
 {
     public async Task<AddendumResult> CreateAddendumAsync(Guid noteId, JsonElement content, Guid userId, CancellationToken ct = default)
     {
@@ -75,7 +74,33 @@ public sealed class AddendumService(
 
         context.ClinicalNotes.Add(addendum);
         await context.SaveChangesAsync(ct);
-        await syncEngine.EnqueueAsync("ClinicalNote", addendum.Id, SyncOperation.Create, ct);
+
+        // Enqueue directly to avoid a circular dependency between sync and signature services.
+        var existingQueueItem = await context.SyncQueueItems
+            .FirstOrDefaultAsync(
+                q => q.EntityType == "ClinicalNote" &&
+                     q.EntityId == addendum.Id &&
+                     q.Status == SyncQueueStatus.Pending,
+                ct);
+
+        if (existingQueueItem is null)
+        {
+            context.SyncQueueItems.Add(new SyncQueueItem
+            {
+                EntityType = "ClinicalNote",
+                EntityId = addendum.Id,
+                Operation = SyncOperation.Create,
+                EnqueuedAt = DateTime.UtcNow,
+                Status = SyncQueueStatus.Pending
+            });
+        }
+        else
+        {
+            existingQueueItem.Operation = SyncOperation.Create;
+            existingQueueItem.EnqueuedAt = DateTime.UtcNow;
+        }
+
+        await context.SaveChangesAsync(ct);
         await auditService.LogAddendumCreatedAsync(AuditEvent.AddendumCreated(note.Id, addendum.Id, userId), ct);
 
         return new AddendumResult

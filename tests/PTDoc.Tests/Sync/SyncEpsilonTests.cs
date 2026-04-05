@@ -38,16 +38,20 @@ public class SyncEpsilonTests
 
     private static ISignatureService CreateSignatureService(ApplicationDbContext context)
     {
+        var auditService = Mock.Of<IAuditService>();
         var clinicalRules = new Mock<IClinicalRulesEngine>();
         clinicalRules
             .Setup(engine => engine.RunClinicalValidationAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
 
+        var addendumService = new AddendumService(context, auditService);
+
         return new SignatureService(
             context,
-            Mock.Of<IAuditService>(),
-            Mock.Of<IIdentityContextAccessor>(),
-            clinicalRules.Object);
+            auditService,
+            clinicalRules.Object,
+            new HashService(),
+            addendumService);
     }
 
     // ── ProcessQueueItemAsync ─────────────────────────────────────────────────
@@ -400,8 +404,9 @@ public class SyncEpsilonTests
         Assert.Equal(originalContent, notUpdated.ContentJson);
         Assert.Equal("sha256-fakehash", notUpdated.SignatureHash);
 
-        var addendum = await context.Addendums.FindAsync(conflict.NewEntityId);
+        var addendum = await context.ClinicalNotes.FindAsync(conflict.NewEntityId);
         Assert.NotNull(addendum);
+        Assert.True(addendum!.IsAddendum);
     }
 
     [Fact]
