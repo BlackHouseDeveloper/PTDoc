@@ -779,7 +779,14 @@ public class SyncEngine : ISyncEngine
             else if (entityType.Length == 1)
                 entityType = char.ToUpperInvariant(entityType[0]).ToString();
 
-            var operationId = item.OperationId == Guid.Empty ? Guid.NewGuid() : item.OperationId;
+            if (item.OperationId == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Each client sync item must provide a non-empty OperationId so retries remain idempotent.",
+                    nameof(request));
+            }
+
+            var operationId = item.OperationId;
             var auditUserId = _identityContext?.GetCurrentUserId()
                 ?? _identityContext?.TryGetCurrentUserId()
                 ?? IIdentityContextAccessor.SystemUserId;
@@ -1071,7 +1078,7 @@ public class SyncEngine : ISyncEngine
                 LocalId = localId,
                 ServerId = receipt.EntityId,
                 Status = "Accepted",
-                Error = replayConflict is null ? null : replayConflict.Message,
+                Error = null,
                 ServerModifiedUtc = replayConflict?.ServerModifiedUtc ?? receipt.CompletedAt ?? receipt.LastAttemptAt ?? receipt.EnqueuedAt,
                 Conflict = replayConflict is null ? null : ToConflictResult(replayConflict)
             };

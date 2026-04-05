@@ -75,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### SyncEngine — `BuildConflictResult` Error Field Contract (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
 - **`SyncEngine.cs` / `BuildConflictResult`** — `Error` field is now `null` when `ResolutionType == LocalWins` (result `Status == "Accepted"`), matching the `ClientSyncPushItemResult.Error` contract that reserves this field for `Error`/`Conflict` statuses only. Reason: avoid confusing clients that inspect `Error` for success path filtering.
 
+#### SyncEngine — Replay Result `Error` Field Contract (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
+- **`SyncEngine.cs` / `BuildReplayResult`** — `Error` is now unconditionally `null` for `Status == "Accepted"` replay results, even when a conflict receipt is attached. Conflict details are available exclusively via the `Conflict` object. Reason: setting `Error` for an `Accepted` replay violated the push-result contract and could cause clients to treat a successful replay as an error.
+
+#### SyncEngine — Missing `OperationId` Validation (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`, `tests/PTDoc.Tests/Sync/SyncEpsilonTests.cs`)
+- **`SyncEngine.cs` / `ReceiveClientPushAsync`** — Replaced silent `Guid.NewGuid()` generation for `OperationId == Guid.Empty` with an `ArgumentException`, forcing clients to supply an idempotency key so retries remain safe. Reason: generating a new GUID for missing keys made every retry a distinct operation, breaking the idempotency guarantee for Create operations where `ServerId` may also be empty.
+- **`SyncClientProtocolTests.cs` / `SyncEpsilonTests.cs`** — Added `OperationId = Guid.NewGuid()` to all `ClientSyncPushItem` test instances that omitted it; added `ReceiveClientPushAsync_ThrowsArgumentException_WhenOperationIdIsEmpty` test to assert the new validation behavior. Reason: tests must comply with the now-required idempotency key contract.
+
 #### Test Coverage — Delete Semantics (`tests/PTDoc.Tests/Sync/SyncClientProtocolTests.cs`)
 - **`SyncClientProtocolTests.cs`** — Added three delete-semantics tests: delete existing patient (accepted, entity archived), idempotent delete of missing entity (accepted, no conflict), and update of archived/server-deleted patient (DeletedConflict). Reason: ensure deterministic pipeline does not regress delete behavior.
 

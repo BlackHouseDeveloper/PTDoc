@@ -268,6 +268,32 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_ThrowsArgumentException_WhenOperationIdIsEmpty()
+    {
+        var context = CreateInMemoryContext();
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    OperationId = Guid.Empty, // missing idempotency key — must be rejected
+                    EntityType = "Patient",
+                    ServerId = Guid.NewGuid(),
+                    LocalId = 1,
+                    Operation = "Create",
+                    DataJson = "{}",
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => syncEngine.ReceiveClientPushAsync(request));
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_Replays_DuplicateOperationId_WithoutDuplicateWrite()
     {
         var context = CreateInMemoryContext();
@@ -491,6 +517,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Modified signed note\"}",
                     LastModifiedUtc = DateTime.UtcNow // client is newer, but note is signed
@@ -559,6 +586,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 2,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Attempted pending note edit\"}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -681,6 +709,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 6,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"tampered payload content\"}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -741,6 +770,7 @@ public class SyncClientProtocolTests
                     EntityType = "IntakeForm",
                     ServerId = formId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"response\":\"modified\"}",
                     LastModifiedUtc = DateTime.UtcNow // client is newer, but intake is locked
@@ -802,6 +832,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Client version, older\"}",
                     LastModifiedUtc = DateTime.UtcNow.AddHours(-1) // client is older
@@ -863,6 +894,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Client version, newer\"}",
                     LastModifiedUtc = DateTime.UtcNow // client is newer → last-write-wins, should be accepted
@@ -899,6 +931,7 @@ public class SyncClientProtocolTests
                     EntityType = "Patient",
                     ServerId = Guid.Empty, // new record not yet on server
                     LocalId = 42,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson = "{\"firstName\":\"New\",\"lastName\":\"Patient\"}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -945,6 +978,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = Guid.Empty,
                     LocalId = 17,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson =
                         $$"""{"patientId":"{{patient.Id}}","noteType":"ProgressNote","dateOfService":"{{dateOfService:O}}","contentJson":"{}","cptCodesJson":"[]"}""",
@@ -1006,6 +1040,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Updated draft\"}",
                     LastModifiedUtc = DateTime.UtcNow // newer than server
@@ -1103,6 +1138,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Device A version at 10:00\"}",
                     LastModifiedUtc = DateTime.UtcNow.AddHours(-1) // Device A is older
@@ -1184,6 +1220,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = signedNoteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Attempt to modify signed note\"}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -1193,6 +1230,7 @@ public class SyncClientProtocolTests
                     EntityType = "ClinicalNote",
                     ServerId = draftNoteId,
                     LocalId = 2,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"text\":\"Updated draft daily\"}",
                     LastModifiedUtc = DateTime.UtcNow // client is newer → accepted
@@ -1268,6 +1306,7 @@ public class SyncClientProtocolTests
                     EntityType = entityTypeCasing,
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -1327,6 +1366,7 @@ public class SyncClientProtocolTests
                     EntityType = entityTypeCasing,
                     ServerId = formId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -1385,6 +1425,7 @@ public class SyncClientProtocolTests
                     EntityType = entityTypeCasing,
                     ServerId = noteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{}",
                     LastModifiedUtc = DateTime.UtcNow.AddHours(-1) // client is older
@@ -1430,6 +1471,7 @@ public class SyncClientProtocolTests
                     EntityType = "Patient",
                     ServerId = patient.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Delete",
                     DataJson = "{}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -1469,6 +1511,7 @@ public class SyncClientProtocolTests
                     EntityType = "Patient",
                     ServerId = missingId,
                     LocalId = 7,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Delete",
                     DataJson = "{}",
                     LastModifiedUtc = DateTime.UtcNow
@@ -1514,6 +1557,7 @@ public class SyncClientProtocolTests
                     EntityType = "Patient",
                     ServerId = patient.Id,
                     LocalId = 3,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = "{\"firstName\":\"Updated\",\"lastName\":\"Patient\"}",
                     LastModifiedUtc = DateTime.UtcNow

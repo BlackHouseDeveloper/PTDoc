@@ -146,6 +146,7 @@ public class SyncEpsilonTests
                     EntityType = "Patient",
                     ServerId = patientId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -210,6 +211,7 @@ public class SyncEpsilonTests
                     EntityType = "IntakeForm",
                     ServerId = intake.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -268,6 +270,7 @@ public class SyncEpsilonTests
                     EntityType = "IntakeForm",
                     ServerId = intake.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new { responseJson = "{\"attempt\":\"hack\"}" }),
                     LastModifiedUtc = DateTime.UtcNow
@@ -319,6 +322,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = note.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new
                     {
@@ -381,6 +385,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = note.Id,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Update",
                     DataJson = JsonSerializer.Serialize(new { contentJson = "{\"subjective\":\"tampered\"}" }),
                     LastModifiedUtc = DateTime.UtcNow
@@ -427,6 +432,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = newNoteId,
                     LocalId = 1,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     // Client tries to submit a pre-signed note — server must ignore SignatureHash
                     DataJson = JsonSerializer.Serialize(new
@@ -475,6 +481,7 @@ public class SyncEpsilonTests
                     EntityType = "ClinicalNote",
                     ServerId = Guid.Empty, // new record
                     LocalId = 42,
+                    OperationId = Guid.NewGuid(),
                     Operation = "Create",
                     DataJson = JsonSerializer.Serialize(new
                     {
