@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review: missing System import and SQLite connection leak
+
+#### SecretPolicyScanTests compile fix
+- **`tests/PTDoc.Tests/Security/SecretPolicyScanTests.cs`** — Added `using System;` so `Environment.NewLine` resolves at compile time. Reason: the file referenced `Environment.NewLine` without importing the `System` namespace, causing a build failure.
+
+#### SQLite encrypted connection lifetime fix
+- **`src/PTDoc.Api/Program.cs`** — Replaced the manually created/opened `SqliteConnection` passed to `UseSqlite(connection)` with a direct `UseSqlite(connectionString)` call using the `SqliteConnectionStringBuilder`-produced string (which already contains `Password`). EF Core now owns connection creation and disposal for each `DbContext` scope, eliminating the connection/file-handle leak that occurred with the pre-opened connection approach. Reason: connections that EF Core does not own are never disposed, leaking open handles per DI scope.
+
 ### Fixed - CI evidence alignment and SQLite startup validation
 
 #### Evidence/docs reconciliation

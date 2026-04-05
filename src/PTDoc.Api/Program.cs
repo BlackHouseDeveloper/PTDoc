@@ -296,12 +296,9 @@ else if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase)
             Password = key
         }.ToString();
 
-        // Open the encrypted connection before handing it to EF Core
-        var connection = new SqliteConnection(connectionString);
-        connection.Open();
-
-        // Pass the pre-opened, encrypted connection to EF
-        options.UseSqlite(connection,
+        // Pass the encrypted connection string to EF Core so it manages
+        // connection creation, opening, and disposal for each DbContext.
+        options.UseSqlite(connectionString,
             x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
 
         // Add interceptor with dependency injection
