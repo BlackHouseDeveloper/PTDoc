@@ -159,6 +159,14 @@ public abstract class LoginBase : ComponentBase, IDisposable
             loginModel.Username, 
             loginModel.Pin?.Length > 0 ? "****" : "empty");
 
+        if (string.IsNullOrWhiteSpace(loginModel.Username))
+        {
+            errorMessage = "Username or email is required.";
+            isLoading = false;
+            StateHasChanged();
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(loginModel.Pin))
         {
             errorMessage = "PIN is required.";
@@ -183,9 +191,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             await Task.Delay(200);
 
-            var username = string.IsNullOrWhiteSpace(loginModel.Username)
-                ? loginModel.Pin
-                : loginModel.Username;
+            var username = loginModel.Username.Trim();
 
             Logger.LogInformation("Sending to LoginAsync - Username: {Username}, Password: {Password}", 
                 username, loginModel.Pin?.Length > 0 ? "****" : "empty");
@@ -243,11 +249,10 @@ public abstract class LoginBase : ComponentBase, IDisposable
             }
 
             if (isPtaFieldsActive &&
-                (string.IsNullOrWhiteSpace(signUpModel.LicenseType)
-                || string.IsNullOrWhiteSpace(signUpModel.LicenseNumber)
+                (string.IsNullOrWhiteSpace(signUpModel.LicenseNumber)
                 || string.IsNullOrWhiteSpace(signUpModel.LicenseState)))
             {
-                errorMessage = "License type, number, and state are required for PT/PTA roles.";
+                errorMessage = "License number and state are required for PT/PTA roles.";
                 return;
             }
 
@@ -259,7 +264,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 signUpModel.RoleKey,
                 signUpModel.ClinicId,
                 signUpModel.Pin,
-                signUpModel.LicenseType,
                 signUpModel.LicenseNumber,
                 signUpModel.LicenseState);
 
@@ -276,6 +280,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                     RegistrationStatus.InvalidPin => "PIN must be exactly 4 digits.",
                     RegistrationStatus.InvalidLicenseData => "License information is required for PT/PTA roles.",
                     RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
+                    RegistrationStatus.ValidationFailed => result.Error ?? "Please complete the required registration fields.",
                     RegistrationStatus.UsernameCollision => "Unable to create a unique username. Please contact support.",
                     _ => result.Error ?? "Unable to create account. Please check your information and try again."
                 };
@@ -301,7 +306,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         if (!isPtaFieldsActive)
         {
-            signUpModel.LicenseType = string.Empty;
             signUpModel.LicenseNumber = string.Empty;
             signUpModel.LicenseState = string.Empty;
         }
@@ -351,8 +355,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
         [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
         [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
         public string ConfirmPin { get; set; } = string.Empty;
-
-        public string LicenseType { get; set; } = string.Empty;
 
         [StringLength(50, MinimumLength = 3, ErrorMessage = "License number must be between 3 and 50 characters")]
         public string LicenseNumber { get; set; } = string.Empty;

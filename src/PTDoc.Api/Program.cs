@@ -155,6 +155,7 @@ builder.Services.AddScoped<IEmailDeliveryService, SendGridEmailService>();
 builder.Services.AddScoped<ISmsDeliveryService, TwilioSmsService>();
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+builder.Services.AddScoped<IIntakeService, IntakeService>();
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();

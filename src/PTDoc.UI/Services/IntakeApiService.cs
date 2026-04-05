@@ -35,7 +35,10 @@ public sealed class IntakeApiService(
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
 
         var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
         if (intake is null)
@@ -79,7 +82,10 @@ public sealed class IntakeApiService(
             return IntakeEnsureDraftResult.Locked(message);
         }
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
 
         var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
             ?? throw new InvalidOperationException("Ensure draft completed but the intake payload was empty.");
@@ -128,7 +134,10 @@ public sealed class IntakeApiService(
         };
 
         var patientResponse = await httpClient.PostAsJsonAsync("/api/v1/patients/", createPatientRequest, cancellationToken);
-        patientResponse.EnsureSuccessStatusCode();
+        if (!patientResponse.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(patientResponse, cancellationToken);
+        }
 
         var patient = await patientResponse.Content.ReadFromJsonAsync<PatientResponse>(SerializerOptions, cancellationToken)
             ?? throw new InvalidOperationException("Patient creation response payload was empty.");
@@ -198,7 +207,10 @@ public sealed class IntakeApiService(
             standalonePath: $"/api/v1/intake/access/{existing.Id}",
             body: updateRequest,
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -227,7 +239,10 @@ public sealed class IntakeApiService(
             standalonePath: $"/api/v1/intake/access/{existing.Id}/submit",
             body: null,
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
     }
 
     private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken)
@@ -243,7 +258,11 @@ public sealed class IntakeApiService(
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
+
         return await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
     }
 
@@ -259,25 +278,25 @@ public sealed class IntakeApiService(
         };
 
         var response = await httpClient.PostAsJsonAsync("/api/v1/intake/", createRequest, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
     }
 
     private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        try
-        {
-            var payload = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(SerializerOptions, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(payload?.Error))
-            {
-                return payload.Error;
-            }
-        }
-        catch (JsonException)
-        {
-        }
+        return await ApiErrorReader.ReadMessageAsync(response, cancellationToken);
+    }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        return string.IsNullOrWhiteSpace(body) ? null : body;
+    private static async Task<HttpRequestException> CreateHttpRequestExceptionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        return new HttpRequestException(
+            await ReadErrorAsync(response, cancellationToken) ?? "The intake request failed.",
+            inner: null,
+            response.StatusCode);
     }
 
     private async Task<HttpResponseMessage> SendWithOptionalStandaloneAccessAsync(
@@ -449,10 +468,5 @@ public sealed class IntakeApiService(
         var firstName = parts[0];
         var lastName = string.Join(' ', parts.Skip(1));
         return (firstName, lastName);
-    }
-
-    private sealed class ApiErrorResponse
-    {
-        public string? Error { get; set; }
     }
 }

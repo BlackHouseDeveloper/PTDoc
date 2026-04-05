@@ -16,6 +16,7 @@ public class User
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string? Email { get; set; }
+    public DateTime? DateOfBirth { get; set; }
 
     // Role-based access
     public string Role { get; set; } = string.Empty; // "PT", "PTA", "Admin", "Aide"

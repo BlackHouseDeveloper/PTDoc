@@ -1,5 +1,6 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Models
+@using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
 
 <section class="objective-tab" data-testid="objective-tab" role="tabpanel" aria-label="Objective section">
     <div class="objective-tab__layout">
@@ -75,90 +76,26 @@
 
             <!-- Therapeutic Exercises -->
             <div class="objective-tab__section" data-testid="therapeutic-exercises-section">
-                <div class="objective-tab__section-header">
-                    <div class="objective-tab__section-title-row">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                            <path d="M2 8H14M5 4L8 8L5 12M11 4L8 8L11 12"
-                                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                  stroke-linejoin="round"/>
-                        </svg>
-                        <h3 class="objective-tab__section-heading objective-tab__section-heading--inline">Therapeutic Exercises</h3>
-                        <span class="objective-tab__count-badge">@_vm.TherapeuticExercises.Count exercises</span>
-                    </div>
-                    @if (!IsReadOnly)
-                    {
-                        <button type="button" class="objective-tab__add-btn"
-                                @onclick="HandleAddExercise"
-                                data-testid="add-exercise-btn">
-                            + Add Exercise
-                        </button>
-                    }
-                </div>
-
-                @if (_vm.TherapeuticExercises.Count == 0)
-                {
-                    <p class="objective-tab__empty-hint">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
-                            <path d="M7 4.5V7M7 9.5H7.01" stroke="currentColor" stroke-width="1.2"
-                                  stroke-linecap="round"/>
-                        </svg>
-                        No exercises added yet. Click "Add Exercise" to get started.
-                    </p>
-                }
-                else
-                {
-                    <ul class="objective-tab__item-list">
-                        @foreach (var ex in _vm.TherapeuticExercises)
-                        {
-                            <li>@ex</li>
-                        }
-                    </ul>
-                }
+                <InterventionChecklist Title="Therapeutic Exercises"
+                                       CountLabel="exercises"
+                                       Items="_vm.TherapeuticExercises"
+                                       ItemsChanged="UpdateExercises"
+                                       IsReadOnly="IsReadOnly"
+                                       AddButtonText="+ Add Exercise"
+                                       EmptyMessage="No exercises documented yet. Add a manual entry to record the work performed."
+                                       TestId="objective-therapeutic-exercises" />
             </div>
 
             <!-- Manual Work Techniques -->
             <div class="objective-tab__section" data-testid="manual-techniques-section">
-                <div class="objective-tab__section-header">
-                    <div class="objective-tab__section-title-row">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                            <path d="M8 2L10 6H14L11 8.5L12 13L8 10.5L4 13L5 8.5L2 6H6L8 2Z"
-                                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                  stroke-linejoin="round"/>
-                        </svg>
-                        <h3 class="objective-tab__section-heading objective-tab__section-heading--inline">Manual Work Techniques</h3>
-                        <span class="objective-tab__count-badge">@_vm.ManualTechniques.Count techniques</span>
-                    </div>
-                    @if (!IsReadOnly)
-                    {
-                        <button type="button" class="objective-tab__add-btn"
-                                @onclick="HandleAddTechnique"
-                                data-testid="add-technique-btn">
-                            + Add Technique
-                        </button>
-                    }
-                </div>
-
-                @if (_vm.ManualTechniques.Count == 0)
-                {
-                    <p class="objective-tab__empty-hint">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
-                            <path d="M7 4.5V7M7 9.5H7.01" stroke="currentColor" stroke-width="1.2"
-                                  stroke-linecap="round"/>
-                        </svg>
-                        No manual techniques added yet. Click "Add Technique" to get started.
-                    </p>
-                }
-                else
-                {
-                    <ul class="objective-tab__item-list">
-                        @foreach (var t in _vm.ManualTechniques)
-                        {
-                            <li>@t</li>
-                        }
-                    </ul>
-                }
+                <InterventionChecklist Title="Manual Work Techniques"
+                                       CountLabel="techniques"
+                                       Items="_vm.ManualTechniques"
+                                       ItemsChanged="UpdateManualTechniques"
+                                       IsReadOnly="IsReadOnly"
+                                       AddButtonText="+ Add Technique"
+                                       EmptyMessage="No manual techniques documented yet. Add a manual entry to record the treatment performed."
+                                       TestId="objective-manual-techniques" />
             </div>
         </div>
 
@@ -238,17 +175,7 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private void HandleAddExercise()
-    {
-        // Adds a placeholder entry until the exercise picker is introduced.
-        _vm.TherapeuticExercises.Add($"Exercise {_vm.TherapeuticExercises.Count + 1} (stub)");
-        VmChanged.InvokeAsync(_vm);
-    }
+    private Task UpdateExercises(List<string> value) => SetAndNotify(vm => vm.TherapeuticExercises = value);
 
-    private void HandleAddTechnique()
-    {
-        // Adds a placeholder entry until the technique picker is introduced.
-        _vm.ManualTechniques.Add($"Technique {_vm.ManualTechniques.Count + 1} (stub)");
-        VmChanged.InvokeAsync(_vm);
-    }
+    private Task UpdateManualTechniques(List<string> value) => SetAndNotify(vm => vm.ManualTechniques = value);
 }

@@ -36,6 +36,21 @@
     font-size: var(--text-xs);
 }
 
+::deep .daily-assessment__message {
+    margin: var(--spacing-2) 0 0;
+    font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__message--error {
+    color: var(--destructive);
+}
+
+::deep .daily-assessment__message-list {
+    margin: var(--spacing-2) 0 0;
+    padding-left: var(--spacing-4);
+    font-size: var(--text-sm);
+}
+
 ::deep .daily-assessment__goal-status-legend {
     display: flex;
     gap: var(--spacing-4);
@@ -49,6 +64,22 @@
     border-radius: var(--radius);
     padding: var(--spacing-2);
     margin-bottom: var(--spacing-2);
+}
+
+::deep .daily-assessment__goal-status-header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    align-items: center;
+}
+
+::deep .daily-assessment__goal-status-meta {
+    margin-top: var(--spacing-1);
+    display: flex;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
 }
 
 ::deep .daily-assessment__status-options {
@@ -102,6 +133,28 @@
     border-radius: var(--radius-md);
     padding: var(--spacing-2) var(--spacing-2);
     font-size: var(--text-sm);
+}
+
+::deep .daily-assessment__lookup-list {
+    margin: var(--spacing-2) 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-assessment__lookup-list li button {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    text-align: left;
 }
 
 ::deep .daily-assessment__subheading {

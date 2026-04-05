@@ -52,7 +52,7 @@
 
     private async Task AddItem()
     {
-        Items.Add("New intervention");
+        Items.Add(string.Empty);
         await ItemsChanged.InvokeAsync(Items);
     }
 

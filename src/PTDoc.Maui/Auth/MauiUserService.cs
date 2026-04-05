@@ -93,7 +93,6 @@ public sealed class MauiUserService : IUserService
         string roleKey,
         Guid? clinicId,
         string pin,
-        string licenseType,
         string licenseNumber,
         string licenseState,
         CancellationToken cancellationToken = default)

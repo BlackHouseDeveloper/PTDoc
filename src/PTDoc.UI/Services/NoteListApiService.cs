@@ -41,9 +41,38 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
 
         var url = "/api/v1/notes?" + string.Join("&", queryParts);
 
-        var result = await httpClient.GetFromJsonAsync<IReadOnlyList<NoteListItemApiResponse>>(
-            url, SerializerOptions, cancellationToken);
+        using var response = await httpClient.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load notes.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<IReadOnlyList<NoteListItemApiResponse>>(
+            SerializerOptions,
+            cancellationToken);
 
         return result ?? Array.Empty<NoteListItemApiResponse>();
+    }
+
+    public async Task<NoteDetailResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync($"/api/v1/notes/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load note details.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<NoteDetailResponse>(SerializerOptions, cancellationToken);
     }
 }

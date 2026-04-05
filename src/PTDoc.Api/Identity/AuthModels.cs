@@ -5,6 +5,9 @@ namespace PTDoc.Api.Identity;
 /// </summary>
 public class PinLoginRequest
 {
+    /// <summary>
+    /// Username or email identifier. Property name remains Username for wire compatibility.
+    /// </summary>
     public required string Username { get; init; }
     public required string Pin { get; init; }
 }

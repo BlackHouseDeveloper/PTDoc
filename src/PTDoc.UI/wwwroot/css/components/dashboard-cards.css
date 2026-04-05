@@ -220,6 +220,18 @@
     color: var(--success-foreground);
 }
 
+.note-badge-draft {
+    background: color-mix(in srgb, var(--info) 12%, var(--card));
+    color: var(--foreground);
+    border: 1px solid color-mix(in srgb, var(--info) 28%, var(--border));
+}
+
+.note-badge-pending {
+    background: color-mix(in srgb, var(--warning) 18%, var(--card));
+    color: var(--foreground);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border));
+}
+
 /* Recent Activity Card */
 .activity-list {
     display: flex;

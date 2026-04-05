@@ -3,7 +3,16 @@
 @page "/patient/{PatientId}/new-note"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using PTDoc.Application.AI
+@using PTDoc.Application.Compliance
+@using PTDoc.Application.Services
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes
 @using PTDoc.UI.Components.Notes.Models
 @using PTDoc.UI.Components.Notes.Workspace
@@ -11,180 +20,272 @@
 @using PTDoc.UI.Components.Notes.Workspace.DischargeNote
 @using PTDoc.UI.Components.Notes.Workspace.DryNeedling
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
-@using PTDoc.Application.AI
 @using PTDoc.UI.Services
+
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject INoteWorkspaceService NoteWorkspaceService
 @inject IPatientService PatientService
 @inject IAiClinicalGenerationService AiService
+@inject DraftAutosaveService DraftAutosaveService
 @inject IJSRuntime JS
 
 <PageTitle>SOAP Workspace - PTDoc</PageTitle>
 
-<div class="note-workspace" data-testid="note-workspace-page">
-    @if (!string.IsNullOrWhiteSpace(_validationMessage))
-    {
-        <div class="note-workspace__alert @GetAlertToneClass()" role="alert" data-testid="note-workspace-alert">
-            @_validationMessage
+@if (_isInitialLoading)
+{
+    <section class="note-workspace note-workspace__state" role="status" aria-live="polite" data-testid="note-workspace-loading">
+        <div class="note-workspace__state-card">
+            <h2>Loading note workspace…</h2>
+            <p>Fetching the patient and note details from the API.</p>
         </div>
-    }
-
-    @if (IsDryNeedlingNote)
-    {
-        <PatientContextHeader PatientName="@_note.PatientName" PatientDob="@_note.PatientDob" />
-
-        <DryNeedlingNoteView IsReadOnly="@_note.IsSubmitted"
-                            Vm="@_dryNeedling"
-                            VmChanged="HandleDryNeedlingChanged"
-                            OnSave="HandleSaveAsync"
-                            OnSubmit="HandleSubmitAsync" />
-    }
-    else
-    {
-        @if (!IsReviewSection)
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(_initialLoadError))
+{
+    <section class="note-workspace note-workspace__state" data-testid="note-workspace-load-error">
+        <div class="note-workspace__state-card note-workspace__state-card--error" role="alert">
+            <h2>Unable to load note workspace</h2>
+            <p>@_initialLoadError</p>
+            <div class="note-workspace__state-actions">
+                <button type="button" class="btn btn--primary" @onclick="HandleReloadAsync">Retry</button>
+                <button type="button" class="btn btn--secondary" @onclick="HandleBack">Back to Patient</button>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <div class="note-workspace" data-testid="note-workspace-page">
+        @if (!string.IsNullOrWhiteSpace(_workspaceNotice))
         {
-            <PatientContextHeader PatientName="@_note.PatientName" PatientDob="@_note.PatientDob" />
-
-            <NoteTypeContainer NoteType="@_note.NoteType"
-                               NoteTypeChanged="HandleNoteTypeChanged"
-                               NoteTypes="@_noteTypes" />
+            <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-notice">
+                @_workspaceNotice
+            </div>
         }
 
-        <SoapTabNav ActiveSection="@_note.ActiveSection"
-                    ActiveSectionChanged="HandleSectionChanged" />
+        @if (!string.IsNullOrWhiteSpace(_statusMessage))
+        {
+            <div class="note-workspace__alert @GetAlertToneClass()" role="alert" data-testid="note-workspace-alert">
+                @_statusMessage
+            </div>
+        }
 
-        <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
-            @switch (_note.ActiveSection)
+        @if (_blockingValidationMessages.Count > 0)
+        {
+            <div class="note-workspace__alert note-workspace__alert--error" role="alert" data-testid="note-workspace-blocking-errors">
+                <strong>Blocking errors</strong>
+                <ul class="note-workspace__alert-list">
+                    @foreach (var message in _blockingValidationMessages)
+                    {
+                        <li>@message</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_warningValidationMessages.Count > 0)
+        {
+            <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-warnings">
+                <strong>Warnings</strong>
+                <ul class="note-workspace__alert-list">
+                    @foreach (var message in _warningValidationMessages)
+                    {
+                        <li>@message</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_requiresOverride)
+        {
+            <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-override-required">
+                A PT compliance override is required before this note can be finalized.
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(DraftAutosaveService.LastErrorMessage))
+        {
+            <div class="note-workspace__alert note-workspace__alert--error" role="alert" data-testid="note-workspace-autosave-error">
+                Autosave failed: @DraftAutosaveService.LastErrorMessage
+            </div>
+        }
+
+        @if (IsDryNeedlingNote)
+        {
+            <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
+
+            <DryNeedlingNoteView IsReadOnly="@IsWorkspaceReadOnly"
+                                 DisableSave="@DisableSaveAction"
+                                 DisableSubmit="@DisableSubmitAction"
+                                 AllowSubmitWhenReadOnly="@CanSubmitCurrentNote"
+                                 Vm="@_dryNeedling"
+                                 VmChanged="HandleDryNeedlingChanged"
+                                 OnSave="HandleSaveAsync"
+                                 OnSubmit="HandleSubmitAsync" />
+        }
+        else
+        {
+            @if (!IsReviewSection)
             {
-                case SoapSection.Subjective:
-                    if (IsProgressNote)
-                    {
-                        <ProgressSubjectiveSection Vm="@_note.Subjective"
-                                                  VmChanged="HandleSubjectiveChanged"
-                                                  IsReadOnly="@_note.IsSubmitted" />
-                    }
-                    else if (IsDailyTreatment || IsDischargeNote)
-                    {
-                        <SubjectiveSection Vm="@_note.Subjective"
-                                           VmChanged="HandleSubjectiveChanged"
-                                           IsReadOnly="@_note.IsSubmitted"
-                                           IsDarkMode="@_isDarkMode" />
-                    }
-                    else
-                    {
-                        <SubjectiveTab Vm="@_note.Subjective"
-                                       VmChanged="HandleSubjectiveChanged"
-                                       IsReadOnly="@_note.IsSubmitted" />
-                    }
-                    break;
+                <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
 
-                case SoapSection.Objective:
-                    if (IsDailyTreatment || IsProgressNote)
-                    {
-                        <BaselineComparisonCard IsDarkMode="@_isDarkMode" />
-                    }
-                    <ObjectiveTab Vm="@_note.Objective"
-                                  VmChanged="HandleObjectiveChanged"
-                                  IsReadOnly="@_note.IsSubmitted"
-                                  PatientId="@PatientId"
-                                  GoalCount="@_goalItems.Count"
-                                  GoalProgressPercent="@_overallGoalProgress"
-                                  ShortTermGoalCount="@_shortTermGoalCount"
-                                  LongTermGoalCount="@_longTermGoalCount"
-                                  GoalItems="@_goalItems"
-                                  GoalHints="@_goalHints" />
-                    break;
-
-                case SoapSection.Assessment:
-                    if (IsDailyTreatment || IsProgressNote)
-                    {
-                        <AssessmentSection Vm="@_note.Assessment"
-                                           VmChanged="HandleAssessmentChanged"
-                                           IsReadOnly="@_note.IsSubmitted"
-                                           IsDarkMode="@_isDarkMode" />
-                    }
-                    else if (IsDischargeNote)
-                    {
-                        <FinalOutcomesSummaryCard />
-                        <GoalAchievementSummaryCard />
-                        <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
-                                                    Vm="@_note.Assessment"
-                                                    VmChanged="HandleAssessmentChanged"
-                                                    IsReadOnly="@_note.IsSubmitted"
-                                                    ShowSmartGoals="false"
-                                                    ChiefComplaint="@GetChiefComplaintText()"
-                                                    ExaminationFindings="@GetExaminationFindingsText()" />
-                    }
-                    else
-                    {
-                        <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
-                                                    Vm="@_note.Assessment"
-                                                    VmChanged="HandleAssessmentChanged"
-                                                    IsReadOnly="@_note.IsSubmitted"
-                                                    ChiefComplaint="@GetChiefComplaintText()"
-                                                    ExaminationFindings="@GetExaminationFindingsText()" />
-                    }
-                    break;
-
-                case SoapSection.Plan:
-                    if (IsDailyTreatment)
-                    {
-                        <PlanSection Vm="@_note.Plan"
-                                     VmChanged="HandlePlanChanged"
-                                     IsReadOnly="@_note.IsSubmitted"
-                                     IsDarkMode="@_isDarkMode" />
-                    }
-                    else if (IsDischargeNote)
-                    {
-                        <DischargePlanSection Vm="@_note.Plan"
-                                              VmChanged="HandlePlanChanged"
-                                              IsReadOnly="@_note.IsSubmitted" />
-                    }
-                    else
-                    {
-                        <PlanTab NoteId="@(_note.NoteId ?? Guid.Empty)"
-                                 Vm="@_note.Plan"
-                                 VmChanged="HandlePlanChanged"
-                                 IsReadOnly="@_note.IsSubmitted"
-                                 DiagnosisSummary="@GetDiagnosisSummary()"
-                                 AssessmentSummary="@GetAssessmentSummary()"
-                                 GoalsSummary="@GetGoalsSummary()"
-                                 PrecautionsSummary="@GetPrecautionsSummary()" />
-                    }
-                    break;
-
-                case SoapSection.Review:
-                    <SoapReviewPage Note="@_note"
-                                    DateOfService="@_dateOfService"
-                                    IsReadOnly="@_note.IsSubmitted"
-                                    IsRegeneratingSummary="@_isRegeneratingSummary"
-                                    IsRegeneratingGoals="@_isRegeneratingGoals"
-                                    IsSubmitting="@(_note.SaveState == NoteSaveState.Saving)"
-                                    OnEditSection="HandleEditSection"
-                                    OnBackToEdit="HandleBackToEdit"
-                                    OnRegenerateSummary="HandleRegenerateSummaryAsync"
-                                    OnRegenerateGoals="HandleRegenerateGoalsAsync"
-                                    OnExportPdf="HandleExportPdfAsync"
-                                    OnSubmit="HandleSubmitAsync" />
-                    break;
+                <NoteTypeContainer NoteType="@_note.NoteType"
+                                   NoteTypeChanged="HandleNoteTypeChanged"
+                                   NoteTypes="@AvailableNoteTypes"
+                                   Disabled="@(IsWorkspaceReadOnly || AvailableNoteTypes.Count <= 1)" />
             }
-        </div>
 
-        @if (!IsReviewSection)
-        {
-            <SoapStickyFooter NoteType="@_note.NoteType"
-                              ActiveSection="@_note.ActiveSection"
-                              SaveState="@_note.SaveState"
-                              OnBack="HandleBack"
-                              OnPrevSection="HandlePrevSection"
-                              OnNextSection="HandleNextSection"
-                              OnGoalsClick="HandleGoalsClick"
-                              OnReviewClick="HandleReviewClick"
-                              OnSave="HandleSaveAsync"
-                              OnSubmit="HandleSubmitAsync" />
+            <SoapTabNav ActiveSection="@_note.ActiveSection"
+                        ActiveSectionChanged="HandleSectionChanged" />
+
+            <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
+                @switch (_note.ActiveSection)
+                {
+                    case SoapSection.Subjective:
+                        if (IsProgressNote)
+                        {
+                            <ProgressSubjectiveSection Vm="@_note.Subjective"
+                                                      VmChanged="HandleSubjectiveChanged"
+                                                      IsReadOnly="@IsWorkspaceReadOnly" />
+                        }
+                        else if (IsDailyTreatment || IsDischargeNote)
+                        {
+                            <SubjectiveSection Vm="@_note.Subjective"
+                                               VmChanged="HandleSubjectiveChanged"
+                                               IsReadOnly="@IsWorkspaceReadOnly"
+                                               IsDarkMode="@_isDarkMode" />
+                        }
+                        else
+                        {
+                            <SubjectiveTab Vm="@_note.Subjective"
+                                           VmChanged="HandleSubjectiveChanged"
+                                           IsReadOnly="@IsWorkspaceReadOnly" />
+                        }
+                        break;
+
+                    case SoapSection.Objective:
+                        if (IsDailyTreatment || IsProgressNote)
+                        {
+                            <BaselineComparisonCard IsDarkMode="@_isDarkMode" />
+                        }
+                        <ObjectiveTab Vm="@_note.Objective"
+                                      VmChanged="HandleObjectiveChanged"
+                                      IsReadOnly="@IsWorkspaceReadOnly"
+                                      PatientId="@PatientId"
+                                      GoalCount="@GoalCount"
+                                      GoalProgressPercent="@GoalsMetPercent"
+                                      ShortTermGoalCount="@ShortTermGoalCount"
+                                      LongTermGoalCount="@LongTermGoalCount"
+                                      GoalItems="@GoalItems"
+                                      GoalHints="@GoalHints" />
+                        break;
+
+                    case SoapSection.Assessment:
+                        if (IsDailyTreatment || IsProgressNote)
+                        {
+                            <AssessmentSection Vm="@_note.Assessment"
+                                               VmChanged="HandleAssessmentChanged"
+                                               IsReadOnly="@IsWorkspaceReadOnly"
+                                               IsDarkMode="@_isDarkMode"
+                                               NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                               ChiefComplaint="@GetChiefComplaintText()"
+                                               ExaminationFindings="@GetExaminationFindingsText()" />
+                        }
+                        else if (IsDischargeNote)
+                        {
+                            <FinalOutcomesSummaryCard />
+                            <GoalAchievementSummaryCard />
+                            <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                                        Vm="@_note.Assessment"
+                                                        VmChanged="HandleAssessmentChanged"
+                                                        IsReadOnly="@IsWorkspaceReadOnly"
+                                                        ShowSmartGoals="false"
+                                                        ChiefComplaint="@GetChiefComplaintText()"
+                                                        ExaminationFindings="@GetExaminationFindingsText()" />
+                        }
+                        else
+                        {
+                            <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                                        Vm="@_note.Assessment"
+                                                        VmChanged="HandleAssessmentChanged"
+                                                        IsReadOnly="@IsWorkspaceReadOnly"
+                                                        ChiefComplaint="@GetChiefComplaintText()"
+                                                        ExaminationFindings="@GetExaminationFindingsText()" />
+                        }
+                        break;
+
+                    case SoapSection.Plan:
+                        if (IsDailyTreatment)
+                        {
+                            <PlanSection Vm="@_note.Plan"
+                                         VmChanged="HandlePlanChanged"
+                                         IsReadOnly="@IsWorkspaceReadOnly"
+                                         IsDarkMode="@_isDarkMode"
+                                         NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                         DiagnosisSummary="@GetDiagnosisSummary()"
+                                         AssessmentSummary="@GetAssessmentSummary()"
+                                         GoalsSummary="@GetGoalsSummary()"
+                                         PrecautionsSummary="@GetPrecautionsSummary()" />
+                        }
+                        else if (IsDischargeNote)
+                        {
+                            <DischargePlanSection Vm="@_note.Plan"
+                                                  VmChanged="HandlePlanChanged"
+                                                  IsReadOnly="@IsWorkspaceReadOnly" />
+                        }
+                        else
+                        {
+                            <PlanTab NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                     Vm="@_note.Plan"
+                                     VmChanged="HandlePlanChanged"
+                                     IsReadOnly="@IsWorkspaceReadOnly"
+                                     DiagnosisSummary="@GetDiagnosisSummary()"
+                                     AssessmentSummary="@GetAssessmentSummary()"
+                                     GoalsSummary="@GetGoalsSummary()"
+                                     PrecautionsSummary="@GetPrecautionsSummary()" />
+                        }
+                        break;
+
+                    case SoapSection.Review:
+                        <SoapReviewPage Note="@_note"
+                                        DateOfService="@_dateOfService"
+                                        IsReadOnly="@IsWorkspaceReadOnly"
+                                        IsRegeneratingSummary="@_isRegeneratingSummary"
+                                        IsRegeneratingGoals="@_isRegeneratingGoals"
+                                        IsSubmitting="@_isSubmittingNote"
+                                        CanSubmit="@CanSubmitCurrentNote"
+                                        CanExportPdf="@CanExportPdf"
+                                        OnEditSection="HandleEditSection"
+                                        OnBackToEdit="HandleBackToEdit"
+                                        OnRegenerateSummary="HandleRegenerateSummaryAsync"
+                                        OnRegenerateGoals="HandleRegenerateGoalsAsync"
+                                        OnExportPdf="HandleExportPdfAsync"
+                                        OnSubmit="HandleSubmitAsync" />
+                        break;
+                }
+            </div>
+
+            @if (!IsReviewSection)
+            {
+                <SoapStickyFooter NoteType="@_note.NoteType"
+                                  ActiveSection="@_note.ActiveSection"
+                                  SaveState="@_note.SaveState"
+                                  IsReadOnly="@IsWorkspaceReadOnly"
+                                  DisableSave="@DisableSaveAction"
+                                  DisableSubmit="@DisableSubmitAction"
+                                  AllowSubmitWhenReadOnly="@CanSubmitCurrentNote"
+                                  OnBack="HandleBack"
+                                  OnPrevSection="HandlePrevSection"
+                                  OnNextSection="HandleNextSection"
+                                  OnGoalsClick="HandleGoalsClick"
+                                  OnReviewClick="HandleReviewClick"
+                                  OnSave="HandleSaveAsync"
+                                  OnSubmit="HandleSubmitAsync" />
+            }
         }
-    }
-</div>
+    </div>
+}
 
 @if (_showSignatureConsent)
 {
@@ -210,7 +311,7 @@
                         @onclick="HandleConsentCancelAsync"
                         data-testid="sig-consent-cancel">Cancel</button>
                 <button class="btn btn--primary"
-                        disabled="@(!_consentAccepted || !_intentConfirmed)"
+                        disabled="@(!_consentAccepted || !_intentConfirmed || _isSubmittingNote)"
                         @onclick="HandleConsentConfirmAsync"
                         data-testid="sig-consent-confirm">Sign Note</button>
             </div>
@@ -222,7 +323,7 @@
     [Parameter, EditorRequired] public string PatientId { get; set; } = string.Empty;
     [Parameter] public string? NoteId { get; set; }
 
-    private readonly string[] _noteTypes =
+    private readonly string[] _allNoteTypes =
     [
         "Evaluation Note",
         "Progress Note",
@@ -231,58 +332,33 @@
         "Daily Treatment Note"
     ];
 
-    private readonly List<PatientGoalItem> _goalItems =
-    [
-        new()
-        {
-            Name = "Improve shoulder flexion to 160°",
-            Type = "ST",
-            Category = "ROM",
-            Timeline = "2 weeks",
-            ProgressPercent = 60,
-            TargetDescription = "Current 140° -> Target 160°"
-        },
-        new()
-        {
-            Name = "Reduce pain with overhead reach",
-            Type = "ST",
-            Category = "Pain",
-            Timeline = "3 weeks",
-            ProgressPercent = 40,
-            TargetDescription = "Current 6/10 -> Target <= 3/10"
-        },
-        new()
-        {
-            Name = "Return to unrestricted ADLs",
-            Type = "LT",
-            Category = "Function",
-            Timeline = "8 weeks",
-            ProgressPercent = 25,
-            TargetDescription = "Independent self-care and household tasks"
-        }
-    ];
-
-    private readonly List<string> _goalHints =
-    [
-        "Compare objective findings against active goals",
-        "Document measurable progress each session",
-        "Use gait and ROM changes to update prognosis"
-    ];
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
 
     private SoapNoteVm _note = new();
     private DryNeedlingVm _dryNeedling = new();
+    private ClaimsPrincipal _user = new(new ClaimsIdentity());
     private Guid _currentNoteId;
     private Guid? _patientGuid;
-    private string? _validationMessage;
-    private string _validationTone = "error";
+    private string? _initialLoadError;
+    private string? _workspaceNotice;
+    private string? _statusMessage;
+    private string _statusTone = "info";
     private DateTime _dateOfService = DateTime.UtcNow;
     private bool _isDarkMode;
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
+    private bool _isInitialLoading = true;
+    private bool _isSubmittingNote;
     private SoapSection _lastEditableSection = SoapSection.Plan;
     private bool _showSignatureConsent;
     private bool _consentAccepted;
     private bool _intentConfirmed;
+    private string? _allowedNavigationTarget;
+    private IDisposable? _navGuard;
+    private bool _disposed;
+    private List<string> _blockingValidationMessages = [];
+    private List<string> _warningValidationMessages = [];
+    private bool _requiresOverride;
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
@@ -290,71 +366,198 @@
     private bool IsDryNeedlingNote => string.Equals(_note.NoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
     private bool IsReviewSection => _note.ActiveSection == SoapSection.Review;
 
-    private int _overallGoalProgress => _goalItems.Count == 0 ? 0 : (int)Math.Round(_goalItems.Average(g => g.ProgressPercent));
-    private int _shortTermGoalCount => _goalItems.Count(g => string.Equals(g.Type, "ST", StringComparison.OrdinalIgnoreCase));
-    private int _longTermGoalCount => _goalItems.Count(g => string.Equals(g.Type, "LT", StringComparison.OrdinalIgnoreCase));
+    private bool IsPtUser => _user.IsInRole(Roles.PT);
+    private bool IsPtaUser => _user.IsInRole(Roles.PTA);
+    private bool IsAdminUser => _user.IsInRole(Roles.Admin);
+    private bool IsOwnerUser => _user.IsInRole(Roles.Owner);
+    private bool IsBillingUser => _user.IsInRole(Roles.Billing);
+
+    private string DisplayPatientName => string.IsNullOrWhiteSpace(_note.PatientName) ? "Unknown Patient" : _note.PatientName;
+
+    private IReadOnlyList<string> AvailableNoteTypes
+    {
+        get
+        {
+            var baseTypes = IsPtaUser
+                ? new[] { "Daily Treatment Note" }
+                : _allNoteTypes;
+
+            if (string.IsNullOrWhiteSpace(_note.NoteType) ||
+                baseTypes.Any(type => string.Equals(type, _note.NoteType, StringComparison.OrdinalIgnoreCase)))
+            {
+                return baseTypes;
+            }
+
+            return [_note.NoteType, .. baseTypes];
+        }
+    }
+
+    private IReadOnlyList<SmartGoalEntry> VisibleGoals => _note.Assessment.Goals
+        .Where(goal => !string.IsNullOrWhiteSpace(goal.Description) && (!goal.IsAiSuggested || goal.IsAccepted))
+        .OrderBy(goal => goal.Timeframe)
+        .ThenBy(goal => goal.Description, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<PatientGoalItem> GoalItems => VisibleGoals
+        .Select(goal => new PatientGoalItem
+        {
+            Name = goal.Description.Trim(),
+            Type = goal.Timeframe == GoalTimeframe.LongTerm ? "LT" : "ST",
+            Category = goal.Category ?? string.Empty,
+            Timeline = goal.Timeframe == GoalTimeframe.LongTerm ? "Long-term goal" : "Short-term goal",
+            ProgressPercent = goal.Status == GoalStatus.Met ? 100 : 0,
+            TargetDescription = GetGoalStatusDescription(goal.Status),
+            Timeframe = goal.Timeframe,
+            Status = goal.Status,
+            HasQuantitativeProgress = goal.Status == GoalStatus.Met
+        })
+        .ToList();
+
+    private IReadOnlyList<string> GoalHints => GoalCount == 0
+        ? Array.Empty<string>()
+        : new[]
+        {
+            "Compare today’s objective findings against the tracked goals.",
+            "Update goal status when the patient has clearly met or deferred a target.",
+            "Document measurable changes that support your assessment and plan."
+        };
+
+    private int GoalCount => GoalItems.Count;
+    private int GoalsMetPercent => GoalCount == 0 ? 0 : (int)Math.Round((double)GoalItems.Count(goal => goal.Status == GoalStatus.Met) / GoalCount * 100);
+    private int ShortTermGoalCount => GoalItems.Count(goal => goal.Timeframe == GoalTimeframe.ShortTerm);
+    private int LongTermGoalCount => GoalItems.Count(goal => goal.Timeframe == GoalTimeframe.LongTerm);
+
+    private bool IsWorkspaceReadOnly => !CanEditCurrentDraft;
+    private bool CanEditCurrentDraft => _note.Status == NoteStatus.Draft && HasDraftWritePermissionForNoteType(_note.NoteType);
+    private bool CanFinalizePendingCoSign => _note.Status == NoteStatus.PendingCoSign && IsPtUser;
+    private bool CanSubmitCurrentNote => !_isInitialLoading && !_isSubmittingNote && (CanSignDraftNote || CanFinalizePendingCoSign);
+    private bool CanSignDraftNote => _note.Status == NoteStatus.Draft && HasSignPermissionForNoteType(_note.NoteType);
+    private bool CanSaveDraft => !_isInitialLoading && !_isSubmittingNote && CanEditCurrentDraft && _patientGuid.HasValue;
+    private bool DisableSaveAction => !CanSaveDraft || DraftAutosaveService.IsSaving;
+    private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
+    private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
 
     protected override async Task OnInitializedAsync()
     {
-        var routeNoteId = ResolveRouteNoteId(NoteId);
-        _currentNoteId = routeNoteId ?? Guid.Empty;
-        _patientGuid = Guid.TryParse(PatientId, out var parsedPatientId) ? parsedPatientId : null;
+        _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChangingAsync);
+        DraftAutosaveService.StateChanged += HandleAutosaveStateChanged;
+        DraftAutosaveService.Configure(AutosaveSaveAsync, () => CanSaveDraft);
 
+        await LoadWorkspaceAsync();
+    }
+
+    private async Task LoadWorkspaceAsync()
+    {
+        _isInitialLoading = true;
+        _initialLoadError = null;
+        _workspaceNotice = null;
+        ClearValidationDetails();
+        ClearStatusMessage();
+        DraftAutosaveService.Reset();
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _user = authState.User;
+
+            var routeNoteId = ResolveRouteNoteId(NoteId);
+            _currentNoteId = routeNoteId ?? Guid.Empty;
+            _patientGuid = Guid.TryParse(PatientId, out var parsedPatientId) ? parsedPatientId : null;
+
+            if (!_patientGuid.HasValue)
+            {
+                _initialLoadError = "A valid patient identifier is required to open this workspace.";
+                return;
+            }
+
+            InitializeNote(routeNoteId);
+            await LoadPatientContextAsync(_patientGuid.Value);
+
+            if (routeNoteId.HasValue)
+            {
+                await LoadExistingNoteAsync(_patientGuid.Value, routeNoteId.Value);
+            }
+
+            ApplyWorkspaceNotice();
+        }
+        catch (HttpRequestException ex)
+        {
+            _initialLoadError = GetUserFacingMessage(ex, "The note workspace could not be loaded right now.");
+        }
+        catch (Exception ex)
+        {
+            _initialLoadError = GetUserFacingMessage(ex, "The note workspace could not be loaded right now.");
+        }
+        finally
+        {
+            _isInitialLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void InitializeNote(Guid? routeNoteId)
+    {
         _note = new SoapNoteVm
         {
             NoteId = routeNoteId,
             PatientId = PatientId,
-            PatientName = "Patient",
+            PatientName = string.Empty,
             PatientDob = null,
-            NoteType = "Progress Note",
+            NoteType = GetDefaultNoteType(),
             Mode = routeNoteId.HasValue ? NoteMode.Existing : NoteMode.New,
             ActiveSection = SoapSection.Subjective,
             SaveState = NoteSaveState.Unsaved,
-            IsDirty = false,
+            Status = NoteStatus.Draft,
+            IsDirty = false
         };
+
+        _dryNeedling = new DryNeedlingVm();
         _dateOfService = DateTime.UtcNow;
-
-        _isDarkMode = false; // The CSS variable system handles the active theme; this tracks local toggle state.
-
-        if (_patientGuid.HasValue)
-        {
-            await LoadPatientContextAsync(_patientGuid.Value);
-        }
-
-        if (_patientGuid.HasValue && routeNoteId.HasValue)
-        {
-            await LoadExistingNoteAsync(_patientGuid.Value, routeNoteId.Value);
-        }
-
-        return;
+        _isDarkMode = false;
+        _lastEditableSection = SoapSection.Plan;
     }
+
+    private string GetDefaultNoteType() => IsPtaUser ? "Daily Treatment Note" : "Progress Note";
 
     private async Task LoadExistingNoteAsync(Guid patientId, Guid noteId)
     {
         var result = await NoteWorkspaceService.LoadAsync(patientId, noteId);
         if (!result.Success)
         {
-            _validationMessage = result.ErrorMessage ?? "Unable to load note data.";
-            _validationTone = "error";
-            _note.MarkSaveError();
-            return;
+            throw new HttpRequestException(result.ErrorMessage ?? "Unable to load note data.");
         }
 
-        _currentNoteId = result.NoteId;
-        _note.NoteId = result.NoteId;
+        ApplyWorkspaceState(result.NoteId, result.WorkspaceNoteType, result.DateOfService, result.Status, result.Payload);
+    }
+
+    private void ApplyWorkspaceState(
+        Guid noteId,
+        string workspaceNoteType,
+        DateTime dateOfService,
+        NoteStatus status,
+        NoteWorkspacePayload? payload)
+    {
+        _currentNoteId = noteId;
+        _note.NoteId = noteId;
         _note.Mode = NoteMode.Existing;
-        _note.NoteType = result.WorkspaceNoteType;
-        _note.Subjective = result.Payload.Subjective ?? new SubjectiveVm();
-        _note.Objective = result.Payload.Objective ?? new ObjectiveVm();
-        _note.Assessment = result.Payload.Assessment ?? new AssessmentWorkspaceVm();
-        _note.Plan = result.Payload.Plan ?? new PlanVm();
-        _dryNeedling = result.Payload.DryNeedling ?? new DryNeedlingVm();
-        _note.Status = result.Status;
+        _note.NoteType = string.IsNullOrWhiteSpace(workspaceNoteType) ? _note.NoteType : workspaceNoteType;
+        _note.Subjective = payload?.Subjective ?? new SubjectiveVm();
+        _note.Objective = payload?.Objective ?? new ObjectiveVm();
+        _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
+        _note.Plan = payload?.Plan ?? new PlanVm();
+        _dryNeedling = payload?.DryNeedling ?? new DryNeedlingVm();
+        _note.Status = status;
         _note.IsDirty = false;
         _note.MarkSaved();
-        _dateOfService = result.DateOfService;
+        _dateOfService = dateOfService == default ? DateTime.UtcNow : dateOfService;
+        DraftAutosaveService.Reset();
+        ClearValidationDetails();
+    }
 
-        _validationMessage = null;
+    private async Task HandleReloadAsync()
+    {
+        await LoadWorkspaceAsync();
     }
 
     private static Guid? ResolveRouteNoteId(string? routeNoteId)
@@ -367,8 +570,13 @@
         return null;
     }
 
-    private Task HandleSectionChanged(SoapSection next)
+    private async Task HandleSectionChanged(SoapSection next)
     {
+        if (next == SoapSection.Review && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
+        {
+            return;
+        }
+
         if (next == SoapSection.Review)
         {
             if (_note.ActiveSection != SoapSection.Review)
@@ -382,14 +590,19 @@
         }
 
         _note.MoveTo(next);
-        _validationMessage = null;
-        return Task.CompletedTask;
+        ClearStatusMessage();
     }
 
     private Task HandleNoteTypeChanged(string value)
     {
+        if (!CanEditCurrentDraft)
+        {
+            return Task.CompletedTask;
+        }
+
         _note.NoteType = value;
         MarkUnsaved();
+        ApplyWorkspaceNotice();
         return Task.CompletedTask;
     }
 
@@ -433,67 +646,73 @@
         NavigationManager.NavigateTo($"/patient/{PatientId}");
     }
 
-    private Task HandlePrevSection()
+    private async Task HandlePrevSection()
     {
-        _note.MovePreviousSection();
-        if (_note.ActiveSection != SoapSection.Review)
+        var previous = GetAdjacentSection(-1);
+        if (previous.HasValue)
         {
-            _lastEditableSection = _note.ActiveSection;
+            await HandleSectionChanged(previous.Value);
         }
-
-        return Task.CompletedTask;
     }
 
-    private Task HandleNextSection()
+    private async Task HandleNextSection()
     {
-        _note.MoveNextSection();
-        if (_note.ActiveSection != SoapSection.Review)
+        var next = GetAdjacentSection(1);
+        if (next.HasValue)
         {
-            _lastEditableSection = _note.ActiveSection;
+            await HandleSectionChanged(next.Value);
+        }
+    }
+
+    private SoapSection? GetAdjacentSection(int direction)
+    {
+        var sections = Enum.GetValues<SoapSection>();
+        var index = Array.IndexOf(sections, _note.ActiveSection);
+        var nextIndex = index + direction;
+        if (nextIndex < 0 || nextIndex >= sections.Length)
+        {
+            return null;
         }
 
-        return Task.CompletedTask;
+        return sections[nextIndex];
     }
 
     private Task HandleGoalsClick()
     {
-        // Goals are contextually most relevant in Objective section.
         _lastEditableSection = SoapSection.Objective;
         _note.MoveTo(SoapSection.Objective);
         return Task.CompletedTask;
     }
 
-    private Task HandleReviewClick()
+    private async Task HandleReviewClick()
     {
-        if (_note.ActiveSection != SoapSection.Review)
-        {
-            _lastEditableSection = _note.ActiveSection;
-        }
-
-        _note.MoveTo(SoapSection.Review);
-        return Task.CompletedTask;
+        await HandleSectionChanged(SoapSection.Review);
     }
 
     private Task HandleBackToEdit()
     {
         _note.MoveTo(_lastEditableSection);
-        _validationMessage = null;
+        ClearStatusMessage();
         return Task.CompletedTask;
     }
 
     private Task HandleEditSection(SoapSection section)
     {
-        // TODO: Navigate to section edit views.
         _lastEditableSection = section;
         _note.MoveTo(section);
-        _validationMessage = null;
+        ClearStatusMessage();
         return Task.CompletedTask;
     }
 
     private async Task HandleRegenerateSummaryAsync()
     {
+        if (IsWorkspaceReadOnly)
+        {
+            return;
+        }
+
         _isRegeneratingSummary = true;
-        _validationMessage = null;
+        ClearStatusMessage();
         StateHasChanged();
 
         try
@@ -505,18 +724,18 @@
                 AssessmentSummary = GetAssessmentSummary(),
                 Goals = GetGoalsSummary(),
                 Precautions = GetPrecautionsSummary(),
-                IsNoteSigned = _note.IsSubmitted
+                IsNoteSigned = _note.Status != NoteStatus.Draft
             });
 
             if (!result.Success)
             {
-                SetValidationMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error");
+                SetStatusMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error");
                 return;
             }
 
             _note.Plan.ClinicalSummary = result.GeneratedText;
             MarkUnsaved();
-            SetValidationMessage("Clinical summary regenerated. Save the note to keep the updated summary.", "success");
+            SetStatusMessage("Clinical summary regenerated. Save the note to keep the updated summary.", "success");
         }
         finally
         {
@@ -526,8 +745,13 @@
 
     private async Task HandleRegenerateGoalsAsync()
     {
+        if (IsWorkspaceReadOnly)
+        {
+            return;
+        }
+
         _isRegeneratingGoals = true;
-        _validationMessage = null;
+        ClearStatusMessage();
         StateHasChanged();
 
         try
@@ -539,12 +763,12 @@
                 FunctionalLimitations = GetFunctionalLimitationsSummary(),
                 ShortTermGoals = GetGoalsSummary(),
                 LongTermGoals = GetGoalsSummary(),
-                IsNoteSigned = _note.IsSubmitted
+                IsNoteSigned = _note.Status != NoteStatus.Draft
             });
 
             if (!result.Success)
             {
-                SetValidationMessage(result.ErrorMessage ?? "Unable to generate AI treatment goals.", "error");
+                SetStatusMessage(result.ErrorMessage ?? "Unable to generate AI treatment goals.", "error");
                 return;
             }
 
@@ -559,12 +783,14 @@
                 {
                     Description = description,
                     IsAiSuggested = true,
-                    IsAccepted = false
+                    IsAccepted = false,
+                    Timeframe = GoalTimeframe.ShortTerm,
+                    Status = GoalStatus.Active
                 });
             }
 
             MarkUnsaved();
-            SetValidationMessage("AI treatment goals regenerated. Review and accept the suggested goals before saving.", "success");
+            SetStatusMessage("AI treatment goals regenerated. Review and accept the suggested goals before saving.", "success");
         }
         finally
         {
@@ -574,103 +800,199 @@
 
     private async Task HandleExportPdfAsync()
     {
+        if (!CanExportPdf)
+        {
+            SetStatusMessage("Your role does not have permission to export note PDFs.", "error");
+            return;
+        }
+
         if (!_note.NoteId.HasValue)
         {
-            SetValidationMessage("Save and submit the note before exporting PDF.", "error");
+            SetStatusMessage("Save and submit the note before exporting PDF.", "error");
             return;
         }
 
         var result = await NoteWorkspaceService.ExportPdfAsync(_note.NoteId.Value);
         if (!result.Success)
         {
-            SetValidationMessage(result.ErrorMessage ?? "Unable to export the note as PDF.", "error");
+            SetStatusMessage(result.ErrorMessage ?? "Unable to export the note as PDF.", "error");
             return;
         }
 
         var base64 = Convert.ToBase64String(result.Content);
         await JS.InvokeVoidAsync("open", $"data:{result.ContentType};base64,{base64}", "_blank");
-        SetValidationMessage("PDF export opened in a new browser tab.", "success");
+        SetStatusMessage("PDF export opened in a new browser tab.", "success");
     }
 
     private async Task HandleSaveAsync()
     {
-        if (_note.IsSubmitted)
+        if (!CanSaveDraft)
         {
+            if (!string.IsNullOrWhiteSpace(GetReadOnlySaveMessage()))
+            {
+                SetStatusMessage(GetReadOnlySaveMessage()!, "error");
+            }
             return;
         }
 
-        if (!_patientGuid.HasValue)
+        var saveSucceeded = DraftAutosaveService.IsDirty
+            ? await DraftAutosaveService.FlushAsync()
+            : await PersistDraftAsync(showFeedback: false, CancellationToken.None);
+
+        if (saveSucceeded && _warningValidationMessages.Count == 0 && !_requiresOverride)
         {
-            _note.MarkSaveError();
-            SetValidationMessage("A valid patient identifier is required before saving.", "error");
-            return;
+            SetStatusMessage("Draft saved.", "success");
+        }
+    }
+
+    private async Task<bool> AutosaveSaveAsync(CancellationToken cancellationToken)
+    {
+        return await PersistDraftAsync(showFeedback: false, cancellationToken);
+    }
+
+    private async Task<bool> PersistDraftAsync(bool showFeedback, CancellationToken cancellationToken)
+    {
+        if (!_patientGuid.HasValue || !CanSaveDraft)
+        {
+            return false;
         }
 
-        _note.StartSaving();
-        _validationMessage = null;
-        StateHasChanged();
-
+        await _persistGate.WaitAsync(cancellationToken);
         try
         {
+            if (!_patientGuid.HasValue || !CanSaveDraft)
+            {
+                return false;
+            }
+
             _dateOfService = ResolveDateOfService();
-            var saveResult = await NoteWorkspaceService.SaveDraftAsync(BuildDraft(_patientGuid.Value));
+            _note.StartSaving();
+            await InvokeAsync(StateHasChanged);
+
+            var saveResult = await NoteWorkspaceService.SaveDraftAsync(BuildDraft(_patientGuid.Value), cancellationToken);
+            ApplyValidationDetails(saveResult.Errors, saveResult.Warnings, saveResult.RequiresOverride);
+
             if (!saveResult.Success)
             {
                 _note.MarkSaveError();
-                var complianceMessage = saveResult.Errors.Count > 0
-                    ? string.Join(" ", saveResult.Errors)
-                    : saveResult.ErrorMessage;
-                SetValidationMessage(complianceMessage ?? "Unable to save draft right now. Please retry.", "error");
-                return;
+                if (showFeedback || saveResult.Errors.Count > 0 || saveResult.Warnings.Count > 0)
+                {
+                    SetStatusMessage(saveResult.ErrorMessage ?? "Unable to save draft right now. Please retry.", saveResult.Errors.Count > 0 ? "error" : "info");
+                }
+
+                return false;
             }
 
-            _currentNoteId = saveResult.NoteId;
-            _note.NoteId = saveResult.NoteId;
-            _note.Mode = NoteMode.Existing;
-            _note.Status = saveResult.Status;
-            _note.MarkSaved();
-
-            if (saveResult.Warnings.Count > 0)
+            if (saveResult.Payload is not null)
             {
-                SetValidationMessage(string.Join(" ", saveResult.Warnings), "info");
+                ApplyWorkspaceState(
+                    saveResult.NoteId,
+                    saveResult.Payload.WorkspaceNoteType,
+                    _dateOfService,
+                    saveResult.Status,
+                    saveResult.Payload);
             }
             else
             {
-                _validationMessage = null;
+                _currentNoteId = saveResult.NoteId;
+                _note.NoteId = saveResult.NoteId;
+                _note.Mode = NoteMode.Existing;
+                _note.Status = saveResult.Status;
+                _note.MarkSaved();
             }
+
+            ApplyWorkspaceNotice();
+
+            if (saveResult.Warnings.Count > 0)
+            {
+                SetStatusMessage(saveResult.ErrorMessage ?? "Draft saved with warnings.", "info");
+            }
+            else if (showFeedback)
+            {
+                SetStatusMessage("Draft saved.", "success");
+            }
+            else
+            {
+                ClearStatusMessage();
+            }
+
+            return true;
         }
-        catch (Exception)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             _note.MarkSaveError();
-            SetValidationMessage("Unable to save draft right now. Please retry.", "error");
+            SetStatusMessage(GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."), "error");
+            return false;
         }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+            _persistGate.Release();
+        }
+    }
+
+    private async Task<bool> EnsureDraftPersistedAsync(bool forceIfClean = false)
+    {
+        if (!CanSaveDraft)
+        {
+            return true;
+        }
+
+        if (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving)
+        {
+            return await DraftAutosaveService.FlushAsync();
+        }
+
+        if (forceIfClean || !_note.NoteId.HasValue)
+        {
+            return await PersistDraftAsync(showFeedback: false, CancellationToken.None);
+        }
+
+        return true;
     }
 
     private async Task HandleSubmitAsync()
     {
-        _validationMessage = ValidateForSubmit();
-        if (!string.IsNullOrWhiteSpace(_validationMessage))
+        if (!CanSubmitCurrentNote)
         {
-            _validationTone = "error";
-            _note.MarkSaveError();
+            SetStatusMessage(GetReadOnlySubmitMessage(), "error");
             return;
         }
 
-        await HandleSaveAsync();
-        if (_note.SaveState == NoteSaveState.Saved)
+        if (!CanFinalizePendingCoSign)
         {
-            if (!_note.NoteId.HasValue)
+            var submitValidationMessage = ValidateForSubmit();
+            if (!string.IsNullOrWhiteSpace(submitValidationMessage))
             {
                 _note.MarkSaveError();
-                SetValidationMessage("Unable to submit because the note ID is missing.", "error");
+                SetStatusMessage(submitValidationMessage, "error");
                 return;
             }
 
-            // Show the consent/intent dialog; actual submission happens in HandleConsentConfirmAsync.
-            _consentAccepted = false;
-            _intentConfirmed = false;
-            _showSignatureConsent = true;
+            var saveSucceeded = await EnsureDraftPersistedAsync(forceIfClean: true);
+            if (!saveSucceeded || !_note.NoteId.HasValue)
+            {
+                if (!_note.NoteId.HasValue)
+                {
+                    SetStatusMessage("Unable to submit because the note ID is missing.", "error");
+                }
+
+                return;
+            }
         }
+        else if (!_note.NoteId.HasValue)
+        {
+            SetStatusMessage("This note must be saved before PT finalization can continue.", "error");
+            return;
+        }
+
+        _consentAccepted = false;
+        _intentConfirmed = false;
+        _showSignatureConsent = true;
     }
 
     private Task HandleConsentCancelAsync()
@@ -683,33 +1005,60 @@
 
     private async Task HandleConsentConfirmAsync()
     {
-        if (!_consentAccepted || !_intentConfirmed || !_note.NoteId.HasValue)
+        if (!_consentAccepted || !_intentConfirmed || !_note.NoteId.HasValue || _isSubmittingNote)
         {
             return;
         }
 
         _showSignatureConsent = false;
+        _isSubmittingNote = true;
+        var wasPendingCoSignFinalization = CanFinalizePendingCoSign;
+        ClearValidationDetails();
+        ClearStatusMessage();
+        StateHasChanged();
 
-        var submitResult = await NoteWorkspaceService.SubmitAsync(
-            _note.NoteId.Value,
-            consentAccepted: _consentAccepted,
-            intentConfirmed: _intentConfirmed);
-
-        if (!submitResult.Success)
+        try
         {
-            _note.MarkSaveError();
-            SetValidationMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error");
-            return;
-        }
+            var submitResult = await NoteWorkspaceService.SubmitAsync(
+                _note.NoteId.Value,
+                consentAccepted: _consentAccepted,
+                intentConfirmed: _intentConfirmed);
 
-        _note.Status = submitResult.Status;
-        _note.IsDirty = false;
-        _note.MarkSaved();
-        SetValidationMessage(
-            submitResult.RequiresCoSign
-                ? "Note submitted. PT co-sign is still required before the documentation workflow is fully complete."
-                : "Note submitted successfully.",
-            submitResult.RequiresCoSign ? "info" : "success");
+            if (!submitResult.Success)
+            {
+                ApplyValidationFailures(submitResult.ValidationFailures);
+                _note.MarkSaveError();
+                SetStatusMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error");
+                return;
+            }
+
+            if (_patientGuid.HasValue)
+            {
+                await LoadExistingNoteAsync(_patientGuid.Value, _note.NoteId.Value);
+            }
+            else
+            {
+                _note.Status = submitResult.Status;
+                _note.IsDirty = false;
+                _note.MarkSaved();
+            }
+
+            ApplyWorkspaceNotice();
+            ClearValidationDetails();
+            SetStatusMessage(
+                submitResult.RequiresCoSign
+                    ? "Note submitted. PT co-sign is still required before the documentation workflow is fully complete."
+                    : (wasPendingCoSignFinalization
+                        ? "Pending co-sign note finalized successfully."
+                        : "Note submitted successfully."),
+                submitResult.RequiresCoSign ? "info" : "success");
+        }
+        finally
+        {
+            _isSubmittingNote = false;
+            _consentAccepted = false;
+            _intentConfirmed = false;
+        }
     }
 
     private NoteWorkspaceDraft BuildDraft(Guid patientId)
@@ -747,7 +1096,11 @@
 
     private string? ValidateForSubmit()
     {
-        // TODO: Validate required fields before submission.
+        if (CanFinalizePendingCoSign)
+        {
+            return null;
+        }
+
         if (IsDryNeedlingNote)
         {
             if (_dryNeedling.DateOfTreatment is null)
@@ -796,21 +1149,78 @@
 
     private void MarkUnsaved()
     {
-        if (_note.IsSubmitted)
+        if (!CanEditCurrentDraft)
         {
             return;
         }
 
+        ClearValidationDetails();
+        ClearStatusMessage();
         _note.MarkDirty();
-        _validationMessage = null;
+        DraftAutosaveService.MarkDirty();
     }
 
-    private string GetAlertToneClass() => $"note-workspace__alert--{_validationTone}";
+    private string GetAlertToneClass() => $"note-workspace__alert--{_statusTone}";
 
-    private void SetValidationMessage(string message, string tone)
+    private void SetStatusMessage(string message, string tone)
     {
-        _validationMessage = message;
-        _validationTone = tone;
+        _statusMessage = message;
+        _statusTone = tone;
+    }
+
+    private void ClearStatusMessage()
+    {
+        _statusMessage = null;
+        _statusTone = "info";
+    }
+
+    private void ClearValidationDetails()
+    {
+        _blockingValidationMessages = [];
+        _warningValidationMessages = [];
+        _requiresOverride = false;
+    }
+
+    private void ApplyValidationDetails(IEnumerable<string>? blockingMessages, IEnumerable<string>? warningMessages, bool requiresOverride)
+    {
+        _blockingValidationMessages = (blockingMessages ?? [])
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Select(message => message.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _warningValidationMessages = (warningMessages ?? [])
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Select(message => message.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _requiresOverride = requiresOverride;
+    }
+
+    private void ApplyValidationFailures(IEnumerable<RuleEvaluationResult>? validationFailures)
+    {
+        if (validationFailures is null)
+        {
+            ClearValidationDetails();
+            return;
+        }
+
+        _blockingValidationMessages = validationFailures
+            .Where(failure => failure.Blocking || failure.Severity == ValidationSeverity.Error)
+            .Select(failure => failure.Message)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _warningValidationMessages = validationFailures
+            .Where(failure => !failure.Blocking && failure.Severity != ValidationSeverity.Error)
+            .Select(failure => failure.Message)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _requiresOverride = false;
     }
 
     private string GetChiefComplaintText()
@@ -854,7 +1264,7 @@
         }
 
         _note.PatientName = $"{patient.FirstName} {patient.LastName}".Trim();
-        _note.PatientDob = patient.DateOfBirth.ToString("M/d/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        _note.PatientDob = patient.DateOfBirth.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
     }
 
     private string GetDiagnosisSummary()
@@ -912,5 +1322,221 @@
         return parsed.Count == 0 && !string.IsNullOrWhiteSpace(generatedText)
             ? [generatedText.Trim()]
             : parsed;
+    }
+
+    private static string GetGoalStatusDescription(GoalStatus status) => status switch
+    {
+        GoalStatus.Met => "Goal marked as met.",
+        GoalStatus.Archived => "Goal archived from the active plan.",
+        _ => "Goal remains active."
+    };
+
+    private bool HasDraftWritePermissionForNoteType(string noteType)
+    {
+        if (IsPtUser)
+        {
+            return true;
+        }
+
+        if (IsPtaUser)
+        {
+            return string.Equals(noteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private bool HasSignPermissionForNoteType(string noteType)
+    {
+        if (IsPtUser)
+        {
+            return true;
+        }
+
+        if (IsPtaUser)
+        {
+            return string.Equals(noteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private void ApplyWorkspaceNotice()
+    {
+        if (_note.Status == NoteStatus.Signed)
+        {
+            _workspaceNotice = "This note has been signed and is read-only.";
+            return;
+        }
+
+        if (_note.Status == NoteStatus.PendingCoSign)
+        {
+            _workspaceNotice = IsPtUser
+                ? "This note is awaiting PT finalization. Content is read-only until it is signed."
+                : "This note is awaiting PT co-sign and is read-only.";
+            return;
+        }
+
+        if (IsBillingUser || IsOwnerUser)
+        {
+            _workspaceNotice = "Your role has read-only access to clinical notes.";
+            return;
+        }
+
+        if (IsAdminUser)
+        {
+            _workspaceNotice = "Admin access is read-only for note content. PDF export remains available.";
+            return;
+        }
+
+        if (IsPtaUser && !IsDailyTreatment)
+        {
+            _workspaceNotice = "PTA users can only edit and sign daily treatment notes.";
+            return;
+        }
+
+        _workspaceNotice = null;
+    }
+
+    private string? GetReadOnlySaveMessage()
+    {
+        if (_note.Status == NoteStatus.Signed)
+        {
+            return "Signed notes cannot be edited.";
+        }
+
+        if (_note.Status == NoteStatus.PendingCoSign)
+        {
+            return "Pending co-sign notes are read-only.";
+        }
+
+        if (IsPtaUser && !IsDailyTreatment)
+        {
+            return "PTA users can only save daily treatment notes.";
+        }
+
+        if (IsAdminUser || IsOwnerUser || IsBillingUser)
+        {
+            return "Your role does not have permission to edit note content.";
+        }
+
+        return "This note cannot be edited right now.";
+    }
+
+    private string GetReadOnlySubmitMessage()
+    {
+        if (_note.Status == NoteStatus.Signed)
+        {
+            return "This note has already been signed.";
+        }
+
+        if (_note.Status == NoteStatus.PendingCoSign && !IsPtUser)
+        {
+            return "This note is awaiting PT co-sign and cannot be finalized by your role.";
+        }
+
+        if (IsPtaUser && !IsDailyTreatment)
+        {
+            return "PTA users can only sign daily treatment notes.";
+        }
+
+        if (IsAdminUser || IsOwnerUser || IsBillingUser)
+        {
+            return "Your role does not have permission to sign notes.";
+        }
+
+        return "This note cannot be submitted from the current state.";
+    }
+
+    private void HandleAutosaveStateChanged()
+    {
+        _note.IsDirty = DraftAutosaveService.IsDirty;
+
+        if (DraftAutosaveService.IsSaving)
+        {
+            _note.SaveState = NoteSaveState.Saving;
+        }
+        else if (!string.IsNullOrWhiteSpace(DraftAutosaveService.LastErrorMessage))
+        {
+            _note.SaveState = NoteSaveState.Error;
+        }
+        else if (DraftAutosaveService.IsDirty)
+        {
+            _note.SaveState = NoteSaveState.Unsaved;
+        }
+        else if (DraftAutosaveService.LastSavedAt.HasValue)
+        {
+            _note.SaveState = NoteSaveState.Saved;
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async ValueTask OnLocationChangingAsync(LocationChangingContext context)
+    {
+        if (_allowedNavigationTarget is not null &&
+            string.Equals(_allowedNavigationTarget, context.TargetLocation, StringComparison.OrdinalIgnoreCase))
+        {
+            _allowedNavigationTarget = null;
+            return;
+        }
+
+        if (!CanSaveDraft || (!DraftAutosaveService.IsDirty && !DraftAutosaveService.IsSaving))
+        {
+            return;
+        }
+
+        context.PreventNavigation();
+
+        var saved = await EnsureDraftPersistedAsync();
+        if (!saved)
+        {
+            SetStatusMessage("Unable to save the draft before leaving this page. Resolve the error and try again.", "error");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _allowedNavigationTarget = context.TargetLocation;
+        await InvokeAsync(() => NavigationManager.NavigateTo(context.TargetLocation));
+    }
+
+    private static string GetUserFacingMessage(Exception exception, string fallback)
+    {
+        if (exception is HttpRequestException httpException)
+        {
+            if (!string.IsNullOrWhiteSpace(httpException.Message) &&
+                !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+            {
+                return httpException.Message;
+            }
+        }
+
+        return fallback;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _navGuard?.Dispose();
+        DraftAutosaveService.StateChanged -= HandleAutosaveStateChanged;
+
+        try
+        {
+            if (CanSaveDraft && (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving))
+            {
+                await EnsureDraftPersistedAsync();
+            }
+        }
+        catch
+        {
+        }
+
+        await DraftAutosaveService.DisposeAsync();
+        _persistGate.Dispose();
     }
 }

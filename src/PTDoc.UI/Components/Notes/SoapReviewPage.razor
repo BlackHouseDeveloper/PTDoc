@@ -370,6 +370,7 @@
 
         <button type="button"
                 class="soap-review-page__button soap-review-page__button--outline"
+                disabled="@(!CanExportPdf)"
                 @onclick="() => OnExportPdf.InvokeAsync()">
             <span class="soap-review-page__button-icon" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -383,7 +384,7 @@
 
         <button type="button"
                 class="soap-review-page__button soap-review-page__button--primary"
-                disabled="@(IsReadOnly || IsSubmitting)"
+                disabled="@(IsSubmitting || !CanSubmit)"
                 @onclick="() => OnSubmit.InvokeAsync()">
             <span class="soap-review-page__button-icon" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -417,6 +418,8 @@
     [Parameter] public bool IsRegeneratingSummary { get; set; }
     [Parameter] public bool IsRegeneratingGoals { get; set; }
     [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public bool CanSubmit { get; set; } = true;
+    [Parameter] public bool CanExportPdf { get; set; } = true;
     [Parameter, EditorRequired] public EventCallback<SoapSection> OnEditSection { get; set; }
     [Parameter, EditorRequired] public EventCallback OnBackToEdit { get; set; }
     [Parameter, EditorRequired] public EventCallback OnRegenerateSummary { get; set; }

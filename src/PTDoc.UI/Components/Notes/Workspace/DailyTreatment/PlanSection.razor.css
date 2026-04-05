@@ -22,3 +22,12 @@
     padding: var(--spacing-2) var(--spacing-3);
     font-size: var(--text-sm);
 }
+
+::deep .daily-plan__message {
+    margin: var(--spacing-2) 0 0;
+    font-size: var(--text-sm);
+}
+
+::deep .daily-plan__message--error {
+    color: var(--destructive);
+}

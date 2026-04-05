@@ -27,8 +27,8 @@
                                  OnChanged="HandleChanged" />
 
     <footer class="dry-note__actions">
-        <button type="button" class="dry-note__save-btn" disabled="@IsReadOnly" @onclick="OnSave">Save Dry Needling Note</button>
-        <button type="button" class="dry-note__submit-btn" disabled="@(IsReadOnly || HasRequiredFieldsMissing)" @onclick="OnSubmit">Submit Dry Needling Note</button>
+        <button type="button" class="dry-note__save-btn" disabled="@(IsReadOnly || DisableSave)" @onclick="OnSave">Save Dry Needling Note</button>
+        <button type="button" class="dry-note__submit-btn" disabled="@(DisableSubmit || ((IsReadOnly && !AllowSubmitWhenReadOnly) || HasRequiredFieldsMissing))" @onclick="OnSubmit">Submit Dry Needling Note</button>
     </footer>
 </section>
 
@@ -36,6 +36,9 @@
     [Parameter, EditorRequired] public DryNeedlingVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<DryNeedlingVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool DisableSave { get; set; }
+    [Parameter] public bool DisableSubmit { get; set; }
+    [Parameter] public bool AllowSubmitWhenReadOnly { get; set; }
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnSubmit { get; set; }
 

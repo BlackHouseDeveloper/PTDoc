@@ -19,7 +19,6 @@ public sealed class SignupApiClient
         string roleKey,
         Guid? clinicId,
         string pin,
-        string licenseType,
         string licenseNumber,
         string licenseState,
         CancellationToken cancellationToken = default)
@@ -36,7 +35,6 @@ public sealed class SignupApiClient
                 RoleKey = roleKey,
                 ClinicId = clinicId,
                 Pin = pin,
-                LicenseType = licenseType,
                 LicenseNumber = licenseNumber,
                 LicenseState = licenseState,
                 // TODO: Add license/certification blob IDs here after upload flow is implemented.
@@ -85,7 +83,6 @@ public sealed class SignupApiClient
         public required string RoleKey { get; init; }
         public Guid? ClinicId { get; init; }
         public required string Pin { get; init; }
-        public string? LicenseType { get; init; }
         public string? LicenseNumber { get; init; }
         public string? LicenseState { get; init; }
     }

@@ -35,6 +35,28 @@
     margin: 0;
 }
 
+.intake-page__notice {
+    background: color-mix(in srgb, var(--info) 8%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--info) 24%, var(--border));
+    border-radius: var(--radius);
+    padding: var(--spacing-3) var(--spacing-4);
+}
+
+.intake-page__notice p {
+    margin: 0;
+}
+
+.intake-page__fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
+}
+
+.intake-page__fieldset:disabled {
+    opacity: 0.72;
+}
+
 @media (max-width: 767px) {
     .intake-page__content {
         padding: var(--spacing-4);

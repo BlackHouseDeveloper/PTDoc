@@ -189,6 +189,7 @@ public sealed class NoteListItemApiResponse
     public string PatientName { get; set; } = string.Empty;
     public string NoteType { get; set; } = string.Empty;
     public bool IsSigned { get; set; }
+    public NoteStatus? NoteStatus { get; set; }
     public DateTime DateOfService { get; set; }
     public DateTime LastModifiedUtc { get; set; }
     public string CptCodesJson { get; set; } = "[]";

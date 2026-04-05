@@ -14,8 +14,6 @@ public sealed class SelfServiceRegisterRequest
 
     public required string Pin { get; init; }
 
-    public string? LicenseType { get; init; }
-
     public string? LicenseNumber { get; init; }
 
     public string? LicenseState { get; init; }

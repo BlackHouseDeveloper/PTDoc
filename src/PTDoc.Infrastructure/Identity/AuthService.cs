@@ -39,18 +39,21 @@ public class AuthService : IAuthService
         CancellationToken cancellationToken = default)
     {
         var attemptedAt = DateTime.UtcNow;
+        var normalizedIdentifier = username.Trim();
 
         try
         {
-            // Find user by username
+            // Keep the existing request shape but allow the identifier field to be either username or email.
             var user = await _context.Users
-                .Where(u => u.Username == username)
+                .Where(u =>
+                    u.Username == normalizedIdentifier
+                    || (u.Email != null && u.Email.ToLower() == normalizedIdentifier.ToLower()))
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (user == null)
             {
                 // Log failed attempt - user not found
-                await LogLoginAttemptAsync(username, null, false, ipAddress, userAgent,
+                await LogLoginAttemptAsync(normalizedIdentifier, null, false, ipAddress, userAgent,
                     "User not found", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 // Emit audit event (no username logged to avoid enumeration info leakage)
@@ -62,7 +65,7 @@ public class AuthService : IAuthService
             if (!user.IsActive)
             {
                 // Log failed attempt - user inactive
-                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
+                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
                     "User account is inactive", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 await _auditService.LogAuthEventAsync(
@@ -86,7 +89,7 @@ public class AuthService : IAuthService
             if (!isValidPin)
             {
                 // Log failed attempt - invalid PIN
-                await LogLoginAttemptAsync(username, user.Id, false, ipAddress, userAgent,
+                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
                     "Invalid PIN", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 await _auditService.LogAuthEventAsync(
@@ -117,7 +120,7 @@ public class AuthService : IAuthService
             user.LastLoginAt = now;
 
             // Log successful attempt
-            await LogLoginAttemptAsync(username, user.Id, true, ipAddress, userAgent,
+            await LogLoginAttemptAsync(normalizedIdentifier, user.Id, true, ipAddress, userAgent,
                 null, attemptedAt, cancellationToken);
 
             await _context.SaveChangesAsync(cancellationToken);
@@ -141,7 +144,7 @@ public class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during authentication for user {Username}", username);
+            _logger.LogError(ex, "Error during authentication for user {Username}", normalizedIdentifier);
             throw;
         }
     }

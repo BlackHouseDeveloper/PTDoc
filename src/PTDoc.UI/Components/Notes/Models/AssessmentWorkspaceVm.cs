@@ -1,3 +1,5 @@
+using PTDoc.Core.Models;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -64,8 +66,11 @@ public class AssessmentWorkspaceVm
 public class SmartGoalEntry
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid? PatientGoalId { get; set; }
     public string Description { get; set; } = string.Empty;
     public string? Category { get; set; }
+    public GoalTimeframe Timeframe { get; set; } = GoalTimeframe.ShortTerm;
+    public GoalStatus Status { get; set; } = GoalStatus.Active;
     public bool IsAiSuggested { get; set; }
     public bool IsAccepted { get; set; }
 }

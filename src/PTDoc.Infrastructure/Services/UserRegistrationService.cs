@@ -4,12 +4,15 @@ using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Services;
 
 public sealed class UserRegistrationService : IUserRegistrationService
 {
     private const string RegistrationCreatedEventType = "RegistrationCreated";
+    private const string RegistrationUpdatedEventType = "RegistrationUpdated";
     private const string RegistrationApprovedEventType = "RegistrationApproved";
     private const string RegistrationRejectedEventType = "RegistrationRejected";
     private const string RegistrationOnHoldEventType = "RegistrationOnHold";
@@ -63,18 +66,28 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
         if (!AllowedRoleKeys.Contains(normalizedRole))
         {
-            return new RegistrationResult(RegistrationStatus.ServerError, null, "The selected role is not valid for registration.");
+            return ValidationFailure("The selected role is not valid for registration.", CreateFieldError("RoleKey", "The selected role is not valid."));
         }
 
-        var requiresLicense = string.Equals(normalizedRole, "PT", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedRole, "PTA", StringComparison.OrdinalIgnoreCase);
-
-        if (requiresLicense
-            && (string.IsNullOrWhiteSpace(request.LicenseType)
-                || string.IsNullOrWhiteSpace(request.LicenseNumber)
-                || string.IsNullOrWhiteSpace(request.LicenseState)))
+        var validationErrors = ValidateRegistrationData(
+            request.FullName,
+            request.Email,
+            request.DateOfBirth,
+            normalizedRole,
+            request.LicenseNumber,
+            request.LicenseState);
+        if (validationErrors.Count > 0)
         {
-            return new RegistrationResult(RegistrationStatus.InvalidLicenseData, null, "License fields are required for PT/PTA registration.");
+            var hasOnlyLicenseErrors = validationErrors.Keys.All(static key =>
+                key is "LicenseNumber" or "LicenseState");
+
+            return new RegistrationResult(
+                hasOnlyLicenseErrors ? RegistrationStatus.InvalidLicenseData : RegistrationStatus.ValidationFailed,
+                null,
+                hasOnlyLicenseErrors
+                    ? "License fields are required for PT/PTA registration."
+                    : "Registration data is incomplete.",
+                validationErrors);
         }
 
         var normalizedEmail = request.Email.Trim();
@@ -101,11 +114,12 @@ public sealed class UserRegistrationService : IUserRegistrationService
             FirstName = firstName,
             LastName = lastName,
             Email = normalizedEmail,
+            DateOfBirth = request.DateOfBirth.Date,
             PinHash = AuthService.HashPin(request.Pin),
             Role = normalizedRole,
             ClinicId = request.ClinicId,
-            LicenseNumber = requiresLicense ? request.LicenseNumber?.Trim() : null,
-            LicenseState = requiresLicense ? request.LicenseState?.Trim().ToUpperInvariant() : null,
+            LicenseNumber = RequiresLicense(normalizedRole) ? request.LicenseNumber?.Trim() : null,
+            LicenseState = RequiresLicense(normalizedRole) ? request.LicenseState?.Trim().ToUpperInvariant() : null,
             CreatedAt = DateTime.UtcNow,
             IsActive = false
         };
@@ -242,27 +256,194 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
         var totalCount = await registrationQuery.CountAsync(cancellationToken);
 
-        var items = await registrationQuery
+        var rows = await registrationQuery
             .Skip((normalizedPage - 1) * normalizedPageSize)
             .Take(normalizedPageSize)
-            .Select(row => new PendingUserSummary(
+            .Select(row => new
+            {
                 row.User.Id,
-                (row.User.FirstName + " " + row.User.LastName).Trim(),
-                row.User.Email ?? string.Empty,
-                row.LastDecision == RegistrationCancelledEventType
-                    ? "Cancelled"
-                    : row.LastDecision == RegistrationOnHoldEventType
-                        ? "On Hold"
-                        : row.LastDecision == RegistrationRejectedEventType
-                            ? "Rejected"
-                            : (row.User.IsActive || row.LastDecision == RegistrationApprovedEventType ? "Approved" : "Pending"),
+                row.User.FirstName,
+                row.User.LastName,
+                row.User.Email,
                 row.User.Role,
                 row.User.ClinicId,
-                row.User.Clinic != null ? row.User.Clinic.Name : null,
-                row.User.CreatedAt))
+                ClinicName = row.User.Clinic != null ? row.User.Clinic.Name : null,
+                row.User.CreatedAt,
+                row.User.IsActive,
+                row.User.DateOfBirth,
+                row.User.LicenseNumber,
+                row.User.LicenseState,
+                row.LastDecision
+            })
             .ToListAsync(cancellationToken);
 
-        return new PendingRegistrationsPage(items, totalCount, normalizedPage, normalizedPageSize);
+        var items = rows
+            .Select(row =>
+            {
+                var fullName = $"{row.FirstName} {row.LastName}".Trim();
+                var missingFields = GetMissingFields(
+                    fullName,
+                    row.Email,
+                    row.DateOfBirth,
+                    row.Role,
+                    row.LicenseNumber,
+                    row.LicenseState);
+
+                return new PendingUserSummary(
+                    row.Id,
+                    fullName,
+                    row.Email ?? string.Empty,
+                    GetRegistrationStatus(row.IsActive, row.LastDecision),
+                    row.Role,
+                    row.ClinicId,
+                    row.ClinicName,
+                    row.CreatedAt,
+                    missingFields.Count == 0,
+                    missingFields,
+                    NormalizeStoredValue(row.LicenseNumber),
+                    NormalizeStoredValue(row.LicenseState),
+                    null);
+            })
+            .ToList();
+
+        return new PendingRegistrationsPage(
+            await PopulateReviewedByAsync(items, cancellationToken),
+            totalCount,
+            normalizedPage,
+            normalizedPageSize);
+    }
+
+    public async Task<PendingUserDetail?> GetPendingRegistrationAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .Include(u => u.Clinic)
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            return null;
+        }
+
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        var reviewedBy = await ResolveReviewedByAsync(latestDecision.ActorUserId, cancellationToken);
+        var missingFields = GetMissingFields(user);
+
+        return new PendingUserDetail(
+            user.Id,
+            user.Username,
+            BuildFullName(user),
+            user.Email ?? string.Empty,
+            user.DateOfBirth,
+            GetRegistrationStatus(user.IsActive, latestDecision.EventType),
+            user.Role,
+            user.ClinicId,
+            user.Clinic?.Name,
+            user.CreatedAt,
+            missingFields.Count == 0,
+            missingFields,
+            NormalizeStoredValue(user.LicenseNumber),
+            NormalizeStoredValue(user.LicenseState),
+            reviewedBy);
+    }
+
+    public async Task<RegistrationResult> UpdatePendingRegistrationAsync(
+        Guid userId,
+        AdminRegistrationUpdateRequest request,
+        Guid editedBy,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await dbContext.Users
+            .Include(u => u.Clinic)
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
+        }
+
+        if (user.IsActive)
+        {
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "Approved users cannot be modified via the registration workflow.");
+        }
+
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        if (latestDecision.EventType == RegistrationCancelledEventType)
+        {
+            return new RegistrationResult(RegistrationStatus.ServerError, null, "Cancelled registrations cannot be edited.");
+        }
+
+        var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
+        var validationErrors = ValidateRegistrationData(
+            request.FullName,
+            request.Email,
+            request.DateOfBirth,
+            normalizedRole,
+            request.LicenseNumber,
+            request.LicenseState);
+        if (validationErrors.Count > 0)
+        {
+            return ValidationFailure("Registration data is incomplete.", validationErrors, userId);
+        }
+
+        var normalizedEmail = request.Email.Trim();
+        var duplicateEmail = await dbContext.Users
+            .AnyAsync(
+                existing => existing.Id != userId
+                    && existing.Email != null
+                    && existing.Email.ToLower() == normalizedEmail.ToLower(),
+                cancellationToken);
+        if (duplicateEmail)
+        {
+            return ValidationFailure(
+                "An account with that email already exists.",
+                CreateFieldError("Email", "An account with that email already exists."),
+                userId);
+        }
+
+        var changedFields = new List<string>();
+        ApplyUpdatedName(request.FullName.Trim(), user, changedFields);
+        ApplyUpdatedValue(normalizedEmail, user.Email, value => user.Email = value, "Email", changedFields);
+        ApplyUpdatedValue((DateTime?)request.DateOfBirth!.Value.Date, user.DateOfBirth, value => user.DateOfBirth = value, "DateOfBirth", changedFields);
+        ApplyUpdatedValue(normalizedRole, user.Role, value => user.Role = value, "RoleKey", changedFields);
+
+        if (RequiresLicense(normalizedRole))
+        {
+            ApplyUpdatedValue(request.LicenseNumber!.Trim(), user.LicenseNumber, value => user.LicenseNumber = value, "LicenseNumber", changedFields);
+            ApplyUpdatedValue(request.LicenseState!.Trim().ToUpperInvariant(), user.LicenseState, value => user.LicenseState = value, "LicenseState", changedFields);
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(user.LicenseNumber))
+            {
+                user.LicenseNumber = null;
+                AddChangedField(changedFields, "LicenseNumber");
+            }
+
+            if (!string.IsNullOrWhiteSpace(user.LicenseState))
+            {
+                user.LicenseState = null;
+                AddChangedField(changedFields, "LicenseState");
+            }
+        }
+
+        if (changedFields.Count > 0)
+        {
+            dbContext.AuditLogs.Add(CreateRegistrationAudit(
+                eventType: RegistrationUpdatedEventType,
+                actorUserId: editedBy,
+                entityId: userId,
+                metadata: new Dictionary<string, object?>
+                {
+                    ["changedFields"] = changedFields.Distinct(StringComparer.Ordinal).OrderBy(static field => field).ToArray()
+                }));
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("Registration updated for {UserId} by {EditedBy}", userId, editedBy);
+        return new RegistrationResult(RegistrationStatus.Succeeded, userId, null);
     }
 
     public async Task<RegistrationResult> ApproveRegistrationAsync(Guid userId, Guid approvedBy, CancellationToken cancellationToken = default)
@@ -270,11 +451,11 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
         {
-            return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
         }
 
-        var latestDecision = await GetLatestDecisionEventAsync(userId, cancellationToken);
-        if (latestDecision == RegistrationCancelledEventType)
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        if (latestDecision.EventType == RegistrationCancelledEventType)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Cancelled registrations cannot be approved.");
         }
@@ -282,6 +463,18 @@ public sealed class UserRegistrationService : IUserRegistrationService
         if (user.IsActive)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "User is already active and cannot be approved again.");
+        }
+
+        var validationErrors = ValidateRegistrationData(
+            BuildFullName(user),
+            user.Email,
+            user.DateOfBirth,
+            user.Role,
+            user.LicenseNumber,
+            user.LicenseState);
+        if (validationErrors.Count > 0)
+        {
+            return ValidationFailure("Registration data is incomplete.", validationErrors, userId);
         }
 
         user.IsActive = true;
@@ -301,7 +494,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
         {
-            return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
         }
 
         if (user.IsActive)
@@ -309,13 +502,13 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Cannot reject an already-active user account.");
         }
 
-        var latestDecision = await GetLatestDecisionEventAsync(userId, cancellationToken);
-        if (latestDecision == RegistrationCancelledEventType)
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        if (latestDecision.EventType == RegistrationCancelledEventType)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Cancelled registrations cannot be rejected.");
         }
 
-        var alreadyRejected = latestDecision == RegistrationRejectedEventType;
+        var alreadyRejected = latestDecision.EventType == RegistrationRejectedEventType;
 
         if (alreadyRejected)
         {
@@ -338,7 +531,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
         {
-            return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
         }
 
         if (user.IsActive)
@@ -346,13 +539,13 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Active users cannot be placed on hold.");
         }
 
-        var latestDecision = await GetLatestDecisionEventAsync(userId, cancellationToken);
-        if (latestDecision == RegistrationCancelledEventType)
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        if (latestDecision.EventType == RegistrationCancelledEventType)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Cancelled registrations cannot be placed on hold.");
         }
 
-        if (latestDecision == RegistrationOnHoldEventType)
+        if (latestDecision.EventType == RegistrationOnHoldEventType)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration is already on hold.");
         }
@@ -373,7 +566,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
         {
-            return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration not found.");
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
         }
 
         if (user.IsActive)
@@ -381,8 +574,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Active users cannot be cancelled via registration workflow.");
         }
 
-        var latestDecision = await GetLatestDecisionEventAsync(userId, cancellationToken);
-        if (latestDecision == RegistrationCancelledEventType)
+        var latestDecision = await GetLatestDecisionAsync(userId, cancellationToken);
+        if (latestDecision.EventType == RegistrationCancelledEventType)
         {
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Registration is already cancelled.");
         }
@@ -438,9 +631,9 @@ public sealed class UserRegistrationService : IUserRegistrationService
         return (firstName, lastName);
     }
 
-    private Task<string?> GetLatestDecisionEventAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task<RegistrationDecision> GetLatestDecisionAsync(Guid userId, CancellationToken cancellationToken)
     {
-        return dbContext.AuditLogs
+        return await dbContext.AuditLogs
             .Where(a => a.EntityType == nameof(User)
                 && a.EntityId == userId
                 && (a.EventType == RegistrationApprovedEventType
@@ -448,11 +641,253 @@ public sealed class UserRegistrationService : IUserRegistrationService
                     || a.EventType == RegistrationOnHoldEventType
                     || a.EventType == RegistrationCancelledEventType))
             .OrderByDescending(a => a.TimestampUtc)
-            .Select(a => a.EventType)
-            .FirstOrDefaultAsync(cancellationToken);
+            .Select(a => new RegistrationDecision(a.EventType, a.UserId))
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? new RegistrationDecision(null, null);
     }
 
-    private static AuditLog CreateRegistrationAudit(string eventType, Guid? actorUserId, Guid entityId)
+    private async Task<IReadOnlyList<PendingUserSummary>> PopulateReviewedByAsync(
+        IReadOnlyList<PendingUserSummary> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        var itemIds = items.Select(item => item.Id).ToArray();
+
+        var decisionLookups = await dbContext.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.EntityType == nameof(User)
+                && a.EntityId.HasValue
+                && itemIds.Contains(a.EntityId.Value)
+                && (a.EventType == RegistrationApprovedEventType
+                    || a.EventType == RegistrationRejectedEventType
+                    || a.EventType == RegistrationOnHoldEventType
+                    || a.EventType == RegistrationCancelledEventType))
+            .OrderByDescending(a => a.TimestampUtc)
+            .ToListAsync(cancellationToken);
+
+        var latestByEntity = decisionLookups
+            .Where(entry => entry.EntityId.HasValue)
+            .GroupBy(entry => entry.EntityId!.Value)
+            .ToDictionary(group => group.Key, group => group.First(), EqualityComparer<Guid>.Default);
+
+        var actorIds = latestByEntity.Values
+            .Where(entry => entry.UserId.HasValue)
+            .Select(entry => entry.UserId!.Value)
+            .Distinct()
+            .ToHashSet();
+
+        var actorLookup = actorIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await dbContext.Users
+                .AsNoTracking()
+                .Where(user => actorIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id, BuildFullName, cancellationToken);
+
+        return items
+            .Select(item =>
+            {
+                if (!latestByEntity.TryGetValue(item.Id, out var decision) || !decision.UserId.HasValue)
+                {
+                    return item;
+                }
+
+                return item with
+                {
+                    ReviewedBy = actorLookup.TryGetValue(decision.UserId.Value, out var reviewedBy)
+                        ? reviewedBy
+                        : null
+                };
+            })
+            .ToList();
+    }
+
+    private async Task<string?> ResolveReviewedByAsync(Guid? actorUserId, CancellationToken cancellationToken)
+    {
+        if (!actorUserId.HasValue)
+        {
+            return null;
+        }
+
+        var actor = await dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user => user.Id == actorUserId.Value, cancellationToken);
+
+        return actor is null ? null : BuildFullName(actor);
+    }
+
+    private static IReadOnlyDictionary<string, string[]> ValidateRegistrationData(
+        string? fullName,
+        string? email,
+        DateTime? dateOfBirth,
+        string? roleKey,
+        string? licenseNumber,
+        string? licenseState)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            errors["FullName"] = ["Full legal name is required."];
+        }
+
+        var normalizedEmail = email?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            errors["Email"] = ["Email is required."];
+        }
+        else if (!(new EmailAddressAttribute().IsValid(normalizedEmail)))
+        {
+            errors["Email"] = ["A valid email address is required."];
+        }
+
+        if (!dateOfBirth.HasValue || dateOfBirth.Value == default)
+        {
+            errors["DateOfBirth"] = ["Date of birth is required."];
+        }
+
+        var normalizedRole = roleKey?.Trim() ?? string.Empty;
+        if (!AllowedRoleKeys.Contains(normalizedRole))
+        {
+            errors["RoleKey"] = ["A valid role is required."];
+        }
+
+        if (RequiresLicense(normalizedRole))
+        {
+            if (string.IsNullOrWhiteSpace(licenseNumber))
+            {
+                errors["LicenseNumber"] = ["License number is required for PT/PTA roles."];
+            }
+
+            var normalizedState = licenseState?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedState))
+            {
+                errors["LicenseState"] = ["License state is required for PT/PTA roles."];
+            }
+            else if (normalizedState.Length != 2 || normalizedState.Any(static character => !char.IsLetter(character)))
+            {
+                errors["LicenseState"] = ["License state must be a 2-letter code."];
+            }
+        }
+
+        return errors;
+    }
+
+    private static List<string> GetMissingFields(User user) =>
+        GetMissingFields(
+            BuildFullName(user),
+            user.Email,
+            user.DateOfBirth,
+            user.Role,
+            user.LicenseNumber,
+            user.LicenseState);
+
+    private static List<string> GetMissingFields(
+        string? fullName,
+        string? email,
+        DateTime? dateOfBirth,
+        string? roleKey,
+        string? licenseNumber,
+        string? licenseState)
+    {
+        return ValidateRegistrationData(
+                fullName,
+                email,
+                dateOfBirth,
+                roleKey,
+                licenseNumber,
+                licenseState)
+            .Values
+            .SelectMany(static messages => messages)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static string GetRegistrationStatus(bool isActive, string? latestDecision)
+    {
+        return latestDecision switch
+        {
+            RegistrationCancelledEventType => "Cancelled",
+            RegistrationOnHoldEventType => "On Hold",
+            RegistrationRejectedEventType => "Rejected",
+            RegistrationApprovedEventType => "Approved",
+            _ => isActive ? "Approved" : "Pending"
+        };
+    }
+
+    private static bool RequiresLicense(string roleKey) =>
+        string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(roleKey, "PTA", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildFullName(User user) =>
+        $"{user.FirstName} {user.LastName}".Trim();
+
+    private static string? NormalizeStoredValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static RegistrationResult ValidationFailure(
+        string error,
+        IReadOnlyDictionary<string, string[]> validationErrors,
+        Guid? userId = null) =>
+        new(RegistrationStatus.ValidationFailed, userId, error, validationErrors);
+
+    private static Dictionary<string, string[]> CreateFieldError(string fieldName, string message) =>
+        new(StringComparer.Ordinal)
+        {
+            [fieldName] = [message]
+        };
+
+    private static void ApplyUpdatedName(
+        string fullName,
+        User user,
+        ICollection<string> changedFields)
+    {
+        var (updatedFirstName, updatedLastName) = SplitName(fullName);
+        if (!string.Equals(user.FirstName, updatedFirstName, StringComparison.Ordinal))
+        {
+            user.FirstName = updatedFirstName;
+            AddChangedField(changedFields, "FullName");
+        }
+
+        if (!string.Equals(user.LastName, updatedLastName, StringComparison.Ordinal))
+        {
+            user.LastName = updatedLastName;
+            AddChangedField(changedFields, "FullName");
+        }
+    }
+
+    private static void ApplyUpdatedValue<T>(
+        T newValue,
+        T existingValue,
+        Action<T> assign,
+        string fieldName,
+        ICollection<string> changedFields)
+    {
+        if (EqualityComparer<T>.Default.Equals(newValue, existingValue))
+        {
+            return;
+        }
+
+        assign(newValue);
+        AddChangedField(changedFields, fieldName);
+    }
+
+    private static void AddChangedField(ICollection<string> changedFields, string fieldName)
+    {
+        if (!changedFields.Contains(fieldName))
+        {
+            changedFields.Add(fieldName);
+        }
+    }
+
+    private static AuditLog CreateRegistrationAudit(
+        string eventType,
+        Guid? actorUserId,
+        Guid entityId,
+        IReadOnlyDictionary<string, object?>? metadata = null)
     {
         return new AuditLog
         {
@@ -464,8 +899,10 @@ public sealed class UserRegistrationService : IUserRegistrationService
             EntityType = nameof(User),
             EntityId = entityId,
             CorrelationId = Guid.NewGuid().ToString("N"),
-            MetadataJson = "{}",
+            MetadataJson = JsonSerializer.Serialize(metadata ?? new Dictionary<string, object?>()),
             Success = true
         };
     }
+
+    private sealed record RegistrationDecision(string? EventType, Guid? ActorUserId);
 }

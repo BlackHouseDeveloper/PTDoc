@@ -1,26 +1,30 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.Application.AI
 @using PTDoc.UI.Components.Notes.Models
+
+@inject IAiClinicalGenerationService AiService
+@inject ILogger<PlanSection> Logger
 
 <section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
     <div class="daily-grid">
         <div class="daily-col-12">
             <FormSection Title="Plan for Today's Session">
                 <EditableTextArea Label="Treatment Plan *"
-                                  Value="@_treatmentPlan"
-                                  ValueChanged="v => _treatmentPlan = v"
+                                  Value="@(_vm.HomeExerciseProgramNotes ?? string.Empty)"
+                                  ValueChanged="UpdateTreatmentPlan"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Document today's treatment plan (modalities, therapeutic exercises, manual therapy, patient education, etc.)..."
                                   Rows="6"
                                   IsRequired="true"
-                                  ShowValidation="@string.IsNullOrWhiteSpace(_treatmentPlan)" />
+                                  ShowValidation="@string.IsNullOrWhiteSpace(_vm.HomeExerciseProgramNotes)" />
             </FormSection>
         </div>
 
         <div class="daily-col-12">
             <FormSection Title="Follow-Up &amp; Next Appointments">
                 <EditableTextArea Label="Next Visit Schedule"
-                                  Value="@_nextVisitSchedule"
-                                  ValueChanged="v => _nextVisitSchedule = v"
+                                  Value="@(_vm.FollowUpInstructions ?? string.Empty)"
+                                  ValueChanged="UpdateFollowUpInstructions"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Next PT visit scheduled for [date], next Progress Note due [date], next MD follow-up [date]..."
                                   Rows="4" />
@@ -30,7 +34,9 @@
         <div class="daily-col-12">
             <FormSection Title="Clinical Summary (S.O.A.P)" Subtitle="AI-generated comprehensive summary of all SOAP sections">
                 <div class="daily-plan__summary-header">
-                    <button type="button" disabled="@IsReadOnly" @onclick="GenerateSummary">Generate Summary</button>
+                    <button type="button" disabled="@(IsReadOnly || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
+                        @(_isGeneratingSummary ? "Generating..." : "Generate Summary")
+                    </button>
                 </div>
 
                 <EditableTextArea Value="@(_vm.ClinicalSummary ?? string.Empty)"
@@ -38,6 +44,11 @@
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Click 'Generate Summary' to create an AI-powered comprehensive clinical summary..."
                                   Rows="5" />
+
+                @if (!string.IsNullOrWhiteSpace(_summaryErrorMessage))
+                {
+                    <p class="daily-plan__message daily-plan__message--error" role="alert">@_summaryErrorMessage</p>
+                }
             </FormSection>
         </div>
     </div>
@@ -45,26 +56,81 @@
 
 @code {
     private PlanVm _vm = new();
-    private string _treatmentPlan = string.Empty;
-    private string _nextVisitSchedule = string.Empty;
+    private bool _isGeneratingSummary;
+    private string? _summaryErrorMessage;
 
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
+    [Parameter] public Guid NoteId { get; set; }
+    [Parameter] public string? DiagnosisSummary { get; set; }
+    [Parameter] public string? AssessmentSummary { get; set; }
+    [Parameter] public string? GoalsSummary { get; set; }
+    [Parameter] public string? PrecautionsSummary { get; set; }
 
     protected override void OnParametersSet() => _vm = Vm;
+
+    private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
+
+    private Task UpdateTreatmentPlan(string value)
+    {
+        _vm.HomeExerciseProgramNotes = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateFollowUpInstructions(string value)
+    {
+        _vm.FollowUpInstructions = value;
+        return NotifyChangedAsync();
+    }
 
     private Task UpdateClinicalSummary(string value)
     {
         _vm.ClinicalSummary = value;
-        return VmChanged.InvokeAsync(_vm);
+        return NotifyChangedAsync();
     }
 
-    private Task GenerateSummary()
+    private async Task GenerateSummaryAsync()
     {
-        // Placeholder summary generation until AI-backed synthesis is integrated.
-        _vm.ClinicalSummary ??= "AI-generated SOAP summary placeholder.";
-        return VmChanged.InvokeAsync(_vm);
+        if (IsReadOnly)
+        {
+            return;
+        }
+
+        _isGeneratingSummary = true;
+        _summaryErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await AiService.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
+            {
+                NoteId = NoteId,
+                Diagnosis = string.IsNullOrWhiteSpace(DiagnosisSummary) ? "Physical therapy plan of care" : DiagnosisSummary!,
+                AssessmentSummary = AssessmentSummary,
+                Goals = GoalsSummary,
+                Precautions = PrecautionsSummary,
+                IsNoteSigned = IsReadOnly
+            });
+
+            if (!result.Success)
+            {
+                _summaryErrorMessage = result.ErrorMessage ?? "Unable to generate a clinical summary.";
+                return;
+            }
+
+            _vm.ClinicalSummary = result.GeneratedText;
+            await NotifyChangedAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Daily plan summary generation failed for note {NoteId}", NoteId);
+            _summaryErrorMessage = "Unable to generate a clinical summary.";
+        }
+        finally
+        {
+            _isGeneratingSummary = false;
+        }
     }
 }

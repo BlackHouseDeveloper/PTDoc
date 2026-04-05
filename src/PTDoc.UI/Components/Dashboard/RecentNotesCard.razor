@@ -1,5 +1,6 @@
 @using System.Text
 @using PTDoc.Application.DTOs
+@using PTDoc.Core.Models
 @inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
 @* Recent Notes Card - Shows recently submitted/edited clinical notes *@
@@ -68,9 +69,21 @@
         Navigation.NavigateTo($"/patient/{note.PatientId}/note/{note.Id}");
     }
 
-    private static string GetStatusText(NoteListItemApiResponse note) => note.IsSigned ? "Submitted" : "Draft";
+    private static string GetStatusText(NoteListItemApiResponse note) => note.NoteStatus switch
+    {
+        NoteStatus.PendingCoSign => "Pending Co-Sign",
+        NoteStatus.Signed => "Signed",
+        NoteStatus.Draft => "Draft",
+        _ => note.IsSigned ? "Signed" : "Draft"
+    };
 
-    private static string GetStatusCssClass(NoteListItemApiResponse note) => note.IsSigned ? "submitted" : "draft";
+    private static string GetStatusCssClass(NoteListItemApiResponse note) => note.NoteStatus switch
+    {
+        NoteStatus.PendingCoSign => "pending",
+        NoteStatus.Signed => "submitted",
+        NoteStatus.Draft => "draft",
+        _ => note.IsSigned ? "submitted" : "draft"
+    };
 
     private static string FormatNoteType(string noteType)
     {

@@ -59,32 +59,71 @@
         </button>
     </div>
 
-    <!-- Main Dashboard Content Grid -->
-    <div class="dashboard-main-content">
-        <!-- Left Column: Dashboard Grid, Notifications & Appointments -->
-        <div class="dashboard-left-column">
-            <OverviewSection PatientsToday="@_patientsToday"
-                             Appointments="@_appointmentsToday"
-                             NotesDue="@_notesDue"
-                             Pending="@_pendingItems"
-                             Drafts="@_draftNotes"
-                             Unsigned="@_unsignedNotesNeedingSignature"
-                             Intakes="@_incompleteIntakes" />
-            <NotificationsSection Notifications="@_notificationItems"
-                                  UrgentCount="@_urgentNotificationCount" />
-        </div>
+    @if (_isDashboardLoading && !_hasLoadedDashboard)
+    {
+        <section class="dashboard-state" role="status" aria-live="polite" data-testid="dashboard-loading">
+            <div class="dashboard-state__card">
+                <h2>Loading dashboard…</h2>
+                <p>Fetching patient, activity, and note data from the API.</p>
+            </div>
+        </section>
+    }
+    else if (_dashboardLoadFailed && !HasDashboardContent)
+    {
+        <section class="dashboard-state" data-testid="dashboard-error">
+            <div class="dashboard-state__card dashboard-state__card--error" role="alert">
+                <h2>Dashboard unavailable</h2>
+                <p>@_dashboardErrorMessage</p>
+                <button type="button" class="btn btn--primary" @onclick="RetryDashboardAsync">Retry</button>
+            </div>
+        </section>
+    }
+    else if (_hasLoadedDashboard && !HasDashboardContent)
+    {
+        <section class="dashboard-state" data-testid="dashboard-empty">
+            <div class="dashboard-state__card">
+                <h2>No dashboard activity yet</h2>
+                <p>Patients, appointments, notes, and alerts will appear here once the API returns clinic activity.</p>
+                <button type="button" class="btn btn--primary" @onclick="RetryDashboardAsync">Refresh</button>
+            </div>
+        </section>
+    }
+    else
+    {
+        @if (_dashboardLoadFailed)
+        {
+            <section class="dashboard-inline-alert" role="alert" data-testid="dashboard-inline-error">
+                <span>@_dashboardErrorMessage</span>
+                <button type="button" class="btn btn--secondary" @onclick="RetryDashboardAsync">Retry</button>
+            </section>
+        }
 
-        <!-- Right Column: Supplemental Cards -->
-        <div class="dashboard-right-column">
-            <RecentNotesCard Notes="@_recentNotes" />
-            <RecentActivityCard Activities="@_recentActivities"
-                                IsLoading="@_isRecentActivityLoading"
-                                HasError="@_recentActivityLoadFailed"
-                                ErrorMessage="@_recentActivityErrorMessage"
-                                OnRetry="RetryRecentActivityAsync" />
-        </div>
-    </div>
+        <!-- Main Dashboard Content Grid -->
+        <div class="dashboard-main-content">
+            <!-- Left Column: Dashboard Grid, Notifications & Appointments -->
+            <div class="dashboard-left-column">
+                <OverviewSection PatientsToday="@_patientsToday"
+                                 Appointments="@_appointmentsToday"
+                                 NotesDue="@_notesDue"
+                                 Pending="@_pendingItems"
+                                 Drafts="@_draftNotes"
+                                 Unsigned="@_unsignedNotesNeedingSignature"
+                                 Intakes="@_incompleteIntakes" />
+                <NotificationsSection Notifications="@_notificationItems"
+                                      UrgentCount="@_urgentNotificationCount" />
+            </div>
 
+            <!-- Right Column: Supplemental Cards -->
+            <div class="dashboard-right-column">
+                <RecentNotesCard Notes="@_recentNotes" />
+                <RecentActivityCard Activities="@_recentActivities"
+                                    IsLoading="@_isRecentActivityLoading"
+                                    HasError="@_recentActivityLoadFailed"
+                                    ErrorMessage="@_recentActivityErrorMessage"
+                                    OnRetry="RetryRecentActivityAsync" />
+            </div>
+        </div>
+    }
 </div>
 
 <!-- Add Patient Modal -->
@@ -106,6 +145,10 @@
     private bool _isRecentActivityLoading;
     private bool _recentActivityLoadFailed;
     private string? _recentActivityErrorMessage;
+    private bool _isDashboardLoading = true;
+    private bool _dashboardLoadFailed;
+    private bool _hasLoadedDashboard;
+    private string? _dashboardErrorMessage;
     private CancellationTokenSource? _recentActivityCts;
     private int _patientsToday;
     private int _appointmentsToday;
@@ -119,10 +162,21 @@
     private List<RecentActivity> _recentActivities = [];
     private List<NotificationCenterItem> _notificationItems = [];
     private List<SendIntakeModal.PatientOption> availablePatients = new();
+    private bool HasDashboardContent =>
+        _patientsToday > 0 ||
+        _appointmentsToday > 0 ||
+        _notesDue > 0 ||
+        _pendingItems > 0 ||
+        _draftNotes > 0 ||
+        _unsignedNotesNeedingSignature > 0 ||
+        _incompleteIntakes > 0 ||
+        _recentNotes.Count > 0 ||
+        _recentActivities.Count > 0 ||
+        _notificationItems.Count > 0;
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
+        await RetryDashboardAsync();
         SetupAutoRefresh();
     }
 
@@ -147,8 +201,16 @@
         }
     }
 
+    private async Task RetryDashboardAsync()
+    {
+        await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
+    }
+
     private async Task LoadDashboardSnapshotAsync()
     {
+        _isDashboardLoading = true;
+        _dashboardLoadFailed = false;
+        _dashboardErrorMessage = null;
         _recentActivityLoadFailed = false;
         _recentActivityErrorMessage = null;
         StateHasChanged();
@@ -172,7 +234,7 @@
                 .OrderByDescending(notification => notification.Timestamp)
                 .ToList();
 
-            _recentNotes = [.. notes.Take(5)];
+            _recentNotes = [.. await EnrichRecentNotesAsync(notes.Take(5).ToList())];
             _notificationItems = [.. notifications.Take(4)];
 
             var unsignedNotes = notes.Where(note => !note.IsSigned).ToList();
@@ -189,13 +251,20 @@
                 !notification.IsRead &&
                 string.Equals(notification.Type, "intake", StringComparison.OrdinalIgnoreCase));
             _urgentNotificationCount = notifications.Count(notification => notification.IsUrgent && !notification.IsRead);
+            _hasLoadedDashboard = true;
         }
         catch (Exception ex)
         {
+            _dashboardLoadFailed = true;
+            _dashboardErrorMessage = ToUserFacingDashboardError(ex, "The dashboard could not be loaded right now.");
             Logger.LogWarning(ex, "[Dashboard] Error loading dashboard snapshot");
+            _isDashboardLoading = false;
+            StateHasChanged();
+            return;
         }
 
         await LoadRecentActivityAsync();
+        _isDashboardLoading = false;
         StateHasChanged();
     }
 
@@ -286,12 +355,12 @@
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
-            await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
+            await RetryDashboardAsync();
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "[Dashboard] Error creating patient");
-            ToastService.ShowError("Failed to create patient. Please try again.");
+            ToastService.ShowError(ToUserFacingDashboardError(ex, "Failed to create patient. Please try again."));
         }
     }
 
@@ -299,12 +368,53 @@
     {
         try
         {
-            await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
+            await RetryDashboardAsync();
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "[Dashboard] Error refreshing intake state");
         }
+    }
+
+    private async Task<IReadOnlyList<NoteListItemApiResponse>> EnrichRecentNotesAsync(List<NoteListItemApiResponse> notes)
+    {
+        if (notes.Count == 0)
+        {
+            return notes;
+        }
+
+        var enrichedNotes = await Task.WhenAll(notes.Select(async note =>
+        {
+            try
+            {
+                var detail = await NoteService.GetByIdAsync(note.Id);
+                if (detail?.Note is not null)
+                {
+                    note.NoteStatus = detail.Note.NoteStatus;
+                    note.IsSigned = detail.Note.NoteStatus == PTDoc.Core.Models.NoteStatus.Signed;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "[Dashboard] Unable to enrich note status for {NoteId}", note.Id);
+            }
+
+            return note;
+        }));
+
+        return enrichedNotes;
+    }
+
+    private static string ToUserFacingDashboardError(Exception exception, string fallback)
+    {
+        if (exception is HttpRequestException httpException &&
+            !string.IsNullOrWhiteSpace(httpException.Message) &&
+            !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return httpException.Message;
+        }
+
+        return fallback;
     }
 
     private static List<RecentActivity> BuildRecentActivities(
