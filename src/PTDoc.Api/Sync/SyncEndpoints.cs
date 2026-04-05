@@ -35,12 +35,15 @@ public static class SyncEndpoints
             .WithName("GetSyncStatus");
 
         syncGroup.MapGet("/queue", GetSyncQueue)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
             .WithName("GetSyncQueue");
 
         syncGroup.MapGet("/dead-letters", GetDeadLetters)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
             .WithName("GetSyncDeadLetters");
 
         syncGroup.MapGet("/health", GetSyncHealth)
+            .RequireAuthorization(AuthorizationPolicies.AdminOnly)
             .WithName("GetSyncHealth");
 
         // ── MAUI client sync endpoints ────────────────────────────────────────────

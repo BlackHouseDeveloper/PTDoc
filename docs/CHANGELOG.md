@@ -31,7 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Provider migrations** — Added the single schema change for Sprint 3: nullable `FailureType` on `SyncQueueItems` across SQLite, Postgres, and SQL Server migration projects. Reason: failure classification must survive restarts and support queue/dead-letter inspection APIs.
 - **Tests** — Added coverage for dead-letter promotion on terminal validation failures, shared runtime status across scoped engine instances, background recovery of interrupted items, background skip behavior during overlapping runs, and RBAC coverage for the new sync queue/health endpoints. Reason: the hardened queue state machine and observability surface are release-critical and must remain regression-protected.
 
-### Fixed - Sprint 3: PR Review Feedback (Conflict Resolution Engine)
+### Fixed - Sprint 3: PR Review Feedback (Sync Pipeline Hardening)
+
+#### SyncRetryBackgroundService — Skip Recovery When Run Is Active (`src/PTDoc.Infrastructure/BackgroundJobs/SyncRetryBackgroundService.cs`)
+- **`SyncRetryBackgroundService.cs`** — Injected `ISyncRuntimeStateStore` into the constructor; `RecoverInterruptedQueueItemsAsync` is now skipped when a sync run is already active. Reason: items in `Processing` state may be legitimately held by a running cycle, and promoting them to `Failed` mid-run corrupts the pipeline state.
+
+#### SyncEngine — Honour Configured `MinRetryDelay` (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`, `src/PTDoc.Application/BackgroundJobs/IBackgroundJobService.cs`)
+- **`SyncEngine.cs`** — The previously hardcoded `RetryDelay = 60s` constant is replaced by an instance field `_retryDelay` sourced from `IOptions<SyncRetryOptions>.MinRetryDelay`. Reason: the configured value was documented but silently ignored by `GetNextBatchAsync`; configuration now controls actual retry-window behaviour.
+
+#### SyncEndpoints — Restrict Inspection Endpoints to `AdminOnly` (`src/PTDoc.Api/Sync/SyncEndpoints.cs`)
+- **`SyncEndpoints.cs` / `/api/v1/sync/queue`, `/api/v1/sync/dead-letters`, `/api/v1/sync/health`** — Override authorization from the group `ClinicalStaff` policy to `AdminOnly`. Reason: these endpoints expose raw entity IDs and error details that can leak cross-clinic operational metadata in a multi-tenant deployment; administrator-only access is the appropriate scope.
+
+
 
 #### SyncEngine — Delete Conflict Detection (`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`)
 - **`SyncEngine.cs` / `DetectConflict`** — Client delete against a missing server record now returns `null` (treated as already-applied/Accepted) instead of `DeletedConflict`, making idempotent deletes safe for retries. `DeletedConflict` is now only raised when the server record exists, is archived/deleted, and the client is attempting an update — not when both sides agree on deletion. Reason: prevent clients from getting stuck in a permanent conflict loop when retrying deletes for already-removed rows.

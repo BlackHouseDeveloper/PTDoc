@@ -7,6 +7,7 @@ using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Sync;
 
 namespace PTDoc.Infrastructure.BackgroundJobs;
 
@@ -20,16 +21,19 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SyncRetryBackgroundService> _logger;
     private readonly SyncRetryOptions _options;
+    private readonly ISyncRuntimeStateStore _runtimeStateStore;
     private bool _schemaNotReadyLogged;
 
     public SyncRetryBackgroundService(
         IServiceScopeFactory scopeFactory,
         ILogger<SyncRetryBackgroundService> logger,
-        IOptions<SyncRetryOptions> options)
+        IOptions<SyncRetryOptions> options,
+        ISyncRuntimeStateStore runtimeStateStore)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _options = options.Value;
+        _runtimeStateStore = runtimeStateStore;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -94,12 +98,24 @@ public sealed class SyncRetryBackgroundService : BackgroundService, IBackgroundJ
         }
 
         var syncEngine = scope.ServiceProvider.GetRequiredService<ISyncEngine>();
-        var recoveredCount = await syncEngine.RecoverInterruptedQueueItemsAsync(cancellationToken);
-        if (recoveredCount > 0)
+
+        // Skip recovery when a sync cycle is currently active. Items in Processing
+        // state may be legitimately held by the running cycle; promoting them to Failed
+        // mid-run would corrupt the pipeline state.
+        if (_runtimeStateStore.Snapshot().IsRunning)
         {
-            _logger.LogWarning(
-                "SyncRetryBackgroundService: recovered {Count} interrupted sync item(s) before processing",
-                recoveredCount);
+            _logger.LogDebug(
+                "SyncRetryBackgroundService: skipping interrupted-item recovery because a sync run is already active");
+        }
+        else
+        {
+            var recoveredCount = await syncEngine.RecoverInterruptedQueueItemsAsync(cancellationToken);
+            if (recoveredCount > 0)
+            {
+                _logger.LogWarning(
+                    "SyncRetryBackgroundService: recovered {Count} interrupted sync item(s) before processing",
+                    recoveredCount);
+            }
         }
 
         var result = await syncEngine.PushAsync(cancellationToken);

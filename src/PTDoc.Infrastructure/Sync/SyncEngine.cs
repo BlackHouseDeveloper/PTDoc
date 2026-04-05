@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Compliance;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Identity;
@@ -20,7 +22,7 @@ public class SyncEngine : ISyncEngine
 {
     private const int MaxBatchSize = 10;
     private const int MaxRetryAttempts = 5;
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan QueueItemProcessingTimeout = TimeSpan.FromSeconds(15);
     private const int MaxReceiptRetries = 5;
     private const string SyncConflictAddendumSource = "offline-sync-conflict";
@@ -33,6 +35,7 @@ public class SyncEngine : ISyncEngine
     private readonly ISignatureService? _signatureService;
     private readonly ISyncRuntimeStateStore _runtimeStateStore;
     private readonly ITelemetrySink? _telemetrySink;
+    private readonly TimeSpan _retryDelay;
     private static readonly JsonSerializerOptions ConflictJsonOptions = new()
     {
         ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
@@ -47,7 +50,8 @@ public class SyncEngine : ISyncEngine
         IIdentityContextAccessor? identityContext = null,
         IAuditService? auditService = null,
         ISignatureService? signatureService = null,
-        ITelemetrySink? telemetrySink = null)
+        ITelemetrySink? telemetrySink = null,
+        IOptions<SyncRetryOptions>? retryOptions = null)
     {
         _context = context;
         _logger = logger;
@@ -56,6 +60,7 @@ public class SyncEngine : ISyncEngine
         _auditService = auditService;
         _signatureService = signatureService;
         _telemetrySink = telemetrySink;
+        _retryDelay = retryOptions?.Value.MinRetryDelay ?? DefaultRetryDelay;
     }
 
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
@@ -408,7 +413,7 @@ public class SyncEngine : ISyncEngine
 
     private async Task<List<SyncQueueItem>> GetNextBatchAsync(CancellationToken cancellationToken)
     {
-        var cutoff = DateTime.UtcNow - RetryDelay;
+        var cutoff = DateTime.UtcNow - _retryDelay;
         var batch = await _context.SyncQueueItems
             .Where(q =>
                 q.Status == SyncQueueStatus.Pending ||

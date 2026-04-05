@@ -61,7 +61,7 @@ public class BackgroundJobTests
         var scopeFactory = BuildScopeFactory(context);
 
         var options = Options.Create(new SyncRetryOptions { Interval = TimeSpan.FromSeconds(1), MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -91,7 +91,7 @@ public class BackgroundJobTests
 
         var scopeFactory = BuildScopeFactory(context);
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -124,7 +124,7 @@ public class BackgroundJobTests
         var scopeFactory = BuildScopeFactory(context);
         // MinRetryDelay = 60 s means the item above should not be retried
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.FromSeconds(60) });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -164,7 +164,7 @@ public class BackgroundJobTests
 
         var scopeFactory = BuildScopeFactory(context);
         var options = Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero });
-        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options);
+        var svc = new SyncRetryBackgroundService(scopeFactory, NullLogger<SyncRetryBackgroundService>.Instance, options, new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -221,7 +221,8 @@ public class BackgroundJobTests
         var job = new SyncRetryBackgroundService(
             scopeFactory,
             NullLogger<SyncRetryBackgroundService>.Instance,
-            Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero }));
+            Options.Create(new SyncRetryOptions { MinRetryDelay = TimeSpan.Zero }),
+            new SyncRuntimeStateStore());
 
         await job.ExecuteJobAsync(CancellationToken.None);
     }
@@ -243,7 +244,8 @@ public class BackgroundJobTests
         var svc = new SyncRetryBackgroundService(
             scopeFactory,
             NullLogger<SyncRetryBackgroundService>.Instance,
-            Options.Create(new SyncRetryOptions()));
+            Options.Create(new SyncRetryOptions()),
+            new SyncRuntimeStateStore());
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
@@ -285,7 +287,8 @@ public class BackgroundJobTests
         var svc = new SyncRetryBackgroundService(
             scopeFactory,
             NullLogger<SyncRetryBackgroundService>.Instance,
-            Options.Create(new SyncRetryOptions()));
+            Options.Create(new SyncRetryOptions()),
+            runtimeStateStore);
 
         await svc.ExecuteJobAsync(CancellationToken.None);
 
