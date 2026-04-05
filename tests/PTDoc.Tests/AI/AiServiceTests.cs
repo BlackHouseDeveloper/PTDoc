@@ -8,6 +8,7 @@ using Xunit;
 
 namespace PTDoc.Tests.AI;
 
+[Trait("Category", "CoreCi")]
 public class AiServiceTests
 {
     private readonly IAiService _aiService;

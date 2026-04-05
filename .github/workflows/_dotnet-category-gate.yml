@@ -1,0 +1,83 @@
+name: "Reusable .NET Category Gate"
+
+on:
+  workflow_call:
+    inputs:
+      gate_name:
+        required: true
+        type: string
+      gate_category:
+        required: true
+        type: string
+      report_name:
+        required: true
+        type: string
+      trx_name:
+        required: true
+        type: string
+      generate_ephemeral_secrets:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  run-gate:
+    name: ${{ inputs.gate_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj', '.config/dotnet-tools.json') }}
+
+    - name: Generate ephemeral CI secrets
+      if: inputs.generate_ephemeral_secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+    - name: Build tests
+      run: dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+
+    - name: Run gate tests
+      run: |
+        dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --filter "Category=${{ inputs.gate_category }}" \
+          --verbosity normal \
+          --logger "trx;LogFileName=${{ inputs.trx_name }}"
+
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: ${{ inputs.report_name }}
+        path: '**/${{ inputs.trx_name }}'
+        reporter: dotnet-trx
+        fail-on-error: true
+
+    - name: Upload raw TRX on failure
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: ${{ inputs.gate_category }}-gate-results
+        path: '**/${{ inputs.trx_name }}'
+        retention-days: 30

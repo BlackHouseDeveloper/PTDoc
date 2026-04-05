@@ -22,6 +22,7 @@ namespace PTDoc.Tests.LocalData;
 ///  - Conflicts are detected and marked safely (no silent overwrite)
 ///  - Pull and push watermarks are updated
 /// </summary>
+[Trait("Category", "OfflineSync")]
 public class LocalSyncOrchestratorTests
 {
     // ── Helpers ──────────────────────────────────────────────────────────────────

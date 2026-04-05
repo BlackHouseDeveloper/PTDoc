@@ -339,6 +339,51 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_AppliesPatientPayload_ToServerDatabase()
+    {
+        var context = CreateInMemoryContext();
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var patientId = Guid.NewGuid();
+
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "Patient",
+                    ServerId = patientId,
+                    LocalId = 1,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Create",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        firstName = "Offline",
+                        lastName = "Patient",
+                        dateOfBirth = new DateTime(1990, 6, 15),
+                        email = "offline@example.com",
+                        phone = "555-1234",
+                        medicalRecordNumber = "MRN-001",
+                        lastModifiedUtc = DateTime.UtcNow
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal("Accepted", response.Items[0].Status);
+
+        var savedPatient = await context.Patients.AsNoTracking().FirstOrDefaultAsync(p => p.Id == patientId);
+        Assert.NotNull(savedPatient);
+        Assert.Equal("Offline", savedPatient!.FirstName);
+        Assert.Equal("Patient", savedPatient.LastName);
+        Assert.Equal("MRN-001", savedPatient.MedicalRecordNumber);
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_Writes_SyncAuditEvents_WithoutPhi()
     {
         var context = CreateInMemoryContext();
@@ -467,6 +512,76 @@ public class SyncClientProtocolTests
         Assert.Contains("ClinicalNote", entityTypes);
         Assert.Contains("ObjectiveMetric", entityTypes);
         Assert.Contains("AuditLog", entityTypes);
+    }
+
+    [Fact]
+    public async Task GetClientDeltaAsync_AideRole_DoesNotReceiveClinicalNotes()
+    {
+        var context = CreateInMemoryContext();
+        await SeedClinicalNoteAsync(context, "{\"subjective\":\"Patient reports pain\"}");
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: [Roles.Aide]);
+
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
+        Assert.NotEmpty(result.Items.Where(i => i.EntityType == "Patient"));
+    }
+
+    [Fact]
+    public async Task GetClientDeltaAsync_FrontDeskRole_DoesNotReceiveClinicalNotes()
+    {
+        var context = CreateInMemoryContext();
+        await SeedClinicalNoteAsync(context, "{\"subjective\":\"Initial eval\"}");
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: [Roles.FrontDesk]);
+
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
+    }
+
+    [Fact]
+    public async Task GetClientDeltaAsync_PatientRole_DoesNotReceiveClinicalNotes_OrAuditLogs()
+    {
+        var context = CreateInMemoryContext();
+        await SeedClinicalNoteAsync(context, "{\"subjective\":\"Follow-up\"}");
+        context.AuditLogs.Add(new AuditLog
+        {
+            EventType = "SyncEvent",
+            Severity = "Info",
+            TimestampUtc = DateTime.UtcNow,
+            CorrelationId = Guid.NewGuid().ToString()
+        });
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: [Roles.Patient]);
+
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
+        Assert.Empty(result.Items.Where(i => i.EntityType == "AuditLog"));
+    }
+
+    [Fact]
+    public async Task GetClientDeltaAsync_ClinicalStaff_ReceiveClinicalNotes()
+    {
+        var context = CreateInMemoryContext();
+        await SeedClinicalNoteAsync(context, "{\"subjective\":\"Clinical content\"}");
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: [Roles.PT]);
+
+        Assert.NotEmpty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
+    }
+
+    [Fact]
+    public async Task GetClientDeltaAsync_NoRoles_ReceivesClinicalNotes_ByDefault()
+    {
+        var context = CreateInMemoryContext();
+        await SeedClinicalNoteAsync(context, "{}");
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: null);
+
+        Assert.NotEmpty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
     }
 
     // ── ReceiveClientPushAsync – conflict rules tests ─────────────────────────
@@ -787,6 +902,70 @@ public class SyncClientProtocolTests
         Assert.Single(response.Items);
         Assert.Equal("Conflict", response.Items[0].Status);
         Assert.Contains("locked", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_AppliesIntakeFormPayload_WhenUnlocked()
+    {
+        var context = CreateInMemoryContext();
+        var patient = new Patient
+        {
+            FirstName = "Unlocked",
+            LastName = "Intake",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        var lastModifiedUtc = DateTime.UtcNow;
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString("N"),
+            ResponseJson = "{\"old\":\"data\"}",
+            IsLocked = false,
+            LastModifiedUtc = lastModifiedUtc.AddMinutes(-10),
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.IntakeForms.Add(intake);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "IntakeForm",
+                    ServerId = intake.Id,
+                    LocalId = 1,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Update",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        patientId = patient.Id,
+                        responseJson = "{\"q1\":\"updated answer\"}",
+                        painMapData = "{\"regions\":[]}",
+                        consents = "{}",
+                        templateVersion = "1.0",
+                        lastModifiedUtc = lastModifiedUtc
+                    }),
+                    LastModifiedUtc = lastModifiedUtc
+                }
+            ]
+        };
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, response.AcceptedCount);
+
+        var updated = await context.IntakeForms.AsNoTracking().FirstAsync(row => row.Id == intake.Id);
+        Assert.Equal("{\"q1\":\"updated answer\"}", updated.ResponseJson);
+        Assert.Equal(SyncState.Synced, updated.SyncState);
     }
 
     [Fact]
@@ -1573,5 +1752,28 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.ConflictCount);
         Assert.Equal("Conflict", response.Items[0].Status);
         Assert.NotNull(response.Items[0].Conflict);
+    }
+
+    private static async Task SeedClinicalNoteAsync(ApplicationDbContext context, string contentJson)
+    {
+        var patient = new Patient
+        {
+            FirstName = "Scoped",
+            LastName = "Role",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = contentJson,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1),
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        });
+        await context.SaveChangesAsync();
     }
 }

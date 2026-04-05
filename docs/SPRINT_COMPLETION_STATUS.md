@@ -27,9 +27,9 @@ verification. Claims unsupported by evidence are marked ⚠️ or ❌.
 | Item | Status | Evidence |
 |---|---|---|
 | All API routes have authorization policies applied | ✅ | `AuthorizationCoverageTests.cs` — `[Category=RBAC]` |
-| Role matrix enforced at API layer (must-catch list) | ✅ | `RbacEnforcementTests.cs` — `[Category=RBAC]` |
-| PTA blocked from eval endpoints | ✅ | `RbacEnforcementTests.PTA_Cannot_Sign_Eval` |
-| Billing blocked from note-write | ✅ | `RbacEnforcementTests` + `EndToEndWorkflowTests.Billing_Cannot_Write_Notes_Returns_403` |
+| Role matrix enforced at API layer (must-catch list) | ✅ | `RbacRoleMatrixTests.cs` + `RbacHttpSmokeTests.cs` — `[Category=RBAC]` |
+| PTA blocked from eval endpoints | ✅ | `RbacHttpSmokeTests.PTA_Cannot_Create_EvalNote_Returns_403` |
+| Billing blocked from note-write | ✅ | `RbacRoleMatrixTests` + `RbacHttpSmokeTests.Billing_Cannot_Write_Notes_Returns_403` |
 | No unauthenticated access to protected routes | ✅ | `AuthorizationCoverageTests` + `EndToEndWorkflowTests.Unauthenticated_Request_Returns_401` |
 | CI gate: rbac-gate in ci-release-gate.yml | ✅ | `ci-release-gate.yml — rbac-gate` |
 
@@ -57,7 +57,7 @@ verification. Claims unsupported by evidence are marked ⚠️ or ❌.
 | AI goals endpoint validates note existence server-side | ✅ | `AiEndpointTests` |
 | AI output guarded by note-signed state | ✅ | `AiEndpointTests.AI_Goals_Blocked_When_Note_Signed` |
 | AcceptAiSuggestion validates section whitelist | ✅ | `NoteEndpointsTests.AcceptAiSuggestion_*` |
-| PTA domain guard enforced in UpdateNote | ✅ | `RbacEnforcementTests` |
+| PTA domain guard enforced in UpdateNote | ✅ | `RbacRoleMatrixTests` + `RbacHttpSmokeTests` |
 | Evaluation note returns null carry-forward (use intake) | ✅ | `NoteComplianceIntegrationTests` |
 
 ---

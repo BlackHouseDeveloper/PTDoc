@@ -3,7 +3,7 @@ using PTDoc.UI.Services;
 
 namespace PTDoc.Tests.Notes.Workspace;
 
-[Trait("Category", "Workspace")]
+[Trait("Category", "CoreCi")]
 public sealed class DraftAutosaveServiceTests
 {
     [Fact]

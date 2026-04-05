@@ -19,6 +19,7 @@ namespace PTDoc.Tests.BackgroundJobs;
 /// Unit tests for Sprint I background job infrastructure.
 /// Covers sync retry eligibility, state transitions, and session cleanup delegation.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class BackgroundJobTests
 {
     // ── helpers ──────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ using PTDoc.UI.Services;
 
 namespace PTDoc.Tests.Intake;
 
-[Trait("Category", "Intake")]
+[Trait("Category", "CoreCi")]
 public sealed class IntakeDeliveryApiServiceTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

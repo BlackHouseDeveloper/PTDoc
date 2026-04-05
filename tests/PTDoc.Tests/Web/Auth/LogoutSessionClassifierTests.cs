@@ -8,7 +8,7 @@ namespace PTDoc.Tests.Web.Auth;
 public sealed class LogoutSessionClassifierTests
 {
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsFalse_WhenExternalIdentityDisabled()
     {
         var principal = CreateAuthenticatedPrincipal(new Claim(PTDocClaimTypes.AuthenticationType, "entra_jwt"));
@@ -19,7 +19,7 @@ public sealed class LogoutSessionClassifierTests
     }
 
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsFalse_WhenUserIsNotAuthenticated()
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity());
@@ -30,7 +30,7 @@ public sealed class LogoutSessionClassifierTests
     }
 
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsTrue_ForEntraAuthenticationType()
     {
         var principal = CreateAuthenticatedPrincipal(new Claim(PTDocClaimTypes.AuthenticationType, "entra_jwt"));
@@ -41,7 +41,7 @@ public sealed class LogoutSessionClassifierTests
     }
 
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsTrue_WhenExternalProviderClaimIsPresent()
     {
         var principal = CreateAuthenticatedPrincipal(new Claim(PTDocClaimTypes.ExternalProvider, EntraExternalIdOptions.DefaultProviderKey));
@@ -52,7 +52,7 @@ public sealed class LogoutSessionClassifierTests
     }
 
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsFalse_ForLocalCookieAuthenticationType()
     {
         var principal = CreateAuthenticatedPrincipal(new Claim(PTDocClaimTypes.AuthenticationType, "web_cookie"));
@@ -63,7 +63,7 @@ public sealed class LogoutSessionClassifierTests
     }
 
     [Fact]
-    [Trait("Category", "Unit")]
+    [Trait("Category", "CoreCi")]
     public void RequiresExternalProviderSignOut_ReturnsFalse_WhenLocalAuthTypeAndExternalProviderClaimBothPresent()
     {
         var principal = CreateAuthenticatedPrincipal(

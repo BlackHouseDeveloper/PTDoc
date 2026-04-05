@@ -9,7 +9,7 @@ using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Tests.Integration;
 
-[Trait("Category", "Integration")]
+[Trait("Category", "CoreCi")]
 public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFactory>
 {
     private readonly PtDocApiFactory factory;

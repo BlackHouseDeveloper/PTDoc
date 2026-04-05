@@ -10,6 +10,7 @@ namespace PTDoc.Tests.LocalData;
 /// Tests for the LocalDbContext schema and entity configuration.
 /// Uses an in-memory EF Core provider to avoid platform SQLite/SQLCipher dependencies.
 /// </summary>
+[Trait("Category", "CoreCi")]
 public class LocalDbContextTests
 {
     private static LocalDbContext CreateInMemoryContext()

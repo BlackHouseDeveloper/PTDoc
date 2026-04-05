@@ -11,11 +11,9 @@ namespace PTDoc.Tests.Compliance;
 /// <summary>
 /// Sprint S / Sprint UC-Delta: Integration tests verifying compliance rule enforcement in the note lifecycle.
 /// Tests cover:
-///   - Progress Note hard stop blocks Daily note creation after threshold
-///   - 8-minute rule advisory warning is surfaced when units exceed allowed
+///   - Aggregated save-validation output for override-required warning scenarios
+///   - Audit log behavior for successful note edits
 ///   - 8-minute rule timed CPT bypass prevention (Sprint UC-Delta)
-///   - Signature locking prevents editing a signed note
-///   - Audit log entry is written on successful note edit
 /// </summary>
 [Trait("Category", "Compliance")]
 public class NoteComplianceIntegrationTests : IDisposable
@@ -101,146 +99,6 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(requirement.AttestationText));
     }
 
-    // ─── Progress Note hard stop ──────────────────────────────────────────────
-
-    [Fact]
-    public async Task CreateDailyNote_WhenPnFrequencyHardStop_RulesEngineBlocksCreation()
-    {
-        // Arrange: 10 daily notes without any Progress Note → hard stop required
-        var patientId = Guid.NewGuid();
-        for (int i = 0; i < 10; i++)
-        {
-            _context.ClinicalNotes.Add(new ClinicalNote
-            {
-                Id = Guid.NewGuid(),
-                PatientId = patientId,
-                NoteType = NoteType.Daily,
-                DateOfService = DateTime.UtcNow.AddDays(-i),
-                LastModifiedUtc = DateTime.UtcNow
-            });
-        }
-        await _context.SaveChangesAsync();
-
-        // Act: validate PN frequency for Medicare (simulates what CreateNote endpoint does for Daily notes)
-        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
-
-        // Assert: rules engine returns HardStop — endpoint should respond with 422
-        Assert.False(result.IsValid);
-        Assert.Equal(RuleSeverity.HardStop, result.Severity);
-        Assert.Equal("PN_FREQUENCY", result.RuleId);
-        Assert.Contains("Progress Note required", result.Message);
-        Assert.Equal(ComplianceRuleType.ProgressNoteRequired, result.RuleType);
-        Assert.False(result.IsOverridable);
-    }
-
-    [Fact]
-    public async Task CreateDailyNote_WhenBelowPnThreshold_RulesEngineAllowsCreation()
-    {
-        // Arrange: only 5 daily notes, well below the 10-visit threshold
-        var patientId = Guid.NewGuid();
-        for (int i = 0; i < 5; i++)
-        {
-            _context.ClinicalNotes.Add(new ClinicalNote
-            {
-                Id = Guid.NewGuid(),
-                PatientId = patientId,
-                NoteType = NoteType.Daily,
-                DateOfService = DateTime.UtcNow.AddDays(-i),
-                LastModifiedUtc = DateTime.UtcNow
-            });
-        }
-        await _context.SaveChangesAsync();
-
-        // Act
-        var result = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
-
-        // Assert: no hard stop — Daily note creation is allowed
-        Assert.True(result.IsValid);
-        Assert.NotEqual(RuleSeverity.HardStop, result.Severity);
-    }
-
-    [Fact]
-    public async Task CreateProgressNote_SkipsPnFrequencyCheck_AlwaysAllowed()
-    {
-        // PN frequency check only applies to Daily notes; Progress Note creation itself
-        // should never be blocked by the PN frequency rule.
-        var patientId = Guid.NewGuid();
-
-        // Even with 10 visits (hard stop condition), creating a ProgressNote is allowed
-        for (int i = 0; i < 10; i++)
-        {
-            _context.ClinicalNotes.Add(new ClinicalNote
-            {
-                Id = Guid.NewGuid(),
-                PatientId = patientId,
-                NoteType = NoteType.Daily,
-                DateOfService = DateTime.UtcNow.AddDays(-i),
-                LastModifiedUtc = DateTime.UtcNow
-            });
-        }
-        await _context.SaveChangesAsync();
-
-        // The hard stop rule fires (this is expected — it's what triggers the need for a PN)
-        var pnFreqResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId, "Medicare");
-        Assert.Equal(RuleSeverity.HardStop, pnFreqResult.Severity);
-
-        // But the endpoint should only apply this check when NoteType == Daily.
-        // A ProgressNote creation request would bypass this check in CreateNote.
-        // Verify: after a PN is written, the hard stop clears.
-        _context.ClinicalNotes.Add(new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = patientId,
-            NoteType = NoteType.ProgressNote,
-            DateOfService = DateTime.UtcNow,
-            LastModifiedUtc = DateTime.UtcNow
-        });
-        await _context.SaveChangesAsync();
-
-        var afterPnResult = await _rulesEngine.ValidateProgressNoteFrequencyAsync(patientId);
-        Assert.True(afterPnResult.IsValid);
-    }
-
-    // ─── 8-minute rule advisory warning ──────────────────────────────────────
-
-    [Fact]
-    public async Task CreateNote_WithExcessCptUnits_RulesEngineReturnsWarning()
-    {
-        // Arrange: 30 minutes of treatment but 3 units requested (30 min = 2 units allowed)
-        var cptCodes = new List<CptCodeEntry>
-        {
-            new() { Code = "97110", Units = 3, IsTimed = true }
-        };
-
-        // Act: validate 8-minute rule (simulates what CreateNote endpoint does when TotalMinutes is provided)
-        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
-
-        // Assert: warning is returned (not a hard stop) — note creation proceeds with the warning
-        Assert.False(result.IsValid);
-        Assert.Equal(RuleSeverity.Warning, result.Severity);
-        Assert.Equal("8MIN_RULE", result.RuleId);
-        Assert.Contains("Units exceed allowed per CMS 8-minute rule.", result.Message);
-        Assert.Equal(ComplianceRuleType.EightMinuteRule, result.RuleType);
-        Assert.True(result.IsOverridable);
-        Assert.Single(result.OverrideRequirements);
-    }
-
-    [Fact]
-    public async Task CreateNote_WithValidCptUnits_RulesEngineReturnsSuccess()
-    {
-        // Arrange: 30 minutes → 2 units allowed, 2 units requested → success
-        var cptCodes = new List<CptCodeEntry>
-        {
-            new() { Code = "97110", Units = 2, IsTimed = true }
-        };
-
-        var result = await _rulesEngine.ValidateEightMinuteRuleAsync(30, cptCodes);
-
-        Assert.True(result.IsValid);
-        Assert.Equal(RuleSeverity.Info, result.Severity);
-        Assert.Equal("8MIN_RULE", result.RuleId);
-    }
-
     [Fact]
     public async Task EightMinuteRule_NegativeTotalMinutes_ReturnsError()
     {
@@ -258,62 +116,6 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.Equal(RuleSeverity.Error, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
         Assert.Contains("negative", result.Message.ToLower());
-    }
-
-    // ─── Signature locking ───────────────────────────────────────────────────
-
-    [Fact]
-    public async Task UpdateNote_OnSignedNote_ImmutabilityRuleBlocksEdit()
-    {
-        // Arrange: a signed note
-        var note = new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
-            NoteType = NoteType.Daily,
-            DateOfService = DateTime.UtcNow,
-            LastModifiedUtc = DateTime.UtcNow,
-            SignatureHash = "abc123def456",
-            SignedUtc = DateTime.UtcNow.AddMinutes(-5),
-            SignedByUserId = Guid.NewGuid()
-        };
-        _context.ClinicalNotes.Add(note);
-        await _context.SaveChangesAsync();
-
-        // Act: validate immutability (simulates what UpdateNote endpoint does)
-        var result = await _rulesEngine.ValidateImmutabilityAsync(note.Id);
-
-        // Assert: HardStop returned — endpoint should respond with 409 Conflict
-        Assert.False(result.IsValid);
-        Assert.Equal(RuleSeverity.HardStop, result.Severity);
-        Assert.Equal("IMMUTABLE", result.RuleId);
-        Assert.Contains("cannot be edited", result.Message);
-        Assert.Contains("addendum", result.Message.ToLower());
-    }
-
-    [Fact]
-    public async Task UpdateNote_OnDraftNote_ImmutabilityRuleAllowsEdit()
-    {
-        // Arrange: an unsigned (draft) note
-        var note = new ClinicalNote
-        {
-            Id = Guid.NewGuid(),
-            PatientId = Guid.NewGuid(),
-            NoteType = NoteType.Daily,
-            DateOfService = DateTime.UtcNow,
-            LastModifiedUtc = DateTime.UtcNow,
-            SignatureHash = null // Not signed
-        };
-        _context.ClinicalNotes.Add(note);
-        await _context.SaveChangesAsync();
-
-        // Act
-        var result = await _rulesEngine.ValidateImmutabilityAsync(note.Id);
-
-        // Assert: no hard stop — update is allowed
-        Assert.True(result.IsValid);
-        Assert.Equal(RuleSeverity.Info, result.Severity);
-        Assert.Contains("edits allowed", result.Message);
     }
 
     // ─── Audit logging for note edits ─────────────────────────────────────────

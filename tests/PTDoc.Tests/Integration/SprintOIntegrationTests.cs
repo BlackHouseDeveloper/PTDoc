@@ -19,7 +19,7 @@ namespace PTDoc.Tests.Integration;
 /// These tests use an in-memory SQLite database and test the data access layer directly
 /// rather than spinning up the full HTTP pipeline.
 /// </summary>
-[Trait("Category", "SprintO")]
+[Trait("Category", "CoreCi")]
 public class SprintOIntegrationTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;

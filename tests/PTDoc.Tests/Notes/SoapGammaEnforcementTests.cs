@@ -24,7 +24,7 @@ namespace PTDoc.Tests.Notes;
 ///   5. Carry-forward is deterministic and does not override signed content.
 ///   6. SOAP_SUBJECTIVE rule fires as blocking violation for Eval/PN when subjective is empty.
 /// </summary>
-[Trait("Category", "UcGamma")]
+[Trait("Category", "CoreCi")]
 public class SoapGammaEnforcementTests : IDisposable
 {
     private readonly ApplicationDbContext _context;

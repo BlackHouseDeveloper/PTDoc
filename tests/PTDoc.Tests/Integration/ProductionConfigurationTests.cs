@@ -23,7 +23,7 @@ public class ProductionConfigurationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void AutoMigrate_Is_True_When_Explicitly_Set_In_Configuration()
     {
         var config = BuildConfig(new()
@@ -37,7 +37,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void AutoMigrate_Is_False_When_Explicitly_Set_In_Configuration()
     {
         var config = BuildConfig(new()
@@ -51,7 +51,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void AutoMigrate_Returns_Null_When_Not_Configured_Allowing_Environment_Default()
     {
         // When the key is absent the API falls back to IsDevelopment() — null signals "use default".
@@ -67,7 +67,7 @@ public class ProductionConfigurationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Provider_Reads_Sqlite_From_Configuration()
     {
         var config = BuildConfig(new()
@@ -81,7 +81,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Provider_Reads_SqlServer_From_Configuration()
     {
         var config = BuildConfig(new()
@@ -95,7 +95,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Provider_Reads_Postgres_From_Configuration()
     {
         var config = BuildConfig(new()
@@ -109,7 +109,7 @@ public class ProductionConfigurationTests
     }
 
     [Theory]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     [InlineData("Sqlite")]
     [InlineData("SQLITE")]
     [InlineData("sqlite")]
@@ -129,7 +129,7 @@ public class ProductionConfigurationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void ConnectionString_Reads_DefaultConnection_From_Configuration()
     {
         const string expected = "Server=azure-sql;Database=PTDoc;User Id=ptdoc;Password=secret;";
@@ -145,7 +145,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void ConnectionString_Reads_PTDocsServer_From_Configuration()
     {
         const string expected = "Server=prod-db;Database=PTDoc;Integrated Security=True;";
@@ -161,7 +161,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void ConnectionString_Returns_Null_When_Not_Configured()
     {
         var config = BuildConfig(new());
@@ -172,7 +172,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void ConnectionString_DefaultConnection_Can_Be_Injected_Via_Environment_Variable_Format()
     {
         const string expected = "Server=azure-sql;Database=PTDoc;User=sa;Password=secret";
@@ -190,7 +190,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void ConnectionString_Can_Be_Injected_Via_Environment_Variable_Format()
     {
         // .NET configuration maps __ to : so ConnectionStrings__PTDocsServer
@@ -215,7 +215,7 @@ public class ProductionConfigurationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Production_AutoMigrate_Default_Is_False_When_Key_Absent_And_Not_Development()
     {
         // Mirrors the Program.cs logic:
@@ -230,7 +230,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Development_AutoMigrate_Default_Is_True_When_Key_Absent_And_Development()
     {
         // Mirrors the Program.cs logic:
@@ -245,7 +245,7 @@ public class ProductionConfigurationTests
     }
 
     [Fact]
-    [Trait("Category", "ProductionConfig")]
+    [Trait("Category", "CoreCi")]
     public void Production_AutoMigrate_Can_Be_Enabled_Explicitly()
     {
         // An operator can set Database:AutoMigrate=true in production to allow

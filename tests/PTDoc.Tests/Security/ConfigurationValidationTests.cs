@@ -15,6 +15,7 @@ namespace PTDoc.Tests.Security;
 /// caused by concurrent env var writes in xUnit's parallel test runner.
 /// </remarks>
 [Collection("EnvironmentVariables")]
+[Trait("Category", "CoreCi")]
 public class ConfigurationValidationTests
 {
     // ── Constants that mirror startup validation logic in Program.cs ──────
@@ -169,7 +170,7 @@ public class ConfigurationValidationTests
     /// Walks up from AppContext.BaseDirectory to the directory containing PTDoc.sln,
     /// so the assertions always execute in both local and CI checkout environments.
     /// </summary>
-    private static string FindRepoRoot()
+    internal static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir != null)
@@ -181,69 +182,6 @@ public class ConfigurationValidationTests
         throw new InvalidOperationException(
             "Could not locate PTDoc.sln starting from " + AppContext.BaseDirectory +
             ". Ensure tests are run from a full repository checkout.");
-    }
-
-    [Trait("Category", "SecretPolicy")]
-    [Theory]
-    [InlineData("src/PTDoc.Api/appsettings.json", "Jwt:SigningKey")]
-    [InlineData("src/PTDoc.Api/appsettings.Development.json", "Jwt:SigningKey")]
-    public void ApiAppsettings_JwtSigningKey_MustBeAPlaceholderOrEmpty(string repoRelativePath, string configKey)
-    {
-        var fullPath = Path.Combine(FindRepoRoot(), repoRelativePath);
-        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
-
-        var config = new ConfigurationBuilder()
-            .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
-            .Build();
-
-        var keyValue = config[configKey];
-
-        Assert.True(
-            string.IsNullOrEmpty(keyValue) || JwtPlaceholderKeys.Contains(keyValue),
-            $"{repoRelativePath} [{configKey}] must be a placeholder (not a real signing key). " +
-            $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
-    }
-
-    [Trait("Category", "SecretPolicy")]
-    [Theory]
-    [InlineData("src/PTDoc.Api/appsettings.json", "IntakeInvite:SigningKey")]
-    [InlineData("src/PTDoc.Api/appsettings.Development.json", "IntakeInvite:SigningKey")]
-    public void ApiAppsettings_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty(string repoRelativePath, string configKey)
-    {
-        var fullPath = Path.Combine(FindRepoRoot(), repoRelativePath);
-        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
-
-        var config = new ConfigurationBuilder()
-            .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
-            .Build();
-
-        var keyValue = config[configKey];
-
-        Assert.True(
-            string.IsNullOrEmpty(keyValue) ||
-            keyValue.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal),
-            $"{repoRelativePath} [{configKey}] must be a REPLACE_ placeholder. " +
-            $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
-    }
-
-    [Trait("Category", "SecretPolicy")]
-    [Fact]
-    public void WebAppsettingsDevelopment_IntakeInviteSigningKey_MustBeAPlaceholderOrEmpty()
-    {
-        var fullPath = Path.Combine(FindRepoRoot(), "src/PTDoc.Web/appsettings.Development.json");
-        Assert.True(File.Exists(fullPath), $"Config file not found at expected path: {fullPath}");
-
-        var config = new ConfigurationBuilder()
-            .AddJsonFile(fullPath, optional: false, reloadOnChange: false)
-            .Build();
-
-        var keyValue = config["IntakeInvite:SigningKey"];
-
-        Assert.True(
-            string.IsNullOrEmpty(keyValue) ||
-            keyValue.StartsWith(IntakeInvitePlaceholderPrefix, StringComparison.Ordinal),
-            $"src/PTDoc.Web/appsettings.Development.json IntakeInvite:SigningKey must be a REPLACE_ placeholder. " +
-            $"Found a non-placeholder value — remove it and run setup-dev-secrets.sh instead.");
     }
 }
 

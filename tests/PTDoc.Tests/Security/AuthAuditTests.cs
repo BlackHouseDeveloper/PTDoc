@@ -51,7 +51,7 @@ public class AuthAuditTests : IAsyncDisposable
     // ─── AuditEvent factory method tests ────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_LoginSuccess_HasCorrectEventType()
     {
         var userId = Guid.NewGuid();
@@ -64,7 +64,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_LoginSuccess_MetadataContainsNoPin()
     {
         var userId = Guid.NewGuid();
@@ -78,7 +78,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_LoginFailed_HasCorrectEventType()
     {
         var evt = AuditEvent.LoginFailed("127.0.0.1", "InvalidCredentials");
@@ -90,7 +90,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_LoginFailed_MetadataContainsNoCredentials()
     {
         var evt = AuditEvent.LoginFailed("127.0.0.1", "InvalidCredentials");
@@ -103,7 +103,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_Logout_HasCorrectEventType()
     {
         var userId = Guid.NewGuid();
@@ -116,7 +116,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_TokenValidationFailed_HasCorrectEventTypeAndNoToken()
     {
         var evt = AuditEvent.TokenValidationFailed("10.0.0.5", "SecurityTokenExpiredException");
@@ -131,7 +131,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_AddendumCreated_HasCorrectEventTypeAndNoPhi()
     {
         var noteId = Guid.NewGuid();
@@ -148,7 +148,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_EditBlockedSignedNote_HasCorrectEventTypeAndNoPhi()
     {
         var noteId = Guid.NewGuid();
@@ -165,7 +165,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_OverrideApplied_HasCorrectEventTypeAndNoPhi()
     {
         var noteId = Guid.NewGuid();
@@ -183,7 +183,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_HardStopTriggered_HasCorrectEventTypeAndNoPhi()
     {
         var noteId = Guid.NewGuid();
@@ -202,7 +202,7 @@ public class AuthAuditTests : IAsyncDisposable
     // ─── AuditService persistence tests ─────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogAuthEventAsync_LoginSuccess_PersistsToAuditLog()
     {
         var userId = Guid.NewGuid();
@@ -221,7 +221,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogAuthEventAsync_LoginFailed_PersistsWithWarningAndNoCredentials()
     {
         var evt = AuditEvent.LoginFailed("10.10.10.10", "UserNotFound");
@@ -242,7 +242,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogAuthEventAsync_Logout_PersistsWithUserId()
     {
         var userId = Guid.NewGuid();
@@ -260,7 +260,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogAuthEventAsync_TokenValidationFailed_PersistsWithNoRawToken()
     {
         var evt = AuditEvent.TokenValidationFailed("172.16.0.1", "SecurityTokenExpiredException");
@@ -280,7 +280,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogRuleOverrideAsync_OverrideApplied_PersistsToAuditLog()
     {
         var noteId = Guid.NewGuid();
@@ -299,7 +299,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogRuleEvaluationAsync_HardStopTriggered_PersistsToAuditLog()
     {
         var noteId = Guid.NewGuid();
@@ -319,7 +319,7 @@ public class AuthAuditTests : IAsyncDisposable
     // ─── Multiple auth events ─────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task MultipleAuthEvents_AllPersisted_InChronologicalOrder()
     {
         var userId = Guid.NewGuid();
@@ -342,7 +342,7 @@ public class AuthAuditTests : IAsyncDisposable
     // ─── Intake audit events (Sprint UC-Beta) ────────────────────────────────
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeSubmitted_HasCorrectEventType()
     {
         var intakeId = Guid.NewGuid();
@@ -358,7 +358,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeLocked_HasCorrectEventType()
     {
         var intakeId = Guid.NewGuid();
@@ -374,7 +374,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeReviewed_HasCorrectEventType()
     {
         var intakeId = Guid.NewGuid();
@@ -390,7 +390,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeSubmitted_MetadataContainsNoPhiFields()
     {
         var evt = AuditEvent.IntakeSubmitted(Guid.NewGuid(), Guid.NewGuid());
@@ -403,7 +403,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeSubmitted_MergesConsentSummaryWithoutPhi()
     {
         var summary = IntakeConsentJson.CreateAuditSummary(new IntakeConsentPacket
@@ -427,7 +427,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogIntakeEventAsync_IntakeSubmitted_PersistsToAuditLog()
     {
         var intakeId = Guid.NewGuid();
@@ -449,7 +449,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogIntakeEventAsync_IntakeReviewed_PersistsToAuditLog()
     {
         var intakeId = Guid.NewGuid();
@@ -470,7 +470,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_IntakeConsentRevoked_HasCorrectEventTypeAndNoPhi()
     {
         var intakeId = Guid.NewGuid();
@@ -495,7 +495,7 @@ public class AuthAuditTests : IAsyncDisposable
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task LogIntakeEventAsync_IntakeConsentRevoked_PersistsToAuditLog()
     {
         var intakeId = Guid.NewGuid();

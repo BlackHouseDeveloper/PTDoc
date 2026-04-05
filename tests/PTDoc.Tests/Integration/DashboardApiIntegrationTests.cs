@@ -10,7 +10,7 @@ using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Tests.Integration;
 
-[Trait("Category", "Integration")]
+[Trait("Category", "CoreCi")]
 public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory>
 {
     private readonly PtDocApiFactory _factory;

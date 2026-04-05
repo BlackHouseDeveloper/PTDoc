@@ -6,6 +6,7 @@ using PTDoc.Api.Integrations;
 
 namespace PTDoc.Tests.Integrations;
 
+[Trait("Category", "CoreCi")]
 public class IntegrationEndpointRegistrationTests
 {
     [Fact]

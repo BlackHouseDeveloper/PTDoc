@@ -2,6 +2,7 @@ using PTDoc.Application.Auth;
 
 namespace PTDoc.Tests.Security;
 
+[Trait("Category", "CoreCi")]
 public class ReturnUrlValidatorTests
 {
     [Theory]

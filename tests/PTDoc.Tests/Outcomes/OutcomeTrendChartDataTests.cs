@@ -9,7 +9,7 @@ namespace PTDoc.Tests.Outcomes;
 /// Tests for chart data accuracy: improvement percent calculations and trend analysis.
 /// These validate the data that drives OutcomeTrendChart rendering.
 /// </summary>
-[Trait("Category", "OutcomeMeasures")]
+[Trait("Category", "CoreCi")]
 public class OutcomeTrendChartDataTests
 {
     private readonly IOutcomeMeasureRegistry _registry = new OutcomeMeasureRegistry();

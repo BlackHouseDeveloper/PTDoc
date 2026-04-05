@@ -9,7 +9,7 @@ using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Intake;
 
-[Trait("Category", "Intake")]
+[Trait("Category", "CoreCi")]
 public sealed class IntakeServiceTests : IDisposable
 {
     private readonly ApplicationDbContext _context;

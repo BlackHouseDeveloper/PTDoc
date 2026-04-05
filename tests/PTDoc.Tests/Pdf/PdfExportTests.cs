@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace PTDoc.Tests.Pdf;
 
+[Trait("Category", "CoreCi")]
 public class PdfExportTests
 {
     private ApplicationDbContext CreateInMemoryContext()

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
 
-[Trait("Category", "Unit")]
+[Trait("Category", "CoreCi")]
 public sealed class WorkspaceReferenceCatalogServiceTests
 {
     private readonly IWorkspaceReferenceCatalogService _catalogs =

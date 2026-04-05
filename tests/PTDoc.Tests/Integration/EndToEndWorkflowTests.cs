@@ -44,7 +44,6 @@ namespace PTDoc.Tests.Integration;
 /// Categories
 /// ----------
 /// [Category=EndToEnd]  — CI gate: ci-release-gate.yml → e2e-workflow-gate
-/// [Category=RBAC]      — Also counted in the RBAC gate for role-integrity evidence
 /// </summary>
 [Trait("Category", "EndToEnd")]
 public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
@@ -60,7 +59,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── 401 / 403 gate tests ─────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Unauthenticated_Request_Returns_401()
     {
         using var client = _factory.CreateUnauthenticatedClient();
@@ -71,7 +69,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Write_Notes_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
@@ -90,7 +87,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Owner_Cannot_Write_Notes_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Owner);
@@ -107,7 +103,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Patient_Cannot_Access_Sync_Status_Returns_403()
     {
         // Patient role is not in ClinicalStaff policy
@@ -119,7 +114,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task FrontDesk_Cannot_Write_Notes_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
@@ -136,7 +130,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Aide_Cannot_Write_Notes_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Aide);
@@ -155,7 +148,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── PTA domain guard ─────────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task PTA_Cannot_Create_EvalNote_Returns_403()
     {
         // PTA is NOT permitted to create Eval notes (domain guard in NoteEndpoints returns Forbid).
@@ -177,7 +169,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task PTA_Can_Create_DailyNote_Returns_201()
     {
         using var client = _factory.CreateClientWithRole(Roles.PTA);
@@ -318,7 +309,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Generate_Intake_Delivery_Link_Returns_403()
     {
         using var ptClient = _factory.CreateClientWithRole(Roles.PT);
@@ -684,7 +674,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Sign_Note_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
@@ -697,7 +686,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task PTA_Cannot_CoSign_Note_Returns_403()
     {
         // Co-sign is PT-only (NoteCoSign policy).
@@ -713,7 +701,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── Sync scope tests ─────────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task PT_Can_Access_Sync_Status_Returns_200()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
@@ -724,7 +711,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Admin_Can_Access_Sync_Queue_And_Health_Return_200()
     {
         using var client = _factory.CreateClientWithRole(Roles.Admin);
@@ -737,7 +723,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task PT_Cannot_Access_Sync_Queue_Or_Health_Returns_403()
     {
         // Sync inspection endpoints are restricted to AdminOnly (Admin, Owner).
@@ -753,7 +738,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Access_Sync_Returns_403()
     {
         // Billing is NOT in ClinicalStaff policy.
@@ -765,7 +749,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task FrontDesk_Cannot_Access_Sync_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
@@ -776,7 +759,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Access_Sync_Queue_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
@@ -789,7 +771,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── Export / PDF ─────────────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Owner_Cannot_Export_Note_Returns_403()
     {
         // Owner is read-only and cannot trigger PDF export.
@@ -801,7 +782,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Export_Note_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
@@ -982,7 +962,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── Patient demographics ─────────────────────────────────────────────────
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Owner_Cannot_Edit_Patient_Demographics_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Owner);
@@ -996,7 +975,6 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    [Trait("Category", "RBAC")]
     public async Task Billing_Cannot_Edit_Patient_Demographics_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);
@@ -1024,7 +1002,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>Creates a patient via the API and returns the new patient ID.</summary>
-    private static async Task<Guid> CreatePatientAsync(HttpClient client)
+    internal static async Task<Guid> CreatePatientAsync(HttpClient client)
     {
         var body = JsonContent(new CreatePatientRequest
         {

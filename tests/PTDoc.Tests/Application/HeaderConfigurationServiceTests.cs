@@ -2,6 +2,7 @@ using PTDoc.Application.Configurations.Header;
 
 namespace PTDoc.Tests.Application;
 
+[Trait("Category", "CoreCi")]
 public sealed class HeaderConfigurationServiceTests
 {
     private readonly HeaderConfigurationService _service = new();

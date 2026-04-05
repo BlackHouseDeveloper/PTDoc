@@ -4,7 +4,7 @@ using Xunit;
 
 namespace PTDoc.Tests.AI;
 
-[Trait("Category", "AI")]
+[Trait("Category", "CoreCi")]
 public class ClinicalPromptBuilderTests
 {
     private readonly ClinicalPromptBuilder _builder;

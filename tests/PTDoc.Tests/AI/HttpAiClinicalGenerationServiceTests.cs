@@ -8,7 +8,7 @@ using Xunit;
 
 namespace PTDoc.Tests.AI;
 
-[Trait("Category", "AI")]
+[Trait("Category", "CoreCi")]
 public sealed class HttpAiClinicalGenerationServiceTests
 {
     [Fact]

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Sync;
 
-[Trait("Category", "Sync")]
+[Trait("Category", "CoreCi")]
 public sealed class HttpSyncServiceTests
 {
     [Fact]

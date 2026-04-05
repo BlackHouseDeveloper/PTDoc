@@ -36,7 +36,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_XContentTypeOptions_IsNoSniff()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -44,7 +44,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_XFrameOptions_IsDeny()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -52,7 +52,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_ReferrerPolicy_IsNoReferrer()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -60,7 +60,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_ContentSecurityPolicy_DisallowsAllSources()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -68,7 +68,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_PermissionsPolicy_IsPresent()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -82,7 +82,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_NextMiddleware_IsInvoked()
     {
         // Verify the middleware calls next() — i.e., does not short-circuit the pipeline
@@ -101,7 +101,7 @@ public class SecurityHeadersTests
     }
 
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public async Task SecurityHeaders_AllRequiredHeaders_ArePresent()
     {
         var headers = await InvokeMiddlewareAsync();
@@ -130,7 +130,7 @@ public class SecurityHeadersTests
     /// responses (whose response is reset by UseExceptionHandler) also carry the headers.
     /// </summary>
     [Fact]
-    [Trait("Category", "Security")]
+    [Trait("Category", "CoreCi")]
     public void ApplyHeaders_Static_SetsAllRequiredHeaders()
     {
         var context = new DefaultHttpContext();

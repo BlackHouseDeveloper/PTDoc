@@ -5,6 +5,7 @@ using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Tests.Application;
 
+[Trait("Category", "CoreCi")]
 public sealed class IntakeStructuredDataJsonTests
 {
     private readonly IIntakeReferenceDataCatalogService _catalog = new IntakeReferenceDataCatalogService();

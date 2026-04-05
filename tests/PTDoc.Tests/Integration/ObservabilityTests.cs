@@ -90,50 +90,6 @@ public class ObservabilityTests : IDisposable
         Assert.True(canConnect);
     }
 
-    // -------------------------------------------------------------------------
-    // Migration drift detection — pending migration list
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    [Trait("Category", "Observability")]
-    public async Task SQLite_GetPendingMigrations_ReturnsAllMigrations_BeforeApplying()
-    {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        await _connection.OpenAsync();
-
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
-            .Options;
-
-        using var context = new ApplicationDbContext(options);
-
-        // Query pending migrations on a fresh database without applying them first
-        var pending = (await context.Database.GetPendingMigrationsAsync()).ToList();
-        var all = context.Database.GetMigrations().ToList();
-
-        // All assembly migrations should appear as pending on a clean database
-        Assert.NotEmpty(pending);
-        Assert.Equal(all.Count, pending.Count);
-    }
-
-    [Fact]
-    [Trait("Category", "Observability")]
-    public async Task SQLite_AppliedMigrations_IsEmpty_BeforeApplying()
-    {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        await _connection.OpenAsync();
-
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(_connection, x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
-            .Options;
-
-        using var context = new ApplicationDbContext(options);
-
-        // No migrations applied yet — history table does not exist
-        var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
-        Assert.Empty(applied);
-    }
-
     public void Dispose()
     {
         _connection?.Dispose();

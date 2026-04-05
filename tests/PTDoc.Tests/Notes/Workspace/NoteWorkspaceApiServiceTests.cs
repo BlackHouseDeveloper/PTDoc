@@ -14,7 +14,7 @@ using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
 
-[Trait("Category", "Workspace")]
+[Trait("Category", "CoreCi")]
 public sealed class NoteWorkspaceApiServiceTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

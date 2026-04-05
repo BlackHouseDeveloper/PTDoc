@@ -8,7 +8,7 @@ namespace PTDoc.Tests.Outcomes;
 /// <summary>
 /// Tests for <see cref="OutcomeMeasureRegistry"/>: scoring validation and body-part mapping.
 /// </summary>
-[Trait("Category", "OutcomeMeasures")]
+[Trait("Category", "CoreCi")]
 public class OutcomeMeasureRegistryTests
 {
     private readonly IOutcomeMeasureRegistry _registry = new OutcomeMeasureRegistry();
