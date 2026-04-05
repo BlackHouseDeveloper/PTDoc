@@ -16,6 +16,16 @@ public interface IUserRegistrationService
         PendingRegistrationsQuery query,
         CancellationToken cancellationToken = default);
 
+    Task<PendingUserDetail?> GetPendingRegistrationAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<RegistrationResult> UpdatePendingRegistrationAsync(
+        Guid userId,
+        AdminRegistrationUpdateRequest request,
+        Guid editedBy,
+        CancellationToken cancellationToken = default);
+
     Task<RegistrationResult> ApproveRegistrationAsync(
         Guid userId,
         Guid approvedBy,

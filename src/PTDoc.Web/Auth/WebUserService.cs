@@ -96,7 +96,6 @@ public sealed class WebUserService : IUserService
         string roleKey,
         Guid? clinicId,
         string pin,
-        string licenseType,
         string licenseNumber,
         string licenseState,
         CancellationToken cancellationToken = default)
@@ -110,7 +109,6 @@ public sealed class WebUserService : IUserService
                 roleKey,
                 clinicId,
                 pin,
-                licenseType,
                 licenseNumber,
                 licenseState,
                 cancellationToken);

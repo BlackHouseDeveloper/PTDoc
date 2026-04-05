@@ -20,4 +20,9 @@ public interface INoteService
         string? categoryId = null,
         string? itemId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a full note record when the UI needs authoritative backend status details.
+    /// </summary>
+    Task<NoteDetailResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }

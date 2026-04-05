@@ -85,7 +85,6 @@ namespace PTDoc.Application.Auth
         /// <param name="fullName">The user's full legal name.</param>
         /// <param name="email">The user's professional email address.</param>
         /// <param name="dateOfBirth">The user's date of birth.</param>
-        /// <param name="licenseType">The type of license (PT or PTA).</param>
         /// <param name="licenseNumber">The user's license number.</param>
         /// <param name="licenseState">The state where the license was issued.</param>
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
@@ -100,7 +99,6 @@ namespace PTDoc.Application.Auth
           string roleKey,
           Guid? clinicId,
           string pin,
-          string licenseType,
           string licenseNumber,
           string licenseState,
           CancellationToken cancellationToken = default);

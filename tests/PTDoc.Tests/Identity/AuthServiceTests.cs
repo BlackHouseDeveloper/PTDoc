@@ -147,6 +147,64 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task AuthenticateAsync_EmailIdentifier_ReturnsAuthResult()
+    {
+        var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "emailuser",
+            Email = "email.user@clinic.com",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Email",
+            LastName = "User",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync("EMAIL.USER@CLINIC.COM", "1234", "127.0.0.1", "TestAgent");
+
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal("emailuser", authResult.Username);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_EmailIdentifier_ForInactiveUser_ReturnsPendingApprovalStatus()
+    {
+        var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "pending-email-user",
+            Email = "pending.email@clinic.com",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Pending",
+            LastName = "Email",
+            Role = "PT",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync("pending.email@clinic.com", "1234", "127.0.0.1", "TestAgent");
+
+        Assert.NotNull(result);
+        Assert.Equal(AuthStatus.PendingApproval, result!.Status);
+        Assert.Equal(user.Id, result.UserId);
+    }
+
+    [Fact]
     public void HashPin_SamePin_ProducesDifferentHashes()
     {
         // Act

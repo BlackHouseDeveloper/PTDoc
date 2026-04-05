@@ -80,10 +80,10 @@
         }
 
         <div class="auth-field">
-          <label for="username">Username</label>
+          <label for="username">Username or Email</label>
           <InputText id="username"
                      class="auth-input"
-                     placeholder="Enter your username"
+                     placeholder="Enter your username or email"
                      autocomplete="off"
                      @bind-Value="loginModel.Username" />
         </div>
@@ -260,21 +260,6 @@
 
         @if (isPtaFieldsActive)
         {
-          <div class="auth-field">
-            <label for="licenseType">
-              License Type
-              <span class="auth-required" aria-label="required">*</span>
-              <span class="auth-info-icon" title="Select PT (Physical Therapist) or PTA (Physical Therapist Assistant)">ⓘ</span>
-            </label>
-            <InputSelect id="licenseType"
-                         class="auth-input auth-select"
-                         @bind-Value="signUpModel.LicenseType">
-              <option value="">Select license type</option>
-              <option value="PT">PT (Physical Therapist)</option>
-              <option value="PTA">PTA (Physical Therapist Assistant)</option>
-            </InputSelect>
-          </div>
-
           <div class="auth-field">
             <label for="licenseNumber">
               License Number

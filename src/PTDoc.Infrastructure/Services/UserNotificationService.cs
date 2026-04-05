@@ -32,12 +32,15 @@ public sealed class UserNotificationService : IUserNotificationService
     {
         var userId = _identityContext.GetCurrentUserId();
 
-        var notifications = await _db.UserNotifications
+        // SQLite cannot translate ORDER BY over DateTimeOffset. Materialize the user's
+        // notification rows first, then apply timestamp ordering in memory.
+        var notifications = (await _db.UserNotifications
             .AsNoTracking()
             .Where(n => n.UserId == userId && !n.IsArchived)
-            .OrderByDescending(n => n.Timestamp)
             .Select(n => ToItemResponse(n))
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken))
+            .OrderByDescending(n => n.Timestamp)
+            .ToList();
 
         var preferences = await GetOrCreatePreferencesAsync(userId, cancellationToken);
 

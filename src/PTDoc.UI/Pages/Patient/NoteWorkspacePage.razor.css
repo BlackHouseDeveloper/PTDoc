@@ -13,6 +13,43 @@
     min-height: calc(var(--touch-target-desktop) * 10);
 }
 
+::deep .note-workspace__state {
+    min-height: 60vh;
+    justify-content: center;
+}
+
+::deep .note-workspace__state-card {
+    max-width: 720px;
+    margin: 0 auto;
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+}
+
+::deep .note-workspace__state-card h2,
+::deep .note-workspace__state-card p {
+    margin: 0;
+}
+
+::deep .note-workspace__state-card p {
+    color: var(--muted-foreground);
+}
+
+::deep .note-workspace__state-card--error {
+    border-color: color-mix(in srgb, var(--destructive) 32%, var(--border));
+    background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+}
+
+::deep .note-workspace__state-actions {
+    display: flex;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+}
+
 ::deep .note-workspace__status-row {
     display: flex;
     justify-content: flex-end;
@@ -23,6 +60,12 @@
     padding: var(--spacing-3) var(--spacing-4);
     font-size: var(--text-sm);
     font-weight: var(--font-weight-semibold);
+}
+
+::deep .note-workspace__alert-list {
+    margin: var(--spacing-2) 0 0;
+    padding-left: var(--spacing-4);
+    font-weight: var(--font-weight-normal);
 }
 
 ::deep .note-workspace__alert--error {

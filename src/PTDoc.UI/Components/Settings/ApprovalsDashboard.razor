@@ -1,4 +1,5 @@
 @using PTDoc.UI.Services
+@using PTDoc.Application.Identity
 @inject IAdminApprovalService AdminApprovalService
 @inject NavigationManager Navigation
 @implements IDisposable
@@ -70,9 +71,10 @@
                 <span>Role</span>
                 <select value="@roleFilter" @onchange="OnRoleFilterChanged">
                     <option>All Roles</option>
-                    <option>PT</option>
-                    <option>PTA</option>
-                    <option>Admin</option>
+                    @foreach (var roleOption in AvailableRoleFilters)
+                    {
+                        <option value="@roleOption">@roleOption</option>
+                    }
                 </select>
             </label>
 
@@ -80,9 +82,10 @@
                 <span>Clinic</span>
                 <select value="@clinicFilter" @onchange="OnClinicFilterChanged">
                     <option>All Clinics</option>
-                    <option>North Campus</option>
-                    <option>East Rehab</option>
-                    <option>Downtown Outpatient</option>
+                    @foreach (var clinicOption in AvailableClinicFilters)
+                    {
+                        <option value="@clinicOption">@clinicOption</option>
+                    }
                 </select>
             </label>
         </div>
@@ -210,53 +213,138 @@
                     <div><dt>ID</dt><dd>@selectedRequest.RequestId</dd></div>
                     <div><dt>Submitted</dt><dd>@selectedRequest.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</dd></div>
                     <div><dt>Source</dt><dd>Self-service registration</dd></div>
-                    <div><dt>Status</dt><dd><ApprovalStatusBadge Status="@selectedRequest.Status" /></dd></div>
+                    <div><dt>Status</dt><dd><ApprovalStatusBadge Status="@(selectedRequestDetail?.Status ?? selectedRequest.Status)" /></dd></div>
                 </dl>
             </section>
 
-            <section class="detail-group" aria-label="Applicant information">
-                <h3>Applicant Information</h3>
-                <dl>
-                    <div><dt>Name</dt><dd>@selectedRequest.ApplicantName</dd></div>
-                    <div><dt>Email</dt><dd>@selectedRequest.Email</dd></div>
-                    <div><dt>Date of Birth</dt><dd>••/••/1989</dd></div>
-                    <div><dt>Role Requested</dt><dd>@selectedRequest.RequestedRole</dd></div>
-                    <div><dt>Clinic</dt><dd>@selectedRequest.Clinic</dd></div>
-                </dl>
-            </section>
+            @if (isLoadingDetail)
+            {
+                <div class="data-state" role="status">Loading request detail...</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(detailLoadError))
+            {
+                <div class="data-state error" role="alert">@detailLoadError</div>
+            }
+            else if (selectedRequestDetail is not null)
+            {
+                <section class="detail-group" aria-label="Applicant information">
+                    <div class="detail-section-header">
+                        <h3>Applicant Information</h3>
+                        @if (!isEditingDetail)
+                        {
+                            <button type="button" class="btn btn-outline" @onclick="BeginEditDetail" disabled="@isSubmittingAction">Edit Request</button>
+                        }
+                    </div>
 
-            <section class="detail-group" aria-label="Credential information">
-                <h3>Credential / License Data</h3>
-                <dl>
-                    <div>
-                        <dt>
-                            License Type
-                            <span class="validation-icon @(selectedRequest.CredentialsComplete ? "ok" : "warning")" aria-hidden="true">
-                                @(selectedRequest.CredentialsComplete ? "&#10003;" : "!")
-                            </span>
-                        </dt>
-                        <dd>@selectedRequest.LicenseType</dd>
-                    </div>
-                    <div>
-                        <dt>
-                            License Number
-                            <span class="validation-icon @(selectedRequest.CredentialsComplete ? "ok" : "warning")" aria-hidden="true">
-                                @(selectedRequest.CredentialsComplete ? "&#10003;" : "!")
-                            </span>
-                        </dt>
-                        <dd>@selectedRequest.LicenseNumber</dd>
-                    </div>
-                    <div>
-                        <dt>License State</dt>
-                        <dd>@selectedRequest.LicenseState</dd>
-                    </div>
-                </dl>
+                    @if (isEditingDetail)
+                    {
+                        <div class="detail-edit-grid">
+                            <label class="filter-field">
+                                <span>Username</span>
+                                <input type="text" value="@selectedRequestDetail.Username" readonly />
+                            </label>
 
-                @if (!selectedRequest.CredentialsComplete)
-                {
-                    <p class="detail-warning" role="note">Approval disabled: required credential fields are incomplete.</p>
-                }
-            </section>
+                            <label class="filter-field">
+                                <span>Full Legal Name</span>
+                                <input type="text" value="@editModel.FullName" @oninput="OnFullNameChanged" />
+                                @RenderValidationMessage("FullName")
+                            </label>
+
+                            <label class="filter-field">
+                                <span>Email</span>
+                                <input type="email" value="@editModel.Email" @oninput="OnEmailChanged" />
+                                @RenderValidationMessage("Email")
+                            </label>
+
+                            <label class="filter-field">
+                                <span>Date of Birth</span>
+                                <input type="date" value="@editModel.DateOfBirth" @oninput="OnDateOfBirthChanged" />
+                                @RenderValidationMessage("DateOfBirth")
+                            </label>
+
+                            <label class="filter-field">
+                                <span>Role Requested</span>
+                                <select value="@editModel.RoleKey" @onchange="OnEditRoleChanged">
+                                    @foreach (var roleOption in editableRoles)
+                                    {
+                                        <option value="@roleOption.Key">@roleOption.DisplayName</option>
+                                    }
+                                </select>
+                                @RenderValidationMessage("RoleKey")
+                            </label>
+
+                            <label class="filter-field">
+                                <span>Clinic</span>
+                                <input type="text" value="@selectedRequestDetail.ClinicName" readonly />
+                            </label>
+                        </div>
+                    }
+                    else
+                    {
+                        <dl>
+                            <div><dt>Username</dt><dd>@selectedRequestDetail.Username</dd></div>
+                            <div><dt>Name</dt><dd>@selectedRequestDetail.FullName</dd></div>
+                            <div><dt>Email</dt><dd>@selectedRequestDetail.Email</dd></div>
+                            <div><dt>Date of Birth</dt><dd>@FormatDetailDate(selectedRequestDetail.DateOfBirth)</dd></div>
+                            <div><dt>Role Requested</dt><dd>@selectedRequestDetail.RoleKey</dd></div>
+                            <div><dt>Clinic</dt><dd>@selectedRequestDetail.ClinicName</dd></div>
+                        </dl>
+                    }
+                </section>
+
+                <section class="detail-group" aria-label="Credential information">
+                    <h3>Credential / License Data</h3>
+
+                    @if (RequiresLicenseRole(isEditingDetail ? editModel.RoleKey : selectedRequestDetail.RoleKey))
+                    {
+                        @if (isEditingDetail)
+                        {
+                            <div class="detail-edit-grid">
+                                <label class="filter-field">
+                                    <span>License Number</span>
+                                    <input type="text" value="@editModel.LicenseNumber" @oninput="OnLicenseNumberChanged" />
+                                    @RenderValidationMessage("LicenseNumber")
+                                </label>
+
+                                <label class="filter-field">
+                                    <span>License State</span>
+                                    <select value="@editModel.LicenseState" @onchange="OnLicenseStateChanged">
+                                        <option value="">Select state</option>
+                                        @foreach (var state in licenseStates)
+                                        {
+                                            <option value="@state.Code">@state.Code - @state.Name</option>
+                                        }
+                                    </select>
+                                    @RenderValidationMessage("LicenseState")
+                                </label>
+                            </div>
+                        }
+                        else
+                        {
+                            <dl>
+                                <div><dt>License Requirement</dt><dd>Required for @selectedRequestDetail.RoleKey</dd></div>
+                                <div><dt>License Number</dt><dd>@(selectedRequestDetail.LicenseNumber ?? "Not provided")</dd></div>
+                                <div><dt>License State</dt><dd>@(selectedRequestDetail.LicenseState ?? "Not provided")</dd></div>
+                            </dl>
+                        }
+                    }
+                    else
+                    {
+                        <p>No license data is required for the selected role.</p>
+                    }
+
+                    @if (selectedRequestDetail.MissingFields.Count > 0)
+                    {
+                        <p class="detail-warning" role="note">Approval disabled until the required fields below are completed.</p>
+                        <ul class="detail-missing-list">
+                            @foreach (var missingField in selectedRequestDetail.MissingFields)
+                            {
+                                <li>@missingField</li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
 
             <section class="detail-group" aria-label="Audit timeline placeholder">
                 <h3>Audit / History Timeline</h3>
@@ -269,10 +357,15 @@
             </section>
 
             <footer class="detail-actions">
-                <button type="button" class="btn btn-primary" disabled="@(!selectedRequest.CredentialsComplete || isSubmittingAction)" @onclick="OpenApproveConfirmation">Approve</button>
-                <button type="button" class="btn btn-outline-danger" disabled="@isSubmittingAction" @onclick="OpenRejectConfirmation">Reject</button>
-                <button type="button" class="btn btn-outline" disabled="@isSubmittingAction" @onclick="OpenOnHoldConfirmation">On Hold</button>
-                <button type="button" class="btn btn-outline" disabled="@isSubmittingAction" @onclick="OpenCancelConfirmation">Cancel Request</button>
+                @if (isEditingDetail)
+                {
+                    <button type="button" class="btn btn-primary" disabled="@isSavingDetail" @onclick="SaveDetailAsync">Save Changes</button>
+                    <button type="button" class="btn btn-outline" disabled="@isSavingDetail" @onclick="CancelDetailEdit">Cancel Edit</button>
+                }
+                <button type="button" class="btn btn-primary" disabled="@(!CanApproveSelectedRequest)" @onclick="OpenApproveConfirmation">Approve</button>
+                <button type="button" class="btn btn-outline-danger" disabled="@(!CanManageSelectedRequest)" @onclick="OpenRejectConfirmation">Reject</button>
+                <button type="button" class="btn btn-outline" disabled="@(!CanManageSelectedRequest)" @onclick="OpenOnHoldConfirmation">On Hold</button>
+                <button type="button" class="btn btn-outline" disabled="@(!CanManageSelectedRequest)" @onclick="OpenCancelConfirmation">Cancel Request</button>
                 <button type="button" class="btn btn-outline" disabled>Revoke Invite</button>
             </footer>
 
@@ -322,6 +415,8 @@
     private int totalServerCount;
 
     private ApprovalRequestRow? selectedRequest;
+    private PendingUserDetail? selectedRequestDetail;
+    private ApprovalEditModel editModel = new();
 
     private bool showConfirmationModal;
     private string confirmationTitle = "Confirm action";
@@ -331,9 +426,14 @@
     private bool isLoading;
     private string? loadError;
     private bool isSubmittingAction;
+    private bool isLoadingDetail;
+    private bool isEditingDetail;
+    private bool isSavingDetail;
     private string? actionFeedback;
+    private string? detailLoadError;
     private bool suppressQuerySync;
     private string? lastLoadedQuery;
+    private Dictionary<string, string> detailValidationErrors = new(StringComparer.Ordinal);
 
     private static readonly IReadOnlyList<string> statusTabs =
     [
@@ -342,6 +442,31 @@
         "Rejected",
         "On Hold",
         "Cancelled"
+    ];
+
+    private static readonly IReadOnlyList<RoleSummary> editableRoles =
+    [
+        new("PT", "Physical Therapist"),
+        new("PTA", "Physical Therapist Assistant"),
+        new("FrontDesk", "Front Desk"),
+        new("Owner", "Owner")
+    ];
+
+    private static readonly IReadOnlyList<(string Code, string Name)> licenseStates =
+    [
+        ("AL", "Alabama"), ("AK", "Alaska"), ("AZ", "Arizona"), ("AR", "Arkansas"),
+        ("CA", "California"), ("CO", "Colorado"), ("CT", "Connecticut"), ("DE", "Delaware"),
+        ("FL", "Florida"), ("GA", "Georgia"), ("HI", "Hawaii"), ("ID", "Idaho"),
+        ("IL", "Illinois"), ("IN", "Indiana"), ("IA", "Iowa"), ("KS", "Kansas"),
+        ("KY", "Kentucky"), ("LA", "Louisiana"), ("ME", "Maine"), ("MD", "Maryland"),
+        ("MA", "Massachusetts"), ("MI", "Michigan"), ("MN", "Minnesota"), ("MS", "Mississippi"),
+        ("MO", "Missouri"), ("MT", "Montana"), ("NE", "Nebraska"), ("NV", "Nevada"),
+        ("NH", "New Hampshire"), ("NJ", "New Jersey"), ("NM", "New Mexico"), ("NY", "New York"),
+        ("NC", "North Carolina"), ("ND", "North Dakota"), ("OH", "Ohio"), ("OK", "Oklahoma"),
+        ("OR", "Oregon"), ("PA", "Pennsylvania"), ("RI", "Rhode Island"), ("SC", "South Carolina"),
+        ("SD", "South Dakota"), ("TN", "Tennessee"), ("TX", "Texas"), ("UT", "Utah"),
+        ("VT", "Vermont"), ("VA", "Virginia"), ("WA", "Washington"), ("WV", "West Virginia"),
+        ("WI", "Wisconsin"), ("WY", "Wyoming")
     ];
 
     private List<ApprovalRequestRow> requests = [];
@@ -357,6 +482,31 @@
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(totalServerCount / (double)Math.Max(1, pageSize)));
 
     private IEnumerable<ApprovalRequestRow> FilteredRequests => requests;
+
+    private IEnumerable<string> AvailableRoleFilters =>
+        requests
+            .Select(request => request.RequestedRole)
+            .Where(role => !string.IsNullOrWhiteSpace(role))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(role => role, StringComparer.Ordinal);
+
+    private IEnumerable<string> AvailableClinicFilters =>
+        requests
+            .Select(request => request.Clinic)
+            .Where(clinic => !string.IsNullOrWhiteSpace(clinic) && !string.Equals(clinic, "Unassigned", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(clinic => clinic, StringComparer.Ordinal);
+
+    private bool CanManageSelectedRequest =>
+        selectedRequest is not null
+        && selectedRequestDetail is not null
+        && !isSubmittingAction
+        && !isEditingDetail
+        && !isSavingDetail;
+
+    private bool CanApproveSelectedRequest =>
+        CanManageSelectedRequest
+        && selectedRequestDetail!.CredentialsComplete;
 
     protected override void OnInitialized()
     {
@@ -374,14 +524,45 @@
         await LoadPendingRequestsAsync();
     }
 
-    private void OpenReview(ApprovalRequestRow request)
+    private async Task OpenReview(ApprovalRequestRow request)
     {
         selectedRequest = request;
+        selectedRequestDetail = null;
+        detailLoadError = null;
+        actionFeedback = null;
+        isEditingDetail = false;
+        detailValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+        isLoadingDetail = true;
+
+        try
+        {
+            selectedRequestDetail = await AdminApprovalService.GetPendingDetailAsync(request.UserId);
+            if (selectedRequestDetail is null)
+            {
+                detailLoadError = "The selected registration could not be found.";
+            }
+            else
+            {
+                editModel = ApprovalEditModel.FromDetail(selectedRequestDetail);
+            }
+        }
+        catch (Exception ex)
+        {
+            detailLoadError = ex.Message;
+        }
+        finally
+        {
+            isLoadingDetail = false;
+        }
     }
 
     private void CloseReviewPanel()
     {
         selectedRequest = null;
+        selectedRequestDetail = null;
+        isEditingDetail = false;
+        detailLoadError = null;
+        detailValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     private void OpenApproveConfirmation()
@@ -456,10 +637,12 @@
             CloseConfirmation();
             await LoadPendingRequestsAsync();
             selectedRequest = null;
+            selectedRequestDetail = null;
         }
         else
         {
             actionFeedback = result.Error ?? "Unable to process action.";
+            detailValidationErrors = FlattenValidationErrors(result.ValidationErrors);
         }
 
         isSubmittingAction = false;
@@ -496,13 +679,27 @@
                     item.RoleKey,
                     item.ClinicName ?? "Unassigned",
                     item.RequestedAtUtc,
-                    false,
+                    item.CredentialsComplete,
                     item.Status,
-                    null,
-                    item.RoleKey,
-                    "Not provided",
-                    "Unknown"))
+                    item.ReviewedBy,
+                    item.MissingFields))
                 .ToList();
+
+            // Re-validate dynamic filters against loaded data to prevent querystring
+            // values that are not present in the dropdown from desynchronizing state.
+            var availableRoles = AvailableRoleFilters.ToHashSet(StringComparer.Ordinal);
+            if (!string.Equals(roleFilter, DefaultRoleFilter, StringComparison.Ordinal)
+                && !availableRoles.Contains(roleFilter))
+            {
+                roleFilter = DefaultRoleFilter;
+            }
+
+            var availableClinics = AvailableClinicFilters.ToHashSet(StringComparer.Ordinal);
+            if (!string.Equals(clinicFilter, DefaultClinicFilter, StringComparison.Ordinal)
+                && !availableClinics.Contains(clinicFilter))
+            {
+                clinicFilter = DefaultClinicFilter;
+            }
 
             totalServerCount = response.TotalCount;
             currentPage = Math.Clamp(response.Page, 1, TotalPages);
@@ -775,9 +972,9 @@
 
     private static bool IsAllowedStatusFilter(string value) => value is "All" or "Pending" or "Approved" or "Rejected" or "On Hold" or "Cancelled";
 
-    private static bool IsAllowedRoleFilter(string value) => value is "All Roles" or "PT" or "PTA" or "Admin";
+    private static bool IsAllowedRoleFilter(string value) => !string.IsNullOrWhiteSpace(value);
 
-    private static bool IsAllowedClinicFilter(string value) => value is "All Clinics" or "North Campus" or "East Rehab" or "Downtown Outpatient";
+    private static bool IsAllowedClinicFilter(string value) => !string.IsNullOrWhiteSpace(value);
 
     private static bool IsAllowedSortBy(string value) => value is "Date submitted" or "Name" or "Status";
 
@@ -826,6 +1023,131 @@
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 
+    private void BeginEditDetail()
+    {
+        if (selectedRequestDetail is null)
+        {
+            return;
+        }
+
+        isEditingDetail = true;
+        editModel = ApprovalEditModel.FromDetail(selectedRequestDetail);
+        detailValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+        actionFeedback = null;
+    }
+
+    private void CancelDetailEdit()
+    {
+        if (selectedRequestDetail is null)
+        {
+            return;
+        }
+
+        isEditingDetail = false;
+        editModel = ApprovalEditModel.FromDetail(selectedRequestDetail);
+        detailValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+    }
+
+    private async Task SaveDetailAsync()
+    {
+        if (selectedRequest is null || selectedRequestDetail is null)
+        {
+            return;
+        }
+
+        isSavingDetail = true;
+        actionFeedback = null;
+        detailValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        try
+        {
+            var updateResult = await AdminApprovalService.UpdateAsync(selectedRequest.UserId, editModel.ToRequest());
+            if (!updateResult.Succeeded || updateResult.Detail is null)
+            {
+                actionFeedback = updateResult.Error ?? "Unable to save registration changes.";
+                detailValidationErrors = FlattenValidationErrors(updateResult.ValidationErrors);
+                return;
+            }
+
+            selectedRequestDetail = updateResult.Detail;
+            var updatedRequest = selectedRequest with
+            {
+                ApplicantName = updateResult.Detail.FullName,
+                Email = updateResult.Detail.Email,
+                RequestedRole = updateResult.Detail.RoleKey,
+                Clinic = updateResult.Detail.ClinicName ?? selectedRequest.Clinic,
+                CredentialsComplete = updateResult.Detail.CredentialsComplete,
+                Status = updateResult.Detail.Status,
+                ReviewedBy = updateResult.Detail.ReviewedBy,
+                MissingFields = updateResult.Detail.MissingFields
+            };
+            selectedRequest = updatedRequest;
+            requests = requests
+                .Select(item => item.UserId == updatedRequest.UserId ? updatedRequest : item)
+                .ToList();
+            editModel = ApprovalEditModel.FromDetail(updateResult.Detail);
+            isEditingDetail = false;
+            actionFeedback = "Registration changes saved.";
+        }
+        finally
+        {
+            isSavingDetail = false;
+        }
+    }
+
+    private void OnFullNameChanged(ChangeEventArgs args) => editModel.FullName = args.Value?.ToString() ?? string.Empty;
+
+    private void OnEmailChanged(ChangeEventArgs args) => editModel.Email = args.Value?.ToString() ?? string.Empty;
+
+    private void OnDateOfBirthChanged(ChangeEventArgs args) => editModel.DateOfBirth = args.Value?.ToString() ?? string.Empty;
+
+    private void OnLicenseNumberChanged(ChangeEventArgs args) => editModel.LicenseNumber = args.Value?.ToString() ?? string.Empty;
+
+    private void OnLicenseStateChanged(ChangeEventArgs args) => editModel.LicenseState = args.Value?.ToString() ?? string.Empty;
+
+    private void OnEditRoleChanged(ChangeEventArgs args)
+    {
+        editModel.RoleKey = args.Value?.ToString() ?? string.Empty;
+        if (!RequiresLicenseRole(editModel.RoleKey))
+        {
+            editModel.LicenseNumber = string.Empty;
+            editModel.LicenseState = string.Empty;
+        }
+    }
+
+    private static Dictionary<string, string> FlattenValidationErrors(IReadOnlyDictionary<string, string[]>? errors)
+    {
+        if (errors is null || errors.Count == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        return errors.ToDictionary(
+            entry => entry.Key,
+            entry => string.Join(" ", entry.Value),
+            StringComparer.Ordinal);
+    }
+
+    private static bool RequiresLicenseRole(string? roleKey) =>
+        string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(roleKey, "PTA", StringComparison.OrdinalIgnoreCase);
+
+    private string FormatDetailDate(DateTime? value) =>
+        value?.ToString("yyyy-MM-dd") ?? "Not provided";
+
+    private RenderFragment RenderValidationMessage(string fieldName) => builder =>
+    {
+        if (!detailValidationErrors.TryGetValue(fieldName, out var message) || string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "p");
+        builder.AddAttribute(1, "class", "auth-validation");
+        builder.AddContent(2, message);
+        builder.CloseElement();
+    };
+
     private sealed record ApprovalRequestRow(
         Guid UserId,
         string RequestId,
@@ -837,9 +1159,52 @@
         bool CredentialsComplete,
         string Status,
         string? ReviewedBy,
-        string LicenseType,
-        string LicenseNumber,
-        string LicenseState);
+        IReadOnlyList<string> MissingFields);
+
+    private sealed class ApprovalEditModel
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string DateOfBirth { get; set; } = string.Empty;
+        public string RoleKey { get; set; } = string.Empty;
+        public string LicenseNumber { get; set; } = string.Empty;
+        public string LicenseState { get; set; } = string.Empty;
+
+        public AdminRegistrationUpdateRequest ToRequest()
+        {
+            DateTime? parsedDate = null;
+            if (DateTime.TryParse(DateOfBirth, out var dateOfBirth))
+            {
+                parsedDate = dateOfBirth.Date;
+            }
+
+            return new AdminRegistrationUpdateRequest(
+                FullName.Trim(),
+                Email.Trim(),
+                parsedDate,
+                RoleKey.Trim(),
+                RequiresLicenseRoleLocal(RoleKey) ? NormalizeOptionalValue(LicenseNumber) : null,
+                RequiresLicenseRoleLocal(RoleKey) ? NormalizeOptionalValue(LicenseState)?.ToUpperInvariant() : null);
+        }
+
+        public static ApprovalEditModel FromDetail(PendingUserDetail detail) =>
+            new()
+            {
+                FullName = detail.FullName,
+                Email = detail.Email,
+                DateOfBirth = detail.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty,
+                RoleKey = detail.RoleKey,
+                LicenseNumber = detail.LicenseNumber ?? string.Empty,
+                LicenseState = detail.LicenseState ?? string.Empty
+            };
+
+        private static string? NormalizeOptionalValue(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static bool RequiresLicenseRoleLocal(string? roleKey) =>
+            string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleKey, "PTA", StringComparison.OrdinalIgnoreCase);
+    }
 
     private enum ApprovalAction
     {

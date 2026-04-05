@@ -36,7 +36,7 @@ public static class PinAuthEndpoints
     {
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Pin))
         {
-            return Results.BadRequest(new { error = "Username and PIN are required" });
+            return Results.BadRequest(new { error = "Username or email and PIN are required" });
         }
 
         var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();

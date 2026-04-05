@@ -9,6 +9,10 @@ public interface IAdminApprovalService
 {
     Task<AdminApprovalPage> GetPendingAsync(AdminApprovalQuery query, CancellationToken cancellationToken = default);
 
+    Task<PendingUserDetail?> GetPendingDetailAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task<AdminApprovalUpdateResult> UpdateAsync(Guid userId, AdminRegistrationUpdateRequest request, CancellationToken cancellationToken = default);
+
     Task<AdminApprovalActionResult> ApproveAsync(Guid userId, CancellationToken cancellationToken = default);
 
     Task<AdminApprovalActionResult> RejectAsync(Guid userId, CancellationToken cancellationToken = default);
@@ -21,7 +25,15 @@ public interface IAdminApprovalService
 public sealed record AdminApprovalActionResult(
     bool Succeeded,
     string? Status,
-    string? Error);
+    string? Error,
+    IReadOnlyDictionary<string, string[]>? ValidationErrors = null);
+
+public sealed record AdminApprovalUpdateResult(
+    bool Succeeded,
+    PendingUserDetail? Detail,
+    string? Status,
+    string? Error,
+    IReadOnlyDictionary<string, string[]>? ValidationErrors = null);
 
 public sealed record AdminApprovalPage(
     IReadOnlyList<PendingUserSummary> Items,
@@ -64,6 +76,50 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
             ?? new AdminApprovalPage([], 0, query.Page, query.PageSize);
     }
 
+    public async Task<PendingUserDetail?> GetPendingDetailAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/v1/admin/registrations/{userId}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorMessage = await ApiErrorReader.ReadMessageAsync(response, cancellationToken)
+                ?? $"Failed to load registration details (HTTP {(int)response.StatusCode}).";
+            throw new HttpRequestException(errorMessage, inner: null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<PendingUserDetail>(SerializerOptions, cancellationToken);
+    }
+
+    public async Task<AdminApprovalUpdateResult> UpdateAsync(
+        Guid userId,
+        AdminRegistrationUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PutAsJsonAsync($"/api/v1/admin/registrations/{userId}", request, SerializerOptions, cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var payload = await response.Content.ReadFromJsonAsync<AdminApprovalUpdatePayload>(SerializerOptions, cancellationToken);
+            return new AdminApprovalUpdateResult(true, payload?.Detail, payload?.Status, null);
+        }
+
+        var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var failurePayload = TryDeserializePayload(failureBody);
+        var fallbackError = ApiErrorReader.ReadMessage(failureBody, response.StatusCode)
+            ?? "Unable to save registration changes.";
+
+        return new AdminApprovalUpdateResult(
+            false,
+            null,
+            failurePayload?.Status,
+            string.IsNullOrWhiteSpace(failurePayload?.Error) ? fallbackError : failurePayload.Error,
+            failurePayload?.ValidationErrors);
+    }
+
     public Task<AdminApprovalActionResult> ApproveAsync(Guid userId, CancellationToken cancellationToken = default) =>
         SubmitActionAsync($"/api/v1/admin/registrations/{userId}/approve", cancellationToken);
 
@@ -86,21 +142,42 @@ public sealed class AdminApprovalApiService(HttpClient httpClient) : IAdminAppro
             return new AdminApprovalActionResult(true, payload?.Status, null);
         }
 
-        var failurePayload = await response.Content.ReadFromJsonAsync<AdminApprovalPayload>(SerializerOptions, cancellationToken);
+        var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var failurePayload = TryDeserializePayload(failureBody);
         var fallbackError = response.StatusCode == HttpStatusCode.Forbidden
             ? "You do not have permission to perform this admin action."
-            : "Unable to complete the approval action.";
+            : ApiErrorReader.ReadMessage(failureBody, response.StatusCode)
+                ?? "Unable to complete the approval action.";
 
         return new AdminApprovalActionResult(
             false,
             failurePayload?.Status,
-            string.IsNullOrWhiteSpace(failurePayload?.Error) ? fallbackError : failurePayload.Error);
+            string.IsNullOrWhiteSpace(failurePayload?.Error) ? fallbackError : failurePayload.Error,
+            failurePayload?.ValidationErrors);
     }
 
     private sealed record AdminApprovalPayload(
         string? Status,
         string? Error,
-        Guid? UserId);
+        Guid? UserId,
+        IReadOnlyDictionary<string, string[]>? ValidationErrors);
+
+    private sealed record AdminApprovalUpdatePayload(
+        string? Status,
+        Guid? UserId,
+        PendingUserDetail? Detail);
+
+    private static AdminApprovalPayload? TryDeserializePayload(string body)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<AdminApprovalPayload>(body, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static string BuildPendingRequestUri(AdminApprovalQuery query)
     {

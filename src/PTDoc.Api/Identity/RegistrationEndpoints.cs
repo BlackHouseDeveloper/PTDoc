@@ -35,7 +35,6 @@ public static class RegistrationEndpoints
                 request.RoleKey,
                 request.ClinicId,
                 request.Pin,
-                request.LicenseType,
                 request.LicenseNumber,
                 request.LicenseState),
             cancellationToken);
@@ -51,8 +50,8 @@ public static class RegistrationEndpoints
         {
             RegistrationStatus.PendingApproval => Results.Accepted(value: response),
             RegistrationStatus.EmailAlreadyExists => Results.Conflict(response),
-            RegistrationStatus.InvalidPin or RegistrationStatus.InvalidLicenseData or RegistrationStatus.ClinicNotFound => Results.UnprocessableEntity(response),
-            RegistrationStatus.UsernameCollision or RegistrationStatus.ServerError => Results.BadRequest(response),
+            RegistrationStatus.InvalidPin or RegistrationStatus.InvalidLicenseData or RegistrationStatus.ClinicNotFound or RegistrationStatus.ValidationFailed => Results.UnprocessableEntity(response),
+            RegistrationStatus.UsernameCollision or RegistrationStatus.ServerError or RegistrationStatus.NotFound => Results.BadRequest(response),
             _ => Results.Ok(response)
         };
     }

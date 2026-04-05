@@ -4,6 +4,8 @@ public enum RegistrationStatus
 {
     PendingApproval,
     Succeeded,
+    ValidationFailed,
+    NotFound,
     EmailAlreadyExists,
     UsernameCollision,
     InvalidPin,
@@ -15,7 +17,8 @@ public enum RegistrationStatus
 public sealed record RegistrationResult(
     RegistrationStatus Status,
     Guid? UserId,
-    string? Error)
+    string? Error,
+    IReadOnlyDictionary<string, string[]>? ValidationErrors = null)
 {
     public bool IsPending => Status == RegistrationStatus.PendingApproval;
 
@@ -29,7 +32,6 @@ public sealed record UserRegistrationRequest(
     string RoleKey,
     Guid? ClinicId,
     string Pin,
-    string? LicenseType,
     string? LicenseNumber,
     string? LicenseState);
 
@@ -49,7 +51,37 @@ public sealed record PendingUserSummary(
     string RoleKey,
     Guid? ClinicId,
     string? ClinicName,
-    DateTime RequestedAtUtc);
+    DateTime RequestedAtUtc,
+    bool CredentialsComplete,
+    IReadOnlyList<string> MissingFields,
+    string? LicenseNumber,
+    string? LicenseState,
+    string? ReviewedBy);
+
+public sealed record PendingUserDetail(
+    Guid Id,
+    string Username,
+    string FullName,
+    string Email,
+    DateTime? DateOfBirth,
+    string Status,
+    string RoleKey,
+    Guid? ClinicId,
+    string? ClinicName,
+    DateTime RequestedAtUtc,
+    bool CredentialsComplete,
+    IReadOnlyList<string> MissingFields,
+    string? LicenseNumber,
+    string? LicenseState,
+    string? ReviewedBy);
+
+public sealed record AdminRegistrationUpdateRequest(
+    string FullName,
+    string Email,
+    DateTime? DateOfBirth,
+    string RoleKey,
+    string? LicenseNumber,
+    string? LicenseState);
 
 public sealed record PendingRegistrationsQuery(
     string? Search,

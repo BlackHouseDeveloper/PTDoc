@@ -1,4 +1,6 @@
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 
@@ -16,6 +18,7 @@ public interface INoteWorkspaceService
         string generationType,
         CancellationToken cancellationToken = default);
     Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(string? query, int take = 20, CancellationToken cancellationToken = default);
 }
 
 public sealed class NoteWorkspaceDraft
@@ -53,6 +56,7 @@ public sealed class NoteWorkspaceSaveResult
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public bool RequiresOverride { get; init; }
     public ComplianceWarning? ComplianceWarning { get; init; }
+    public NoteWorkspacePayload? Payload { get; init; }
 }
 
 public sealed class NoteWorkspaceSubmitResult
@@ -62,6 +66,7 @@ public sealed class NoteWorkspaceSubmitResult
     public bool RequiresCoSign { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
     public bool IsSubmitted => Status != NoteStatus.Draft;
+    public IReadOnlyList<RuleEvaluationResult> ValidationFailures { get; init; } = Array.Empty<RuleEvaluationResult>();
 }
 
 public sealed class NoteWorkspaceAiAcceptanceResult

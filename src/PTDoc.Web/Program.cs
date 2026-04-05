@@ -54,7 +54,6 @@ builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, Ht
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
-builder.Services.AddScoped<PTDoc.Application.Dashboard.IDashboardService, PTDoc.Infrastructure.Services.MockDashboardService>();
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();

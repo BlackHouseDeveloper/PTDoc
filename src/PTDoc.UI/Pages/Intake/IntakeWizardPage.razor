@@ -3,6 +3,8 @@
 @rendermode InteractiveServer
 
 @using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.Auth
@@ -41,35 +43,46 @@
                 @if (ShowClinicianPatientSelector)
                 {
                     <RoleGate Roles="@ClinicianSelectorRoles">
-                        <ClinicianPatientSelector SelectedPatientId="@State.PatientId" SelectedPatientIdChanged="HandleClinicianPatientSelectedAsync" Disabled="@State.IsLocked" />
+                        <ClinicianPatientSelector SelectedPatientId="@State.PatientId"
+                                                 SelectedPatientIdChanged="HandleClinicianPatientSelectedAsync"
+                                                 Disabled="@(_isLoadingDraft || _isSavingDraft || State.IsSubmitting)" />
                     </RoleGate>
                 }
 
-                @if (State.IsLocked)
+                @if (_isLoadingDraft)
                 {
-                    <section class="intake-page__notice" role="status">
-                        <p>This intake has been submitted and locked. Editing is disabled.</p>
+                    <section class="intake-page__notice" role="status" aria-live="polite">
+                        <p>Loading intake draft…</p>
                     </section>
                 }
 
-                @switch (State.CurrentStep)
+                @if (!string.IsNullOrWhiteSpace(ReadOnlyNoticeMessage))
                 {
-                    case IntakeStep.Demographics:
-                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                        break;
-                    case IntakeStep.PainAssessment:
-                        <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                        break;
-                    case IntakeStep.PainDetails:
-                        <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
-                        break;
-                    case IntakeStep.Review:
-                        <ReviewStep State="@State" ValidationMessage="@_validationMessage" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" OnEditStep="HandleEditStepAsync" />
-                        break;
-                    default:
-                        <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                        break;
+                    <section class="intake-page__notice" role="status">
+                        <p>@ReadOnlyNoticeMessage</p>
+                    </section>
                 }
+
+                <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
+                    @switch (State.CurrentStep)
+                    {
+                        case IntakeStep.Demographics:
+                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                            break;
+                        case IntakeStep.PainAssessment:
+                            <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                            break;
+                        case IntakeStep.PainDetails:
+                            <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
+                            break;
+                        case IntakeStep.Review:
+                            <ReviewStep State="@State" ValidationMessage="@_validationMessage" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" OnEditStep="HandleEditStepAsync" />
+                            break;
+                        default:
+                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                            break;
+                    }
+                </fieldset>
             }
         </main>
     </div>
@@ -83,14 +96,24 @@
     private Guid? _loadedPatientId;
     private bool _showDraftUnavailable;
     private bool _canSelectPatient;
+    private bool _canManageDrafts;
+    private bool _isLoadingDraft;
+    private bool _isSavingDraft;
     private string? _validationMessage;
     private string _draftUnavailableTitle = "Intake Unavailable";
     private string _draftUnavailableMessage = "We could not load an intake draft for this patient.";
     private string? _draftUnavailableDetail;
     private IDisposable? _navGuard;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
-    private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner}";
+    private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner},{Roles.FrontDesk}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+    private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
+    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || !CanEditDraft;
+    private string? ReadOnlyNoticeMessage => State.IsLocked
+        ? "This intake has been submitted and locked. Editing is disabled."
+        : (!CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
+            ? "Your role has read-only access to this intake."
+            : null);
 
     protected override void OnInitialized()
     {
@@ -107,9 +130,18 @@
             (user.IsInRole(Roles.PT) ||
              user.IsInRole(Roles.PTA) ||
              user.IsInRole(Roles.Admin) ||
-             user.IsInRole(Roles.Owner));
+             user.IsInRole(Roles.Owner) ||
+             user.IsInRole(Roles.FrontDesk));
 
-        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || !isAuthenticated;
+        _canManageDrafts = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.FrontDesk));
+
+        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) ||
+            !isAuthenticated ||
+            user.IsInRole(Roles.Patient);
 
         if (PatientId.HasValue)
         {
@@ -139,6 +171,7 @@
             return;
         }
 
+        _isLoadingDraft = true;
         IntakeResponseDraft? draft;
         try
         {
@@ -148,6 +181,17 @@
             {
                 if (!State.IsPatientMode)
                 {
+                    if (!_canManageDrafts)
+                    {
+                        SetDraftUnavailableState(
+                            title: "Intake Unavailable",
+                            message: "Your role can view intake records but cannot create a new draft for this patient.",
+                            detail: "Ask a PT, PTA, Admin, or Front Desk user to start the intake workflow.");
+                        InitializeBlankState(patientId);
+                        _loadedPatientId = patientId;
+                        return;
+                    }
+
                     var ensureResult = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
                     {
                         PatientId = patientId
@@ -210,13 +254,22 @@
                     : "Select a different patient or try again once the connection is restored.");
             InitializeBlankState(patientId);
         }
+        finally
+        {
+            _isLoadingDraft = false;
+        }
     }
 
     private async Task HandleDemographicsContinueAsync()
     {
-        if (State.IsLocked)
+        if (!CanEditDraft)
         {
-            _validationMessage = "This intake is locked and cannot be modified.";
+            _validationMessage = GetReadOnlyDraftMessage();
+            return;
+        }
+
+        if (_isSavingDraft || _isLoadingDraft || State.IsSubmitting)
+        {
             return;
         }
 
@@ -244,6 +297,7 @@
         {
             try
             {
+                _isSavingDraft = true;
                 var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
                 State.PatientId = patientId;
                 _loadedPatientId = patientId;
@@ -256,25 +310,35 @@
             {
                 _validationMessage = ToUserFacingApiError(ex);
             }
+            finally
+            {
+                _isSavingDraft = false;
+            }
 
             return;
         }
 
         try
         {
+            _isSavingDraft = true;
             await IntakeService.SaveDraftAsync(ToDraft(State));
+            State.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
             _validationMessage = ToUserFacingApiError(ex);
         }
+        finally
+        {
+            _isSavingDraft = false;
+        }
     }
 
     private async Task HandlePainAssessmentContinueAsync()
     {
-        if (State.IsLocked)
+        if (!CanEditDraft)
         {
-            _validationMessage = "This intake is locked and cannot be modified.";
+            _validationMessage = GetReadOnlyDraftMessage();
             return;
         }
 
@@ -285,9 +349,9 @@
 
     private async Task HandlePainDetailsContinueAsync()
     {
-        if (State.IsLocked)
+        if (!CanEditDraft)
         {
-            _validationMessage = "This intake is locked and cannot be modified.";
+            _validationMessage = GetReadOnlyDraftMessage();
             return;
         }
 
@@ -323,9 +387,9 @@
     {
         _validationMessage = null;
 
-        if (State.IsLocked)
+        if (!CanEditDraft)
         {
-            _validationMessage = "This intake is locked and cannot be modified.";
+            _validationMessage = GetReadOnlyDraftMessage();
             return;
         }
 
@@ -375,7 +439,7 @@
 
     private Task HandleStateChangedAsync()
     {
-        if (State.IsLocked)
+        if (!CanEditDraft)
         {
             return Task.CompletedTask;
         }
@@ -386,7 +450,7 @@
 
     private Task HandleEditStepAsync(PTDoc.Core.Models.IntakeStep step)
     {
-        if (!State.IsLocked)
+        if (CanEditDraft)
         {
             State.CurrentStep = step;
             _validationMessage = null;
@@ -397,21 +461,35 @@
 
     private async Task SaveDraftIfPossibleAsync()
     {
-        if (State.PatientId.HasValue && !State.IsLocked)
+        if (!State.PatientId.HasValue || !CanEditDraft || _isSavingDraft)
         {
-            try
-            {
-                await IntakeService.SaveDraftAsync(ToDraft(State));
-            }
-            catch (HttpRequestException ex)
-            {
-                _validationMessage = ToUserFacingApiError(ex);
-            }
+            return;
+        }
+
+        _isSavingDraft = true;
+        try
+        {
+            await IntakeService.SaveDraftAsync(ToDraft(State));
+            State.IsDirty = false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
+        finally
+        {
+            _isSavingDraft = false;
         }
     }
 
     private static string ToUserFacingApiError(HttpRequestException ex)
     {
+        if (!string.IsNullOrWhiteSpace(ex.Message) &&
+            !ex.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return ex.Message;
+        }
+
         return ex.StatusCode switch
         {
             HttpStatusCode.Unauthorized => "Your session has expired or is missing API authorization. Please sign in again.",
@@ -460,6 +538,16 @@
             IsPatientMode = State.IsPatientMode,
             CurrentStep = IntakeStep.Demographics
         };
+    }
+
+    private string GetReadOnlyDraftMessage()
+    {
+        if (State.IsLocked)
+        {
+            return "This intake is locked and cannot be modified.";
+        }
+
+        return "Your role does not have permission to modify this intake.";
     }
 
     private void SetDraftUnavailableState(string title, string message, string? detail = null)
