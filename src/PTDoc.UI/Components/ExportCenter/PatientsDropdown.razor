@@ -1,15 +1,6 @@
-@* Patients Dropdown (Multi-select)
-    Label "Patients"
-    Multi-select dropdown
-    Default display: "All patients" when none selected
-    When multiple: display "N selected"
-    Searchable dropdown recommended (UI stub only)
-    Current version uses a local sample list to support UX development.
-*@
-
 <div class="patients-dropdown">
     <label for="@DropdownId" class="patients-dropdown__label">Patients</label>
-    
+
     <button
         id="@DropdownId"
         class="patients-dropdown__trigger"
@@ -17,7 +8,6 @@
         type="button"
         aria-expanded="@IsOpen"
         aria-haspopup="listbox">
-        
         <span class="patients-dropdown__display">
             @if (SelectedPatientIds.Count == 0)
             {
@@ -25,21 +15,21 @@
             }
             else if (SelectedPatientIds.Count == 1)
             {
-                <span>@GetPatientLabel(SelectedPatientIds[0])</span>
+                <span>@GetSelectedLabel(SelectedPatientIds[0])</span>
             }
             else
             {
                 <span>@SelectedPatientIds.Count selected</span>
             }
         </span>
-        
+
         <span class="patients-dropdown__icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3.5 5.5L7 9L10.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </span>
     </button>
-    
+
     @if (IsOpen)
     {
         <div class="patients-dropdown__menu" role="listbox">
@@ -52,20 +42,27 @@
                     @bind:event="oninput"
                     aria-label="Search patients" />
             </div>
-            
+
             <div class="patients-dropdown__list">
-                @foreach (var (id, name) in GetFilteredPatients())
+                @if (GetFilteredPatients().Count == 0)
                 {
-                    var isSelected = SelectedPatientIds.Contains(id);
-                    <label class="patients-dropdown__option">
-                        <input
-                            type="checkbox"
-                            class="patients-dropdown__checkbox"
-                            checked="@isSelected"
-                            @onchange="@((ChangeEventArgs e) => TogglePatient(id, (bool)e!.Value!))"
-                            aria-label="@name" />
-                        <span class="patients-dropdown__option-label">@name</span>
-                    </label>
+                    <div class="patients-dropdown__empty">No patients match the current search.</div>
+                }
+                else
+                {
+                    @foreach (var patient in GetFilteredPatients())
+                    {
+                        var isSelected = SelectedPatientIds.Contains(patient.Id);
+                        <label class="patients-dropdown__option">
+                            <input
+                                type="checkbox"
+                                class="patients-dropdown__checkbox"
+                                checked="@isSelected"
+                                @onchange="@((ChangeEventArgs e) => TogglePatient(patient.Id, (bool)e!.Value!))"
+                                aria-label="@patient.Label" />
+                            <span class="patients-dropdown__option-label">@patient.Label</span>
+                        </label>
+                    }
                 }
             </div>
         </div>
@@ -74,13 +71,16 @@
 
 @code {
     [Parameter]
-    public List<int> SelectedPatientIds { get; set; } = new();
+    public List<string> SelectedPatientIds { get; set; } = new();
 
     [Parameter]
-    public EventCallback<List<int>> SelectedPatientIdsChanged { get; set; }
+    public EventCallback<List<string>> SelectedPatientIdsChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ExportCenterSelectableItem> Patients { get; set; } = Array.Empty<ExportCenterSelectableItem>();
 
     private string DropdownId { get; } = $"patients-dropdown-{Guid.NewGuid()}";
-    private bool IsOpen { get; set; } = false;
+    private bool IsOpen { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
 
     private void ToggleOpen()
@@ -88,50 +88,38 @@
         IsOpen = !IsOpen;
     }
 
-    private void TogglePatient(int patientId, bool isSelected)
+    private Task TogglePatient(string patientId, bool isSelected)
     {
-        if (isSelected && !SelectedPatientIds.Contains(patientId))
+        var next = SelectedPatientIds.ToList();
+
+        if (isSelected && !next.Contains(patientId))
         {
-            SelectedPatientIds.Add(patientId);
+            next.Add(patientId);
         }
-        else if (!isSelected && SelectedPatientIds.Contains(patientId))
+        else if (!isSelected && next.Contains(patientId))
         {
-            SelectedPatientIds.Remove(patientId);
+            next.Remove(patientId);
         }
 
-        SelectedPatientIdsChanged.InvokeAsync(SelectedPatientIds);
+        return SelectedPatientIdsChanged.InvokeAsync(next);
     }
 
-    private IEnumerable<(int, string)> GetFilteredPatients()
+    private IReadOnlyList<ExportCenterSelectableItem> GetFilteredPatients()
     {
-        // Local sample list for UI behavior until export filters are connected to services.
-        var allPatients = new List<(int, string)>
-        {
-            (1, "John Smith"),
-            (2, "Jane Doe"),
-            (3, "Michael Johnson"),
-            (4, "Sarah Williams"),
-            (5, "David Brown"),
-        };
-
         if (string.IsNullOrWhiteSpace(SearchQuery))
-            return allPatients;
+        {
+            return Patients;
+        }
 
-        var query = SearchQuery.ToLower();
-        return allPatients.Where(p => p.Item2.ToLower().Contains(query));
+        var query = SearchQuery.Trim();
+        return Patients
+            .Where(patient => patient.Label.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
-    private string GetPatientLabel(int patientId)
+    private string GetSelectedLabel(string patientId)
     {
-        // Mirrors the local sample list above.
-        return patientId switch
-        {
-            1 => "John Smith",
-            2 => "Jane Doe",
-            3 => "Michael Johnson",
-            4 => "Sarah Williams",
-            5 => "David Brown",
-            _ => "Unknown Patient"
-        };
+        return Patients.FirstOrDefault(patient => string.Equals(patient.Id, patientId, StringComparison.OrdinalIgnoreCase))?.Label
+            ?? "Unknown patient";
     }
 }

@@ -1,0 +1,115 @@
+.export-hierarchy-node {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.export-hierarchy-node--section {
+    gap: var(--spacing-3);
+    padding-top: var(--spacing-2);
+}
+
+.export-hierarchy-node--group,
+.export-hierarchy-node--paragraph,
+.export-hierarchy-node--table,
+.export-hierarchy-node--todo {
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+.export-hierarchy-node--group {
+    border-left: 3px solid var(--primary);
+}
+
+.export-hierarchy-node--field {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+    gap: var(--spacing-2);
+    align-items: start;
+}
+
+.export-hierarchy-node__title {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--foreground);
+}
+
+.export-hierarchy-node__title--minor {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted-foreground);
+}
+
+.export-hierarchy-node__value {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    line-height: var(--line-height-normal);
+    white-space: pre-wrap;
+}
+
+.export-hierarchy-node__field-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--muted-foreground);
+}
+
+.export-hierarchy-node__field-value {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+}
+
+.export-hierarchy-node--todo {
+    background: color-mix(in srgb, var(--warning, #f59e0b) 8%, var(--card));
+    border-color: color-mix(in srgb, var(--warning, #f59e0b) 35%, var(--border));
+}
+
+.export-hierarchy-node__todo-row {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    line-height: var(--line-height-normal);
+}
+
+.export-hierarchy-node--hint {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
+.export-hierarchy-node__empty {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+.export-hierarchy-table__wrapper {
+    overflow-x: auto;
+}
+
+.export-hierarchy-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+}
+
+.export-hierarchy-table th,
+.export-hierarchy-table td {
+    padding: var(--spacing-2);
+    border: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+}
+
+.export-hierarchy-table thead th {
+    background: color-mix(in srgb, var(--primary) 8%, var(--card));
+    color: var(--foreground);
+    font-weight: 700;
+}
+
+@media (max-width: 640px) {
+    .export-hierarchy-node--field {
+        grid-template-columns: 1fr;
+    }
+}

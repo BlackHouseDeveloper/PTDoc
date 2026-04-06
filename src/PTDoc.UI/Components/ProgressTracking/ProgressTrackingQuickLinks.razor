@@ -1,10 +1,11 @@
 <section class="progress-quick-links" aria-label="Quick actions">
     <h3>Quick Actions</h3>
-    <button type="button" @onclick='() => OnAction.InvokeAsync("export-summary")'>Export Progress Summary</button>
-    <button type="button" @onclick='() => OnAction.InvokeAsync("open-export-center")'>Open Export Center</button>
-    <button type="button" @onclick='() => OnAction.InvokeAsync("refresh-data")'>Refresh Data</button>
+    <button type="button" disabled="@IsBusy" @onclick='() => OnAction.InvokeAsync("export-summary")'>Export Progress Summary</button>
+    <button type="button" disabled="@IsBusy" @onclick='() => OnAction.InvokeAsync("open-export-center")'>Open Export Center</button>
+    <button type="button" disabled="@IsBusy" @onclick='() => OnAction.InvokeAsync("refresh-data")'>Refresh Data</button>
 </section>
 
 @code {
     [Parameter] public EventCallback<string> OnAction { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
 }

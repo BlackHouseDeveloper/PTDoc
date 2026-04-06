@@ -1,0 +1,312 @@
+@using System.Net
+@using PTDoc.UI.Services
+@inject INotificationCenterService NotificationCenterService
+
+<section class="notification-preferences-editor" aria-label="Notification preferences">
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <div class="notification-preferences-banner notification-preferences-banner--error" role="alert">
+            <span>@loadError</span>
+            <button type="button" class="btn btn-outline" @onclick="ReloadAsync" disabled="@isSaving">Retry</button>
+        </div>
+    }
+
+    @if (isLoading && !hasLoadedPreferences)
+    {
+        <div class="notification-preferences-state" role="status" aria-live="polite">
+            Loading notification preferences...
+        </div>
+    }
+    else if (!hasLoadedPreferences)
+    {
+        <div class="notification-preferences-state notification-preferences-state--error" role="alert">
+            <p class="notification-preferences-state__text">Notification preferences could not be loaded.</p>
+            <button type="button" class="btn btn-primary" @onclick="ReloadAsync" disabled="@isSaving">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="notification-preferences-toolbar">
+            <div>
+                <p class="notification-preferences-eyebrow">Live backend preferences</p>
+                <p class="notification-preferences-note">Changes save immediately through the existing notification service.</p>
+            </div>
+
+            <div class="notification-preferences-meta">
+                @if (isSaving)
+                {
+                    <span class="notification-preferences-pill">Saving...</span>
+                }
+                else if (!string.IsNullOrWhiteSpace(saveMessage))
+                {
+                    <span class="notification-preferences-pill notification-preferences-pill--success">@saveMessage</span>
+                }
+            </div>
+        </div>
+
+        <div class="notification-preferences-grid">
+            <section class="notification-preferences-card" aria-labelledby="delivery-methods-title">
+                <h2 id="delivery-methods-title">Delivery Methods</h2>
+
+                <div class="notification-preferences-list">
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">In-App Notifications</span>
+                            <span class="notification-toggle-description">Show notifications within the app</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="inAppNotifications" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Email Notifications</span>
+                            <span class="notification-toggle-description">Receive notifications via email</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="emailNotifications" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Push Notifications</span>
+                            <span class="notification-toggle-description">Mobile and desktop push notifications</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="pushNotifications" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Sound Alerts</span>
+                            <span class="notification-toggle-description">Play sound for important notifications</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="soundAlerts" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="notification-preferences-card" aria-labelledby="dnd-title">
+                <h2 id="dnd-title">Do Not Disturb</h2>
+
+                <div class="notification-preferences-list">
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Enable Do Not Disturb</span>
+                            <span class="notification-toggle-description">Silence notifications during specified hours</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="doNotDisturb" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="notification-preferences-card" aria-labelledby="types-title">
+                <h2 id="types-title">Notification Types</h2>
+
+                <div class="notification-preferences-list">
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Incomplete Intake</span>
+                            <span class="notification-toggle-description">Patient intake forms that need completion</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="notifyIncompleteIntake" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Overdue Note</span>
+                            <span class="notification-toggle-description">Clinical notes past their documentation deadline</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="notifyOverdueNote" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Upcoming Appointment</span>
+                            <span class="notification-toggle-description">Appointments starting soon</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="notifyUpcomingAppointment" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+
+                    <label class="notification-toggle-row">
+                        <span class="notification-toggle-copy">
+                            <span class="notification-toggle-label">Appointment Scheduled</span>
+                            <span class="notification-toggle-description">Notifications when appointments are scheduled</span>
+                        </span>
+                        <span class="notification-toggle-switch">
+                            <input type="checkbox" @bind="notifyAppointmentScheduled" @bind:after="PersistPreferencesAsync" disabled="@IsBusy" />
+                        </span>
+                    </label>
+                </div>
+            </section>
+        </div>
+
+        <div class="notification-preferences-footer">
+            <span class="notification-preferences-footnote">Preference changes are stored in the backend and reloaded on refresh.</span>
+            <button type="button" class="btn btn-outline" @onclick="ReloadAsync" disabled="@IsBusy">Refresh</button>
+        </div>
+    }
+</section>
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool hasLoadedPreferences;
+    private string? loadError;
+    private string? saveMessage;
+    private NotificationCenterPreferences? lastSuccessfulPreferences;
+
+    private bool inAppNotifications = true;
+    private bool emailNotifications = true;
+    private bool pushNotifications = true;
+    private bool soundAlerts = true;
+    private bool doNotDisturb;
+    private bool notifyIncompleteIntake = true;
+    private bool notifyOverdueNote = true;
+    private bool notifyUpcomingAppointment = true;
+    private bool notifyAppointmentScheduled = true;
+
+    private bool IsBusy => isLoading || isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (isSaving)
+        {
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = null;
+        saveMessage = null;
+
+        try
+        {
+            var state = await NotificationCenterService.GetStateAsync();
+            ApplyPreferences(state.Preferences);
+            lastSuccessfulPreferences = ClonePreferences(state.Preferences);
+            hasLoadedPreferences = true;
+        }
+        catch (Exception ex)
+        {
+            loadError = BuildUserFacingError(ex, "Unable to load notification preferences.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyPreferences(NotificationCenterPreferences preferences)
+    {
+        inAppNotifications = preferences.InAppNotifications;
+        emailNotifications = preferences.EmailNotifications;
+        pushNotifications = preferences.PushNotifications;
+        soundAlerts = preferences.SoundAlerts;
+        doNotDisturb = preferences.DoNotDisturb;
+        notifyIncompleteIntake = preferences.NotifyIncompleteIntake;
+        notifyOverdueNote = preferences.NotifyOverdueNote;
+        notifyUpcomingAppointment = preferences.NotifyUpcomingAppointment;
+        notifyAppointmentScheduled = preferences.NotifyAppointmentScheduled;
+    }
+
+    private async Task PersistPreferencesAsync()
+    {
+        if (isLoading || isSaving)
+        {
+            return;
+        }
+
+        isSaving = true;
+        loadError = null;
+        saveMessage = null;
+
+        try
+        {
+            var state = await NotificationCenterService.SavePreferencesAsync(new NotificationCenterPreferences
+            {
+                InAppNotifications = inAppNotifications,
+                EmailNotifications = emailNotifications,
+                PushNotifications = pushNotifications,
+                SoundAlerts = soundAlerts,
+                DoNotDisturb = doNotDisturb,
+                NotifyIncompleteIntake = notifyIncompleteIntake,
+                NotifyOverdueNote = notifyOverdueNote,
+                NotifyUpcomingAppointment = notifyUpcomingAppointment,
+                NotifyAppointmentScheduled = notifyAppointmentScheduled
+            });
+
+            ApplyPreferences(state.Preferences);
+            lastSuccessfulPreferences = ClonePreferences(state.Preferences);
+            saveMessage = "Saved";
+        }
+        catch (Exception ex)
+        {
+            if (lastSuccessfulPreferences is not null)
+            {
+                ApplyPreferences(lastSuccessfulPreferences);
+            }
+
+            loadError = BuildUserFacingError(ex, "Unable to save notification preferences.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static string BuildUserFacingError(Exception ex, string fallback)
+    {
+        if (ex is HttpRequestException httpEx)
+        {
+            return httpEx.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized => "You are not authorized to change notification preferences.",
+                HttpStatusCode.Forbidden => "Your role does not permit changes to notification preferences.",
+                HttpStatusCode.BadRequest => httpEx.Message,
+                HttpStatusCode.UnprocessableEntity => httpEx.Message,
+                _ => string.IsNullOrWhiteSpace(httpEx.Message) ? fallback : httpEx.Message
+            };
+        }
+
+        return string.IsNullOrWhiteSpace(ex.Message) ? fallback : ex.Message;
+    }
+
+    private static NotificationCenterPreferences ClonePreferences(NotificationCenterPreferences preferences)
+    {
+        return new NotificationCenterPreferences
+        {
+            InAppNotifications = preferences.InAppNotifications,
+            EmailNotifications = preferences.EmailNotifications,
+            PushNotifications = preferences.PushNotifications,
+            SoundAlerts = preferences.SoundAlerts,
+            DoNotDisturb = preferences.DoNotDisturb,
+            NotifyIncompleteIntake = preferences.NotifyIncompleteIntake,
+            NotifyOverdueNote = preferences.NotifyOverdueNote,
+            NotifyUpcomingAppointment = preferences.NotifyUpcomingAppointment,
+            NotifyAppointmentScheduled = preferences.NotifyAppointmentScheduled
+        };
+    }
+}

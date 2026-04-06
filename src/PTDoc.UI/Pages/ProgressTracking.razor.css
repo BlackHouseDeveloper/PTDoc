@@ -435,6 +435,24 @@
     gap: var(--spacing-2);
 }
 
+::deep .progress-trend-empty {
+    margin: auto;
+    text-align: center;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-4);
+}
+
+::deep .progress-trend-error {
+    margin: 0;
+    border: 1px solid color-mix(in srgb, var(--destructive) 28%, var(--border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    padding: var(--spacing-4);
+}
+
 ::deep .progress-line-grid {
     position: absolute;
     inset: var(--spacing-3);
@@ -489,6 +507,17 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-3);
+}
+
+::deep .progress-provider-empty {
+    margin: 0;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
 }
 
 ::deep .progress-provider-meta {

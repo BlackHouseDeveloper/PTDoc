@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Export correctness and progress-tracking consistency follow-up
+
+#### Signed-only export targeting and preview resolution
+- **`src/PTDoc.Application/DTOs/NoteDtos.cs`**, **`src/PTDoc.Application/Services/INoteService.cs`**, **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`src/PTDoc.UI/Services/NoteListApiService.cs`**, **`src/PTDoc.UI/Pages/ExportCenter.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportCenterModels.cs`**, **`src/PTDoc.UI/Components/ExportCenter/FiltersPanel.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor`**, **`src/PTDoc.UI/wwwroot/js/export-preview.js`** — Added bounded batch note reads and a server-resolved export preview target API, tightened list/export signed semantics to `NoteStatus == Signed`, blocked pending co-sign notes from PDF export even if a signature artifact exists, removed unsupported SOAP/PDF preview filters, populated recent activity timestamps from real backend timestamps, and switched download handling to a stream-backed Blob/ObjectURL flow with inline preview/download error states. Reason: preview selection and export eligibility must follow authoritative backend state instead of local cache heuristics or signature-field shortcuts.
+
+#### PDF hierarchy sanitization and option semantics
+- **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Infrastructure/Pdf/QuestPdfRenderer.cs`**, **`src/PTDoc.UI/Components/ExportCenter/ExportDocumentHierarchyNode.razor`** — Stripped clinician-facing TODO/render-hint scaffolding from hierarchy preview/PDF output and restored `IncludeSignatureBlock` and `IncludeMedicareCompliance` behavior by gating signature and charges/compliance sections in the hierarchy builder. Reason: exported documents must no longer expose internal mapping scaffolding, and existing PDF option flags must still control the generated content.
+
+#### Progress tracking batching and recency normalization
+- **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`src/PTDoc.UI/Components/Settings/NotificationPreferencesEditor.razor`** — Reworked progress tracking to batch-load latest note details and trend notes through the new batch note-read API, normalized patient recency to the newer of latest note activity or latest appointment activity for ordering/alerts/last-assessment display, and restored the last successful notification preference snapshot when an immediate-save attempt fails. Reason: eliminate N+1 note reads, stop stale note dates from overriding newer appointments, and prevent settings toggles from drifting into unsaved UI state after backend failures.
+
+#### Regression coverage for export, progress, and settings
+- **`tests/PTDoc.Tests/PTDoc.Tests.csproj`**, **`tests/PTDoc.Tests/Notes/NoteListApiServiceTests.cs`**, **`tests/PTDoc.Tests/UI/ExportCenter/ExportCenterComponentsTests.cs`**, **`tests/PTDoc.Tests/UI/ProgressTracking/ProgressTrackingAggregationServiceTests.cs`**, **`tests/PTDoc.Tests/UI/Settings/NotificationPreferencesEditorTests.cs`**, **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Added client, component, service, PDF-text, and end-to-end tests covering preview-target API calls, unsupported export-center filters, inline preview/download failures, batch note reads, appointment-over-note recency, preference rollback on save failure, missing PDF scaffolding text, disabled signature/compliance sections, and pending co-sign export rejection. Reason: the fixes above need direct regression coverage in the layers where the breakages were introduced.
+
+### Fixed - Notes signing UX and pending co-sign state alignment
+
+#### Pending co-sign status preservation from list to workspace
+- **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`** — Preserved the backend `NoteStatus` in the notes list projection and in the legacy note workspace load path instead of collapsing unsigned notes to a generic draft state. Reason: pending co-sign notes were being loaded into the UI as drafts, which pushed PT finalization through the wrong save/submit path and could block signing.
+
+#### Notes list clarity for PT finalization
+- **`src/PTDoc.UI/Pages/Notes/NotesPage.razor`**, **`src/PTDoc.UI/Components/Notes/Models/NoteListItemVm.cs`**, **`src/PTDoc.UI/Components/Notes/NoteCard.razor`**, **`src/PTDoc.UI/Components/Notes/NotesNeedsAttentionBanner.razor`**, **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`** — Updated the Notes page to display `Pending Co-Sign` explicitly, route the attention-banner action for pending notes straight into the review section, and stop masking pending co-sign notes behind the same generic “Needs Attention” badge used for other issues. Reason: clinicians need to see which notes are awaiting PT finalization and reach the signing surface directly from the notes workflow.
+
+### Changed - PDF export document hierarchy preview and QuestPDF alignment
+
+#### Hierarchy contract and preview endpoint
+- **`src/PTDoc.Application/Pdf/DocumentHierarchyModels.cs`**, **`src/PTDoc.Application/Pdf/IClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Application/Pdf/PdfModels.cs`**, **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`src/PTDoc.Api/Program.cs`** — Added a structured clinical-document hierarchy contract, expanded note export DTOs with the patient/note metadata needed to map PDF sections, registered a hierarchy builder service, and exposed `GET /api/v1/notes/{noteId}/export/hierarchy` so preview and download flows can share the same deterministic document tree. Reason: document preview and final PDF generation need a single source of truth for section order, table structure, and explicit TODO nodes when required mappings are missing.
+
+#### Hierarchy-driven PDF composition
+- **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Infrastructure/Pdf/QuestPdfRenderer.cs`** — Replaced the string-section PDF composition path with a hierarchy-driven QuestPDF renderer that builds Initial Evaluation, Progress Note, Daily Note, and Discharge Summary documents from patient data, current note payloads, and allowed note-history aggregation, while preserving table column groups and rendering missing-data TODO blocks where the source model is incomplete. Reason: the PDF output must mirror the preview-ready hierarchy spec from the sample documents instead of flattening content into generic SOAP sections.
+
+### Fixed - PDF export hierarchy build compatibility
+
+#### Export contract alignment
+- **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`** — Replaced discharge-section references to UI-only plan view-model properties with fields that exist on the current backend note contracts, and stopped assuming billing `CptCodeEntry` items carry a description field. Reason: restore compile compatibility for the new hierarchy builder against the actual export DTO and note content contracts.
+
+#### QuestPDF column span typing
+- **`src/PTDoc.Infrastructure/Pdf/QuestPdfRenderer.cs`** — Cast grouped table-header span values to `uint` before passing them to QuestPDF `ColumnSpan`. Reason: the installed QuestPDF API expects unsigned span values, and the previous `int` call site failed compilation.
+
+#### PDF integration test constructor update
+- **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`** — Updated the integration test renderer construction to pass `ClinicalDocumentHierarchyBuilder` into `QuestPdfRenderer`, and populated the note-type metadata that the hierarchy-based renderer now depends on. Reason: restore test compile compatibility after moving PDF composition to the new hierarchy service.
+
+### Changed - Next sprint UI integration batch: patient context, progress tracking, and notifications settings
+
+#### Patient context cleanup
+- **`src/PTDoc.UI/Components/Layout/NavBarBrand.razor`** — Replaced the hardcoded clinician name and role badge with authentication-state-backed display name and role mapping. Reason: the shared shell should reflect the signed-in user instead of seeded identity text.
+- **`src/PTDoc.UI/Pages/PatientProfile.razor`**, **`src/PTDoc.UI/Pages/PatientProfile.razor.css`**, **`src/PTDoc.UI/Components/Patients/Profile/PatientClinicalInfoCardEditable.razor`** — Replaced the placeholder patient timeline with note, appointment, and intake-backed activity loading; added load, retry, and partial-error states for the patient profile activity surface. Reason: patient context should come from existing backend data instead of scaffolded timeline entries.
+
+#### Progress tracking integration
+- **`src/PTDoc.UI/Pages/ProgressTracking.razor`**, **`src/PTDoc.UI/Pages/ProgressTracking.razor.css`**, **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`src/PTDoc.UI/Components/ProgressTracking/Models/ProgressTrackingPatientVm.cs`**, **`src/PTDoc.UI/Components/ProgressTracking/Models/ProgressTrackingSnapshot.cs`**, **`src/PTDoc.UI/Components/ProgressTracking/ProgressTrackingFilter.razor`**, **`src/PTDoc.UI/Components/ProgressTracking/ProgressTrackingQuickLinks.razor`**, **`src/PTDoc.UI/Components/ProgressTracking/ClinicalIntelligencePanel.razor`**, **`src/PTDoc.UI/Components/ProgressTracking/ProgressTrackingTrendsPanel.razor`** — Replaced seeded progress-tracking data with UI-side aggregation over existing notes and appointments, added filter-driven reloads plus loading/error/empty states, and surfaced note-detail or trend-load failures visibly instead of silently degrading to partial data. Reason: progress tracking now needs to reflect backend activity truth and fail loudly when required data cannot be loaded.
+
+#### Settings notifications integration
+- **`src/PTDoc.UI/Pages/Settings.razor`**, **`src/PTDoc.UI/Pages/Settings.razor.css`**, **`src/PTDoc.UI/Components/Settings/NotificationPreferencesEditor.razor`**, **`src/PTDoc.UI/Components/Settings/NotificationPreferencesEditor.razor.css`**, **`src/PTDoc.UI/Components/Settings/DeferredSettingsSection.razor`**, **`src/PTDoc.UI/Components/Settings/DeferredSettingsSection.razor.css`**, **`src/PTDoc.UI/Components/NotificationsModal.razor`** — Implemented the notifications settings section against the existing notification-center service, reused the same editor from the notifications modal, and converted unsupported settings sections into explicit deferred-state UI instead of scaffold placeholders. Reason: the settings surface should expose real notification preferences without implying unsupported backend contracts for other sections.
+
+### Fixed - Next sprint UI integration batch build compatibility
+
+#### Progress tracking badge enum import
+- **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`** — Added the missing `PTDoc.UI.Components` import so the new progress-tracking aggregation service resolves the shared `BadgeVariant` enum used for patient status badges. Reason: restore compile compatibility for the progress-tracking integration changes.
+
+#### Progress tracking nullable score inference
+- **`src/PTDoc.UI/Pages/ProgressTracking.razor`** — Changed the derived `averageScore` local to `int?` so the no-score path can return `null` without ambiguous conditional-expression typing. Reason: restore compile compatibility for the metric-card summary path when no patients have outcome scores.
+
+### Changed - Next sprint PR4: Export Center contract-limited pass
+
+#### Real export filters and activity sources
+- **`src/PTDoc.UI/Pages/ExportCenter.razor`**, **`src/PTDoc.UI/Pages/ExportCenter.razor.css`**, **`src/PTDoc.UI/Components/ExportCenter/ExportCenterModels.cs`**, **`src/PTDoc.UI/Components/ExportCenter/FiltersPanel.razor`**, **`src/PTDoc.UI/Components/ExportCenter/PatientsDropdown.razor`**, **`src/PTDoc.UI/Components/ExportCenter/PatientsDropdown.razor.css`**, **`src/PTDoc.UI/Components/ExportCenter/ProvidersDropdown.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ProvidersDropdown.razor.css`**, **`src/PTDoc.UI/Components/ExportCenter/RecentActivityPanel.razor`**, **`src/PTDoc.UI/Components/ExportCenter/RecentActivityPanel.razor.css`** — Replaced sample patient/provider dropdown data with real patient and clinician options from existing services, switched export filter selections to real IDs, added page-level loading/error/empty states with retry, and changed the recent-activity card to render real note and appointment activity instead of fake export-history rows. Reason: remove remaining mock data from the Export Center without inventing new backend contracts.
+
+#### SOAP note PDF preview wiring
+- **`src/PTDoc.UI/Pages/ExportCenter.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportCenterModels.cs`**, **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor.css`**, **`src/PTDoc.UI/Components/ExportCenter/ExportDocumentHierarchyNode.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportDocumentHierarchyNode.razor.css`**, **`src/PTDoc.UI/Services/INoteWorkspaceService.cs`**, **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`**, **`src/PTDoc.UI/wwwroot/js/export-preview.js`** — Replaced the disabled Export Center preview card with a live SOAP-note PDF preview flow backed by `GET /api/v1/notes/{id}/export/hierarchy`, re-enabled real PDF download through the existing note export API, and rendered the returned document tree recursively inside the panel. The page now selects a real note preview target from the loaded note list and keeps unsupported cases explicit, including non-SOAP tabs, non-PDF formats, provider-filtered previews, and note-type filters that the current note list projection cannot distinguish. Reason: Export Center should now preview and download real note exports where the backend contract exists, without pretending unsupported filter combinations are fully mapped.
+
 ### Fixed - PR review: missing System import and SQLite connection leak
 
 #### SecretPolicyScanTests compile fix

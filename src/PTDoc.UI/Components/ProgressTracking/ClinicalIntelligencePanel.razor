@@ -2,22 +2,29 @@
 
 <section class="progress-clinical-intelligence" aria-label="Clinical intelligence alerts">
     <h2>Clinical Intelligence</h2>
-    <ul>
-        @foreach (var alert in Alerts)
-        {
-            <li>
-                <article class="progress-alert-card progress-alert-@alert.Severity">
-                    <div>
-                        <p class="progress-alert-message">@alert.Message</p>
-                        <p class="progress-alert-meta">@alert.Meta</p>
-                    </div>
-                    <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(alert.PatientId)">
-                        @alert.ActionLabel
-                    </button>
-                </article>
-            </li>
-        }
-    </ul>
+    @if (Alerts.Count == 0)
+    {
+        <p>No clinical intelligence alerts match the current filters.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var alert in Alerts)
+            {
+                <li>
+                    <article class="progress-alert-card progress-alert-@alert.Severity">
+                        <div>
+                            <p class="progress-alert-message">@alert.Message</p>
+                            <p class="progress-alert-meta">@alert.Meta</p>
+                        </div>
+                        <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(alert.PatientId)">
+                            @alert.ActionLabel
+                        </button>
+                    </article>
+                </li>
+            }
+        </ul>
+    }
 </section>
 
 @code {

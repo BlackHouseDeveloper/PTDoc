@@ -103,6 +103,12 @@
     gap: var(--spacing-1);
 }
 
+.patients-dropdown__empty {
+    padding: var(--spacing-3);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+}
+
 .patients-dropdown__option {
     display: flex;
     align-items: center;
@@ -166,5 +172,9 @@
         &:hover {
             background-color: rgba(34, 197, 94, 0.12);
         }
+    }
+
+    .patients-dropdown__empty {
+        color: var(--muted-foreground);
     }
 }

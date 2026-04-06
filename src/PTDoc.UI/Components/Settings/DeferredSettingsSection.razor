@@ -1,0 +1,13 @@
+<section class="settings-deferred-section" aria-labelledby="@TitleId">
+    <div class="settings-deferred-section__badge">Deferred</div>
+    <h1 id="@TitleId" class="settings-deferred-section__title">@Title</h1>
+    <p class="settings-deferred-section__description">@Description</p>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Description { get; set; } = string.Empty;
+
+    private string TitleId =>
+        $"settings-deferred-{string.Concat(Title.ToLowerInvariant().Where(char.IsLetterOrDigit))}";
+}

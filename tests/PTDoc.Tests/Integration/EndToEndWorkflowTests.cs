@@ -817,6 +817,44 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PTA_Cannot_Export_PendingCoSign_Note_EvenWhenSignatureExists_Returns_422()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PTA);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var signResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
+        Assert.Equal(HttpStatusCode.OK, signResponse.StatusCode);
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var savedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+            Assert.Equal(NoteStatus.PendingCoSign, savedNote.NoteStatus);
+        }
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task PT_Can_Export_Signed_Note_Returns_Pdf_File()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);

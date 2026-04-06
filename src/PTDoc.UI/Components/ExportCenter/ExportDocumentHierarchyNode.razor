@@ -1,0 +1,106 @@
+@using PTDoc.Application.Pdf
+
+@if (Node.Kind == ClinicalDocumentNodeKind.Section)
+{
+    <section class="export-hierarchy-node export-hierarchy-node--section">
+        <h4 class="export-hierarchy-node__title">@Node.Title</h4>
+        @if (!string.IsNullOrWhiteSpace(Node.Value))
+        {
+            <p class="export-hierarchy-node__value">@Node.Value</p>
+        }
+
+        @foreach (var child in Node.Children)
+        {
+            <ExportDocumentHierarchyNode Node="child" />
+        }
+    </section>
+}
+else if (Node.Kind == ClinicalDocumentNodeKind.Group || Node.Kind == ClinicalDocumentNodeKind.Signature)
+{
+    <div class="export-hierarchy-node export-hierarchy-node--group">
+        @if (!string.IsNullOrWhiteSpace(Node.Title))
+        {
+            <div class="export-hierarchy-node__title export-hierarchy-node__title--minor">@Node.Title</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Node.Value))
+        {
+            <p class="export-hierarchy-node__value">@Node.Value</p>
+        }
+
+        @foreach (var child in Node.Children)
+        {
+            <ExportDocumentHierarchyNode Node="child" />
+        }
+    </div>
+}
+else if (Node.Kind == ClinicalDocumentNodeKind.Field)
+{
+    <div class="export-hierarchy-node export-hierarchy-node--field">
+        <span class="export-hierarchy-node__field-label">@Node.Title</span>
+        <span class="export-hierarchy-node__field-value">@DisplayValue(Node.Value)</span>
+    </div>
+}
+else if (Node.Kind == ClinicalDocumentNodeKind.Paragraph)
+{
+    <div class="export-hierarchy-node export-hierarchy-node--paragraph">
+        <div class="export-hierarchy-node__title export-hierarchy-node__title--minor">@Node.Title</div>
+        <p class="export-hierarchy-node__value">@DisplayValue(Node.Value)</p>
+    </div>
+}
+else if (Node.Kind == ClinicalDocumentNodeKind.Table && Node.Table is not null)
+{
+    <div class="export-hierarchy-node export-hierarchy-node--table">
+        <div class="export-hierarchy-node__title export-hierarchy-node__title--minor">@Node.Title</div>
+
+        @if (Node.Table.Rows.Count == 0)
+        {
+            <div class="export-hierarchy-node__empty">No mapped rows.</div>
+        }
+        else
+        {
+            <div class="export-hierarchy-table__wrapper">
+                <table class="export-hierarchy-table">
+                    <thead>
+                        @if (Node.Table.ColumnGroups.Count > 0)
+                        {
+                            <tr>
+                                @foreach (var group in Node.Table.ColumnGroups)
+                                {
+                                    <th colspan="@group.Span">@group.Title</th>
+                                }
+                            </tr>
+                        }
+                        <tr>
+                            @foreach (var column in Node.Table.Columns)
+                            {
+                                <th>@column.Title</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Node.Table.Rows)
+                        {
+                            <tr>
+                                @for (var index = 0; index < Node.Table.Columns.Count; index++)
+                                {
+                                    var value = index < row.Values.Count ? row.Values[index] : string.Empty;
+                                    <td>@DisplayValue(value)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public ClinicalDocumentNode Node { get; set; } = new();
+
+    private static string DisplayValue(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "Not documented." : value;
+}

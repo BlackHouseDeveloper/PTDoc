@@ -25,4 +25,18 @@ public interface INoteService
     /// Returns a full note record when the UI needs authoritative backend status details.
     /// </summary>
     Task<NoteDetailResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a bounded set of note details for batch-oriented UI flows.
+    /// </summary>
+    Task<IReadOnlyList<NoteDetailResponse>> GetByIdsAsync(
+        IReadOnlyList<Guid> ids,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves the current export preview target using authoritative backend filters.
+    /// </summary>
+    Task<ExportPreviewTargetResponse> ResolveExportPreviewTargetAsync(
+        ExportPreviewTargetRequest request,
+        CancellationToken cancellationToken = default);
 }

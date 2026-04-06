@@ -20,8 +20,26 @@ public static class PdfEndpoints
             .RequireAuthorization(AuthorizationPolicies.NoteExport)
             .WithTags("PDF Export");
 
+        group.MapGet("/{noteId:guid}/export/hierarchy", GetNoteDocumentHierarchy)
+            .WithName("GetNoteDocumentHierarchy");
+
         group.MapPost("/{noteId:guid}/export/pdf", ExportNoteToPdf)
             .WithName("ExportNoteToPdf");
+    }
+
+    private static async Task<IResult> GetNoteDocumentHierarchy(
+        [FromRoute] Guid noteId,
+        [FromServices] IClinicalDocumentHierarchyBuilder hierarchyBuilder,
+        [FromServices] ApplicationDbContext dbContext)
+    {
+        var noteData = await LoadNoteExportDtoAsync(dbContext, noteId);
+        if (noteData is null)
+        {
+            return Results.NotFound(new { error = "Clinical note not found" });
+        }
+
+        var hierarchy = hierarchyBuilder.Build(noteData);
+        return Results.Ok(hierarchy);
     }
 
     private static async Task<IResult> ExportNoteToPdf(
@@ -33,19 +51,15 @@ public static class PdfEndpoints
     {
         try
         {
-            // Load note with related data from database
-            var note = await dbContext.ClinicalNotes
-                .Include(n => n.Patient)
-                .FirstOrDefaultAsync(n => n.Id == noteId);
-
-            if (note == null)
+            var noteData = await LoadNoteExportDtoAsync(dbContext, noteId);
+            if (noteData is null)
             {
                 return Results.NotFound(new { error = "Clinical note not found" });
             }
 
             // Enforce finalized-only export: unsigned notes must not be exported per Medicare rules.
             // Exporting a draft note could expose incomplete or uncertified clinical content.
-            if (note.SignatureHash is null)
+            if (noteData.NoteStatus != PTDoc.Core.Models.NoteStatus.Signed)
             {
                 return Results.UnprocessableEntity(new
                 {
@@ -53,31 +67,6 @@ public static class PdfEndpoints
                     noteId
                 });
             }
-
-            // Map to DTO (Clean Architecture: endpoint loads data, renderer receives DTO)
-            var noteData = new NoteExportDto
-            {
-                NoteId = note.Id,
-                DateOfService = note.DateOfService,
-                NoteTypeDisplayName = note.NoteType.ToString(),
-                ContentJson = note.ContentJson ?? "{}",
-                CptCodesJson = note.CptCodesJson ?? "[]",
-
-                // Patient information
-                PatientFirstName = note.Patient?.FirstName ?? string.Empty,
-                PatientLastName = note.Patient?.LastName ?? string.Empty,
-                PatientMedicalRecordNumber = note.Patient?.MedicalRecordNumber ?? string.Empty,
-
-                // Signature information
-                SignatureHash = note.SignatureHash,
-                SignedUtc = note.SignedUtc,
-                SignedByUserId = note.SignedByUserId,
-            };
-
-            // Resolve clinician info with a single DB query (display name + credentials).
-            var (clinicianDisplayName, clinicianCredentials) = await ResolveClinicianInfoAsync(dbContext, note.SignedByUserId);
-            noteData.ClinicianDisplayName = clinicianDisplayName;
-            noteData.ClinicianCredentials = clinicianCredentials;
 
             // Export options
             noteData.IncludeMedicareCompliance = true;
@@ -117,6 +106,57 @@ public static class PdfEndpoints
                 statusCode: 500);
         }
     }
+
+    private static async Task<NoteExportDto?> LoadNoteExportDtoAsync(ApplicationDbContext dbContext, Guid noteId)
+    {
+        var note = await dbContext.ClinicalNotes
+            .Include(n => n.Patient)
+            .FirstOrDefaultAsync(n => n.Id == noteId);
+
+        if (note is null)
+        {
+            return null;
+        }
+
+        var noteData = new NoteExportDto
+        {
+            NoteId = note.Id,
+            NoteType = note.NoteType,
+            NoteStatus = note.NoteStatus,
+            DateOfService = note.DateOfService,
+            NoteTypeDisplayName = ToDisplayName(note.NoteType),
+            ContentJson = note.ContentJson ?? "{}",
+            CptCodesJson = note.CptCodesJson ?? "[]",
+            TotalTreatmentMinutes = note.TotalTreatmentMinutes,
+            PatientFirstName = note.Patient?.FirstName ?? string.Empty,
+            PatientLastName = note.Patient?.LastName ?? string.Empty,
+            PatientDateOfBirth = note.Patient?.DateOfBirth,
+            PatientMedicalRecordNumber = note.Patient?.MedicalRecordNumber ?? string.Empty,
+            PatientDiagnosisCodesJson = note.Patient?.DiagnosisCodesJson ?? "[]",
+            ReferringPhysician = note.Patient?.ReferringPhysician,
+            ReferringPhysicianNpi = note.Patient?.PhysicianNpi,
+            SignatureHash = note.SignatureHash,
+            SignedUtc = note.SignedUtc,
+            SignedByUserId = note.SignedByUserId,
+            TherapistNpi = note.TherapistNpi,
+            PhysicianSignatureHash = note.PhysicianSignatureHash,
+            PhysicianSignedUtc = note.PhysicianSignedUtc
+        };
+
+        var (clinicianDisplayName, clinicianCredentials) = await ResolveClinicianInfoAsync(dbContext, note.SignedByUserId);
+        noteData.ClinicianDisplayName = clinicianDisplayName;
+        noteData.ClinicianCredentials = clinicianCredentials;
+        return noteData;
+    }
+
+    private static string ToDisplayName(PTDoc.Core.Models.NoteType noteType) => noteType switch
+    {
+        PTDoc.Core.Models.NoteType.Evaluation => "Physical Therapy Initial Evaluation",
+        PTDoc.Core.Models.NoteType.ProgressNote => "Physical Therapy Progress Note",
+        PTDoc.Core.Models.NoteType.Daily => "Physical Therapy Daily Note",
+        PTDoc.Core.Models.NoteType.Discharge => "Physical Therapy Discharge Summary",
+        _ => noteType.ToString()
+    };
 
     private static async Task<(string DisplayName, string Credentials)> ResolveClinicianInfoAsync(ApplicationDbContext dbContext, Guid? userId)
     {

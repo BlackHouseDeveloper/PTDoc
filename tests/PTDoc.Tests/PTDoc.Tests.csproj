@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="bunit" Version="1.26.64" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.1" />
@@ -23,6 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.70" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
@@ -42,6 +44,7 @@
     <ProjectReference Include="..\..\src\PTDoc.Api\PTDoc.Api.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.AI\PTDoc.AI.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Integrations\PTDoc.Integrations.csproj" />
+    <ProjectReference Include="..\..\src\PTDoc.UI\PTDoc.UI.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Web\PTDoc.Web.csproj" />
   </ItemGroup>
 

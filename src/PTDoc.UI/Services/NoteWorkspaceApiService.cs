@@ -4,6 +4,7 @@ using System.Text.Json;
 
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Pdf;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
@@ -250,6 +251,37 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         };
     }
 
+    public async Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(
+        Guid noteId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync($"/api/v1/notes/{noteId}/export/hierarchy", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new NoteWorkspaceDocumentHierarchyResult
+            {
+                Success = false,
+                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+            };
+        }
+
+        var hierarchy = await response.Content.ReadFromJsonAsync<ClinicalDocumentHierarchy>(SerializerOptions, cancellationToken);
+        if (hierarchy is null)
+        {
+            return new NoteWorkspaceDocumentHierarchyResult
+            {
+                Success = false,
+                ErrorMessage = "Preview hierarchy payload was empty."
+            };
+        }
+
+        return new NoteWorkspaceDocumentHierarchyResult
+        {
+            Success = true,
+            Hierarchy = hierarchy
+        };
+    }
+
     public async Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(
         string? query,
         int take = 20,
@@ -384,7 +416,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             NoteId = note.Id,
             WorkspaceNoteType = workspaceNoteType,
             DateOfService = note.DateOfService,
-            Status = note.SignedUtc.HasValue ? NoteStatus.Signed : NoteStatus.Draft,
+            Status = note.NoteStatus,
             Payload = payload
         };
     }

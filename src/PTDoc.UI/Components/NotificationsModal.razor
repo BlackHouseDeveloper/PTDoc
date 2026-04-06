@@ -190,214 +190,10 @@
                     </button>
                 </div>
 
-                <!-- Settings Intro -->
                 <p class="notif-settings-intro">Configure how you receive notifications and manage your preferences.</p>
 
-                <!-- Settings Content (scrollable) -->
                 <div class="notif-settings-body">
-
-                    <!-- ── Delivery Methods ── -->
-                    <h3 class="notif-section-heading">Delivery Methods</h3>
-                    <div class="notif-settings-group">
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--app" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6 6 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">In-App Notifications</span>
-                                <span class="notif-toggle-desc">Show notifications within the app</span>
-                            </div>
-                            <label class="notif-switch" aria-label="In-App Notifications toggle">
-                                <input type="checkbox" @bind="inAppNotifications" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-switch-track" aria-hidden="true"></span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--email" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="2"/>
-                                    <path d="M2 8l10 7 10-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">
-                                    Email Notifications
-                                    <span class="notif-freq-badge">Hourly</span>
-                                </span>
-                                <span class="notif-toggle-desc">Receive notifications via email</span>
-                            </div>
-                            <label class="notif-switch" aria-label="Email Notifications toggle">
-                                <input type="checkbox" @bind="emailNotifications" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-switch-track" aria-hidden="true"></span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--push" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" stroke-width="2"/>
-                                    <circle cx="12" cy="17" r="1" fill="currentColor"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Push Notifications</span>
-                                <span class="notif-toggle-desc">Mobile and desktop push notifications</span>
-                            </div>
-                            <label class="notif-switch" aria-label="Push Notifications toggle">
-                                <input type="checkbox" @bind="pushNotifications" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-switch-track" aria-hidden="true"></span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--sound" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Sound Alerts</span>
-                                <span class="notif-toggle-desc">Play sound for important notifications</span>
-                            </div>
-                            <label class="notif-switch" aria-label="Sound Alerts toggle">
-                                <input type="checkbox" @bind="soundAlerts" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-switch-track" aria-hidden="true"></span>
-                            </label>
-                        </div>
-
-                    </div>
-
-                    <!-- ── Do Not Disturb ── -->
-                    <h3 class="notif-section-heading">Do Not Disturb</h3>
-                    <div class="notif-settings-group">
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Enable Do Not Disturb</span>
-                                <span class="notif-toggle-desc">Silence notifications during specified hours</span>
-                            </div>
-                            <label class="notif-switch" aria-label="Do Not Disturb toggle">
-                                <input type="checkbox" @bind="doNotDisturb" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-switch-track" aria-hidden="true"></span>
-                            </label>
-                        </div>
-
-                    </div>
-
-                    <!-- ── Notification Types ── -->
-                    <h3 class="notif-section-heading">Notification Types</h3>
-                    <div class="notif-settings-group">
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--intake" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2"/>
-                                    <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2"/>
-                                    <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Incomplete Intake</span>
-                                <span class="notif-toggle-desc">Patient intake forms that need completion</span>
-                            </div>
-                            <label class="notif-checkbox" aria-label="Incomplete Intake notifications">
-                                <input type="checkbox" @bind="notifyIncompleteIntake" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-checkbox-box" aria-hidden="true">
-                                    @if (notifyIncompleteIntake)
-                                    {
-                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        </svg>
-                                    }
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--overdue" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                                    <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Overdue Note</span>
-                                <span class="notif-toggle-desc">Clinical notes past their documentation deadline</span>
-                            </div>
-                            <label class="notif-checkbox" aria-label="Overdue Note notifications">
-                                <input type="checkbox" @bind="notifyOverdueNote" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-checkbox-box" aria-hidden="true">
-                                    @if (notifyOverdueNote)
-                                    {
-                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        </svg>
-                                    }
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--appointment" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
-                                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Upcoming Appointment</span>
-                                <span class="notif-toggle-desc">Appointments starting soon</span>
-                            </div>
-                            <label class="notif-checkbox" aria-label="Upcoming Appointment notifications">
-                                <input type="checkbox" @bind="notifyUpcomingAppointment" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-checkbox-box" aria-hidden="true">
-                                    @if (notifyUpcomingAppointment)
-                                    {
-                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        </svg>
-                                    }
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="notif-toggle-row">
-                            <div class="notif-type-icon notif-type-icon--scheduled" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
-                                    <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
-                                    <path d="M9 16l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <div class="notif-toggle-text">
-                                <span class="notif-toggle-label">Appointment Scheduled</span>
-                                <span class="notif-toggle-desc">Notifications when appointments are scheduled</span>
-                            </div>
-                            <label class="notif-checkbox" aria-label="Appointment Scheduled notifications">
-                                <input type="checkbox" @bind="notifyAppointmentScheduled" @bind:after="PersistPreferencesAsync" />
-                                <span class="notif-checkbox-box" aria-hidden="true">
-                                    @if (notifyAppointmentScheduled)
-                                    {
-                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        </svg>
-                                    }
-                                </span>
-                            </label>
-                        </div>
-
-                    </div>
-
+                    <NotificationPreferencesEditor />
                 </div>
             }
 
@@ -422,16 +218,6 @@
 
     private string activeTab = "All";
     private string selectedTypeFilter = "all";
-
-    private bool inAppNotifications = true;
-    private bool emailNotifications = true;
-    private bool pushNotifications = true;
-    private bool soundAlerts = true;
-    private bool doNotDisturb;
-    private bool notifyIncompleteIntake = true;
-    private bool notifyOverdueNote = true;
-    private bool notifyUpcomingAppointment = true;
-    private bool notifyAppointmentScheduled = true;
 
     private List<NotificationCenterItem> notifications = new();
 
@@ -544,15 +330,6 @@
         activeTab = state.Filters.ActiveTab;
         selectedTypeFilter = state.Filters.SelectedTypeFilter;
 
-        inAppNotifications = state.Preferences.InAppNotifications;
-        emailNotifications = state.Preferences.EmailNotifications;
-        pushNotifications = state.Preferences.PushNotifications;
-        soundAlerts = state.Preferences.SoundAlerts;
-        doNotDisturb = state.Preferences.DoNotDisturb;
-        notifyIncompleteIntake = state.Preferences.NotifyIncompleteIntake;
-        notifyOverdueNote = state.Preferences.NotifyOverdueNote;
-        notifyUpcomingAppointment = state.Preferences.NotifyUpcomingAppointment;
-        notifyAppointmentScheduled = state.Preferences.NotifyAppointmentScheduled;
     }
 
     private async Task Close()
@@ -589,36 +366,6 @@
         catch (Exception ex)
         {
             ToastService.ShowError($"Failed to save notification filters: {ex.Message}");
-        }
-    }
-
-    private async Task PersistPreferencesAsync()
-    {
-        isSaving = true;
-        try
-        {
-            var state = await NotificationCenterService.SavePreferencesAsync(new NotificationCenterPreferences
-            {
-                InAppNotifications = inAppNotifications,
-                EmailNotifications = emailNotifications,
-                PushNotifications = pushNotifications,
-                SoundAlerts = soundAlerts,
-                DoNotDisturb = doNotDisturb,
-                NotifyIncompleteIntake = notifyIncompleteIntake,
-                NotifyOverdueNote = notifyOverdueNote,
-                NotifyUpcomingAppointment = notifyUpcomingAppointment,
-                NotifyAppointmentScheduled = notifyAppointmentScheduled
-            });
-
-            ApplyState(state);
-        }
-        catch (Exception ex)
-        {
-            ToastService.ShowError($"Failed to save notification settings: {ex.Message}");
-        }
-        finally
-        {
-            isSaving = false;
         }
     }
 

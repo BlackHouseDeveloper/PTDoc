@@ -1,6 +1,11 @@
 @page "/export-center"
 @attribute [Authorize(Policy = "ClinicalStaff")]
 @rendermode InteractiveServer
+@implements IDisposable
+@using PTDoc.Application.DTOs
+@inject IPatientService PatientService
+@inject IAppointmentService AppointmentService
+@inject INoteService NoteService
 
 <PageTitle>Export Center - PTDoc</PageTitle>
 
@@ -8,61 +13,296 @@
     <div class="page-container">
         <GlobalPageHeader />
 
-        <ExportTypeTabController
-            @bind-SelectedTab="CurrentState.SelectedTab"
-            OnTabSwitched="@HandleTabSwitch" />
+        @if (isLoading && !hasLoaded)
+        {
+            <section class="export-center-state" role="status" aria-live="polite">
+                <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+            </section>
+        }
+        else if (!string.IsNullOrWhiteSpace(loadErrorMessage))
+        {
+            <section class="export-center-state" role="alert" aria-live="assertive">
+                <div class="export-center-state__card">
+                    <h1>Export Center unavailable</h1>
+                    <p>@loadErrorMessage</p>
+                    <div class="export-center-state__actions">
+                        <button type="button" class="btn btn-primary" @onclick="ReloadAsync" disabled="@isLoading">Retry</button>
+                    </div>
+                </div>
+            </section>
+        }
+        else
+        {
+            @if (patientOptions.Count == 0 && providerOptions.Count == 0 && recentActivity.Count == 0)
+            {
+                <section class="export-center-state export-center-state--empty" role="status" aria-live="polite">
+                    <div class="export-center-state__card">
+                        <h1>No exportable data found</h1>
+                        <p>The current workspace does not have patients, providers, or recent clinical activity to populate export filters.</p>
+                    </div>
+                </section>
+            }
 
-        <ContextInfoBanner SelectedTab="@CurrentState.SelectedTab" />
+            <ExportTypeTabController
+                @bind-SelectedTab="CurrentState.SelectedTab"
+                OnTabSwitched="@HandleTabSwitch" />
 
-        <div class="export-center-grid">
-            <div class="export-center-left">
-                <FiltersPanel
-                    SelectedTab="@CurrentState.SelectedTab"
-                    State="@CurrentState" />
+            <ContextInfoBanner SelectedTab="@CurrentState.SelectedTab" />
 
-                <ExportFormatSelector
-                    @bind-SelectedFormat="CurrentState.SelectedFormat" />
+            <div class="export-center-grid">
+                <div class="export-center-left">
+                    <FiltersPanel
+                        SelectedTab="@CurrentState.SelectedTab"
+                        State="@CurrentState"
+                        Patients="@patientOptions"
+                        Providers="@providerOptions"
+                        ShowSoapProviderFilter="@ShouldShowSoapProviderFilter()" />
 
-                <ExportOptionsPanel
-                    SelectedFormat="@CurrentState.SelectedFormat"
-                    State="@CurrentState" />
+                    <ExportFormatSelector
+                        @bind-SelectedFormat="CurrentState.SelectedFormat" />
+
+                    <ExportOptionsPanel
+                        SelectedFormat="@CurrentState.SelectedFormat"
+                        State="@CurrentState" />
+                </div>
+
+                <div class="export-center-right">
+                    <ExportPreviewPanel
+                        SelectedTab="@CurrentState.SelectedTab"
+                        SelectedFormat="@CurrentState.SelectedFormat"
+                        State="@CurrentState" />
+
+                    <RecentActivityPanel ActivityItems="@recentActivity" />
+                </div>
             </div>
-
-            <div class="export-center-right">
-                <ExportPreviewPanel
-                    SelectedTab="@CurrentState.SelectedTab"
-                    SelectedFormat="@CurrentState.SelectedFormat"
-                    State="@CurrentState"
-                    OnGeneratePreview="@HandleGeneratePreview"
-                    OnDownload="@HandleDownload" />
-
-                <RecentActivityPanel />
-            </div>
-        </div>
+        }
     </div>
 </div>
 
 @code {
     private ExportDraftState CurrentState { get; set; } = new();
+    private readonly List<ExportCenterSelectableItem> patientOptions = new();
+    private readonly List<ExportCenterSelectableItem> providerOptions = new();
+    private readonly List<ExportCenterActivityItem> recentActivity = new();
+    private bool isLoading = true;
+    private bool hasLoaded;
+    private string? loadErrorMessage;
+    private CancellationTokenSource? loadCts;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        CurrentState = new ExportDraftState();
+        await ReloadAsync();
     }
 
-    private void HandleTabSwitch()
+    public void Dispose()
+    {
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+    }
+
+    private async Task ReloadAsync()
+    {
+        CancelLoadToken();
+
+        isLoading = true;
+        loadErrorMessage = null;
+        await InvokeAsync(StateHasChanged);
+
+        loadCts = new CancellationTokenSource();
+        var cancellationToken = loadCts.Token;
+
+        try
+        {
+            var today = DateTime.UtcNow.Date;
+            var appointmentWindowStart = today.AddYears(-1);
+            var appointmentWindowEnd = today.AddYears(1);
+            var patientTask = PatientService.SearchAsync(query: null, take: 200, cancellationToken);
+            var appointmentTask = AppointmentService.GetOverviewAsync(appointmentWindowStart, appointmentWindowEnd, cancellationToken);
+            var noteTask = NoteService.GetNotesAsync(take: 200, cancellationToken: cancellationToken);
+
+            await Task.WhenAll(patientTask, appointmentTask, noteTask);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            PopulatePatients(await patientTask);
+
+            var appointmentOverview = await appointmentTask;
+            PopulateProviders(appointmentOverview);
+
+            var notes = await noteTask;
+            PopulateRecentActivity(notes, appointmentOverview.Appointments);
+            hasLoaded = true;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            loadErrorMessage = GetUserFacingMessage(ex);
+            patientOptions.Clear();
+            providerOptions.Clear();
+            recentActivity.Clear();
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void PopulatePatients(IReadOnlyList<PatientListItemResponse> patients)
+    {
+        patientOptions.Clear();
+
+        patientOptions.AddRange(
+            patients
+                .OrderBy(patient => patient.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .Select(patient => new ExportCenterSelectableItem
+                {
+                    Id = patient.Id.ToString(),
+                    Label = string.IsNullOrWhiteSpace(patient.DisplayName)
+                        ? BuildPatientLabel(patient)
+                        : patient.DisplayName.Trim()
+                }));
+    }
+
+    private void PopulateProviders(AppointmentsOverviewResponse overview)
+    {
+        providerOptions.Clear();
+
+        var providers = overview.Clinicians
+                .Where(clinician => clinician.Id != Guid.Empty)
+                .GroupBy(clinician => clinician.Id)
+                .Select(group => new ExportCenterSelectableItem
+                {
+                    Id = group.Key.ToString(),
+                    Label = string.IsNullOrWhiteSpace(group.First().DisplayName)
+                        ? $"Provider {group.Key}"
+                        : group.First().DisplayName.Trim()
+                })
+                .ToList();
+
+        if (providers.Count == 0)
+        {
+            providers = overview.Appointments
+                .Where(appointment => appointment.ClinicianId.HasValue && appointment.ClinicianId.Value != Guid.Empty)
+                .GroupBy(appointment => appointment.ClinicianId!.Value)
+                .Select(group => new ExportCenterSelectableItem
+                {
+                    Id = group.Key.ToString(),
+                    Label = string.IsNullOrWhiteSpace(group.First().ClinicianName)
+                        ? $"Provider {group.Key}"
+                        : group.First().ClinicianName.Trim()
+                })
+                .ToList();
+        }
+
+        providerOptions.AddRange(providers.OrderBy(provider => provider.Label, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void PopulateRecentActivity(
+        IReadOnlyList<NoteListItemApiResponse> notes,
+        IReadOnlyList<AppointmentListItemResponse> appointments)
+    {
+        recentActivity.Clear();
+
+        var activityRows = new List<(DateTime TimestampUtc, ExportCenterActivityItem Item)>();
+
+        activityRows.AddRange(notes.Select(note =>
+        {
+            var timestampUtc = DateTime.SpecifyKind(note.LastModifiedUtc, DateTimeKind.Utc);
+            var statusLabel = note.NoteStatus switch
+            {
+                NoteStatus.Signed => "Signed",
+                NoteStatus.PendingCoSign => "Pending co-sign",
+                NoteStatus.Draft => "Draft",
+                null => note.IsSigned ? "Signed" : "Draft",
+                _ => note.NoteStatus.Value.ToString()
+            };
+
+            return (
+                timestampUtc,
+                new ExportCenterActivityItem
+                {
+                    Id = $"note-{note.Id}",
+                    Kind = ExportCenterActivityKind.Note,
+                    Title = $"{note.NoteType} for {note.PatientName}",
+                    Meta = $"{statusLabel} · {FormatDate(note.DateOfService)}",
+                    TimestampUtc = timestampUtc
+                });
+        }));
+
+        activityRows.AddRange(appointments.Select(appointment =>
+        {
+            var timestampUtc = DateTime.SpecifyKind(appointment.StartTimeUtc, DateTimeKind.Utc);
+            var clinician = string.IsNullOrWhiteSpace(appointment.ClinicianName)
+                ? "Unassigned clinician"
+                : appointment.ClinicianName.Trim();
+            var status = string.IsNullOrWhiteSpace(appointment.AppointmentStatus)
+                ? "Scheduled"
+                : appointment.AppointmentStatus.Trim();
+
+            return (
+                timestampUtc,
+                new ExportCenterActivityItem
+                {
+                    Id = $"appt-{appointment.Id}",
+                    Kind = ExportCenterActivityKind.Appointment,
+                    Title = $"{appointment.AppointmentType} for {appointment.PatientName}",
+                    Meta = $"{status} · {clinician}",
+                    TimestampUtc = timestampUtc
+                });
+        }));
+
+        recentActivity.AddRange(
+            activityRows
+                .OrderByDescending(row => row.TimestampUtc)
+                .Take(10)
+                .Select(row => row.Item));
+    }
+
+    private async Task HandleTabSwitch()
     {
         CurrentState.ResetForTabSwitch();
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleGeneratePreview()
+    private void CancelLoadToken()
     {
-        await Task.CompletedTask;
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+        loadCts = null;
     }
 
-    private async Task HandleDownload()
+    private static string BuildPatientLabel(PatientListItemResponse patient)
     {
-        await Task.CompletedTask;
+        var name = $"{patient.FirstName} {patient.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? "Unknown patient" : name;
+    }
+
+    private bool ShouldShowSoapProviderFilter()
+    {
+        return !(CurrentState.SelectedTab == ExportTab.SoapNotes && CurrentState.SelectedFormat == ExportFormat.PDF);
+    }
+
+    private static string FormatDate(DateTime dateTime)
+    {
+        return dateTime.ToString("MMM d, yyyy");
+    }
+
+    private static string GetUserFacingMessage(Exception exception)
+    {
+        return exception switch
+        {
+            HttpRequestException httpException when !string.IsNullOrWhiteSpace(httpException.Message) => httpException.Message,
+            InvalidOperationException invalidOperationException when !string.IsNullOrWhiteSpace(invalidOperationException.Message) => invalidOperationException.Message,
+            _ => "Failed to load export center data."
+        };
     }
 }

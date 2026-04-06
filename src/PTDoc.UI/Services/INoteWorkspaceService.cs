@@ -1,5 +1,6 @@
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Pdf;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
@@ -17,6 +18,7 @@ public interface INoteWorkspaceService
         string generatedText,
         string generationType,
         CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(string? query, int take = 20, CancellationToken cancellationToken = default);
 }
@@ -82,4 +84,11 @@ public sealed class NoteWorkspacePdfExportResult
     public string FileName { get; init; } = "note.pdf";
     public string ContentType { get; init; } = "application/pdf";
     public byte[] Content { get; init; } = [];
+}
+
+public sealed class NoteWorkspaceDocumentHierarchyResult
+{
+    public bool Success { get; init; }
+    public string? ErrorMessage { get; init; }
+    public ClinicalDocumentHierarchy? Hierarchy { get; init; }
 }
