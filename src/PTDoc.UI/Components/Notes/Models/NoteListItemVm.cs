@@ -14,8 +14,10 @@ public class NoteListItemVm
     public IReadOnlyList<string> CptCodes { get; set; } = Array.Empty<string>();
     public string? AttentionReason { get; set; }
     public bool IsUnsigned { get; set; }
+    public bool IsPendingCoSign { get; set; }
     public bool IsIncomplete { get; set; }
     public bool HasErrors { get; set; }
 
-    public bool NeedsAttention => IsUnsigned || IsIncomplete || HasErrors;
+    public bool HasGenericAttentionIssue => IsIncomplete || HasErrors;
+    public bool NeedsAttention => IsPendingCoSign || HasGenericAttentionIssue;
 }

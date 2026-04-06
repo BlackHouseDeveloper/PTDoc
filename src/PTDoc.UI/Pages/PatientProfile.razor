@@ -7,6 +7,8 @@
 @using PTDoc.UI.Components.Patients.Profile.Models
 @inject IPatientService PatientService
 @inject INoteService NoteService
+@inject IAppointmentService AppointmentService
+@inject IIntakeService IntakeService
 @inject IToastService ToastService
 
 <PageTitle>Patient Profile - PTDoc</PageTitle>
@@ -14,14 +16,43 @@
 <div class="patient-profile-page">
     <div class="patient-profile-page-body">
         <div class="patient-profile-page-container">
-            <PatientDemographicsCardEditable Patient="@patient" OnPatientUpdated="LoadPatientAsync" />
-            
-            <PatientPrimaryActionButton 
-                Label="Start New Note" 
-                OnClick="@HandleStartNote" 
-            />
-            
-            <PatientClinicalInfoCardEditable Patient="@patient" />
+            @if (isLoading)
+            {
+                <section class="patient-profile-state" role="status" aria-live="polite">
+                    <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                    <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                    <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
+                </section>
+            }
+            else if (!string.IsNullOrWhiteSpace(loadErrorMessage))
+            {
+                <section class="patient-profile-state" role="alert">
+                    <div class="patient-profile-state-card">
+                        <h2>Patient profile unavailable</h2>
+                        <p>@loadErrorMessage</p>
+                        <div class="patient-profile-state-actions">
+                            <button type="button" class="btn btn--primary" @onclick="ReloadProfileAsync">Retry</button>
+                            <button type="button" class="btn btn--secondary" @onclick="HandleBack">Back to Patients</button>
+                        </div>
+                    </div>
+                </section>
+            }
+            else
+            {
+                <PatientDemographicsCardEditable Patient="@patient" OnPatientUpdated="ReloadProfileAsync" />
+
+                <PatientPrimaryActionButton
+                    Label="Start New Note"
+                    OnClick="@HandleStartNote" />
+
+                <PatientClinicalInfoCardEditable
+                    Patient="@patient"
+                    TimelineEntries="@timelineEntries"
+                    IsLoading="@timelineLoading"
+                    TimelineErrorMessage="@timelineErrorMessage"
+                    IntakeStateMessage="@intakeStateMessage"
+                    OnRetry="ReloadTimelineAsync" />
+            }
         </div>
     </div>
 </div>
@@ -30,14 +61,29 @@
     [Parameter] public string Id { get; set; } = default!;
 
     private PatientProfileVm patient = new();
+    private readonly List<TimelineEntry> timelineEntries = new();
+    private bool isLoading = true;
+    private bool timelineLoading;
+    private string? loadErrorMessage;
+    private string? timelineErrorMessage;
+    private string? intakeStateMessage;
+    private Guid currentPatientId;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPatientAsync();
+        await ReloadProfileAsync();
     }
 
-    private async Task LoadPatientAsync()
+    private async Task ReloadProfileAsync()
     {
+        isLoading = true;
+        loadErrorMessage = null;
+        timelineErrorMessage = null;
+        intakeStateMessage = null;
+        timelineEntries.Clear();
+        timelineLoading = true;
+        StateHasChanged();
+
         if (!Guid.TryParse(Id, out var patientId))
         {
             NavigationManager.NavigateTo("/patients");
@@ -46,6 +92,8 @@
 
         try
         {
+            currentPatientId = patientId;
+
             var response = await PatientService.GetByIdAsync(patientId);
             if (response is null)
             {
@@ -64,10 +112,18 @@
                 PhoneNumber = response.Phone,
                 Address = BuildAddress(response)
             };
+
+            await ReloadTimelineAsync();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            ToastService.ShowError("Failed to load patient. Please try again.");
+            loadErrorMessage = GetUserFacingMessage(ex, "Failed to load patient. Please try again.");
+            ToastService.ShowError(loadErrorMessage);
+        }
+        finally
+        {
+            isLoading = false;
+            timelineLoading = false;
         }
     }
 
@@ -78,6 +134,182 @@
         return string.Join(", ", parts) is { Length: > 0 } addr ? addr : null;
     }
 
+    private async Task ReloadTimelineAsync()
+    {
+        if (currentPatientId == Guid.Empty)
+        {
+            timelineLoading = false;
+            return;
+        }
+
+        timelineLoading = true;
+        timelineErrorMessage = null;
+        intakeStateMessage = null;
+        timelineEntries.Clear();
+        StateHasChanged();
+
+        var timelineRows = new List<(DateTime TimestampUtc, TimelineEntry Entry)>();
+        var errors = new List<string>();
+
+        try
+        {
+            var notes = await NoteService.GetNotesAsync(patientId: currentPatientId, take: 25);
+            timelineRows.AddRange(notes.Select(CreateNoteTimelineEntry));
+        }
+        catch (Exception ex)
+        {
+            errors.Add(GetUserFacingMessage(ex, "Notes could not be loaded."));
+        }
+
+        try
+        {
+            var appointments = await AppointmentService.GetOverviewAsync(
+                DateTime.UtcNow.Date.AddYears(-1),
+                DateTime.UtcNow.Date.AddYears(1));
+
+            timelineRows.AddRange(
+                appointments.Appointments
+                    .Where(appointment => appointment.PatientRecordId == currentPatientId)
+                    .Select(CreateAppointmentTimelineEntry));
+        }
+        catch (Exception ex)
+        {
+            errors.Add(GetUserFacingMessage(ex, "Appointments could not be loaded."));
+        }
+
+        try
+        {
+            var intake = await IntakeService.GetDraftByPatientIdAsync(currentPatientId);
+            intakeStateMessage = BuildIntakeStateMessage(intake);
+        }
+        catch (Exception ex)
+        {
+            errors.Add(GetUserFacingMessage(ex, "Intake status could not be loaded."));
+        }
+
+        timelineEntries.AddRange(
+            timelineRows
+                .OrderByDescending(row => row.TimestampUtc)
+                .Select(row => row.Entry));
+
+        timelineErrorMessage = errors.Count == 0 ? null : string.Join(" ", errors);
+        timelineLoading = false;
+    }
+
+    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateNoteTimelineEntry(NoteListItemApiResponse note)
+    {
+        var timestampUtc = DateTime.SpecifyKind(note.LastModifiedUtc, DateTimeKind.Utc);
+        var localTimestamp = timestampUtc.ToLocalTime();
+        var type = MapNoteTimelineType(note.NoteType);
+
+        return (
+            timestampUtc,
+            new TimelineEntry
+            {
+                Type = type,
+                Title = note.NoteType,
+                Description = GetNoteDescription(note),
+                Date = localTimestamp.ToString("M/d/yyyy"),
+                Time = localTimestamp.ToString("h:mm tt")
+            });
+    }
+
+    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateAppointmentTimelineEntry(AppointmentListItemResponse appointment)
+    {
+        var timestampUtc = DateTime.SpecifyKind(appointment.StartTimeUtc, DateTimeKind.Utc);
+        var localTimestamp = timestampUtc.ToLocalTime();
+        var appointmentType = string.IsNullOrWhiteSpace(appointment.AppointmentType)
+            ? "Appointment"
+            : appointment.AppointmentType;
+
+        return (
+            timestampUtc,
+            new TimelineEntry
+            {
+                Type = "appointment",
+                Title = appointmentType,
+                Description = BuildAppointmentDescription(appointment),
+                Date = localTimestamp.ToString("M/d/yyyy"),
+                Time = localTimestamp.ToString("h:mm tt")
+            });
+    }
+
+    private static string MapNoteTimelineType(string noteType)
+    {
+        if (noteType.Contains("evaluation", StringComparison.OrdinalIgnoreCase))
+        {
+            return "evaluation";
+        }
+
+        if (noteType.Contains("exercise", StringComparison.OrdinalIgnoreCase)
+            || noteType.Contains("dry needling", StringComparison.OrdinalIgnoreCase))
+        {
+            return "exercise";
+        }
+
+        return "note";
+    }
+
+    private static string GetNoteDescription(NoteListItemApiResponse note)
+    {
+        if (note.NoteStatus is null)
+        {
+            return note.IsSigned ? "Signed clinical note" : "Draft note saved";
+        }
+
+        return note.NoteStatus.Value switch
+        {
+            NoteStatus.PendingCoSign => "Pending PT co-sign",
+            NoteStatus.Signed => "Signed clinical note",
+            NoteStatus.Draft => "Draft note saved",
+            _ => note.IsSigned ? "Signed clinical note" : "Draft note saved"
+        };
+    }
+
+    private static string BuildAppointmentDescription(AppointmentListItemResponse appointment)
+    {
+        var status = string.IsNullOrWhiteSpace(appointment.AppointmentStatus)
+            ? "Scheduled"
+            : appointment.AppointmentStatus;
+
+        if (!string.IsNullOrWhiteSpace(appointment.ClinicianName))
+        {
+            return $"{status} with {appointment.ClinicianName}";
+        }
+
+        return status;
+    }
+
+    private static string BuildIntakeStateMessage(IntakeResponseDraft? intake)
+    {
+        if (intake is null)
+        {
+            return string.Empty;
+        }
+
+        if (intake.IsSubmitted && intake.IsLocked)
+        {
+            return "Intake is submitted and locked.";
+        }
+
+        if (intake.IsLocked)
+        {
+            return "Intake draft is locked.";
+        }
+
+        return "Intake draft is in progress.";
+    }
+
+    private static string GetUserFacingMessage(Exception exception, string fallback)
+    {
+        return exception switch
+        {
+            HttpRequestException httpException when !string.IsNullOrWhiteSpace(httpException.Message) => httpException.Message,
+            InvalidOperationException invalidOperationException when !string.IsNullOrWhiteSpace(invalidOperationException.Message) => invalidOperationException.Message,
+            _ => fallback
+        };
+    }
+
     private void HandleStartNote()
     {
         if (string.IsNullOrWhiteSpace(Id))
@@ -86,5 +318,10 @@
         }
 
         NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note");
+    }
+
+    private void HandleBack()
+    {
+        NavigationManager.NavigateTo("/patients");
     }
 }

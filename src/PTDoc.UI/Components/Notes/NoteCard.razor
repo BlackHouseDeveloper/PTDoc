@@ -49,7 +49,10 @@
                 </svg>
                 <p class="note-card-date">@Note.CreatedDate.ToString("MMM d, yyyy")</p>
             </div>
-            <p class="note-card-author">by @Note.CreatedBy</p>
+            @if (!string.IsNullOrWhiteSpace(Note.CreatedBy))
+            {
+                <p class="note-card-author">by @Note.CreatedBy</p>
+            }
         </div>
     </div>
 
@@ -107,13 +110,14 @@
 
     private BadgeVariant GetStatusVariant()
     {
-        if (Note.NeedsAttention)
+        if (Note.HasGenericAttentionIssue)
         {
             return BadgeVariant.Destructive;
         }
 
         return Note.Status switch
         {
+            "Pending Co-Sign" => BadgeVariant.Info,
             "Draft" => BadgeVariant.Warning,
             "In Review" => BadgeVariant.Info,
             "Submitted" => BadgeVariant.Success,
@@ -123,18 +127,19 @@
 
     private string GetDisplayStatus()
     {
-        return Note.NeedsAttention ? "Needs Attention" : Note.Status;
+        return Note.HasGenericAttentionIssue ? "Needs Attention" : Note.Status;
     }
 
     private string GetPatientIconClass()
     {
-        if (Note.NeedsAttention)
+        if (Note.HasGenericAttentionIssue)
         {
             return "note-card-patient-icon-destructive";
         }
 
         return Note.Status switch
         {
+            "Pending Co-Sign" => "note-card-patient-icon-info",
             "Draft" => "note-card-patient-icon-warning",
             "In Review" => "note-card-patient-icon-info",
             "Submitted" => "note-card-patient-icon-success",

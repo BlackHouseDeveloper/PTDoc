@@ -195,6 +195,7 @@ builder.Services.AddSingleton(sp =>
 // Register Phase 7 services: Security & Observability
 builder.Services.AddScoped<IDbKeyProvider, EnvironmentDbKeyProvider>();
 builder.Services.AddSingleton<ITelemetrySink, ConsoleTelemetrySink>();
+builder.Services.AddScoped<IClinicalDocumentHierarchyBuilder, ClinicalDocumentHierarchyBuilder>();
 builder.Services.AddScoped<IPdfRenderer, QuestPdfRenderer>();
 
 // Configure database
