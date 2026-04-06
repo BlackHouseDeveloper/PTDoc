@@ -38,6 +38,17 @@ public static class PdfEndpoints
             return Results.NotFound(new { error = "Clinical note not found" });
         }
 
+        // Enforce finalized-only: hierarchy preview is part of the export surface and must
+        // not be available for draft or pending-co-sign notes.
+        if (noteData.NoteStatus != PTDoc.Core.Models.NoteStatus.Signed)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                error = "Only finalized (signed) notes can be exported as PDF. Sign the note before exporting.",
+                noteId
+            });
+        }
+
         var hierarchy = hierarchyBuilder.Build(noteData);
         return Results.Ok(hierarchy);
     }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 93 second-round review comments
+
+#### PDF hierarchy endpoint signed-only gate
+- **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`** — `GET /api/v1/notes/{noteId}/export/hierarchy` now returns 422 with the same error message as `POST /export/pdf` when the note is not finalized (signed). Previously the hierarchy endpoint would return data for draft/pending-co-sign notes, bypassing export eligibility. Reason: the hierarchy preview is part of the export surface and must enforce the same signed-only rule to avoid exposing incomplete or uncertified clinical content.
+
+#### BatchReadNotes O(n²) ordering fix
+- **`src/PTDoc.Api/Notes/NoteEndpoints.cs`** — `BatchReadNotes` now builds a `{id → index}` dictionary once and uses a O(1) dictionary lookup in `OrderBy` instead of calling `List.IndexOf` (O(n)) per element. Reason: the previous implementation was O(n²) even with the 100-item cap; dictionary-based ordering is both faster and clearer.
+
 ### Fixed - PR 93 follow-up review comments
 
 #### Scoped appointment reads for new UI integrations

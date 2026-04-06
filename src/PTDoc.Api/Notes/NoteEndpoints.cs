@@ -244,13 +244,17 @@ public static class NoteEndpoints
             .Where(note => noteIds.Contains(note.Id) && !note.IsAddendum)
             .ToListAsync(cancellationToken);
 
+        var orderIndex = noteIds
+            .Select((id, index) => (id, index))
+            .ToDictionary(pair => pair.id, pair => pair.index);
+
         var results = notes
             .Select(note => new NoteDetailResponse
             {
                 Note = ToResponse(note),
                 Addendums = Array.Empty<NoteAddendumResponse>()
             })
-            .OrderBy(result => noteIds.IndexOf(result.Note!.Id))
+            .OrderBy(result => orderIndex.TryGetValue(result.Note!.Id, out var idx) ? idx : int.MaxValue)
             .ToList();
 
         return Results.Ok(results);
