@@ -68,6 +68,7 @@
     private string? timelineErrorMessage;
     private string? intakeStateMessage;
     private Guid currentPatientId;
+    private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,14 +164,14 @@
 
         try
         {
-            var appointments = await AppointmentService.GetOverviewAsync(
-                DateTime.UtcNow.Date.AddYears(-1),
-                DateTime.UtcNow.Date.AddYears(1));
+            var timelineStartDate = DateTime.UtcNow.Date.Subtract(TimelineLookbackWindow);
+            var timelineEndDate = DateTime.UtcNow.Date;
+            var appointments = await AppointmentService.GetByPatientAsync(
+                currentPatientId,
+                timelineStartDate,
+                timelineEndDate);
 
-            timelineRows.AddRange(
-                appointments.Appointments
-                    .Where(appointment => appointment.PatientRecordId == currentPatientId)
-                    .Select(CreateAppointmentTimelineEntry));
+            timelineRows.AddRange(appointments.Select(CreateAppointmentTimelineEntry));
         }
         catch (Exception ex)
         {

@@ -90,6 +90,7 @@
     private bool hasLoaded;
     private string? loadErrorMessage;
     private CancellationTokenSource? loadCts;
+    private static readonly TimeSpan RecentActivityLookbackWindow = TimeSpan.FromDays(30);
 
     protected override async Task OnInitializedAsync()
     {
@@ -116,13 +117,14 @@
         try
         {
             var today = DateTime.UtcNow.Date;
-            var appointmentWindowStart = today.AddYears(-1);
-            var appointmentWindowEnd = today.AddYears(1);
+            var appointmentWindowStart = today.Subtract(RecentActivityLookbackWindow);
+            var appointmentWindowEnd = today;
             var patientTask = PatientService.SearchAsync(query: null, take: 200, cancellationToken);
+            var clinicianTask = AppointmentService.GetCliniciansAsync(cancellationToken);
             var appointmentTask = AppointmentService.GetOverviewAsync(appointmentWindowStart, appointmentWindowEnd, cancellationToken);
             var noteTask = NoteService.GetNotesAsync(take: 200, cancellationToken: cancellationToken);
 
-            await Task.WhenAll(patientTask, appointmentTask, noteTask);
+            await Task.WhenAll(patientTask, clinicianTask, appointmentTask, noteTask);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -130,12 +132,10 @@
             }
 
             PopulatePatients(await patientTask);
-
-            var appointmentOverview = await appointmentTask;
-            PopulateProviders(appointmentOverview);
+            PopulateProviders(await clinicianTask);
 
             var notes = await noteTask;
-            PopulateRecentActivity(notes, appointmentOverview.Appointments);
+            PopulateRecentActivity(notes, (await appointmentTask).Appointments);
             hasLoaded = true;
         }
         catch (OperationCanceledException)
@@ -172,11 +172,12 @@
                 }));
     }
 
-    private void PopulateProviders(AppointmentsOverviewResponse overview)
+    private void PopulateProviders(IReadOnlyList<AppointmentClinicianResponse> clinicians)
     {
         providerOptions.Clear();
 
-        var providers = overview.Clinicians
+        providerOptions.AddRange(
+            clinicians
                 .Where(clinician => clinician.Id != Guid.Empty)
                 .GroupBy(clinician => clinician.Id)
                 .Select(group => new ExportCenterSelectableItem
@@ -186,24 +187,7 @@
                         ? $"Provider {group.Key}"
                         : group.First().DisplayName.Trim()
                 })
-                .ToList();
-
-        if (providers.Count == 0)
-        {
-            providers = overview.Appointments
-                .Where(appointment => appointment.ClinicianId.HasValue && appointment.ClinicianId.Value != Guid.Empty)
-                .GroupBy(appointment => appointment.ClinicianId!.Value)
-                .Select(group => new ExportCenterSelectableItem
-                {
-                    Id = group.Key.ToString(),
-                    Label = string.IsNullOrWhiteSpace(group.First().ClinicianName)
-                        ? $"Provider {group.Key}"
-                        : group.First().ClinicianName.Trim()
-                })
-                .ToList();
-        }
-
-        providerOptions.AddRange(providers.OrderBy(provider => provider.Label, StringComparer.OrdinalIgnoreCase));
+                .OrderBy(provider => provider.Label, StringComparer.OrdinalIgnoreCase));
     }
 
     private void PopulateRecentActivity(

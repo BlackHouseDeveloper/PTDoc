@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 93 follow-up review comments
+
+#### Scoped appointment reads for new UI integrations
+- **`src/PTDoc.Application/Services/IAppointmentService.cs`**, **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`**, **`src/PTDoc.UI/Services/AppointmentApiService.cs`**, **`src/PTDoc.UI/Pages/PatientProfile.razor`**, **`src/PTDoc.UI/Pages/ExportCenter.razor`** — Added patient-scoped appointment and clinician-directory read paths, moved Patient Profile timeline loading off the broad appointments overview payload, and changed Export Center provider loading to use clinicians plus a bounded recent activity window for appointment rows. Reason: address review feedback about over-fetching PHI and loading much larger appointment payloads than these UI surfaces actually need.
+
+#### Review comment cleanup in nav and settings
+- **`src/PTDoc.UI/Components/Layout/NavBarBrand.razor`**, **`src/PTDoc.UI/Pages/Settings.razor`** — Added the missing claims namespace import for auth-backed nav-bar user context and restored the settings card wrapper around the notifications section so the intended styling applies. Reason: resolve the remaining compile/styling issues called out in the PR review thread.
+
+#### Regression coverage for scoped appointment usage
+- **`tests/PTDoc.Tests/Appointments/AppointmentApiServiceTests.cs`**, **`tests/PTDoc.Tests/UI/Pages/PageScopedAppointmentUsageTests.cs`** — Added client and page-level coverage for the new appointment endpoints, verified Patient Profile uses patient-scoped appointments, verified Export Center loads providers from the clinician directory, and asserted the settings notifications section renders with the expected card wrapper. Reason: lock the review-driven fixes in place with targeted tests.
+
 ### Fixed - Export correctness and progress-tracking consistency follow-up
 
 #### Signed-only export targeting and preview resolution

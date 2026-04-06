@@ -16,6 +16,21 @@ public interface IAppointmentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns appointment rows for a single patient within the requested date window.
+    /// </summary>
+    Task<IReadOnlyList<AppointmentListItemResponse>> GetByPatientAsync(
+        Guid patientId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns active clinicians available for scheduling/export filters.
+    /// </summary>
+    Task<IReadOnlyList<AppointmentClinicianResponse>> GetCliniciansAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new appointment and returns the resulting scheduling projection.
     /// </summary>
     Task<AppointmentListItemResponse> CreateAsync(
