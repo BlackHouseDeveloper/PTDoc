@@ -37,6 +37,14 @@ public static class AppointmentEndpoints
             .WithName("ListAppointments")
             .WithSummary("List appointments and clinicians for the scheduling workspace");
 
+        group.MapGet("/by-patient/{patientId:guid}", ListAppointmentsByPatient)
+            .WithName("ListAppointmentsByPatient")
+            .WithSummary("List appointments for a single patient within a date window");
+
+        group.MapGet("/clinicians", ListClinicians)
+            .WithName("ListAppointmentClinicians")
+            .WithSummary("List clinicians for scheduling and export filters");
+
         group.MapPost("/", CreateAppointment)
             .WithName("CreateAppointment")
             .WithSummary("Create a new appointment");
@@ -57,16 +65,11 @@ public static class AppointmentEndpoints
         [FromServices] ITenantContextAccessor tenantContext,
         CancellationToken cancellationToken)
     {
-        var normalizedStartDate = startDate == default ? DateTime.Today : startDate.Date;
-        var normalizedEndDate = endDate == default ? normalizedStartDate : endDate.Date;
         var currentClinicId = tenantContext.GetCurrentClinicId();
 
-        if (normalizedEndDate < normalizedStartDate)
+        if (!TryNormalizeDateRange(startDate, endDate, out var normalizedStartDate, out var normalizedEndDate, out var validationProblem))
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                { nameof(endDate), ["End date must be greater than or equal to start date."] }
-            });
+            return validationProblem!;
         }
 
         var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
@@ -82,25 +85,59 @@ public static class AppointmentEndpoints
             .ThenBy(row => row.PatientName)
             .ToListAsync(cancellationToken);
 
-        var clinicians = await db.Users
-            .AsNoTracking()
-            .Where(user => user.IsActive
-                && (currentClinicId == null || user.ClinicId == currentClinicId)
-                && SchedulableClinicianRoles.Contains(user.Role))
-            .OrderBy(user => user.LastName)
-            .ThenBy(user => user.FirstName)
-            .Select(user => new AppointmentClinicianResponse
-            {
-                Id = user.Id,
-                DisplayName = user.FirstName + " " + user.LastName
-            })
-            .ToListAsync(cancellationToken);
+        var clinicians = await BuildCliniciansQuery(db, currentClinicId).ToListAsync(cancellationToken);
 
         return Results.Ok(new AppointmentsOverviewResponse
         {
             Appointments = appointments.Select(ToResponse).ToList(),
             Clinicians = clinicians
         });
+    }
+
+    private static async Task<IResult> ListAppointmentsByPatient(
+        Guid patientId,
+        [FromQuery] DateTime startDate,
+        [FromQuery] DateTime endDate,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        if (patientId == Guid.Empty)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(patientId), ["PatientId is required."] }
+            });
+        }
+
+        if (!TryNormalizeDateRange(startDate, endDate, out var normalizedStartDate, out var normalizedEndDate, out var validationProblem))
+        {
+            return validationProblem!;
+        }
+
+        var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
+        var rangeEndExclusiveUtc = DateTime.SpecifyKind(normalizedEndDate.AddDays(1), DateTimeKind.Utc);
+
+        var appointments = await BuildAppointmentRowsQuery(
+                db.Appointments
+                    .AsNoTracking()
+                    .Where(appointment => appointment.PatientId == patientId
+                        && appointment.StartTimeUtc >= rangeStartUtc
+                        && appointment.StartTimeUtc < rangeEndExclusiveUtc),
+                db)
+            .OrderBy(row => row.StartTimeUtc)
+            .ThenBy(row => row.AppointmentType)
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(appointments.Select(ToResponse).ToList());
+    }
+
+    private static async Task<IResult> ListClinicians(
+        [FromServices] ApplicationDbContext db,
+        [FromServices] ITenantContextAccessor tenantContext,
+        CancellationToken cancellationToken)
+    {
+        var clinicians = await BuildCliniciansQuery(db, tenantContext.GetCurrentClinicId()).ToListAsync(cancellationToken);
+        return Results.Ok(clinicians);
     }
 
     private static async Task<IResult> CreateAppointment(
@@ -407,6 +444,47 @@ public static class AppointmentEndpoints
         }
 
         return errors;
+    }
+
+    private static bool TryNormalizeDateRange(
+        DateTime startDate,
+        DateTime endDate,
+        out DateTime normalizedStartDate,
+        out DateTime normalizedEndDate,
+        out IResult? validationProblem)
+    {
+        normalizedStartDate = startDate == default ? DateTime.Today : startDate.Date;
+        normalizedEndDate = endDate == default ? normalizedStartDate : endDate.Date;
+
+        if (normalizedEndDate < normalizedStartDate)
+        {
+            validationProblem = Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(endDate), ["End date must be greater than or equal to start date."] }
+            });
+            return false;
+        }
+
+        validationProblem = null;
+        return true;
+    }
+
+    private static IQueryable<AppointmentClinicianResponse> BuildCliniciansQuery(
+        ApplicationDbContext db,
+        Guid? clinicId)
+    {
+        return db.Users
+            .AsNoTracking()
+            .Where(user => user.IsActive
+                && (clinicId == null || user.ClinicId == clinicId)
+                && SchedulableClinicianRoles.Contains(user.Role))
+            .OrderBy(user => user.LastName)
+            .ThenBy(user => user.FirstName)
+            .Select(user => new AppointmentClinicianResponse
+            {
+                Id = user.Id,
+                DisplayName = user.FirstName + " " + user.LastName
+            });
     }
 
     private static async Task<User?> GetClinicianAsync(

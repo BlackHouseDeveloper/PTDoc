@@ -320,6 +320,8 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "section")] public string? RequestedSection { get; set; }
+
     [Parameter, EditorRequired] public string PatientId { get; set; } = string.Empty;
     [Parameter] public string? NoteId { get; set; }
 
@@ -480,6 +482,7 @@ else
             }
 
             ApplyWorkspaceNotice();
+            ApplyRequestedSection();
         }
         catch (HttpRequestException ex)
         {
@@ -560,6 +563,26 @@ else
         await LoadWorkspaceAsync();
     }
 
+    private void ApplyRequestedSection()
+    {
+        var requestedSection = ResolveRequestedSection(RequestedSection);
+        if (!requestedSection.HasValue || requestedSection.Value == _note.ActiveSection)
+        {
+            return;
+        }
+
+        if (requestedSection == SoapSection.Review && _note.ActiveSection != SoapSection.Review)
+        {
+            _lastEditableSection = _note.ActiveSection;
+        }
+        else if (requestedSection != SoapSection.Review)
+        {
+            _lastEditableSection = requestedSection.Value;
+        }
+
+        _note.MoveTo(requestedSection.Value);
+    }
+
     private static Guid? ResolveRouteNoteId(string? routeNoteId)
     {
         if (!string.IsNullOrWhiteSpace(routeNoteId) && Guid.TryParse(routeNoteId, out var parsed))
@@ -569,6 +592,16 @@ else
 
         return null;
     }
+
+    private static SoapSection? ResolveRequestedSection(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "subjective" => SoapSection.Subjective,
+        "objective" => SoapSection.Objective,
+        "assessment" => SoapSection.Assessment,
+        "plan" => SoapSection.Plan,
+        "review" => SoapSection.Review,
+        _ => null
+    };
 
     private async Task HandleSectionChanged(SoapSection next)
     {

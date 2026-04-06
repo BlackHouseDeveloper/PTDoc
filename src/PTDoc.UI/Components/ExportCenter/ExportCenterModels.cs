@@ -1,3 +1,5 @@
+using PTDoc.Core.Models;
+
 namespace PTDoc.UI.Components.ExportCenter;
 
 /// <summary>
@@ -35,8 +37,8 @@ public class ExportDraftState
     // Filter state
     public DateTime? DateRangeStart { get; set; }
     public DateTime? DateRangeEnd { get; set; }
-    public List<int> SelectedPatientIds { get; set; } = new();
-    public List<int> SelectedProviderIds { get; set; } = new();
+    public List<string> SelectedPatientIds { get; set; } = new();
+    public List<string> SelectedProviderIds { get; set; } = new();
     
     // SOAP Notes specific filters
     public List<string> SelectedNoteTypes { get; set; } = new();
@@ -86,26 +88,44 @@ public class ExportDraftState
 }
 
 /// <summary>
-/// DTO for recent activity items (UI-only, from audit log)
+/// Real export-center filter options sourced from existing backend entities.
 /// </summary>
-public class ExportActivityItem
+public sealed class ExportCenterSelectableItem
 {
-    public int Id { get; set; }
-    public ExportTab ExportType { get; set; }
-    public ExportFormat Format { get; set; }
-    public string ProviderName { get; set; } = string.Empty;
-    public int RecordCount { get; set; }
-    public DateTime ExportedAt { get; set; }
-    public bool IsSuccess { get; set; } = true;
-    
-    public string DisplayTitle => $"{ExportTypeLabel(ExportType)} · {Format}";
-    
-    private static string ExportTypeLabel(ExportTab tab) => tab switch
-    {
-        ExportTab.SoapNotes => "SOAP Notes",
-        ExportTab.PatientData => "Patient Data",
-        ExportTab.Appointments => "Appointments",
-        ExportTab.Reports => "Reports",
-        _ => "Unknown"
-    };
+    public string Id { get; init; } = string.Empty;
+    public string Label { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Real recent-activity item built from existing notes and appointments.
+/// </summary>
+public sealed class ExportCenterActivityItem
+{
+    public string Id { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public string Meta { get; init; } = string.Empty;
+    public DateTime TimestampUtc { get; init; }
+    public ExportCenterActivityKind Kind { get; init; }
+}
+
+public enum ExportCenterActivityKind
+{
+    Note,
+    Appointment
+}
+
+/// <summary>
+/// Preview target derived from the currently loaded export-center notes and filters.
+/// </summary>
+public sealed class ExportPreviewTarget
+{
+    public Guid? NoteId { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Subtitle { get; init; } = string.Empty;
+    public string? SelectionNotice { get; init; }
+    public string? UnavailableReason { get; init; }
+    public NoteStatus? NoteStatus { get; init; }
+    public bool IsSigned => NoteStatus == PTDoc.Core.Models.NoteStatus.Signed;
+    public bool CanDownloadPdf { get; init; }
+    public bool CanPreview => NoteId.HasValue && string.IsNullOrWhiteSpace(UnavailableReason);
 }

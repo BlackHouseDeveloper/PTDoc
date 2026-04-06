@@ -17,14 +17,23 @@
             {
                 <ApprovalsDashboard />
             }
+            else if (activeSection == "notifications")
+            {
+                <section class="settings-section-card" aria-labelledby="notifications-title">
+                    <header class="settings-section-header">
+                        <div>
+                            <h1 id="notifications-title">Notifications and Messaging</h1>
+                            <p>Manage backend-backed delivery preferences for in-app, email, push, and clinical alert routing.</p>
+                        </div>
+                    </header>
+                    <NotificationPreferencesEditor />
+                </section>
+            }
             else
             {
-                <section class="settings-section-placeholder" aria-labelledby="placeholder-title">
-                    <h1 id="placeholder-title">@GetSectionTitle(activeSection)</h1>
-                    <p>
-                        This section is scaffolded for future backend integration and detailed settings controls.
-                    </p>
-                </section>
+                <DeferredSettingsSection
+                    Title="@GetSectionTitle(activeSection)"
+                    Description="@GetDeferredDescription(activeSection)" />
             }
         </main>
     </div>
@@ -44,7 +53,15 @@
         "documentation" => "Documentation and Compliance",
         "billing" => "Billing and Coding",
         "ai-outcomes" => "AI & Outcome Measures",
-        "notifications" => "Notifications and Messaging",
         _ => "Approvals"
+    };
+
+    private static string GetDeferredDescription(string sectionKey) => sectionKey switch
+    {
+        "scheduling" => "This settings area is deferred until the scheduling contract is defined and available for UI integration.",
+        "documentation" => "This settings area is deferred until documentation controls are exposed by the backend.",
+        "billing" => "This settings area is deferred until billing and coding preferences are available through an existing API contract.",
+        "ai-outcomes" => "This settings area is deferred until AI and outcome-measure preferences are backed by a dedicated service contract.",
+        _ => "This settings area is intentionally deferred and will be implemented in a later sprint once a backend contract exists."
     };
 }

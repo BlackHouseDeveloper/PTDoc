@@ -1,10 +1,13 @@
 @page "/progress-tracking"
 @attribute [Authorize]
 @rendermode InteractiveServer
+@using System.Globalization
 @using PTDoc.UI.Components.ProgressTracking
 @using PTDoc.UI.Components.ProgressTracking.Models
 @implements IDisposable
 @inject NavigationManager NavigationManager
+@inject INoteService NoteService
+@inject IAppointmentService AppointmentService
 
 <PageTitle>Progress Tracking - PTDoc</PageTitle>
 
@@ -12,16 +15,34 @@
     <GlobalPageHeader />
 
     <div class="progress-tracking-content">
-        @if (isLoading)
+        @if (isLoading && snapshot is null)
         {
             <div class="progress-loading" role="status" aria-label="Loading progress tracking data">
                 <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" AdditionalClasses="progress-loading-skeleton" />
             </div>
         }
+        else if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <section class="progress-selected-patient-empty" role="alert" aria-live="assertive">
+                <h3>Unable to load progress tracking</h3>
+                <p>@errorMessage</p>
+                <button type="button" class="btn btn-primary" @onclick="ReloadAsync" disabled="@isLoading">Retry</button>
+            </section>
+        }
         else
         {
+            @if (snapshot is not null && snapshot.Patients.Count == 0)
+            {
+                <section class="progress-selected-patient-empty" role="status" aria-live="polite">
+                    <h3>No progress data matches the current filters</h3>
+                    <p>Broaden the date range or adjust the program status and treatment phase filters to see patients with activity.</p>
+                </section>
+            }
+
             <section class="progress-top" aria-label="Progress tracking filters and summary metrics">
-                <ProgressTrackingFilter State="filterState" OnStateChanged="HandleFilterStateChanged" />
+                <ProgressTrackingFilter State="filterState"
+                                       OnStateChanged="HandleFilterStateChanged"
+                                       IsDisabled="isLoading" />
 
                 <ProgressTrackingMetricCards Items="visibleMetrics" />
 
@@ -29,6 +50,7 @@
                 {
                     <ClinicalIntelligencePanel Alerts="clinicalAlerts" OnSelectPatient="SelectPatientFromAlert" />
                 }
+
                 <p class="progress-action-status" aria-live="polite">@quickActionStatus</p>
             </section>
 
@@ -52,7 +74,9 @@
                                 <ProgressTrackingGoalsPanel Goals="goalHighlights" />
                                 break;
                             case ProgressTrackingTab.Trends:
-                                <ProgressTrackingTrendsPanel OutcomeTrend="trendPoints" ProviderProgress="providerProgress" />
+                                <ProgressTrackingTrendsPanel OutcomeTrend="trendPoints"
+                                                             ProviderProgress="providerProgress"
+                                                             ErrorMessage="trendErrorMessage" />
                                 break;
                         }
                     </div>
@@ -60,7 +84,7 @@
 
                 <aside class="progress-right" aria-label="Selected patient details and quick actions">
                     <SelectedPatientPanel SelectedPatient="selectedPatient" OnClearSelection="ClearSelectedPatient" />
-                    <ProgressTrackingQuickLinks OnAction="HandleQuickAction" />
+                    <ProgressTrackingQuickLinks OnAction="HandleQuickAction" IsBusy="isLoading" />
                     <ProgressTrackingComplianceNote />
                 </aside>
             </div>
@@ -70,189 +94,173 @@
 
 @code {
     private readonly ProgressTrackingFilterState filterState = new();
-    private readonly List<ProgressTrackingPatientVm> allPatients = new();
-    private readonly List<ClinicalAlertVm> clinicalAlerts = new();
-    private readonly List<string> goalHighlights = new();
-    private readonly List<ProgressTrendPointVm> trendPoints = new();
-    private readonly List<ProviderGoalProgressVm> providerProgress = new();
-
+    private ProgressTrackingAggregationService? aggregationService;
+    private ProgressTrackingSnapshot? snapshot;
     private List<ProgressTrackingMetricVm> visibleMetrics = new();
+    private List<ClinicalAlertVm> clinicalAlerts = new();
+    private List<ProviderGoalProgressVm> providerProgress = new();
     private List<ProgressTrackingPatientVm> filteredPatients = new();
+    private IReadOnlyList<string> goalHighlights = Array.Empty<string>();
+    private IReadOnlyList<ProgressTrendPointVm> trendPoints = Array.Empty<ProgressTrendPointVm>();
     private ProgressTrackingPatientVm? selectedPatient;
+    private string? selectedPatientId;
     private ProgressTrackingTab activeTab = ProgressTrackingTab.Overview;
     private bool isLoading = true;
     private string overviewSummary = string.Empty;
-    private string quickActionStatus = "Data is current.";
+    private string quickActionStatus = "Loading progress tracking data...";
+    private string? errorMessage;
+    private string? trendErrorMessage;
+    private CancellationTokenSource? loadCts;
+    private CancellationTokenSource? trendCts;
 
     private bool showClinicalIntelligence => !filterState.IsDischargeSelected;
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        SeedLocalData();
-        ApplyFilterState();
-        isLoading = false;
-        return Task.CompletedTask;
+        aggregationService = new ProgressTrackingAggregationService(NoteService, AppointmentService);
+        await ReloadAsync();
     }
 
     public void Dispose()
     {
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+        trendCts?.Cancel();
+        trendCts?.Dispose();
         selectedPatient = null;
     }
 
-    private void SeedLocalData()
+    private async Task ReloadAsync()
     {
-        allPatients.Clear();
-        allPatients.AddRange(new[]
+        CancelLoadTokens();
+
+        isLoading = true;
+        errorMessage = null;
+        trendErrorMessage = null;
+        snapshot = null;
+        ClearDerivedState();
+        quickActionStatus = "Loading progress tracking data...";
+        await InvokeAsync(StateHasChanged);
+
+        loadCts = new CancellationTokenSource();
+        var cancellationToken = loadCts.Token;
+
+        try
         {
-            new ProgressTrackingPatientVm
+            aggregationService ??= new ProgressTrackingAggregationService(NoteService, AppointmentService);
+
+            var result = await aggregationService.LoadAsync(filterState, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
             {
-                Id = "PT-101",
-                DisplayName = "James Thompson",
-                Condition = "ACL Reconstruction (Post-Op)",
-                Provider = "Dr. Kevin Brooks, PT, DPT",
-                LastAssessment = "Feb 16, 2026",
-                StatusLabel = "Active",
-                StatusVariant = BadgeVariant.Success,
-                CurrentScore = 52,
-                ScoreDelta = 26
-            },
-            new ProgressTrackingPatientVm
-            {
-                Id = "PT-102",
-                DisplayName = "Sarah Johnson",
-                Condition = "Lumbar Pain",
-                Provider = "Dr. Mei Kim, PT",
-                LastAssessment = "Feb 11, 2026",
-                StatusLabel = "Pending",
-                StatusVariant = BadgeVariant.Warning,
-                CurrentScore = 34,
-                ScoreDelta = 9
-            },
-            new ProgressTrackingPatientVm
-            {
-                Id = "PT-103",
-                DisplayName = "Robert Miles",
-                Condition = "Rotator Cuff Repair",
-                Provider = "Dr. Kevin Brooks, PT, DPT",
-                LastAssessment = "Jan 30, 2026",
-                StatusLabel = "Discharged",
-                StatusVariant = BadgeVariant.Info,
-                CurrentScore = 61,
-                ScoreDelta = 18
+                return;
             }
-        });
 
-        clinicalAlerts.Clear();
-        clinicalAlerts.AddRange(new[]
-        {
-            new ClinicalAlertVm
-            {
-                PatientId = "PT-101",
-                Message = "James Thompson: Outcome score improved by 12 points in the last 2 weeks.",
-                Meta = "LEFS · Updated today",
-                Severity = "success",
-                ActionLabel = "Open patient"
-            },
-            new ClinicalAlertVm
-            {
-                PatientId = "PT-102",
-                Message = "Sarah Johnson: Goal completion stalled for 10 days.",
-                Meta = "Reassessment recommended",
-                Severity = "warning",
-                ActionLabel = "Review goals"
-            }
-        });
+            snapshot = result;
+            ApplySnapshot(result);
+            await SyncSelectionAsync(cancellationToken);
 
-        goalHighlights.Clear();
-        goalHighlights.AddRange(new[]
+            quickActionStatus = result.Patients.Count == 0
+                ? "No patient activity found for the current filters."
+                : $"Loaded {result.Patients.Count} patients from backend.";
+        }
+        catch (OperationCanceledException)
         {
-            "Improve LEFS score by 20 points over baseline",
-            "Restore independent stair navigation without assistive device",
-            "Reduce pain score to <= 2/10 with activity"
-        });
-
-        trendPoints.Clear();
-        trendPoints.AddRange(new[]
+            return;
+        }
+        catch (Exception ex)
         {
-            new ProgressTrendPointVm { Label = "Jan 5", Value = 26 },
-            new ProgressTrendPointVm { Label = "Jan 19", Value = 33 },
-            new ProgressTrendPointVm { Label = "Feb 2", Value = 42 },
-            new ProgressTrendPointVm { Label = "Feb 16", Value = 52 }
-        });
-
-        providerProgress.Clear();
-        providerProgress.AddRange(new[]
+            snapshot = null;
+            errorMessage = ex.Message;
+            quickActionStatus = "Unable to load progress tracking data.";
+            ClearDerivedState();
+        }
+        finally
         {
-            new ProviderGoalProgressVm { ProviderName = "Dr. Brooks", Achieved = 18, InProgress = 9 },
-            new ProviderGoalProgressVm { ProviderName = "Dr. Kim", Achieved = 12, InProgress = 6 },
-            new ProviderGoalProgressVm { ProviderName = "Dr. Singh", Achieved = 9, InProgress = 4 }
-        });
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    private void HandleFilterStateChanged(ProgressTrackingFilterState next)
+    private void ApplySnapshot(ProgressTrackingSnapshot result)
     {
-        filterState.DateRange = next.DateRange;
-        filterState.ProgramStatus = next.ProgramStatus;
-        filterState.TreatmentPhase = next.TreatmentPhase;
-        ApplyFilterState();
+        filteredPatients = result.Patients.ToList();
+        clinicalAlerts = result.Alerts.ToList();
+        providerProgress = result.ProviderProgress.ToList();
+        overviewSummary = result.OverviewSummary;
+        visibleMetrics = BuildMetrics(filteredPatients);
     }
 
-    private void ApplyFilterState()
+    private async Task SyncSelectionAsync(CancellationToken cancellationToken)
     {
-        IEnumerable<ProgressTrackingPatientVm> result = allPatients;
-
-        if (!string.Equals(filterState.ProgramStatus, "all", StringComparison.OrdinalIgnoreCase))
+        if (filteredPatients.Count == 0)
         {
-            result = result.Where(patient => string.Equals(patient.StatusLabel, filterState.ProgramStatus, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (filterState.IsDischargeSelected)
-        {
-            result = result.Where(patient => string.Equals(patient.StatusLabel, "Discharged", StringComparison.OrdinalIgnoreCase));
-        }
-
-        filteredPatients = result.ToList();
-
-        if (selectedPatient is not null && filteredPatients.All(patient => patient.Id != selectedPatient.Id))
-        {
+            selectedPatientId = null;
             selectedPatient = null;
+            goalHighlights = Array.Empty<string>();
+            trendPoints = Array.Empty<ProgressTrendPointVm>();
+            return;
         }
 
-        var totalPatients = filteredPatients.Count;
-        var activePatients = filteredPatients.Count(patient => string.Equals(patient.StatusLabel, "Active", StringComparison.OrdinalIgnoreCase));
-        var dischargedPatients = filteredPatients.Count(patient => string.Equals(patient.StatusLabel, "Discharged", StringComparison.OrdinalIgnoreCase));
-        var averageScore = totalPatients == 0 ? 0 : (int)Math.Round(filteredPatients.Average(patient => patient.CurrentScore));
+        selectedPatient = !string.IsNullOrWhiteSpace(selectedPatientId)
+            ? filteredPatients.FirstOrDefault(patient => string.Equals(patient.Id, selectedPatientId, StringComparison.OrdinalIgnoreCase))
+            : null;
 
-        visibleMetrics = new List<ProgressTrackingMetricVm>
+        selectedPatient ??= filteredPatients.FirstOrDefault();
+        selectedPatientId = selectedPatient?.Id;
+        goalHighlights = selectedPatient?.Goals ?? Array.Empty<string>();
+        trendErrorMessage = null;
+
+        await LoadSelectedPatientTrendPointsAsync(selectedPatient, cancellationToken);
+    }
+
+    private async Task SelectPatient(string patientId)
+    {
+        if (filteredPatients.Count == 0)
         {
-            new() { Label = "Patients", Value = totalPatients.ToString(), Subtitle = "In current filter", BadgeText = "Updated", BadgeVariant = "default" },
-            new() { Label = "Active Programs", Value = activePatients.ToString(), Subtitle = "Ongoing treatment", BadgeText = "On Track", BadgeVariant = "success" },
-            new() { Label = "Discharged", Value = dischargedPatients.ToString(), Subtitle = "Completed care", BadgeText = "Outcomes logged", BadgeVariant = "info" },
-            new() { Label = "Avg Outcome Score", Value = averageScore.ToString(), Subtitle = "Across filtered patients", TrendValue = 6, TrendText = "+6 vs prior period", BadgeText = "Improving", BadgeVariant = "warning" }
-        };
+            return;
+        }
 
-        overviewSummary = totalPatients == 0
-            ? "No patient records match the current filters."
-            : $"{totalPatients} patients in view with {activePatients} active treatment plans and {dischargedPatients} discharged outcomes.";
+        var patient = filteredPatients.FirstOrDefault(item => string.Equals(item.Id, patientId, StringComparison.OrdinalIgnoreCase));
+        if (patient is null)
+        {
+            selectedPatientId = null;
+            selectedPatient = null;
+            goalHighlights = Array.Empty<string>();
+            trendPoints = Array.Empty<ProgressTrendPointVm>();
+            return;
+        }
+
+        selectedPatientId = patient.Id;
+        selectedPatient = patient;
+        goalHighlights = patient.Goals;
+        trendErrorMessage = null;
+        await LoadSelectedPatientTrendPointsAsync(patient);
     }
 
-    private void SelectPatient(string patientId)
+    private async Task SelectPatientFromAlert(string patientId)
     {
-        selectedPatient = filteredPatients.FirstOrDefault(patient => patient.Id == patientId);
-    }
-
-    private void SelectPatientFromAlert(string patientId)
-    {
-        SelectPatient(patientId);
+        await SelectPatient(patientId);
         activeTab = ProgressTrackingTab.Patients;
     }
 
     private void ClearSelectedPatient()
     {
+        selectedPatientId = null;
         selectedPatient = null;
+        goalHighlights = Array.Empty<string>();
+        trendPoints = Array.Empty<ProgressTrendPointVm>();
+        trendErrorMessage = null;
     }
 
-    private void HandleQuickAction(string action)
+    private async Task HandleFilterStateChanged(ProgressTrackingFilterState next)
+    {
+        filterState.DateRange = next.DateRange;
+        filterState.ProgramStatus = next.ProgramStatus;
+        filterState.TreatmentPhase = next.TreatmentPhase;
+        await ReloadAsync();
+    }
+
+    private async Task HandleQuickAction(string action)
     {
         switch (action)
         {
@@ -265,18 +273,145 @@
                 quickActionStatus = "Opened export center.";
                 break;
             case "refresh-data":
-                ApplyFilterState();
-                quickActionStatus = $"Data refreshed at {DateTime.Now:hh:mm tt}.";
-                break;
+                await ReloadAsync();
+                return;
             default:
                 quickActionStatus = "Action unavailable.";
                 break;
         }
     }
 
-    private void SetActiveTab(ProgressTrackingTab tab)
+    private async Task SetActiveTab(ProgressTrackingTab tab)
     {
         activeTab = tab;
+
+        if (tab == ProgressTrackingTab.Trends && selectedPatient is not null && trendPoints.Count == 0)
+        {
+            await LoadSelectedPatientTrendPointsAsync(selectedPatient);
+        }
+    }
+
+    private async Task LoadSelectedPatientTrendPointsAsync(
+        ProgressTrackingPatientVm? patient,
+        CancellationToken cancellationToken = default)
+    {
+        trendCts?.Cancel();
+        trendCts?.Dispose();
+        trendCts = null;
+
+        if (patient is null || patient.RecentNoteIds.Count == 0)
+        {
+            trendPoints = Array.Empty<ProgressTrendPointVm>();
+            trendErrorMessage = null;
+            return;
+        }
+
+        var localCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        trendCts = localCts;
+
+        try
+        {
+            trendPoints = Array.Empty<ProgressTrendPointVm>();
+            trendErrorMessage = null;
+            var points = await aggregationService!.LoadTrendPointsAsync(patient.RecentNoteIds, localCts.Token);
+            if (!localCts.IsCancellationRequested && string.Equals(selectedPatientId, patient.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                trendPoints = points.ToList();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellations from a newer selection/filter change.
+        }
+        catch
+        {
+            trendPoints = Array.Empty<ProgressTrendPointVm>();
+            trendErrorMessage = "Unable to load outcome trend data from the backend. Please retry.";
+            quickActionStatus = trendErrorMessage;
+        }
+        finally
+        {
+            if (ReferenceEquals(trendCts, localCts))
+            {
+                trendCts = null;
+            }
+
+            localCts.Dispose();
+        }
+    }
+
+    private void CancelLoadTokens()
+    {
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+        loadCts = null;
+
+        trendCts?.Cancel();
+        trendCts?.Dispose();
+        trendCts = null;
+    }
+
+    private void ClearDerivedState()
+    {
+        filteredPatients.Clear();
+        visibleMetrics.Clear();
+        clinicalAlerts.Clear();
+        providerProgress.Clear();
+        goalHighlights = Array.Empty<string>();
+        trendPoints = Array.Empty<ProgressTrendPointVm>();
+        selectedPatient = null;
+        overviewSummary = string.Empty;
+        trendErrorMessage = null;
+    }
+
+    private static List<ProgressTrackingMetricVm> BuildMetrics(IReadOnlyList<ProgressTrackingPatientVm> patients)
+    {
+        var totalPatients = patients.Count;
+        var activePatients = patients.Count(patient => string.Equals(patient.StatusLabel, "Active", StringComparison.OrdinalIgnoreCase));
+        var dischargedPatients = patients.Count(patient => string.Equals(patient.StatusLabel, "Discharged", StringComparison.OrdinalIgnoreCase));
+        var scoredPatients = patients.Where(patient => patient.HasOutcomeScore).ToList();
+        int? averageScore = scoredPatients.Count == 0
+            ? null
+            : (int)Math.Round(scoredPatients.Average(patient => patient.CurrentScore));
+
+        return new List<ProgressTrackingMetricVm>
+        {
+            new()
+            {
+                Label = "Patients",
+                Value = totalPatients.ToString(),
+                Subtitle = "In current filter",
+                BadgeText = "Updated",
+                BadgeVariant = "default"
+            },
+            new()
+            {
+                Label = "Active Programs",
+                Value = activePatients.ToString(),
+                Subtitle = "Ongoing treatment",
+                BadgeText = "On Track",
+                BadgeVariant = "success"
+            },
+            new()
+            {
+                Label = "Discharged",
+                Value = dischargedPatients.ToString(),
+                Subtitle = "Completed care",
+                BadgeText = "Outcomes logged",
+                BadgeVariant = "info"
+            },
+            new()
+            {
+                Label = "Avg Outcome Score",
+                Value = averageScore?.ToString(CultureInfo.InvariantCulture) ?? "—",
+                Subtitle = scoredPatients.Count == 0
+                    ? "No score data available"
+                    : "Across filtered patients",
+                TrendText = scoredPatients.Count == 0 ? null : $"{scoredPatients.Count} scored patients",
+                BadgeText = scoredPatients.Count == 0 ? "No scores" : "Improving",
+                BadgeVariant = scoredPatients.Count == 0 ? "default" : "warning"
+            }
+        };
     }
 
     private static string GetTabId(ProgressTrackingTab tab)

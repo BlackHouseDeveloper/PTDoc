@@ -58,6 +58,14 @@ public static class NoteEndpoints
             .WithName("GetNoteById")
             .WithSummary("Get a clinical note with linked addendums");
 
+        readGroup.MapPost("/batch-read", BatchReadNotes)
+            .WithName("BatchReadNotes")
+            .WithSummary("Get a bounded set of clinical note details");
+
+        readGroup.MapPost("/export/preview-target", ResolveExportPreviewTarget)
+            .WithName("ResolveExportPreviewTarget")
+            .WithSummary("Resolve the note used for the current export preview");
+
         // Write endpoints — NoteWrite policy (PT and PTA only)
         var writeGroup = app.MapGroup("/api/v1/notes")
             .WithTags("Notes")
@@ -122,11 +130,11 @@ public static class NoteEndpoints
             Enum.TryParse<NoteType>(noteType, ignoreCase: true, out var parsedType))
             query = query.Where(n => n.NoteType == parsedType);
 
-        // Status filter: "signed" means has SignatureHash; "unsigned" means no SignatureHash
+        // Status filter: "signed" means fully finalized; "unsigned" means not fully finalized
         if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null);
+            query = query.Where(n => n.NoteStatus == NoteStatus.Signed);
         else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.NoteStatus != NoteStatus.Signed && n.SignatureHash == null && n.SignedUtc == null);
+            query = query.Where(n => n.NoteStatus != NoteStatus.Signed);
 
         // Taxonomy filter: use ANY/EXISTS predicate for an efficient SQL plan.
         if (!string.IsNullOrWhiteSpace(categoryId))
@@ -149,7 +157,8 @@ public static class NoteEndpoints
                     ? n.Patient.FirstName + " " + n.Patient.LastName
                     : string.Empty,
                 NoteType = n.NoteType.ToString(),
-                IsSigned = n.NoteStatus == NoteStatus.Signed || n.SignatureHash != null || n.SignedUtc != null,
+                IsSigned = n.NoteStatus == NoteStatus.Signed,
+                NoteStatus = n.NoteStatus,
                 DateOfService = n.DateOfService,
                 LastModifiedUtc = n.LastModifiedUtc,
                 CptCodesJson = n.CptCodesJson
@@ -210,6 +219,129 @@ public static class NoteEndpoints
                 .OrderBy(a => a.CreatedUtc)
                 .ThenBy(a => a.LastModifiedUtc)
                 .ToList()
+        });
+    }
+
+    private static async Task<IResult> BatchReadNotes(
+        [FromBody] BatchNoteReadRequest request,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var noteIds = (request.NoteIds ?? Array.Empty<Guid>())
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(100)
+            .ToList();
+
+        if (noteIds.Count == 0)
+        {
+            return Results.Ok(Array.Empty<NoteDetailResponse>());
+        }
+
+        var notes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Include(note => note.ObjectiveMetrics)
+            .Where(note => noteIds.Contains(note.Id) && !note.IsAddendum)
+            .ToListAsync(cancellationToken);
+
+        var orderIndex = noteIds
+            .Select((id, index) => (id, index))
+            .ToDictionary(pair => pair.id, pair => pair.index);
+
+        var results = notes
+            .Select(note => new NoteDetailResponse
+            {
+                Note = ToResponse(note),
+                Addendums = Array.Empty<NoteAddendumResponse>()
+            })
+            .OrderBy(result => orderIndex.TryGetValue(result.Note!.Id, out var idx) ? idx : int.MaxValue)
+            .ToList();
+
+        return Results.Ok(results);
+    }
+
+    private static async Task<IResult> ResolveExportPreviewTarget(
+        [FromBody] ExportPreviewTargetRequest request,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var invalidFilter = (request.NoteTypeFilters ?? Array.Empty<string>())
+            .FirstOrDefault(filter => !TryMapPreviewFilter(filter, out _));
+        if (!string.IsNullOrWhiteSpace(invalidFilter))
+        {
+            return Results.Ok(new ExportPreviewTargetResponse
+            {
+                UnavailableReason = $"Preview cannot apply the selected note-type filter '{invalidFilter}'."
+            });
+        }
+
+        var patientIds = (request.PatientIds ?? Array.Empty<Guid>())
+            .Where(id => id != Guid.Empty)
+            .ToHashSet();
+
+        var previewFilters = new List<PreviewNoteFilter>();
+        foreach (var filter in request.NoteTypeFilters ?? Array.Empty<string>())
+        {
+            if (TryMapPreviewFilter(filter, out var mapped))
+            {
+                previewFilters.Add(mapped);
+            }
+        }
+
+        var query = db.ClinicalNotes
+            .AsNoTracking()
+            .Include(note => note.Patient)
+            .Where(note => !note.IsAddendum);
+
+        if (patientIds.Count > 0)
+        {
+            query = query.Where(note => patientIds.Contains(note.PatientId));
+        }
+
+        if (request.DateRangeStart.HasValue)
+        {
+            var start = request.DateRangeStart.Value.Date;
+            query = query.Where(note => note.DateOfService.Date >= start);
+        }
+
+        if (request.DateRangeEnd.HasValue)
+        {
+            var end = request.DateRangeEnd.Value.Date;
+            query = query.Where(note => note.DateOfService.Date <= end);
+        }
+
+        if (previewFilters.Count > 0)
+        {
+            query = query.Where(note => previewFilters.Any(filter =>
+                filter.NoteType == note.NoteType &&
+                filter.IsReEvaluation == note.IsReEvaluation));
+        }
+
+        var matchingNotes = await query
+            .OrderByDescending(note => note.DateOfService)
+            .ThenByDescending(note => note.LastModifiedUtc)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        if (matchingNotes.Count == 0)
+        {
+            return Results.Ok(new ExportPreviewTargetResponse
+            {
+                UnavailableReason = "No SOAP note matches the current export filters."
+            });
+        }
+
+        var previewNote = matchingNotes.FirstOrDefault(note => note.NoteStatus == NoteStatus.Signed)
+            ?? matchingNotes[0];
+
+        return Results.Ok(new ExportPreviewTargetResponse
+        {
+            NoteId = previewNote.Id,
+            Title = BuildPreviewTitle(previewNote),
+            Subtitle = $"{previewNote.DateOfService:MMM d, yyyy} · {BuildPreviewStatusLabel(previewNote.NoteStatus)}",
+            NoteStatus = previewNote.NoteStatus,
+            SelectionNotice = BuildPreviewSelectionNotice(patientIds.Count, previewFilters.Count),
+            CanDownloadPdf = previewNote.NoteStatus == NoteStatus.Signed
         });
     }
 
@@ -928,4 +1060,69 @@ public static class NoteEndpoints
     /// <returns>True if the request should be rejected with 403 Forbidden.</returns>
     internal static bool PtaIsBlockedFromNoteType(System.Security.Claims.ClaimsPrincipal user, NoteType noteType)
         => user.IsInRole(Roles.PTA) && noteType != NoteType.Daily;
+
+    private static string BuildPreviewTitle(ClinicalNote note)
+    {
+        var noteTypeLabel = note.NoteType == NoteType.Evaluation && note.IsReEvaluation
+            ? "Re-Evaluation"
+            : note.NoteType.ToString();
+        var patientName = note.Patient is null
+            ? "Unknown patient"
+            : $"{note.Patient.FirstName} {note.Patient.LastName}".Trim();
+        return $"{noteTypeLabel} for {patientName}";
+    }
+
+    private static string BuildPreviewStatusLabel(NoteStatus noteStatus) => noteStatus switch
+    {
+        NoteStatus.Signed => "Signed",
+        NoteStatus.PendingCoSign => "Pending co-sign",
+        _ => "Draft"
+    };
+
+    private static string? BuildPreviewSelectionNotice(int selectedPatientCount, int selectedNoteTypeCount)
+    {
+        if (selectedPatientCount == 0 && selectedNoteTypeCount == 0)
+        {
+            return "Showing the most recent signed SOAP note in the current export range when available.";
+        }
+
+        if (selectedPatientCount == 0)
+        {
+            return "Showing the most recent note that matches the selected date and note-type filters, preferring signed notes.";
+        }
+
+        if (selectedNoteTypeCount == 0)
+        {
+            return "Showing the most recent note for the selected patient filters, preferring signed notes.";
+        }
+
+        return null;
+    }
+
+    private static bool TryMapPreviewFilter(string filter, out PreviewNoteFilter previewFilter)
+    {
+        switch (filter)
+        {
+            case "initial-eval":
+                previewFilter = new PreviewNoteFilter(NoteType.Evaluation, IsReEvaluation: false);
+                return true;
+            case "re-eval":
+                previewFilter = new PreviewNoteFilter(NoteType.Evaluation, IsReEvaluation: true);
+                return true;
+            case "progress-note":
+                previewFilter = new PreviewNoteFilter(NoteType.ProgressNote, IsReEvaluation: false);
+                return true;
+            case "daily-note":
+                previewFilter = new PreviewNoteFilter(NoteType.Daily, IsReEvaluation: false);
+                return true;
+            case "discharge-summary":
+                previewFilter = new PreviewNoteFilter(NoteType.Discharge, IsReEvaluation: false);
+                return true;
+            default:
+                previewFilter = default;
+                return false;
+        }
+    }
+
+    private readonly record struct PreviewNoteFilter(NoteType NoteType, bool IsReEvaluation);
 }

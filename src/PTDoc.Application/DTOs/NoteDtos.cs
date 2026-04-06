@@ -195,6 +195,30 @@ public sealed class NoteListItemApiResponse
     public string CptCodesJson { get; set; } = "[]";
 }
 
+public sealed class BatchNoteReadRequest
+{
+    public IReadOnlyList<Guid> NoteIds { get; set; } = Array.Empty<Guid>();
+}
+
+public sealed class ExportPreviewTargetRequest
+{
+    public IReadOnlyList<Guid> PatientIds { get; set; } = Array.Empty<Guid>();
+    public DateTime? DateRangeStart { get; set; }
+    public DateTime? DateRangeEnd { get; set; }
+    public IReadOnlyList<string> NoteTypeFilters { get; set; } = Array.Empty<string>();
+}
+
+public sealed class ExportPreviewTargetResponse
+{
+    public Guid? NoteId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Subtitle { get; set; } = string.Empty;
+    public NoteStatus? NoteStatus { get; set; }
+    public string? SelectionNotice { get; set; }
+    public string? UnavailableReason { get; set; }
+    public bool CanDownloadPdf { get; set; }
+}
+
 /// <summary>
 /// Request DTO for accepting AI-generated content into a specific section of a draft note.
 ///

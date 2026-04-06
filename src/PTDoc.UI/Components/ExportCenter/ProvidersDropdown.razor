@@ -1,13 +1,6 @@
-@* Providers Dropdown (Multi-select)
-    Label "Providers"
-    Multi-select dropdown
-    Same display rules as Patients dropdown
-    Current version uses a local sample list to support UX development.
-*@
-
 <div class="providers-dropdown">
     <label for="@DropdownId" class="providers-dropdown__label">Providers</label>
-    
+
     <button
         id="@DropdownId"
         class="providers-dropdown__trigger"
@@ -15,7 +8,6 @@
         type="button"
         aria-expanded="@IsOpen"
         aria-haspopup="listbox">
-        
         <span class="providers-dropdown__display">
             @if (SelectedProviderIds.Count == 0)
             {
@@ -23,21 +15,21 @@
             }
             else if (SelectedProviderIds.Count == 1)
             {
-                <span>@GetProviderLabel(SelectedProviderIds[0])</span>
+                <span>@GetSelectedLabel(SelectedProviderIds[0])</span>
             }
             else
             {
                 <span>@SelectedProviderIds.Count selected</span>
             }
         </span>
-        
+
         <span class="providers-dropdown__icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3.5 5.5L7 9L10.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </span>
     </button>
-    
+
     @if (IsOpen)
     {
         <div class="providers-dropdown__menu" role="listbox">
@@ -50,20 +42,27 @@
                     @bind:event="oninput"
                     aria-label="Search providers" />
             </div>
-            
+
             <div class="providers-dropdown__list">
-                @foreach (var (id, name) in GetFilteredProviders())
+                @if (GetFilteredProviders().Count == 0)
                 {
-                    var isSelected = SelectedProviderIds.Contains(id);
-                    <label class="providers-dropdown__option">
-                        <input
-                            type="checkbox"
-                            class="providers-dropdown__checkbox"
-                            checked="@isSelected"
-                            @onchange="@((ChangeEventArgs e) => ToggleProvider(id, (bool)e!.Value!))"
-                            aria-label="@name" />
-                        <span class="providers-dropdown__option-label">@name</span>
-                    </label>
+                    <div class="providers-dropdown__empty">No providers match the current search.</div>
+                }
+                else
+                {
+                    @foreach (var provider in GetFilteredProviders())
+                    {
+                        var isSelected = SelectedProviderIds.Contains(provider.Id);
+                        <label class="providers-dropdown__option">
+                            <input
+                                type="checkbox"
+                                class="providers-dropdown__checkbox"
+                                checked="@isSelected"
+                                @onchange="@((ChangeEventArgs e) => ToggleProvider(provider.Id, (bool)e!.Value!))"
+                                aria-label="@provider.Label" />
+                            <span class="providers-dropdown__option-label">@provider.Label</span>
+                        </label>
+                    }
                 }
             </div>
         </div>
@@ -72,13 +71,16 @@
 
 @code {
     [Parameter]
-    public List<int> SelectedProviderIds { get; set; } = new();
+    public List<string> SelectedProviderIds { get; set; } = new();
 
     [Parameter]
-    public EventCallback<List<int>> SelectedProviderIdsChanged { get; set; }
+    public EventCallback<List<string>> SelectedProviderIdsChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ExportCenterSelectableItem> Providers { get; set; } = Array.Empty<ExportCenterSelectableItem>();
 
     private string DropdownId { get; } = $"providers-dropdown-{Guid.NewGuid()}";
-    private bool IsOpen { get; set; } = false;
+    private bool IsOpen { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
 
     private void ToggleOpen()
@@ -86,48 +88,38 @@
         IsOpen = !IsOpen;
     }
 
-    private void ToggleProvider(int providerId, bool isSelected)
+    private Task ToggleProvider(string providerId, bool isSelected)
     {
-        if (isSelected && !SelectedProviderIds.Contains(providerId))
+        var next = SelectedProviderIds.ToList();
+
+        if (isSelected && !next.Contains(providerId))
         {
-            SelectedProviderIds.Add(providerId);
+            next.Add(providerId);
         }
-        else if (!isSelected && SelectedProviderIds.Contains(providerId))
+        else if (!isSelected && next.Contains(providerId))
         {
-            SelectedProviderIds.Remove(providerId);
+            next.Remove(providerId);
         }
 
-        SelectedProviderIdsChanged.InvokeAsync(SelectedProviderIds);
+        return SelectedProviderIdsChanged.InvokeAsync(next);
     }
 
-    private IEnumerable<(int, string)> GetFilteredProviders()
+    private IReadOnlyList<ExportCenterSelectableItem> GetFilteredProviders()
     {
-        // Local sample list for UI behavior until export filters are connected to services.
-        var allProviders = new List<(int, string)>
-        {
-            (1, "Dr. Sarah Anderson"),
-            (2, "Dr. James Mitchell"),
-            (3, "Dr. Emily Rodriguez"),
-            (4, "Dr. Michael Clarke"),
-        };
-
         if (string.IsNullOrWhiteSpace(SearchQuery))
-            return allProviders;
+        {
+            return Providers;
+        }
 
-        var query = SearchQuery.ToLower();
-        return allProviders.Where(p => p.Item2.ToLower().Contains(query));
+        var query = SearchQuery.Trim();
+        return Providers
+            .Where(provider => provider.Label.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
-    private string GetProviderLabel(int providerId)
+    private string GetSelectedLabel(string providerId)
     {
-        // Mirrors the local sample list above.
-        return providerId switch
-        {
-            1 => "Dr. Sarah Anderson",
-            2 => "Dr. James Mitchell",
-            3 => "Dr. Emily Rodriguez",
-            4 => "Dr. Michael Clarke",
-            _ => "Unknown Provider"
-        };
+        return Providers.FirstOrDefault(provider => string.Equals(provider.Id, providerId, StringComparison.OrdinalIgnoreCase))?.Label
+            ?? "Unknown provider";
     }
 }

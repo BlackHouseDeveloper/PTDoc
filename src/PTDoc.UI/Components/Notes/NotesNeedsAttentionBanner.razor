@@ -22,13 +22,16 @@
                         </svg>
                         <p class="notes-needs-attention-patient">@item.PatientName</p>
                     </div>
-                    <StatusBadge Text="Needs Attention" Variant="BadgeVariant.Destructive" />
+                    <StatusBadge Text="@GetStatusText(item)" Variant="@GetStatusVariant(item)" />
                 </div>
 
                 <div class="notes-needs-attention-details">
                     <p class="notes-needs-attention-note-type">@item.NoteType</p>
-                    <p class="notes-needs-attention-reason">⚠️ @item.AttentionReason</p>
-                    <p class="notes-needs-attention-meta">Created @item.CreatedDate.ToString("MMM d, yyyy") by @item.CreatedBy</p>
+                    @if (!string.IsNullOrWhiteSpace(item.AttentionReason))
+                    {
+                        <p class="notes-needs-attention-reason">⚠️ @item.AttentionReason</p>
+                    }
+                    <p class="notes-needs-attention-meta">@GetMetaText(item)</p>
                 </div>
 
                 <div class="notes-needs-attention-actions">
@@ -37,7 +40,7 @@
                             <path d="M7.33333 2H2.66667C2.31305 2 1.97391 2.14048 1.72386 2.39052C1.47381 2.64057 1.33333 2.97971 1.33333 3.33333V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31305 14.6667 2.66667 14.6667H12.6667C13.0203 14.6667 13.3594 14.5262 13.6095 14.2761C13.8595 14.0261 14 13.687 14 13.3333V8.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                             <path d="M13 1.66667C13.2652 1.40146 13.6249 1.25244 14 1.25244C14.3751 1.25244 14.7348 1.40146 15 1.66667C15.2652 1.93189 15.4142 2.29152 15.4142 2.66667C15.4142 3.04181 15.2652 3.40146 15 3.66667L8 10.6667L5.33333 11.3333L6 8.66667L13 1.66667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
-                        <span>Fix Now</span>
+                        <span>@GetPrimaryActionText(item)</span>
                     </button>
 
                     <button type="button" class="notes-needs-attention-view" @onclick="() => OnView.InvokeAsync(item)" aria-label="View @item.PatientName note">
@@ -56,4 +59,24 @@
     [Parameter, EditorRequired] public IReadOnlyList<NoteListItemVm> Items { get; set; } = Array.Empty<NoteListItemVm>();
     [Parameter] public EventCallback<NoteListItemVm> OnFixNow { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
+
+    private static BadgeVariant GetStatusVariant(NoteListItemVm item) => item.IsPendingCoSign
+        ? BadgeVariant.Info
+        : BadgeVariant.Destructive;
+
+    private static string GetStatusText(NoteListItemVm item) => item.IsPendingCoSign
+        ? "Pending Co-Sign"
+        : "Needs Attention";
+
+    private static string GetPrimaryActionText(NoteListItemVm item) => item.IsPendingCoSign
+        ? "Finalize"
+        : "Fix Now";
+
+    private static string GetMetaText(NoteListItemVm item)
+    {
+        var createdText = $"Created {item.CreatedDate:MMM d, yyyy}";
+        return string.IsNullOrWhiteSpace(item.CreatedBy)
+            ? createdText
+            : $"{createdText} by {item.CreatedBy}";
+    }
 }

@@ -18,8 +18,54 @@
     gap: var(--spacing-6);
 }
 
+.patient-profile-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+.patient-profile-state-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) 0;
+}
+
+.patient-profile-state-card h2 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.patient-profile-state-card p {
+    margin: 0;
+    color: var(--muted-foreground);
+    line-height: 1.5;
+}
+
+.patient-profile-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+}
+
 @media (max-width: 767px) {
     .patient-profile-page-body {
         padding: var(--spacing-4);
+    }
+
+    .patient-profile-state {
+        padding: var(--spacing-4);
+    }
+
+    .patient-profile-state-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 }

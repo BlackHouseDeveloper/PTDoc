@@ -1,6 +1,8 @@
 @namespace PTDoc.UI.Components.Layout
 @rendermode InteractiveServer
+@using System.Security.Claims
 @inject IThemeService ThemeService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -14,10 +16,10 @@
 
     <!-- User Profile Section -->
     <div class="navbar-brand-profile">
-        <div class="navbar-brand-profile-name">Dr. Sarah Johnson</div>
+        <div class="navbar-brand-profile-name">@currentUserDisplayName</div>
         <div class="navbar-brand-profile-info">
-            <span class="navbar-brand-profile-title">Physical Therapist</span>
-            <span class="navbar-brand-profile-badge" aria-label="License type">PT</span>
+            <span class="navbar-brand-profile-title">@currentUserRoleTitle</span>
+            <span class="navbar-brand-profile-badge" aria-label="License type">@currentUserRoleBadge</span>
         </div>
 
         <!-- Action Buttons Row -->
@@ -60,10 +62,15 @@
     public EventCallback OnNotificationsClick { get; set; }
 
     private bool isDarkTheme;
+    private string currentUserDisplayName = "Clinician";
+    private string currentUserRoleTitle = "User";
+    private string currentUserRoleBadge = "User";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         ThemeService.OnThemeChanged += OnThemeChanged;
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await LoadUserContextAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -75,6 +82,75 @@
             StateHasChanged();
         }
     }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
+    {
+        _ = HandleAuthenticationStateChangedAsync(authStateTask);
+    }
+
+    private async Task HandleAuthenticationStateChangedAsync(Task<AuthenticationState> authStateTask)
+    {
+        try
+        {
+            var authState = await authStateTask;
+            ApplyUserContext(authState.User);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            ApplyFallbackUserContext();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadUserContextAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            ApplyUserContext(authState.User);
+        }
+        catch
+        {
+            ApplyFallbackUserContext();
+        }
+    }
+
+    private void ApplyUserContext(ClaimsPrincipal user)
+    {
+        var displayName = user.Identity?.Name
+            ?? user.FindFirst(ClaimTypes.Name)?.Value
+            ?? user.FindFirst(ClaimTypes.Email)?.Value;
+
+        currentUserDisplayName = string.IsNullOrWhiteSpace(displayName)
+            ? "Clinician"
+            : displayName;
+
+        var role = user.FindFirst(ClaimTypes.Role)?.Value;
+        var (roleTitle, roleBadge) = GetRoleDisplay(role);
+        currentUserRoleTitle = roleTitle;
+        currentUserRoleBadge = roleBadge;
+    }
+
+    private void ApplyFallbackUserContext()
+    {
+        currentUserDisplayName = "Clinician";
+        currentUserRoleTitle = "User";
+        currentUserRoleBadge = "User";
+    }
+
+    private static (string Title, string Badge) GetRoleDisplay(string? role) =>
+        string.IsNullOrWhiteSpace(role)
+            ? ("User", "User")
+            : role.Trim().ToUpperInvariant() switch
+            {
+                "PT" => ("Physical Therapist", "PT"),
+                "PTA" => ("Physical Therapist Assistant", "PTA"),
+                "ADMIN" => ("Administrator", "Admin"),
+                "OWNER" => ("Practice Owner", "Owner"),
+                "BILLING" => ("Billing", "Billing"),
+                _ => (role.Trim(), role.Trim())
+            };
 
     private async Task ToggleTheme()
     {
@@ -89,6 +165,7 @@
 
     public void Dispose()
     {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
     }
 }

@@ -31,14 +31,18 @@
             <!-- Patients (SOAP) -->
             <div class="filters-panel__section">
                 <PatientsDropdown
+                    Patients="Patients"
                     @bind-SelectedPatientIds="State.SelectedPatientIds" />
             </div>
             
-            <!-- Providers (SOAP) -->
-            <div class="filters-panel__section">
-                <ProvidersDropdown
-                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
-            </div>
+            @if (ShowSoapProviderFilter)
+            {
+                <div class="filters-panel__section">
+                    <ProvidersDropdown
+                        Providers="Providers"
+                        @bind-SelectedProviderIds="State.SelectedProviderIds" />
+                </div>
+            }
             
             <!-- Note Types Grid (SOAP) -->
             <div class="filters-panel__section">
@@ -56,12 +60,14 @@
             <!-- Patients (Patient Data) -->
             <div class="filters-panel__section">
                 <PatientsDropdown
+                    Patients="Patients"
                     @bind-SelectedPatientIds="State.SelectedPatientIds" />
             </div>
             
             <!-- Providers (Patient Data) -->
             <div class="filters-panel__section">
                 <ProvidersDropdown
+                    Providers="Providers"
                     @bind-SelectedProviderIds="State.SelectedProviderIds" />
             </div>
             
@@ -81,6 +87,7 @@
             <!-- Providers (Appointments) -->
             <div class="filters-panel__section">
                 <ProvidersDropdown
+                    Providers="Providers"
                     @bind-SelectedProviderIds="State.SelectedProviderIds" />
             </div>
             
@@ -109,6 +116,7 @@
             <!-- Providers (Reports) -->
             <div class="filters-panel__section">
                 <ProvidersDropdown
+                    Providers="Providers"
                     @bind-SelectedProviderIds="State.SelectedProviderIds" />
             </div>
         }
@@ -127,6 +135,15 @@
     [Parameter]
     public EventCallback StateChanged { get; set; }
 
+    [Parameter]
+    public IReadOnlyList<ExportCenterSelectableItem> Patients { get; set; } = Array.Empty<ExportCenterSelectableItem>();
+
+    [Parameter]
+    public IReadOnlyList<ExportCenterSelectableItem> Providers { get; set; } = Array.Empty<ExportCenterSelectableItem>();
+
+    [Parameter]
+    public bool ShowSoapProviderFilter { get; set; } = true;
+
     // SOAP Note Types
     private List<(string Value, string Label)> SoapNoteTypesItems { get; } = new()
     {
@@ -135,7 +152,6 @@
         ("re-eval", "Re-Eval"),
         ("discharge-summary", "Discharge Summary"),
         ("daily-note", "Daily Note"),
-        ("dry-needling", "Dry Needling"),
     };
 
     // Patient Data Types

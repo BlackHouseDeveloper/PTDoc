@@ -28,6 +28,27 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
         return result ?? new AppointmentsOverviewResponse();
     }
 
+    public async Task<IReadOnlyList<AppointmentListItemResponse>> GetByPatientAsync(
+        Guid patientId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/api/v1/appointments/by-patient/{patientId}?startDate={startDate:yyyy-MM-dd}&endDate={endDate:yyyy-MM-dd}";
+        var result = await httpClient.GetFromJsonAsync<IReadOnlyList<AppointmentListItemResponse>>(url, SerializerOptions, cancellationToken);
+        return result ?? Array.Empty<AppointmentListItemResponse>();
+    }
+
+    public async Task<IReadOnlyList<AppointmentClinicianResponse>> GetCliniciansAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await httpClient.GetFromJsonAsync<IReadOnlyList<AppointmentClinicianResponse>>(
+            "/api/v1/appointments/clinicians",
+            SerializerOptions,
+            cancellationToken);
+        return result ?? Array.Empty<AppointmentClinicianResponse>();
+    }
+
     public async Task<AppointmentListItemResponse> CreateAsync(
         CreateAppointmentRequest request,
         CancellationToken cancellationToken = default)

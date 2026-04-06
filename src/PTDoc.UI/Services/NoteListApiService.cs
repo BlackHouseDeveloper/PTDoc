@@ -75,4 +75,60 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
 
         return await response.Content.ReadFromJsonAsync<NoteDetailResponse>(SerializerOptions, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<NoteDetailResponse>> GetByIdsAsync(
+        IReadOnlyList<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0)
+        {
+            return Array.Empty<NoteDetailResponse>();
+        }
+
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/notes/batch-read",
+            new BatchNoteReadRequest { NoteIds = ids },
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load note details.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<IReadOnlyList<NoteDetailResponse>>(
+            SerializerOptions,
+            cancellationToken);
+
+        return result ?? Array.Empty<NoteDetailResponse>();
+    }
+
+    public async Task<ExportPreviewTargetResponse> ResolveExportPreviewTargetAsync(
+        ExportPreviewTargetRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/notes/export/preview-target",
+            request,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to resolve export preview target.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<ExportPreviewTargetResponse>(
+            SerializerOptions,
+            cancellationToken);
+
+        return result ?? new ExportPreviewTargetResponse
+        {
+            UnavailableReason = "Preview target payload was empty."
+        };
+    }
 }

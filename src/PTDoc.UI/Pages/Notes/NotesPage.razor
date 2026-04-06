@@ -5,6 +5,7 @@
 @using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
 @using System.Text.Json
 @inject INoteService NoteService
@@ -36,7 +37,7 @@
             {
                 <NotesNeedsAttentionBanner
                     Items="notesNeedingAttention"
-                    OnFixNow="HandleOpenNote"
+                    OnFixNow="HandleResolveAttentionNote"
                     OnView="HandleViewNote"
                 />
             }
@@ -65,7 +66,7 @@
     private readonly List<NoteListItemVm> notes = new();
     private readonly List<string> noteTypes = new();
     private readonly List<string> patients = new();
-    private readonly List<string> statuses = new() { "Draft", "In Review", "Submitted", "Needs Attention" };
+    private readonly List<string> statuses = new() { "Draft", "Pending Co-Sign", "Submitted", "Needs Attention" };
 
     private List<NoteListItemVm> notesNeedingAttention = new();
     private List<NoteListItemVm> regularRecentNotes = new();
@@ -112,21 +113,39 @@
             cptCodes = Array.Empty<string>();
         }
 
+        var noteStatus = dto.NoteStatus ?? (dto.IsSigned ? NoteStatus.Signed : NoteStatus.Draft);
+
         return new NoteListItemVm
         {
             Id = dto.Id.ToString(),
             PatientId = dto.PatientId.ToString(),
             PatientName = dto.PatientName,
             NoteType = dto.NoteType,
-            Status = dto.IsSigned ? "Submitted" : "Draft",
+            Status = GetDisplayStatus(noteStatus, dto.IsSigned),
             CreatedDate = dto.DateOfService,
             LastModified = dto.LastModifiedUtc,
             CreatedBy = string.Empty,
             Summary = string.Empty,
             CptCodes = cptCodes,
-            IsUnsigned = !dto.IsSigned
+            AttentionReason = GetAttentionReason(noteStatus),
+            IsUnsigned = !dto.IsSigned,
+            IsPendingCoSign = noteStatus == NoteStatus.PendingCoSign
         };
     }
+
+    private static string GetDisplayStatus(NoteStatus noteStatus, bool isSigned) => noteStatus switch
+    {
+        NoteStatus.PendingCoSign => "Pending Co-Sign",
+        NoteStatus.Signed => "Submitted",
+        NoteStatus.Draft => "Draft",
+        _ => isSigned ? "Submitted" : "Draft"
+    };
+
+    private static string? GetAttentionReason(NoteStatus noteStatus) => noteStatus switch
+    {
+        NoteStatus.PendingCoSign => "Awaiting PT co-signature before the note can be fully finalized.",
+        _ => null
+    };
 
     private void BuildFilterOptions()
     {
@@ -198,7 +217,7 @@
             return note.NeedsAttention;
         }
 
-        return !note.NeedsAttention && string.Equals(note.Status, filterState.Status, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(note.Status, filterState.Status, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesDateRange(NoteListItemVm note)
@@ -221,36 +240,50 @@
 
     private void HandleOpenNote(NoteListItemVm note)
     {
-        if (string.IsNullOrWhiteSpace(note.PatientId))
-        {
-            return;
-        }
+        NavigateToNoteWorkspace(note);
+    }
 
-        // Existing note context: go to note workspace with patient + note identifiers.
-        if (!string.IsNullOrWhiteSpace(note.Id))
-        {
-            NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/note/{Uri.EscapeDataString(note.Id)}");
-            return;
-        }
-
-        // No note id: route to patient-scoped new-note flow (draft is created on arrival).
-        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/new-note");
+    private void HandleResolveAttentionNote(NoteListItemVm note)
+    {
+        NavigateToNoteWorkspace(note, note.IsPendingCoSign ? "review" : null);
     }
 
     private void HandleViewNote(NoteListItemVm note)
     {
-        HandleOpenNote(note);
+        NavigateToNoteWorkspace(note);
     }
 
     private void HandleEditNote(NoteListItemVm note)
     {
-        HandleOpenNote(note);
+        NavigateToNoteWorkspace(note);
     }
 
     private void HandleDownloadPdf(NoteListItemVm note)
     {
         // PDF export is handled in the note workspace. Navigate there to download.
-        HandleOpenNote(note);
+        NavigateToNoteWorkspace(note);
+    }
+
+    private void NavigateToNoteWorkspace(NoteListItemVm note, string? requestedSection = null)
+    {
+        if (string.IsNullOrWhiteSpace(note.PatientId))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(note.Id))
+        {
+            var uri = $"/patient/{Uri.EscapeDataString(note.PatientId)}/note/{Uri.EscapeDataString(note.Id)}";
+            if (!string.IsNullOrWhiteSpace(requestedSection))
+            {
+                uri = $"{uri}?section={Uri.EscapeDataString(requestedSection)}";
+            }
+
+            NavigationManager.NavigateTo(uri);
+            return;
+        }
+
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(note.PatientId)}/new-note");
     }
 
     public void Dispose()
@@ -259,4 +292,3 @@
         _cts.Dispose();
     }
 }
-
