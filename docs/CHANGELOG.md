@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 93 third-round review comments
+
+#### NotificationPreferencesEditor saving state applied before async gap
+- **`src/PTDoc.UI/Components/Settings/NotificationPreferencesEditor.razor`** — Added `await InvokeAsync(StateHasChanged)` immediately after setting `isSaving = true` in `PersistPreferencesAsync`. Previously the component would not re-render until the entire async handler returned, leaving checkboxes enabled and the "Saving…" indicator invisible during the network request. Reason: Blazor does not automatically yield after synchronous state mutations inside async handlers; an explicit render is required to disable inputs and show the in-flight indicator before awaiting I/O.
+
+#### ExportCenter empty AppointmentType guard
+- **`src/PTDoc.UI/Pages/ExportCenter.razor`** — Activity item titles now fall back to "Appointment" when `appointment.AppointmentType` is null or whitespace, preventing display of " for PatientName" titles when the type field is absent. Reason: the DTO defaults `AppointmentType` to `string.Empty` so the field can legitimately be empty for records that predate type tagging.
+
+#### Flaky date matchers in appointment usage tests
+- **`tests/PTDoc.Tests/UI/Pages/PageScopedAppointmentUsageTests.cs`** — Captured `var today = DateTime.UtcNow.Date` once at the top of each test that uses date-range Moq matchers, replacing the previous inline `DateTime.UtcNow.Date` calls inside the `It.Is<DateTime>(...)` predicates. Reason: evaluating `DateTime.UtcNow.Date` inside the matcher closure at invocation time means a test that runs across midnight UTC can see a different date than the one used at setup, causing a spurious match failure.
+
 ### Fixed - PR 93 second-round review comments
 
 #### PDF hierarchy endpoint signed-only gate

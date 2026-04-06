@@ -242,6 +242,7 @@
         isSaving = true;
         loadError = null;
         saveMessage = null;
+        await InvokeAsync(StateHasChanged);
 
         try
         {

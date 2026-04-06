@@ -15,6 +15,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     [Fact]
     public void PatientProfile_UsesPatientScopedAppointmentsForTimeline()
     {
+        var today = DateTime.UtcNow.Date;
         var patientId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
@@ -40,8 +41,8 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         appointmentService
             .Setup(service => service.GetByPatientAsync(
                 patientId,
-                It.Is<DateTime>(startDate => startDate <= DateTime.UtcNow.Date.AddDays(-179) && startDate >= DateTime.UtcNow.Date.AddDays(-181)),
-                It.Is<DateTime>(endDate => endDate == DateTime.UtcNow.Date),
+                It.Is<DateTime>(startDate => startDate <= today.AddDays(-179) && startDate >= today.AddDays(-181)),
+                It.Is<DateTime>(endDate => endDate == today),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
 
@@ -74,6 +75,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     [Fact]
     public void ExportCenter_UsesClinicianDirectoryInsteadOfOverviewForProviders()
     {
+        var today = DateTime.UtcNow.Date;
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
         var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
@@ -96,8 +98,8 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
 
         appointmentService
             .Setup(service => service.GetOverviewAsync(
-                It.Is<DateTime>(startDate => startDate == DateTime.UtcNow.Date.AddDays(-30)),
-                It.Is<DateTime>(endDate => endDate == DateTime.UtcNow.Date),
+                It.Is<DateTime>(startDate => startDate == today.AddDays(-30)),
+                It.Is<DateTime>(endDate => endDate == today),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AppointmentsOverviewResponse());
 

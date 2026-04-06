@@ -238,7 +238,7 @@
                 {
                     Id = $"appt-{appointment.Id}",
                     Kind = ExportCenterActivityKind.Appointment,
-                    Title = $"{appointment.AppointmentType} for {appointment.PatientName}",
+                    Title = $"{(string.IsNullOrWhiteSpace(appointment.AppointmentType) ? "Appointment" : appointment.AppointmentType)} for {appointment.PatientName}",
                     Meta = $"{status} · {clinician}",
                     TimestampUtc = timestampUtc
                 });
