@@ -142,7 +142,12 @@ public static class IntakeEndpoints
             return createStructuredDataProblem!;
         }
 
-        if (!TryNormalizeConsents(request.Consents, requireHipaaAcknowledgement: false, out var consents, out _, out var createValidationProblem))
+        if (!TryNormalizeConsents(
+                ResolveConsentJson(request.Consents, request.ConsentPacket),
+                requireHipaaAcknowledgement: false,
+                out var consents,
+                out _,
+                out var createValidationProblem))
             return createValidationProblem!;
 
         // Verify the patient exists and is visible to this tenant
@@ -252,7 +257,7 @@ public static class IntakeEndpoints
             resolvedStructuredDataJson = structuredDataJson;
 
             if (!TryNormalizeConsents(
-                    request.Consents,
+                    ResolveConsentJson(request.Consents, request.ConsentPacket),
                     requireHipaaAcknowledgement: false,
                     out var consents,
                     out _,
@@ -367,7 +372,12 @@ public static class IntakeEndpoints
 
         intake.PainMapData = painMapData;
 
-        if (!TryNormalizeConsents(request.Consents, requireHipaaAcknowledgement: false, out var normalizedConsents, out _, out var updateValidationProblem))
+        if (!TryNormalizeConsents(
+                ResolveConsentJson(request.Consents, request.ConsentPacket),
+                requireHipaaAcknowledgement: false,
+                out var normalizedConsents,
+                out _,
+                out var updateValidationProblem))
             return updateValidationProblem!;
 
         intake.Consents = normalizedConsents;
@@ -769,6 +779,7 @@ public static class IntakeEndpoints
         PatientId = f.PatientId,
         PainMapData = f.PainMapData,
         Consents = f.Consents,
+        ConsentPacket = TryParseConsentPacket(f.Consents),
         ResponseJson = f.ResponseJson,
         StructuredData = TryParseStructuredData(f.StructuredDataJson),
         Locked = f.IsLocked,
@@ -863,9 +874,36 @@ public static class IntakeEndpoints
                 && !string.Equals(structuredDataJson.Trim(), "{}", StringComparison.Ordinal))
             || structuredData.BodyPartSelections.Count > 0
             || structuredData.MedicationIds.Count > 0
-            || structuredData.PainDescriptorIds.Count > 0;
+            || structuredData.PainDescriptorIds.Count > 0
+            || structuredData.ComorbidityIds.Count > 0
+            || structuredData.AssistiveDeviceIds.Count > 0
+            || structuredData.LivingSituationIds.Count > 0
+            || structuredData.HouseLayoutOptionIds.Count > 0;
 
         return hasContent ? structuredData : null;
+    }
+
+    internal static IntakeConsentPacket? TryParseConsentPacket(string? consentsJson)
+    {
+        if (!IntakeConsentJson.TryParse(consentsJson, out var packet, out _))
+        {
+            return null;
+        }
+
+        var hasContent = !string.IsNullOrWhiteSpace(consentsJson)
+            && !string.Equals(consentsJson.Trim(), "{}", StringComparison.Ordinal);
+
+        return hasContent ? packet : null;
+    }
+
+    internal static string ResolveConsentJson(string? consentsJson, IntakeConsentPacket? consentPacket)
+    {
+        if (consentPacket is not null)
+        {
+            return IntakeConsentJson.Serialize(consentPacket);
+        }
+
+        return string.IsNullOrWhiteSpace(consentsJson) ? "{}" : consentsJson;
     }
 
     internal static bool TryResolveStructuredData(

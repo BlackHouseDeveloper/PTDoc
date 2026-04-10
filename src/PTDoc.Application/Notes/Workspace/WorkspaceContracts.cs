@@ -1,6 +1,7 @@
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Application.Outcomes;
+using PTDoc.Application.ReferenceData;
 
 namespace PTDoc.Application.Notes.Workspace;
 
@@ -129,6 +130,7 @@ public sealed class WorkspaceObjectiveV2
     public List<string> RecommendedOutcomeMeasures { get; set; } = new();
     public List<OutcomeMeasureEntryV2> OutcomeMeasures { get; set; } = new();
     public List<SpecialTestResultV2> SpecialTests { get; set; } = new();
+    public List<ExerciseRowV2> ExerciseRows { get; set; } = new();
     public GaitObservationV2 GaitObservation { get; set; } = new();
     public PostureObservationV2 PostureObservation { get; set; } = new();
     public PalpationObservationV2 PalpationObservation { get; set; } = new();
@@ -159,6 +161,19 @@ public sealed class SpecialTestResultV2
     public string? Side { get; set; }
     public string Result { get; set; } = string.Empty;
     public string? Notes { get; set; }
+}
+
+public sealed class ExerciseRowV2
+{
+    public string SuggestedExercise { get; set; } = string.Empty;
+    public string ActualExercisePerformed { get; set; } = string.Empty;
+    public string? SetsRepsDuration { get; set; }
+    public string? ResistanceOrWeight { get; set; }
+    public string? CptCode { get; set; }
+    public string? CptDescription { get; set; }
+    public int? TimeMinutes { get; set; }
+    public bool IsCheckedSuggestedExercise { get; set; }
+    public bool IsSourceBacked { get; set; }
 }
 
 public sealed class GaitObservationV2
@@ -237,6 +252,7 @@ public sealed class WorkspacePlanV2
     public List<int> TreatmentFrequencyDaysPerWeek { get; set; } = new();
     public List<int> TreatmentDurationWeeks { get; set; } = new();
     public HashSet<string> TreatmentFocuses { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<GeneralInterventionEntryV2> GeneralInterventions { get; set; } = new();
     public List<PlannedCptCodeV2> SelectedCptCodes { get; set; } = new();
     public string? PlanOfCareNarrative { get; set; }
     public ComputedPlanOfCareV2 ComputedPlanOfCare { get; set; } = new();
@@ -256,6 +272,14 @@ public sealed class PlannedCptCodeV2
     public List<string> ModifierOptions { get; set; } = new();
     public List<string> SuggestedModifiers { get; set; } = new();
     public string? ModifierSource { get; set; }
+}
+
+public sealed class GeneralInterventionEntryV2
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Category { get; set; }
+    public bool IsSourceBacked { get; set; }
+    public string? Notes { get; set; }
 }
 
 public sealed class ComputedPlanOfCareV2
@@ -372,9 +396,10 @@ public sealed class CatalogAvailability
 {
     public bool IsAvailable { get; init; }
     public string Notes { get; init; } = string.Empty;
+    public ReferenceDataProvenance? Provenance { get; init; }
 
-    public static CatalogAvailability Available(string notes) => new() { IsAvailable = true, Notes = notes };
-    public static CatalogAvailability Missing(string notes) => new() { IsAvailable = false, Notes = notes };
+    public static CatalogAvailability Available(string notes, ReferenceDataProvenance? provenance = null) => new() { IsAvailable = true, Notes = notes, Provenance = provenance };
+    public static CatalogAvailability Missing(string notes, ReferenceDataProvenance? provenance = null) => new() { IsAvailable = false, Notes = notes, Provenance = provenance };
 }
 
 public sealed class CodeLookupEntry
@@ -382,6 +407,7 @@ public sealed class CodeLookupEntry
     public string Code { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
+    public ReferenceDataProvenance? Provenance { get; set; }
     public bool IsCompleteLibrary { get; set; }
     public List<string> ModifierOptions { get; set; } = new();
     public List<string> SuggestedModifiers { get; set; } = new();

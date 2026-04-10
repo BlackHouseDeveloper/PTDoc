@@ -9,9 +9,14 @@ public enum IntakeBodyPartGroupKind
 public sealed class IntakeReferenceCatalogDto
 {
     public string Version { get; set; } = string.Empty;
+    public IReadOnlyList<ReferenceDataProvenance> Sources { get; set; } = Array.Empty<ReferenceDataProvenance>();
     public IReadOnlyList<IntakeBodyPartGroupDto> BodyPartGroups { get; set; } = Array.Empty<IntakeBodyPartGroupDto>();
     public IReadOnlyList<IntakeMedicationItemDto> Medications { get; set; } = Array.Empty<IntakeMedicationItemDto>();
     public IReadOnlyList<IntakePainDescriptorItemDto> PainDescriptors { get; set; } = Array.Empty<IntakePainDescriptorItemDto>();
+    public IReadOnlyList<IntakeCatalogOptionDto> Comorbidities { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
+    public IReadOnlyList<IntakeCatalogOptionDto> AssistiveDevices { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
+    public IReadOnlyList<IntakeCatalogOptionDto> LivingSituations { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
+    public IReadOnlyList<IntakeCatalogOptionDto> HouseLayoutOptions { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
 }
 
 public sealed class IntakeBodyPartGroupDto
@@ -36,6 +41,7 @@ public sealed class IntakeBodyPartItemDto
     public bool SupportsDigitSelection { get; set; }
     public IReadOnlyList<IntakeDigitOptionDto> DigitOptions { get; set; } = Array.Empty<IntakeDigitOptionDto>();
     public string? SourceNote { get; set; }
+    public ReferenceDataProvenance? Provenance { get; set; }
 }
 
 public sealed class IntakeDigitOptionDto
@@ -54,6 +60,7 @@ public sealed class IntakeMedicationItemDto
     public bool IsCombinationMedication { get; set; }
     public bool IsSourceOrderReversed { get; set; }
     public int DisplayOrder { get; set; }
+    public ReferenceDataProvenance? Provenance { get; set; }
 }
 
 public sealed class IntakePainDescriptorItemDto
@@ -61,4 +68,13 @@ public sealed class IntakePainDescriptorItemDto
     public string Id { get; set; } = string.Empty;
     public string Label { get; set; } = string.Empty;
     public int DisplayOrder { get; set; }
+    public ReferenceDataProvenance? Provenance { get; set; }
+}
+
+public sealed class IntakeCatalogOptionDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public int DisplayOrder { get; set; }
+    public ReferenceDataProvenance? Provenance { get; set; }
 }

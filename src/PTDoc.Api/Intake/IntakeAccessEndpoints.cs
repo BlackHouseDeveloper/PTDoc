@@ -180,7 +180,7 @@ public static class IntakeAccessEndpoints
         }
 
         if (!IntakeEndpoints.TryNormalizeConsents(
-                request.Consents,
+                IntakeEndpoints.ResolveConsentJson(request.Consents, request.ConsentPacket),
                 requireHipaaAcknowledgement: false,
                 out var normalizedConsents,
                 out _,

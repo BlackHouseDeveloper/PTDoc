@@ -85,4 +85,25 @@ public sealed class IntakeStructuredDataJsonTests
         Assert.False(normalized);
         Assert.Contains("structuredData.bodyPartSelections[0].digitIds", validation.Errors.Keys);
     }
+
+    [Fact]
+    public void TryNormalize_SupplementalSelections_NormalizesCanonicalIds()
+    {
+        var payload = new IntakeStructuredDataDto
+        {
+            ComorbidityIds = ["hypertension", "hypertension"],
+            AssistiveDeviceIds = ["cane"],
+            LivingSituationIds = ["lives-alone"],
+            HouseLayoutOptionIds = ["single-story-main-floor-bed-bath"]
+        };
+
+        var normalized = IntakeStructuredDataJson.TryNormalize(payload, _catalog, out var result, out var validation);
+
+        Assert.True(normalized);
+        Assert.True(validation.IsValid);
+        Assert.Equal(["hypertension"], result.StructuredData.ComorbidityIds);
+        Assert.Equal(["cane"], result.StructuredData.AssistiveDeviceIds);
+        Assert.Equal(["lives-alone"], result.StructuredData.LivingSituationIds);
+        Assert.Equal(["single-story-main-floor-bed-bath"], result.StructuredData.HouseLayoutOptionIds);
+    }
 }

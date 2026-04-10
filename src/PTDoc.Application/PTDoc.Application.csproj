@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\Icd10Codes.json" />
+    <EmbeddedResource Include="Data\IntakeSupplementalReferenceData.json" />
   </ItemGroup>
 
   <PropertyGroup>

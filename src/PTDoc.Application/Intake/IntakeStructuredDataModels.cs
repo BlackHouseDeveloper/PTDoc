@@ -27,6 +27,18 @@ public sealed class IntakeStructuredDataDto
 
     [JsonPropertyName("painDescriptorIds")]
     public List<string> PainDescriptorIds { get; set; } = new();
+
+    [JsonPropertyName("comorbidityIds")]
+    public List<string> ComorbidityIds { get; set; } = new();
+
+    [JsonPropertyName("assistiveDeviceIds")]
+    public List<string> AssistiveDeviceIds { get; set; } = new();
+
+    [JsonPropertyName("livingSituationIds")]
+    public List<string> LivingSituationIds { get; set; } = new();
+
+    [JsonPropertyName("houseLayoutOptionIds")]
+    public List<string> HouseLayoutOptionIds { get; set; } = new();
 }
 
 public sealed class IntakeBodyPartSelectionDto

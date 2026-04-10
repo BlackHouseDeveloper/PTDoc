@@ -29,6 +29,10 @@ public static class IntakeStructuredDataJson
             payload.BodyPartSelections ??= new List<IntakeBodyPartSelectionDto>();
             payload.MedicationIds ??= new List<string>();
             payload.PainDescriptorIds ??= new List<string>();
+            payload.ComorbidityIds ??= new List<string>();
+            payload.AssistiveDeviceIds ??= new List<string>();
+            payload.LivingSituationIds ??= new List<string>();
+            payload.HouseLayoutOptionIds ??= new List<string>();
             errorMessage = null;
             return true;
         }
@@ -45,6 +49,10 @@ public static class IntakeStructuredDataJson
         payload.BodyPartSelections ??= new List<IntakeBodyPartSelectionDto>();
         payload.MedicationIds ??= new List<string>();
         payload.PainDescriptorIds ??= new List<string>();
+        payload.ComorbidityIds ??= new List<string>();
+        payload.AssistiveDeviceIds ??= new List<string>();
+        payload.LivingSituationIds ??= new List<string>();
+        payload.HouseLayoutOptionIds ??= new List<string>();
         return JsonSerializer.Serialize(payload, SerializerOptions);
     }
 
@@ -61,6 +69,10 @@ public static class IntakeStructuredDataJson
         payload.BodyPartSelections ??= new List<IntakeBodyPartSelectionDto>();
         payload.MedicationIds ??= new List<string>();
         payload.PainDescriptorIds ??= new List<string>();
+        payload.ComorbidityIds ??= new List<string>();
+        payload.AssistiveDeviceIds ??= new List<string>();
+        payload.LivingSituationIds ??= new List<string>();
+        payload.HouseLayoutOptionIds ??= new List<string>();
 
         var catalog = catalogService.GetCatalog();
         var normalized = new IntakeStructuredDataDto
@@ -179,6 +191,46 @@ public static class IntakeStructuredDataJson
             value => catalogService.GetPainDescriptor(value),
             validationResult);
 
+        var normalizedComorbidityIds = NormalizeCatalogIds(
+            payload.ComorbidityIds,
+            catalogService.GetComorbidities(),
+            item => item.Id,
+            item => item.DisplayOrder,
+            "structuredData.comorbidityIds",
+            "comorbidity",
+            value => catalogService.GetComorbidity(value),
+            validationResult);
+
+        var normalizedAssistiveDeviceIds = NormalizeCatalogIds(
+            payload.AssistiveDeviceIds,
+            catalogService.GetAssistiveDevices(),
+            item => item.Id,
+            item => item.DisplayOrder,
+            "structuredData.assistiveDeviceIds",
+            "assistive device",
+            value => catalogService.GetAssistiveDevice(value),
+            validationResult);
+
+        var normalizedLivingSituationIds = NormalizeCatalogIds(
+            payload.LivingSituationIds,
+            catalogService.GetLivingSituations(),
+            item => item.Id,
+            item => item.DisplayOrder,
+            "structuredData.livingSituationIds",
+            "living situation",
+            value => catalogService.GetLivingSituation(value),
+            validationResult);
+
+        var normalizedHouseLayoutOptionIds = NormalizeCatalogIds(
+            payload.HouseLayoutOptionIds,
+            catalogService.GetHouseLayoutOptions(),
+            item => item.Id,
+            item => item.DisplayOrder,
+            "structuredData.houseLayoutOptionIds",
+            "house layout option",
+            value => catalogService.GetHouseLayoutOption(value),
+            validationResult);
+
         if (!validationResult.IsValid)
         {
             return false;
@@ -203,6 +255,10 @@ public static class IntakeStructuredDataJson
 
         normalized.MedicationIds = normalizedMedicationIds;
         normalized.PainDescriptorIds = normalizedPainDescriptorIds;
+        normalized.ComorbidityIds = normalizedComorbidityIds;
+        normalized.AssistiveDeviceIds = normalizedAssistiveDeviceIds;
+        normalized.LivingSituationIds = normalizedLivingSituationIds;
+        normalized.HouseLayoutOptionIds = normalizedHouseLayoutOptionIds;
 
         normalizationResult = new IntakeStructuredDataNormalizationResult
         {
