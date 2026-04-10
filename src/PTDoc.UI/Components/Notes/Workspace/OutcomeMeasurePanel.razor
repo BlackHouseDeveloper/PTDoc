@@ -1,3 +1,4 @@
+@using System.Globalization
 @using PTDoc.Application.Outcomes
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
@@ -315,7 +316,8 @@
 
     private static bool TryParseScore(string? rawValue, out double score)
     {
-        return double.TryParse(rawValue, out score);
+        return double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out score)
+            || double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out score);
     }
 
     private static string FormatRecordedScore(

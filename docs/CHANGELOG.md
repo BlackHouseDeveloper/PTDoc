@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - UX Overhaul Phase 1 review-feedback cleanup
+
+#### OutcomeMeasurePanel score parsing and clinic reference docs housekeeping
+- **`src/PTDoc.UI/Components/Notes/Workspace/OutcomeMeasurePanel.razor`** — Fixed `TryParseScore` to use `NumberStyles.Float | NumberStyles.AllowThousands` with `CultureInfo.InvariantCulture` first, falling back to `CultureInfo.CurrentCulture`, consistent with `NoteWorkspaceApiService` and `ProgressTrackingAggregationService`. Reason: scores serialised with invariant culture (e.g. the API) would fail to parse and fall through to the plain "Recorded" fallback label when the viewer's locale uses a different decimal separator.
+- **`docs/clinicrefdata/`** — Renamed five reference files that carried accidental `(1)` duplicate-export suffixes to stable, lowercase-kebab slugs (`what-was-specifically-worked-on.md`, `what-generally-was-worked-on.md`, `app-list-of-body-parts.md`, `app-list-of-medications.md`, `app-pain-quality-descriptors-patient.md`). Reason: the `(1)` suffix is an OS artefact that makes filenames fragile and hard to reference.
+- **`docs/clinicrefdata/List of commonly used Special test.md`** — Fixed truncated heading `###  **ervical Spine**` → `###  **Cervical Spine**`. Reason: leading character was missing from the section heading.
+
 ### Changed - patient role shell and route RBAC alignment
 
 #### Patient access now respects the existing role matrix across shell navigation and clinician pages

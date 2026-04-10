@@ -1,6 +1,6 @@
 List of commonly used Special test
 
-###  **ervical Spine**
+###  **Cervical Spine**
 
 * **Spurling’s Test** – Cervical radiculopathy
 
