@@ -2,9 +2,11 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
@@ -35,6 +37,7 @@ builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
+builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocalPersistenceService>();
 builder.Services.AddTransient<DraftAutosaveService>();
@@ -254,11 +257,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     {
         logger.LogWarning("Rejected invalid returnUrl for web login.");
     }
-
-    if (string.IsNullOrWhiteSpace(username))
-    {
-        username = pin;
-    }
+    username = username.Trim();
 
     if (string.IsNullOrWhiteSpace(pin) || pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
     {

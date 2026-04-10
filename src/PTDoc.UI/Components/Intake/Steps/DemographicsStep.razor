@@ -29,18 +29,6 @@
         PayerTypeChanged="OnPayerTypeChanged"
         InsuranceCoverageTypeChanged="OnInsuranceCoverageTypeChanged" />
 
-    <MedicalHistoryCard
-        HasCurrentMedications="@State.HasCurrentMedications"
-        HasOtherMedicalConditions="@State.HasOtherMedicalConditions"
-        UsesAssistiveDevices="@State.UsesAssistiveDevices"
-        HasPreviousSurgeriesOrInjuries="@State.HasPreviousSurgeriesOrInjuries"
-        MedicalHistoryNotes="@State.MedicalHistoryNotes"
-        HasCurrentMedicationsChanged="OnHasCurrentMedicationsChanged"
-        HasOtherMedicalConditionsChanged="OnHasOtherMedicalConditionsChanged"
-        UsesAssistiveDevicesChanged="OnUsesAssistiveDevicesChanged"
-        HasPreviousSurgeriesOrInjuriesChanged="OnHasPreviousSurgeriesOrInjuriesChanged"
-        MedicalHistoryNotesChanged="OnMedicalHistoryNotesChanged" />
-
     <HipaaPrivacyNoticeCard
         HipaaAcknowledged="@State.HipaaAcknowledged"
         HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged"
@@ -53,7 +41,7 @@
     }
 
     <div class="demographics-step__actions">
-        <button type="button" class="btn btn-primary" @onclick="OnContinueClicked" data-testid="continue-button">Continue to Pain Assessment</button>
+        <button type="button" class="btn btn-primary" @onclick="OnContinueClicked" data-testid="continue-button">Continue to Medical History / Pain Assessment</button>
     </div>
 
     <p class="demographics-step__footer">Step 1 of 4 • 25% Complete</p>
@@ -113,13 +101,7 @@
     private Task OnPayerTypeChanged(string? value) => UpdateStateAsync(() => State.PayerType = value);
     private Task OnInsuranceCoverageTypeChanged(string? value) => UpdateStateAsync(() => State.InsuranceCoverageType = value);
 
-    private Task OnHasCurrentMedicationsChanged(bool value) => UpdateStateAsync(() => State.HasCurrentMedications = value);
-    private Task OnHasOtherMedicalConditionsChanged(bool value) => UpdateStateAsync(() => State.HasOtherMedicalConditions = value);
-    private Task OnUsesAssistiveDevicesChanged(bool value) => UpdateStateAsync(() => State.UsesAssistiveDevices = value);
-    private Task OnHasPreviousSurgeriesOrInjuriesChanged(bool value) => UpdateStateAsync(() => State.HasPreviousSurgeriesOrInjuries = value);
-    private Task OnMedicalHistoryNotesChanged(string? value) => UpdateStateAsync(() => State.MedicalHistoryNotes = value);
     private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() => State.HipaaAcknowledged = value);
     private Task OnConsentToTreatChanged(bool value) => UpdateStateAsync(() => State.ConsentToTreatAcknowledged = value);
-
     private Task OnContinueClicked() => OnContinue.HasDelegate ? OnContinue.InvokeAsync() : Task.CompletedTask;
 }

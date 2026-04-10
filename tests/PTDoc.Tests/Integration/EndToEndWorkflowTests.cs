@@ -618,7 +618,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{\"subjective\":\"Patient reports progress.\"}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
             CptCodesJson = "[]"
         });
         using var createResp = await client.PostAsync("/api/v1/notes", createBody);
@@ -646,7 +646,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{\"subjective\":\"Patient reports progress.\"}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
             CptCodesJson = "[]"
         }));
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
@@ -827,7 +827,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
             CptCodesJson = "[]"
         }));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -865,7 +865,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
             CptCodesJson = "[]"
         }));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -1056,7 +1056,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var doc = JsonSerializer.Deserialize<JsonDocument>(content, JsonOpts);
         var patientId = doc!.RootElement.GetProperty("id").GetGuid();
 
-        // RQ-033: Add a diagnosis code so notes can be signed.
+        // Keep chart-level diagnoses populated for patient workflows that still surface them,
+        // even though note signing now validates diagnosis codes on the note payload itself.
         var diagBody = JsonContent(new { icdCode = "M54.5", description = "Low back pain", isPrimary = true });
         await client.PostAsync($"/api/v1/patients/{patientId}/diagnoses", diagBody);
 
@@ -1077,6 +1078,28 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var content = await response.Content.ReadAsStringAsync();
         var doc = JsonSerializer.Deserialize<JsonDocument>(content, JsonOpts);
         return doc!.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static string CreateWorkspaceNoteContentWithDiagnosis(
+        NoteType noteType,
+        string code = "M54.5",
+        string description = "Low back pain")
+    {
+        return JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = noteType,
+            Assessment = new WorkspaceAssessmentV2
+            {
+                DiagnosisCodes =
+                [
+                    new DiagnosisCodeV2
+                    {
+                        Code = code,
+                        Description = description
+                    }
+                ]
+            }
+        }, JsonOpts);
     }
 
     private static string ReadInviteToken(string inviteUrl)

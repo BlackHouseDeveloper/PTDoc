@@ -86,6 +86,241 @@
     color: var(--foreground);
 }
 
+.note-workspace__override-panel,
+::deep .note-workspace__override-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--warning) 10%, var(--card));
+}
+
+.note-workspace__override-header,
+::deep .note-workspace__override-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+}
+
+.note-workspace__override-copy,
+::deep .note-workspace__override-copy,
+.note-workspace__override-form,
+::deep .note-workspace__override-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.note-workspace__override-title,
+::deep .note-workspace__override-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.note-workspace__override-text,
+::deep .note-workspace__override-text,
+.note-workspace__override-help,
+::deep .note-workspace__override-help {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    line-height: 1.5;
+}
+
+.note-workspace__override-help--readonly,
+::deep .note-workspace__override-help--readonly {
+    color: var(--foreground);
+    font-weight: var(--font-weight-medium);
+}
+
+.note-workspace__override-list,
+::deep .note-workspace__override-list {
+    margin: 0;
+    padding-left: var(--spacing-4);
+    display: grid;
+    gap: var(--spacing-1);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+}
+
+.note-workspace__override-attestation,
+::deep .note-workspace__override-attestation {
+    margin: 0;
+    padding: var(--spacing-3);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--card) 80%, var(--warning));
+    border: 1px solid color-mix(in srgb, var(--warning) 20%, var(--border));
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+}
+
+.note-workspace__override-label,
+::deep .note-workspace__override-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.note-workspace__override-textarea,
+::deep .note-workspace__override-textarea {
+    min-height: calc(var(--spacing-8) * 2);
+    width: 100%;
+    resize: vertical;
+    padding: var(--spacing-3);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--input);
+    color: var(--foreground);
+    font: inherit;
+}
+
+.note-workspace__override-textarea:focus,
+::deep .note-workspace__override-textarea:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 18%, transparent);
+}
+
+.note-workspace__override-actions,
+::deep .note-workspace__override-actions {
+    display: flex;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.note-workspace__seed-summary,
+::deep .note-workspace__seed-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.note-workspace__seed-summary-header,
+::deep .note-workspace__seed-summary-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+    flex-wrap: wrap;
+}
+
+.note-workspace__seed-summary-copy,
+::deep .note-workspace__seed-summary-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+    min-width: 0;
+}
+
+.note-workspace__seed-summary-title,
+::deep .note-workspace__seed-summary-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.note-workspace__seed-summary-text,
+::deep .note-workspace__seed-summary-text {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    line-height: 1.5;
+}
+
+.note-workspace__seed-summary-badges,
+::deep .note-workspace__seed-summary-badges {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+}
+
+.note-workspace__seed-badge,
+::deep .note-workspace__seed-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target-desktop);
+    padding: calc(var(--spacing-1) / 2) var(--spacing-3);
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    border: 1px solid var(--border);
+    background: var(--surface-subtle);
+    color: var(--foreground);
+}
+
+.note-workspace__seed-badge--source,
+::deep .note-workspace__seed-badge--source {
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--info) 28%, var(--border));
+}
+
+.note-workspace__seed-badge--editable,
+::deep .note-workspace__seed-badge--editable {
+    background: color-mix(in srgb, var(--success) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+    color: var(--success);
+}
+
+.note-workspace__seed-badge--locked,
+.note-workspace__seed-badge--readonly,
+::deep .note-workspace__seed-badge--locked,
+::deep .note-workspace__seed-badge--readonly {
+    background: color-mix(in srgb, var(--warning) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
+    color: var(--warning);
+}
+
+.note-workspace__seed-group,
+::deep .note-workspace__seed-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.note-workspace__seed-group-label,
+::deep .note-workspace__seed-group-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.note-workspace__seed-chip-list,
+::deep .note-workspace__seed-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.note-workspace__seed-chip,
+::deep .note-workspace__seed-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target-desktop);
+    padding: calc(var(--spacing-1) / 2) var(--spacing-3);
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--muted) 72%, transparent);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: 1.35;
+}
+
 @media (max-width: 1024px) {
     ::deep .note-workspace {
         padding: var(--spacing-3);
@@ -99,6 +334,16 @@
 
     ::deep .note-workspace__panel {
         min-height: calc(var(--touch-target-desktop) * 8);
+    }
+
+    .note-workspace__seed-summary,
+    ::deep .note-workspace__seed-summary {
+        padding: var(--spacing-3);
+    }
+
+    .note-workspace__override-panel,
+    ::deep .note-workspace__override-panel {
+        padding: var(--spacing-3);
     }
 }
 

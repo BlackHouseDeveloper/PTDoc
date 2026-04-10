@@ -2,3 +2,24 @@
     display: grid;
     gap: var(--spacing-6);
 }
+
+.pain-assessment-step2__hero,
+.pain-assessment-step2__panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+}
+
+.pain-assessment-step2__hero h2 {
+    color: var(--card-foreground);
+    font-size: var(--text-xl);
+    margin: 0;
+}
+
+.pain-assessment-step2__hero p {
+    color: var(--muted-foreground);
+    margin: 0;
+}

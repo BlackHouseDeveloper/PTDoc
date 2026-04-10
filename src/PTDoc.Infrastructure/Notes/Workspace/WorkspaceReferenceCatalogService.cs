@@ -7,6 +7,7 @@ namespace PTDoc.Infrastructure.Notes.Workspace;
 public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry outcomeMeasureRegistry)
     : IWorkspaceReferenceCatalogService
 {
+    private const string CptModifierSource = "Commonly used CPT codes and modifiers.md";
     private const string CervicalGoalSource = "ClinicalReference_CSpineLimitationsGoals.docx.md";
     private const string LumbarGoalSource = "Goals_LBPLimitations_SmartGoals.docx.md";
     private const string LowerExtremityGoalSource = "Goals_LELimitations_SmartGoals.docx.md";
@@ -116,12 +117,35 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         new() { Code = "N94.1", Description = "Dyspareunia (pelvic pain with intercourse)", Source = Icd10Source, IsCompleteLibrary = false }
     ];
 
+    private static readonly IReadOnlyList<string> TherapyModifierOptions =
+    [
+        "GP",
+        "KX",
+        "59",
+        "XE",
+        "XS",
+        "XP",
+        "XU",
+        "CQ",
+        "GA",
+        "GY",
+        "GZ",
+        "22",
+        "76",
+        "77"
+    ];
+
+    private static readonly IReadOnlyList<string> DefaultPtSuggestedModifiers =
+    [
+        "GP"
+    ];
+
     private static readonly IReadOnlyList<CodeLookupEntry> BootstrapCptCodes =
     [
-        new() { Code = "97110", Description = "Therapeutic exercises", Source = "Eval/reeval workflow documents", IsCompleteLibrary = false },
-        new() { Code = "97112", Description = "Neuromuscular re-education", Source = "Eval/reeval workflow documents", IsCompleteLibrary = false },
-        new() { Code = "97140", Description = "Manual therapy techniques", Source = "Eval/reeval workflow documents", IsCompleteLibrary = false },
-        new() { Code = "97530", Description = "Therapeutic activities", Source = "Eval/reeval workflow documents", IsCompleteLibrary = false }
+        CreateCptLookupEntry("97110", "Therapeutic exercises"),
+        CreateCptLookupEntry("97112", "Neuromuscular re-education"),
+        CreateCptLookupEntry("97140", "Manual therapy techniques"),
+        CreateCptLookupEntry("97530", "Therapeutic activities")
     ];
 
     private static readonly IReadOnlyList<string> SharedTreatmentInterventions =
@@ -236,10 +260,27 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
                 Code = entry.Code,
                 Description = entry.Description,
                 Source = entry.Source,
-                IsCompleteLibrary = entry.IsCompleteLibrary
+                IsCompleteLibrary = entry.IsCompleteLibrary,
+                ModifierOptions = [.. entry.ModifierOptions],
+                SuggestedModifiers = [.. entry.SuggestedModifiers],
+                ModifierSource = entry.ModifierSource
             })
             .ToList()
             .AsReadOnly();
+    }
+
+    private static CodeLookupEntry CreateCptLookupEntry(string code, string description)
+    {
+        return new CodeLookupEntry
+        {
+            Code = code,
+            Description = description,
+            Source = CptModifierSource,
+            IsCompleteLibrary = false,
+            ModifierOptions = [.. TherapyModifierOptions],
+            SuggestedModifiers = [.. DefaultPtSuggestedModifiers],
+            ModifierSource = CptModifierSource
+        };
     }
 
     private static IReadOnlyDictionary<BodyPart, BodyRegionCatalog> BuildCatalogs()

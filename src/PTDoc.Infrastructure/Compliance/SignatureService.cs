@@ -481,16 +481,16 @@ public class SignatureService : ISignatureService
             };
         }
 
-        var patient = await _context.Patients
+        var patientExists = await _context.Patients
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == note.PatientId, ct);
+            .AnyAsync(p => p.Id == note.PatientId, ct);
 
-        if (patient is null)
+        if (!patientExists)
         {
             return FailedSignature("Patient record not found; cannot sign note without associated patient.");
         }
 
-        if (!HasDiagnosisCodes(patient.DiagnosisCodesJson))
+        if (!HasNoteDiagnosisCodes(note.ContentJson))
         {
             return FailedSignature("At least one ICD-10 diagnosis code is required before signing.");
         }
@@ -529,20 +529,27 @@ public class SignatureService : ISignatureService
             .FirstOrDefaultAsync(ct);
     }
 
-    private static bool HasDiagnosisCodes(string? diagnosisJson)
+    private static bool HasNoteDiagnosisCodes(string? contentJson)
     {
-        if (string.IsNullOrWhiteSpace(diagnosisJson))
+        if (string.IsNullOrWhiteSpace(contentJson))
         {
             return false;
         }
 
         try
         {
-            using var document = System.Text.Json.JsonDocument.Parse(diagnosisJson);
-            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
-                && document.RootElement.GetArrayLength() > 0;
+            using var document = JsonDocument.Parse(contentJson);
+            if (!TryGetPropertyCaseInsensitive(document.RootElement, "assessment", out var assessment)
+                || assessment.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            return TryGetPropertyCaseInsensitive(assessment, "diagnosisCodes", out var diagnosisCodes)
+                && diagnosisCodes.ValueKind == JsonValueKind.Array
+                && diagnosisCodes.GetArrayLength() > 0;
         }
-        catch (System.Text.Json.JsonException)
+        catch (JsonException)
         {
             return false;
         }
@@ -550,6 +557,24 @@ public class SignatureService : ISignatureService
         {
             return false;
         }
+    }
+
+    private static bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     private static bool IsFinalized(ClinicalNote note)

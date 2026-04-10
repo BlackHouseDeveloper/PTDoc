@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 using Xunit;
 
 namespace PTDoc.Tests.Compliance;
@@ -47,7 +49,7 @@ public sealed class SignatureServiceTests : IDisposable
     {
         var signer = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, "{\"assessment\":\"test\"}", "[{\"code\":\"97110\",\"units\":2}]");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, CreateWorkspaceNoteContentWithDiagnosis("M62.89", "Pelvic floor dysfunction"), "[{\"code\":\"97110\",\"units\":2}]");
 
         var result = await _signatureService.SignNoteAsync(
             note.Id,
@@ -151,11 +153,12 @@ public sealed class SignatureServiceTests : IDisposable
         var patient = await CreatePatientAsync();
         var lastModifiedUtc = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc);
         var dateOfService = new DateTime(2026, 4, 3, 9, 0, 0, DateTimeKind.Utc);
+        var noteContent = CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily);
 
         var note1 = await CreateNoteAsync(
             patient.Id,
             NoteType.Daily,
-            "{\"subjective\":\"test\"}",
+            noteContent,
             "[{\"code\":\"97110\",\"units\":2}]",
             dateOfService,
             lastModifiedUtc);
@@ -163,7 +166,7 @@ public sealed class SignatureServiceTests : IDisposable
         var note2 = await CreateNoteAsync(
             patient.Id,
             NoteType.Daily,
-            "{\"subjective\":\"test\"}",
+            noteContent,
             "[{\"code\":\"97110\",\"units\":2}]",
             dateOfService,
             lastModifiedUtc);
@@ -181,7 +184,7 @@ public sealed class SignatureServiceTests : IDisposable
     {
         var signer = await CreateUserAsync(Roles.PTA);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily));
 
         var result = await _signatureService.SignNoteAsync(
             note.Id,
@@ -216,7 +219,7 @@ public sealed class SignatureServiceTests : IDisposable
         var ptaSigner = await CreateUserAsync(Roles.PTA);
         var ptSigner = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily));
 
         var signResult = await _signatureService.SignNoteAsync(note.Id, ptaSigner.Id, Roles.PTA, true, true);
         Assert.True(signResult.Success);
@@ -240,7 +243,7 @@ public sealed class SignatureServiceTests : IDisposable
     {
         var ptSigner = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, CreateWorkspaceNoteContentWithDiagnosis());
 
         var signResult = await _signatureService.SignNoteAsync(note.Id, ptSigner.Id, Roles.PT, true, true);
         Assert.True(signResult.Success);
@@ -284,6 +287,33 @@ public sealed class SignatureServiceTests : IDisposable
         var signer = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync("not-valid-json");
         var note = await CreateNoteAsync(patient.Id, NoteType.Daily);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.False(result.Success);
+        Assert.Contains("ICD-10 diagnosis", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SignNote_WhenPatientHasNoDiagnoses_ButNoteHasWorkspaceDiagnosisCodes_Succeeds()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync("[]");
+        var noteContent = CreateWorkspaceNoteContentWithDiagnosis("M62.89", "Other specified disorders of muscle");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, noteContent);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.True(result.Success);
+        Assert.Equal(NoteStatus.Signed, result.Status);
+    }
+
+    [Fact]
+    public async Task SignNote_WhenPatientHasDiagnoses_ButNoteDiagnosisCodesAreEmpty_ReturnsError()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, "{}");
 
         var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
 
@@ -476,7 +506,7 @@ public sealed class SignatureServiceTests : IDisposable
     {
         var signer = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, "{\"test\":\"data\"}");
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, CreateWorkspaceNoteContentWithDiagnosis());
 
         await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
 
@@ -492,7 +522,7 @@ public sealed class SignatureServiceTests : IDisposable
     {
         var signer = await CreateUserAsync(Roles.PT);
         var patient = await CreatePatientAsync();
-        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Evaluation, CreateWorkspaceNoteContentWithDiagnosis());
         var metric = new ObjectiveMetric
         {
             NoteId = note.Id,
@@ -601,7 +631,7 @@ public sealed class SignatureServiceTests : IDisposable
             Id = noteId,
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily),
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow
         };
@@ -682,5 +712,27 @@ public sealed class SignatureServiceTests : IDisposable
         _context.ClinicalNotes.Add(note);
         await _context.SaveChangesAsync();
         return note;
+    }
+
+    private static string CreateWorkspaceNoteContentWithDiagnosis(
+        string code = "M54.5",
+        string description = "Low back pain",
+        NoteType noteType = NoteType.Evaluation)
+    {
+        return JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = noteType,
+            Assessment = new WorkspaceAssessmentV2
+            {
+                DiagnosisCodes =
+                [
+                    new DiagnosisCodeV2
+                    {
+                        Code = code,
+                        Description = description
+                    }
+                ]
+            }
+        });
     }
 }

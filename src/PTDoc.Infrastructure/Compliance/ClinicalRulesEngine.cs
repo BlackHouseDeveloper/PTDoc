@@ -99,7 +99,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         }
 
         // ── Documentation Completeness ────────────────────────────────────────
-        EvaluateObjectiveMeasures(note, outcomeMeasureCount, results);
+        EvaluateObjectiveMeasures(note, snapshot, outcomeMeasureCount, results);
         EvaluateGoals(contentDoc, snapshot, note.NoteType, results);
         EvaluatePlan(contentDoc, snapshot, note.NoteType, results);
         EvaluateSubjectiveSection(contentDoc, snapshot, note.NoteType, results);
@@ -123,9 +123,16 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
     /// DOC_OBJECTIVE: Notes of type Evaluation or ProgressNote must have at least
     /// one objective metric recorded.
     /// </summary>
-    private static void EvaluateObjectiveMeasures(ClinicalNote note, int outcomeMeasureCount, List<RuleEvaluationResult> results)
+    private static void EvaluateObjectiveMeasures(
+        ClinicalNote note,
+        StructuredValidationSnapshot? snapshot,
+        int outcomeMeasureCount,
+        List<RuleEvaluationResult> results)
     {
-        if (note.ObjectiveMetrics.Any() || outcomeMeasureCount > 0) return;
+        if (note.ObjectiveMetrics.Any() || outcomeMeasureCount > 0 || snapshot?.HasObjectiveFindings == true)
+        {
+            return;
+        }
 
         bool blocking = note.NoteType is NoteType.Evaluation or NoteType.ProgressNote;
         results.Add(new RuleEvaluationResult
@@ -496,6 +503,13 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
                                 !string.IsNullOrWhiteSpace(payload.ProgressQuestionnaire.PainFrequency);
 
             var hasGoals = payload.Assessment.Goals.Count > 0 || goalCount > 0;
+            var hasObjectiveFindings = payload.Objective.Metrics.Count > 0 ||
+                                       payload.Objective.OutcomeMeasures.Count > 0 ||
+                                       payload.Objective.SpecialTests.Count > 0 ||
+                                       HasGaitObservation(payload.Objective.GaitObservation) ||
+                                       HasPostureObservation(payload.Objective.PostureObservation) ||
+                                       HasPalpationObservation(payload.Objective.PalpationObservation) ||
+                                       !string.IsNullOrWhiteSpace(payload.Objective.ClinicalObservationNotes);
             var hasPlan = payload.Plan.TreatmentFrequencyDaysPerWeek.Count > 0 ||
                           payload.Plan.TreatmentDurationWeeks.Count > 0 ||
                           payload.Plan.SelectedCptCodes.Count > 0 ||
@@ -519,6 +533,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
             return new StructuredValidationSnapshot
             {
                 HasSubjective = hasSubjective,
+                HasObjectiveFindings = hasObjectiveFindings,
                 HasGoals = hasGoals,
                 HasPlan = hasPlan,
                 HasCertificationPeriod = hasCertificationPeriod,
@@ -546,9 +561,27 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         return false;
     }
 
+    private static bool HasGaitObservation(GaitObservationV2 gaitObservation) =>
+        !string.IsNullOrWhiteSpace(gaitObservation.PrimaryPattern) ||
+        gaitObservation.Deviations.Count > 0 ||
+        !string.IsNullOrWhiteSpace(gaitObservation.AssistiveDevice) ||
+        !string.IsNullOrWhiteSpace(gaitObservation.Other) ||
+        !string.IsNullOrWhiteSpace(gaitObservation.AdditionalObservations);
+
+    private static bool HasPostureObservation(PostureObservationV2 postureObservation) =>
+        postureObservation.IsNormal ||
+        postureObservation.Findings.Count > 0 ||
+        !string.IsNullOrWhiteSpace(postureObservation.Other);
+
+    private static bool HasPalpationObservation(PalpationObservationV2 palpationObservation) =>
+        palpationObservation.IsNormal ||
+        palpationObservation.TenderMuscles.Count > 0 ||
+        !string.IsNullOrWhiteSpace(palpationObservation.Other);
+
     private sealed class StructuredValidationSnapshot
     {
         public bool HasSubjective { get; init; }
+        public bool HasObjectiveFindings { get; init; }
         public bool HasGoals { get; init; }
         public bool HasPlan { get; init; }
         public bool HasCertificationPeriod { get; init; }

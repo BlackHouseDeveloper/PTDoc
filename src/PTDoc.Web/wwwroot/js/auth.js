@@ -20,5 +20,27 @@ window.ptdocAuth = {
 
     document.body.appendChild(form);
     form.submit();
+  },
+
+  resetLoginFields: () => {
+    const syncBlankValue = (input) => {
+      if (!input) {
+        return;
+      }
+
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    const usernameInput = document.getElementById("username");
+    const pinInput = document.getElementById("pin");
+
+    syncBlankValue(usernameInput);
+    syncBlankValue(pinInput);
+
+    if (usernameInput) {
+      usernameInput.focus();
+    }
   }
 };

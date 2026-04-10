@@ -151,6 +151,22 @@
     overflow: hidden;
 }
 
+.approvals-table-meta {
+    align-items: center;
+    background: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+    justify-content: space-between;
+    padding: var(--spacing-3);
+}
+
+.approvals-table-summary {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
 .approvals-table-wrapper {
     overflow-x: auto;
 }
@@ -200,6 +216,17 @@
     justify-content: space-between;
     gap: var(--spacing-3);
     background: var(--card);
+}
+
+.approvals-empty-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    margin: var(--spacing-3);
+}
+
+.approvals-empty-state p {
+    margin: 0;
 }
 
 .pagination-meta {

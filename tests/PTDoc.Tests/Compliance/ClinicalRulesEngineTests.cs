@@ -107,6 +107,55 @@ public class ClinicalRulesEngineTests : IDisposable
         Assert.DoesNotContain(result, r => r.RuleId == "DOC_OBJECTIVE");
     }
 
+    [Fact]
+    public async Task RunClinicalValidation_EvalWithStructuredObjectiveFindings_NoObjectiveRule()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                GaitObservation = new GaitObservationV2
+                {
+                    PrimaryPattern = "antalgic",
+                    Deviations = ["Decreased stride length"],
+                    AdditionalObservations = "Reduced stance time on the right."
+                }
+            }
+        };
+
+        var note = AddNote(
+            NoteType.Evaluation,
+            JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        var result = await _engine.RunClinicalValidationAsync(note.Id);
+
+        Assert.DoesNotContain(result, r => r.RuleId == "DOC_OBJECTIVE");
+    }
+
+    [Fact]
+    public async Task RunClinicalValidation_EvalWithOnlyRecommendedOutcomeMeasures_StillRequiresObjectiveRule()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                RecommendedOutcomeMeasures = ["NPRS/VAS", "PSFS"]
+            }
+        };
+
+        var note = AddNote(
+            NoteType.Evaluation,
+            JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        var result = await _engine.RunClinicalValidationAsync(note.Id);
+
+        var rule = result.FirstOrDefault(r => r.RuleId == "DOC_OBJECTIVE");
+        Assert.NotNull(rule);
+        Assert.True(rule.Blocking);
+    }
+
     // ─── Documentation completeness: goals ────────────────────────────────────
 
     [Fact]

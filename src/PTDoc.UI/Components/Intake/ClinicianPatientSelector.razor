@@ -3,7 +3,7 @@
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Services
 
-@inject IIntakeService IntakeService
+@inject IPatientService PatientService
 @implements IDisposable
 
 <div class="intake-patient-selector" data-testid="clinician-patient-selector">
@@ -91,7 +91,7 @@
             }
             catch
             {
-                _loadError = "Unable to load patient list.";
+                _loadError = "Unable to load patients.";
                 _isLoading = false;
             }
             StateHasChanged();
@@ -106,13 +106,13 @@
         try
         {
             var take = string.IsNullOrWhiteSpace(query) ? 100 : 50;
-            var result = await IntakeService.SearchEligiblePatientsAsync(query, take);
+            var result = await PatientService.SearchAsync(query, take);
             _patients.Clear();
             _patients.AddRange(result);
         }
         catch
         {
-            _loadError = "Unable to load intake-eligible patients.";
+            _loadError = "Unable to load patients.";
         }
         finally
         {

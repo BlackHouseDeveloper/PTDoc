@@ -1,5 +1,5 @@
 @page "/patient/{id}"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.PatientRead)]
 @rendermode InteractiveServer
 @inject NavigationManager NavigationManager
 @using PTDoc.Application.Services

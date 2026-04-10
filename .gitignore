@@ -529,3 +529,7 @@ docs/_archive/        # Superseded documentation (archived for reference but not
 
 *.db-shm
 *.db-wal
+
+#Playwright folders
+.playwright-cli/
+.playwright-mcp/       # Playwright test artifacts (screenshots, videos, trace files)

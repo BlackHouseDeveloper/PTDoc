@@ -345,13 +345,13 @@
                 <input type="radio" name="medications" value="false"
                        checked="@(_vm.TakingMedications == false)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetAndNotify(v => v.TakingMedications = false)" /> No
+                       @onchange="_ => SetTakingMedications(false)" /> No
             </label>
             <label class="subjective-tab__radio-item">
                 <input type="radio" name="medications" value="true"
                        checked="@(_vm.TakingMedications == true)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetAndNotify(v => v.TakingMedications = true)" /> Yes
+                       @onchange="_ => SetTakingMedications(true)" /> Yes
             </label>
         </div>
         @if (_vm.TakingMedications == true)
@@ -466,6 +466,17 @@
     private Task SetAndNotify(Action<SubjectiveVm> update)
     {
         update(_vm);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task SetTakingMedications(bool value)
+    {
+        _vm.TakingMedications = value;
+        if (!value)
+        {
+            _vm.MedicationDetails = null;
+        }
+
         return VmChanged.InvokeAsync(_vm);
     }
 

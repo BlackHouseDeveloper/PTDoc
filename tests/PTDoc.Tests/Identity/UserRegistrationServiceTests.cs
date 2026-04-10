@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
@@ -129,6 +130,50 @@ public class UserRegistrationServiceTests
             null));
 
         Assert.Equal(RegistrationStatus.InvalidPin, result.Status);
+    }
+
+    [Theory]
+    [InlineData("Billing", "billing@clinic.com")]
+    [InlineData("Patient", "patient@clinic.com")]
+    public async Task RegisterAsync_QaReadOnlyRoles_CreateInactiveUser(string roleKey, string email)
+    {
+        await using var context = CreateInMemoryContext();
+        var clinic = new Clinic { Name = "North Clinic", Slug = "north", IsActive = true };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+
+        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+
+        var result = await sut.RegisterAsync(new UserRegistrationRequest(
+            "QA User",
+            email,
+            new DateTime(1992, 3, 3),
+            roleKey,
+            clinic.Id,
+            "1234",
+            null,
+            null));
+
+        Assert.Equal(RegistrationStatus.PendingApproval, result.Status);
+        var user = await context.Users.SingleAsync(u => u.Email == email);
+        Assert.False(user.IsActive);
+        Assert.Equal(roleKey, user.Role);
+    }
+
+    [Fact]
+    public async Task GetRegisterableRolesAsync_IncludesQaAuditRoles()
+    {
+        await using var context = CreateInMemoryContext();
+        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+
+        var roles = await sut.GetRegisterableRolesAsync();
+
+        Assert.Contains(roles, role => role.Key == Roles.PT);
+        Assert.Contains(roles, role => role.Key == Roles.PTA);
+        Assert.Contains(roles, role => role.Key == Roles.FrontDesk);
+        Assert.Contains(roles, role => role.Key == Roles.Owner);
+        Assert.Contains(roles, role => role.Key == Roles.Billing);
+        Assert.Contains(roles, role => role.Key == Roles.Patient);
     }
 
     [Fact]

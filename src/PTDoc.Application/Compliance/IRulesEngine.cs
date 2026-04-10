@@ -147,6 +147,10 @@ public class CptCodeEntry
     public int Units { get; set; }
     public int? Minutes { get; set; }
     public bool IsTimed { get; set; } // Timed codes subject to 8-minute rule
+    public List<string> Modifiers { get; set; } = [];
+    public List<string> ModifierOptions { get; set; } = [];
+    public List<string> SuggestedModifiers { get; set; } = [];
+    public string? ModifierSource { get; set; }
 }
 
 /// <summary>

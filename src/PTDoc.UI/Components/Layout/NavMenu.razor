@@ -19,42 +19,62 @@
                     <div class="ptdoc-nav-indicator" aria-hidden="true"></div>
                 </NavLink>
 
-                <NavLink class="ptdoc-nav-item" href="appointments">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-appointments.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Appointments</span>
-                    </div>
-                </NavLink>
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.SchedulingAccess">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="appointments">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-appointments.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Appointments</span>
+                            </div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
 
-                <NavLink class="ptdoc-nav-item" href="patients">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-patients.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Patients</span>
-                    </div>
-                </NavLink>
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.PatientRead">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="patients">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-patients.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Patients</span>
+                            </div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
 
-                <NavLink class="ptdoc-nav-item" href="intake">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-intake.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Intake</span>
-                    </div>
-                    <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
-                </NavLink>
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.IntakeRead">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="intake">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-intake.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Intake</span>
+                            </div>
+                            <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
 
-                <NavLink class="ptdoc-nav-item" href="notes">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-notes.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Notes</span>
-                    </div>
-                    <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
-                </NavLink>
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.NoteRead">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="notes">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-notes.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Notes</span>
+                            </div>
+                            <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
 
-                <NavLink class="ptdoc-nav-item" href="progress-tracking">
-                    <div class="ptdoc-nav-content">
-                        <img src="_content/PTDoc.UI/images/nav-progress.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
-                        <span class="ptdoc-nav-text">Progress Tracking</span>
-                    </div>
-                </NavLink>
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="progress-tracking">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-progress.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Progress Tracking</span>
+                            </div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
             </div>
 
             <!-- Admin Section: visible to ClinicalStaff for Export/Settings -->

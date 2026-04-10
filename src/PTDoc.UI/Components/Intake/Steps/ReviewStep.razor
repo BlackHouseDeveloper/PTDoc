@@ -1,8 +1,11 @@
 @using System.Text.Json
 @using System.Text.RegularExpressions
+@using PTDoc.Application.Intake
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components
 @using PTDoc.UI.Components.Intake.Models
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 
 <section class="review-step" data-testid="review-step">
     <section class="review-step__banner @(IsAgeVerified ? "review-step__banner--success" : "review-step__banner--warning")" aria-live="polite">
@@ -23,8 +26,7 @@
 
         <ul class="review-step__checklist">
             <li>Verify all contact information is correct.</li>
-            <li>Ensure medical history is accurate.</li>
-            <li>Confirm pain assessment details.</li>
+            <li>Ensure the Medical History / Pain Assessment step details are accurate.</li>
             <li>Review treatment goals, permissions, and expectations.</li>
         </ul>
     </section>
@@ -91,9 +93,9 @@
         <div class="review-step__card-header">
             <div>
                 <h2>Medical History</h2>
-                <p>These answers summarize the health history provided in the intake.</p>
+                <p>These answers summarize the health history captured in the Medical History / Pain Assessment step.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@State.IsLocked">Edit</button>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@State.IsLocked">Edit</button>
         </div>
 
         <div class="review-step__row-list">
@@ -115,6 +117,71 @@
             </div>
         </div>
 
+        @if (SelectedMedicationLabels.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Selected Medications</span>
+                <div class="review-step__chip-list">
+                    @foreach (var item in SelectedMedicationLabels)
+                    {
+                        <span class="review-step__pill">@item</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (State.SelectedComorbidities.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Comorbidities</span>
+                <div class="review-step__chip-list">
+                    @foreach (var item in State.SelectedComorbidities.OrderBy(value => value))
+                    {
+                        <span class="review-step__pill">@item</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (State.SelectedLivingSituations.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Living Situation</span>
+                <div class="review-step__chip-list">
+                    @foreach (var item in State.SelectedLivingSituations.OrderBy(value => value))
+                    {
+                        <span class="review-step__pill">@item</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (State.SelectedAssistiveDevices.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Assistive Devices</span>
+                <div class="review-step__chip-list">
+                    @foreach (var item in State.SelectedAssistiveDevices.OrderBy(value => value))
+                    {
+                        <span class="review-step__pill">@item</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (State.SelectedHouseLayoutOptions.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Home Layout</span>
+                <div class="review-step__chip-list">
+                    @foreach (var item in State.SelectedHouseLayoutOptions.OrderBy(value => value))
+                    {
+                        <span class="review-step__pill">@item</span>
+                    }
+                </div>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(State.MedicalHistoryNotes))
         {
             <div class="review-step__note-box">
@@ -127,8 +194,8 @@
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
-                <h2>Pain Assessment</h2>
-                <p>Review the selected pain areas and any pain detail captured so far.</p>
+                <h2>Medical History / Pain Assessment</h2>
+                <p>Review the mapped pain areas, severity, and structured pain detail captured in the combined intake step.</p>
             </div>
             <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@State.IsLocked">Edit</button>
         </div>
@@ -158,9 +225,48 @@
                 </div>
             </div>
 
+            @if (SelectedBodyPartLabels.Count > 0)
+            {
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Structured Body Parts</span>
+                    <div class="review-step__chip-list">
+                        @foreach (var item in SelectedBodyPartLabels)
+                        {
+                            <span class="review-step__pill">@item</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (SelectedPainDescriptorLabels.Count > 0)
+            {
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Pain Quality</span>
+                    <div class="review-step__chip-list">
+                        @foreach (var item in SelectedPainDescriptorLabels)
+                        {
+                            <span class="review-step__pill">@item</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (ShowOutcomeMeasureRecommendations && State.RecommendedOutcomeMeasures.Count > 0)
+            {
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Auto-Selected Outcome Measures</span>
+                    <div class="review-step__chip-list">
+                        @foreach (var item in State.RecommendedOutcomeMeasures.OrderBy(value => value))
+                        {
+                            <span class="review-step__pill review-step__pill--success">@item</span>
+                        }
+                    </div>
+                </div>
+            }
+
             <div class="review-step__field">
                 <div class="review-step__slider-header">
-                    <span class="review-step__field-label">Pain Level</span>
+                    <span class="review-step__field-label">Pain Severity</span>
                     <span class="review-step__slider-value">@(PainLevel.HasValue ? $"{PainLevel.Value}/10" : "Not provided")</span>
                 </div>
                 <div class="review-step__slider" aria-hidden="true">
@@ -405,6 +511,7 @@
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnSubmit { get; set; }
     [Parameter] public EventCallback<IntakeStep> OnEditStep { get; set; }
+    [Parameter] public bool ShowOutcomeMeasureRecommendations { get; set; }
 
     private int? AgeYears => GetAge(State.DateOfBirth);
     private bool IsAgeVerified => AgeYears.HasValue && AgeYears.Value >= 18;
@@ -415,7 +522,7 @@
     private bool PhoneCallsAllowed => State.AllowPhoneCalls && !State.RevokeMarketingCommunications;
     private bool TextMessagesAllowed => State.AllowTextMessages && !State.RevokeMarketingCommunications;
     private bool EmailAllowed => State.AllowEmailMessages && !State.RevokeMarketingCommunications;
-    private int? PainLevel => GetPainLevel(State.PainDetailDrafts);
+    private int? PainLevel => State.PainSeverityScore ?? GetPainLevel(State.PainDetailDrafts);
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
     private string SubmitButtonText => State.IsLocked ? "Intake Submitted" : State.IsSubmitting ? "Submitting..." : "Submit Intake Form";
@@ -424,6 +531,9 @@
         : "Billing consent timestamp will be recorded when this intake is submitted.";
     private IReadOnlyList<string> SelectedRegionLabels => GetSelectedRegionLabels(State);
     private string PrimaryRegionLabel => GetPrimaryRegionLabel(State);
+    private IReadOnlyList<string> SelectedMedicationLabels => GetSelectedMedicationLabels();
+    private IReadOnlyList<string> SelectedPainDescriptorLabels => GetSelectedPainDescriptorLabels();
+    private IReadOnlyList<string> SelectedBodyPartLabels => GetSelectedBodyPartLabels();
 
     private Task OnBackClicked() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
 
@@ -629,6 +739,72 @@
         }
 
         return "Unknown";
+    }
+
+    private IReadOnlyList<string> GetSelectedMedicationLabels()
+    {
+        if (State.StructuredData?.MedicationIds is not { Count: > 0 } medicationIds)
+        {
+            return Array.Empty<string>();
+        }
+
+        return medicationIds
+            .Select(id => IntakeReferenceData.GetMedication(id)?.DisplayLabel ?? id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetSelectedPainDescriptorLabels()
+    {
+        if (State.StructuredData?.PainDescriptorIds is not { Count: > 0 } descriptorIds)
+        {
+            return Array.Empty<string>();
+        }
+
+        return descriptorIds
+            .Select(id => IntakeReferenceData.GetPainDescriptor(id)?.Label ?? id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetSelectedBodyPartLabels()
+    {
+        if (State.StructuredData?.BodyPartSelections is not { Count: > 0 } selections)
+        {
+            return Array.Empty<string>();
+        }
+
+        return selections
+            .Select(selection => FormatBodyPartSelection(IntakeReferenceData.GetBodyPart(selection.BodyPartId), selection))
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()!;
+    }
+
+    private static string? FormatBodyPartSelection(IntakeBodyPartItemDto? item, IntakeBodyPartSelectionDto selection)
+    {
+        if (item is null)
+        {
+            return null;
+        }
+
+        var details = new List<string>();
+        if (selection.Lateralities.Count > 0)
+        {
+            details.Add(string.Join("/", selection.Lateralities.Select(value => char.ToUpperInvariant(value[0]) + value[1..])));
+        }
+
+        if (selection.DigitIds.Count > 0)
+        {
+            details.Add(string.Join(", ", selection.DigitIds.Select(id =>
+                item.DigitOptions.FirstOrDefault(option => string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase))?.Label ?? id)));
+        }
+
+        return details.Count == 0
+            ? item.Label
+            : $"{item.Label} ({string.Join(" • ", details)})";
     }
 
     private static bool TryFindIntValue(object? draftValue, out int result)
