@@ -3,8 +3,8 @@ using PTDoc.Application.Data;
 namespace PTDoc.Application.Services;
 
 /// <summary>
-/// Service for searching the bundled ICD-10 code list.
-/// Registered as a singleton — the code list is static and loaded once at startup.
+/// Service for searching the canonical ICD-10 code list exposed to generic lookup endpoints.
+/// Registered as a singleton because the underlying reference catalog is loaded once at startup.
 /// </summary>
 public interface IIcd10Service
 {

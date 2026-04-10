@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -20,6 +22,7 @@ public sealed class IntakeService : IIntakeService
     private readonly ApplicationDbContext _context;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IIdentityContextAccessor _identityContext;
+    private readonly IIntakeReferenceDataCatalogService _intakeReferenceData;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -30,11 +33,13 @@ public sealed class IntakeService : IIntakeService
     public IntakeService(
         ApplicationDbContext context,
         ITenantContextAccessor tenantContext,
-        IIdentityContextAccessor identityContext)
+        IIdentityContextAccessor identityContext,
+        IIntakeReferenceDataCatalogService intakeReferenceData)
     {
         _context = context;
         _tenantContext = tenantContext;
         _identityContext = identityContext;
+        _intakeReferenceData = intakeReferenceData;
     }
 
     public async Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
@@ -98,6 +103,7 @@ public sealed class IntakeService : IIntakeService
             TemplateVersion = "1.0",
             AccessToken = GenerateAccessTokenPlaceholderHash(),
             ResponseJson = SerializeDraft(draft),
+            StructuredDataJson = SerializeStructuredData(draft.StructuredData),
             PainMapData = BuildPainMapJson(draft),
             Consents = BuildConsentsJson(draft),
             IsLocked = false,
@@ -210,6 +216,7 @@ public sealed class IntakeService : IIntakeService
             // Canonical invite links are minted separately; store a non-shareable placeholder hash.
             AccessToken = GenerateAccessTokenPlaceholderHash(),
             ResponseJson = SerializeDraft(draft),
+            StructuredDataJson = SerializeStructuredData(draft.StructuredData),
             PainMapData = BuildPainMapJson(draft),
             Consents = BuildConsentsJson(state),
             IsLocked = false,
@@ -254,6 +261,7 @@ public sealed class IntakeService : IIntakeService
                 // Canonical invite links are minted separately; store a non-shareable placeholder hash.
                 AccessToken = GenerateAccessTokenPlaceholderHash(),
                 ResponseJson = SerializeDraft(state),
+                StructuredDataJson = SerializeStructuredData(state.StructuredData),
                 PainMapData = BuildPainMapJson(state),
                 Consents = BuildConsentsJson(state),
                 IsLocked = false,
@@ -267,6 +275,7 @@ public sealed class IntakeService : IIntakeService
         else
         {
             intake.ResponseJson = SerializeDraft(state);
+            intake.StructuredDataJson = SerializeStructuredData(state.StructuredData);
             intake.PainMapData = BuildPainMapJson(state);
             intake.Consents = BuildConsentsJson(state);
             intake.LastModifiedUtc = DateTime.UtcNow;
@@ -297,6 +306,8 @@ public sealed class IntakeService : IIntakeService
         CopyDraftProperties(state, submittedState);
         submittedState.IsSubmitted = true;
         intake.ResponseJson = SerializeDraft(submittedState);
+        intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
+        intake.PainMapData = BuildPainMapJson(submittedState);
         intake.Consents = BuildConsentsJson(state);
         intake.SubmittedAt = DateTime.UtcNow;
         intake.LastModifiedUtc = DateTime.UtcNow;
@@ -376,7 +387,7 @@ public sealed class IntakeService : IIntakeService
         target.PainSeverityScore = source.PainSeverityScore;
         target.PainDetailDrafts = source.PainDetailDrafts
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        target.StructuredData = source.StructuredData;
+        target.StructuredData = CloneStructuredData(source.StructuredData);
         target.SelectedComorbidities = source.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.SelectedAssistiveDevices = source.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.SelectedLivingSituations = source.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -388,14 +399,14 @@ public sealed class IntakeService : IIntakeService
 
     private static IntakeResponseDraft DeserializeDraft(IntakeForm intake)
     {
-        var draft = DeserializeDraft(intake.ResponseJson, intake.PatientId);
+        var draft = DeserializeDraft(intake.ResponseJson, intake.StructuredDataJson, intake.PatientId);
         draft.IntakeId = intake.Id;
         draft.IsLocked = intake.IsLocked;
         draft.IsSubmitted = intake.SubmittedAt.HasValue;
         return draft;
     }
 
-    private static IntakeResponseDraft DeserializeDraft(string json, Guid patientId)
+    private static IntakeResponseDraft DeserializeDraft(string json, string? structuredDataJson, Guid patientId)
     {
         try
         {
@@ -403,16 +414,30 @@ public sealed class IntakeService : IIntakeService
             if (draft is not null)
             {
                 draft.PatientId = patientId;
+                if (IntakeStructuredDataJson.TryParse(structuredDataJson, out var structuredData, out _))
+                {
+                    draft.StructuredData = structuredData;
+                }
+
                 return draft;
             }
         }
         catch { /* fall through */ }
 
-        return new IntakeResponseDraft { PatientId = patientId };
+        var fallback = new IntakeResponseDraft { PatientId = patientId };
+        if (IntakeStructuredDataJson.TryParse(structuredDataJson, out var fallbackStructuredData, out _))
+        {
+            fallback.StructuredData = fallbackStructuredData;
+        }
+
+        return fallback;
     }
 
     private static string SerializeDraft(IntakeResponseDraft state)
         => JsonSerializer.Serialize(state, SerializerOptions);
+
+    private static string? SerializeStructuredData(IntakeStructuredDataDto? structuredData)
+        => structuredData is null ? null : IntakeStructuredDataJson.Serialize(structuredData);
 
     private static IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
@@ -423,8 +448,13 @@ public sealed class IntakeService : IIntakeService
         return draft;
     }
 
-    private static string BuildPainMapJson(IntakeResponseDraft state)
+    private string BuildPainMapJson(IntakeResponseDraft state)
     {
+        if (state.StructuredData is not null)
+        {
+            return IntakeStructuredDataJson.BuildPainMapProjectionJson(state.StructuredData, _intakeReferenceData);
+        }
+
         var payload = new
         {
             selectedBodyRegion = state.SelectedBodyRegion,
@@ -432,6 +462,19 @@ public sealed class IntakeService : IIntakeService
         };
 
         return JsonSerializer.Serialize(payload, SerializerOptions);
+    }
+
+    private static IntakeStructuredDataDto? CloneStructuredData(IntakeStructuredDataDto? structuredData)
+    {
+        if (structuredData is null)
+        {
+            return null;
+        }
+
+        var json = IntakeStructuredDataJson.Serialize(structuredData);
+        return IntakeStructuredDataJson.TryParse(json, out var clone, out _)
+            ? clone
+            : new IntakeStructuredDataDto();
     }
 
     private static string BuildPayerInfoJson(IntakeResponseDraft state)

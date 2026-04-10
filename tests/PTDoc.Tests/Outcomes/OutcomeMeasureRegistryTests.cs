@@ -36,6 +36,7 @@ public class OutcomeMeasureRegistryTests
         foreach (var measure in _registry.GetAllMeasures())
         {
             Assert.NotEmpty(measure.ScoringBands);
+            Assert.Equal("docs/clinicrefdata/List of functional outcome measures.md", measure.Provenance?.DocumentPath);
         }
     }
 

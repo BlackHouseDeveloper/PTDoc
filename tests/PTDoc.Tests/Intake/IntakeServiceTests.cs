@@ -2,9 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Intake;
@@ -29,7 +31,11 @@ public sealed class IntakeServiceTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
-        _service = new IntakeService(_context, _tenantContext.Object, _identityContext.Object);
+        _service = new IntakeService(
+            _context,
+            _tenantContext.Object,
+            _identityContext.Object,
+            new IntakeReferenceDataCatalogService());
     }
 
     [Fact]
@@ -84,6 +90,84 @@ public sealed class IntakeServiceTests : IDisposable
         var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
         Assert.Equal(result.Draft.IntakeId, storedDraft.Id);
         Assert.False(storedDraft.IsLocked);
+    }
+
+    [Fact]
+    public async Task EnsureDraftAsync_PersistsStructuredDataJson_WhenStructuredDataExists()
+    {
+        var patient = CreatePatient("Jordan", "Structured");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var structuredData = new IntakeStructuredDataDto
+        {
+            BodyPartSelections =
+            [
+                new IntakeBodyPartSelectionDto
+                {
+                    BodyPartId = "knee",
+                    Lateralities = ["left"]
+                }
+            ],
+            ComorbidityIds = ["hypertension"]
+        };
+
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Jordan Structured",
+            StructuredData = structuredData
+        });
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
+
+        Assert.False(string.IsNullOrWhiteSpace(storedDraft.StructuredDataJson));
+        Assert.Contains("bodyPartSelections", storedDraft.StructuredDataJson, StringComparison.Ordinal);
+        Assert.Contains("selectedBodyPartIds", storedDraft.PainMapData, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_RehydratesStructuredDataFromCanonicalJson()
+    {
+        var patient = CreatePatient("Taylor", "Rehydrate");
+        var structuredDataJson = IntakeStructuredDataJson.Serialize(new IntakeStructuredDataDto
+        {
+            BodyPartSelections =
+            [
+                new IntakeBodyPartSelectionDto
+                {
+                    BodyPartId = "shoulder",
+                    Lateralities = ["right"]
+                }
+            ],
+            MedicationIds = ["ibuprofen-advil-motrin"]
+        });
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Taylor Rehydrate"}""",
+            StructuredDataJson = structuredDataJson,
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(draft);
+        Assert.NotNull(draft!.StructuredData);
+        Assert.Equal("shoulder", draft.StructuredData!.BodyPartSelections[0].BodyPartId);
+        Assert.Equal(["right"], draft.StructuredData.BodyPartSelections[0].Lateralities);
+        Assert.Equal(["ibuprofen-advil-motrin"], draft.StructuredData.MedicationIds);
     }
 
     [Fact]
