@@ -1,5 +1,6 @@
 @using PTDoc.UI.Components.Intake.Cards
 @using PTDoc.UI.Components.Intake.Models
+@using PTDoc.Application.Intake
 
 <section class="demographics-step" data-testid="demographics-step">
     <BasicInfoCard
@@ -30,9 +31,9 @@
         InsuranceCoverageTypeChanged="OnInsuranceCoverageTypeChanged" />
 
     <HipaaPrivacyNoticeCard
-        HipaaAcknowledged="@State.HipaaAcknowledged"
+        HipaaAcknowledged="@HipaaAcknowledged"
         HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged"
-        ConsentToTreatAcknowledged="@State.ConsentToTreatAcknowledged"
+        ConsentToTreatAcknowledged="@TreatmentConsentAccepted"
         ConsentToTreatAcknowledgedChanged="OnConsentToTreatChanged" />
 
     @if (!string.IsNullOrWhiteSpace(ValidationMessage))
@@ -53,6 +54,10 @@
     [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
     [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private IntakeConsentPacket ConsentPacket => State.EnsureConsentPacket();
+    private bool HipaaAcknowledged => ConsentPacket.HipaaAcknowledged == true;
+    private bool TreatmentConsentAccepted => ConsentPacket.TreatmentConsentAccepted == true;
 
     private async Task UpdateStateAsync(Action update)
     {
@@ -101,7 +106,16 @@
     private Task OnPayerTypeChanged(string? value) => UpdateStateAsync(() => State.PayerType = value);
     private Task OnInsuranceCoverageTypeChanged(string? value) => UpdateStateAsync(() => State.InsuranceCoverageType = value);
 
-    private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() => State.HipaaAcknowledged = value);
-    private Task OnConsentToTreatChanged(bool value) => UpdateStateAsync(() => State.ConsentToTreatAcknowledged = value);
+    private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() =>
+    {
+        ConsentPacket.HipaaAcknowledged = value;
+        State.HipaaAcknowledged = value;
+    });
+
+    private Task OnConsentToTreatChanged(bool value) => UpdateStateAsync(() =>
+    {
+        ConsentPacket.TreatmentConsentAccepted = value;
+        State.ConsentToTreatAcknowledged = value;
+    });
     private Task OnContinueClicked() => OnContinue.HasDelegate ? OnContinue.InvokeAsync() : Task.CompletedTask;
 }

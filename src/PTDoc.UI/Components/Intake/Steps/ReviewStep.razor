@@ -130,12 +130,12 @@
             </div>
         }
 
-        @if (State.SelectedComorbidities.Count > 0)
+        @if (SelectedComorbidityLabels.Count > 0)
         {
             <div class="review-step__field">
                 <span class="review-step__field-label">Comorbidities</span>
                 <div class="review-step__chip-list">
-                    @foreach (var item in State.SelectedComorbidities.OrderBy(value => value))
+                    @foreach (var item in SelectedComorbidityLabels)
                     {
                         <span class="review-step__pill">@item</span>
                     }
@@ -143,12 +143,12 @@
             </div>
         }
 
-        @if (State.SelectedLivingSituations.Count > 0)
+        @if (SelectedLivingSituationLabels.Count > 0)
         {
             <div class="review-step__field">
                 <span class="review-step__field-label">Living Situation</span>
                 <div class="review-step__chip-list">
-                    @foreach (var item in State.SelectedLivingSituations.OrderBy(value => value))
+                    @foreach (var item in SelectedLivingSituationLabels)
                     {
                         <span class="review-step__pill">@item</span>
                     }
@@ -156,12 +156,12 @@
             </div>
         }
 
-        @if (State.SelectedAssistiveDevices.Count > 0)
+        @if (SelectedAssistiveDeviceLabels.Count > 0)
         {
             <div class="review-step__field">
                 <span class="review-step__field-label">Assistive Devices</span>
                 <div class="review-step__chip-list">
-                    @foreach (var item in State.SelectedAssistiveDevices.OrderBy(value => value))
+                    @foreach (var item in SelectedAssistiveDeviceLabels)
                     {
                         <span class="review-step__pill">@item</span>
                     }
@@ -169,12 +169,12 @@
             </div>
         }
 
-        @if (State.SelectedHouseLayoutOptions.Count > 0)
+        @if (SelectedHouseLayoutLabels.Count > 0)
         {
             <div class="review-step__field">
                 <span class="review-step__field-label">Home Layout</span>
                 <div class="review-step__chip-list">
-                    @foreach (var item in State.SelectedHouseLayoutOptions.OrderBy(value => value))
+                    @foreach (var item in SelectedHouseLayoutLabels)
                     {
                         <span class="review-step__pill">@item</span>
                     }
@@ -296,12 +296,12 @@
             </label>
 
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.HipaaAcknowledged" @onchange="OnHipaaChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@State.IsLocked" />
                 <span>I acknowledge receipt of the HIPAA Notice of Privacy Practices.</span>
             </label>
 
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.AccuracyConfirmed" @onchange="OnAccuracyChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@State.IsLocked" />
                 <span>I have reviewed my answers and confirm they are accurate.</span>
             </label>
         </div>
@@ -321,22 +321,22 @@
 
         <div class="review-step__check-grid">
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.RevokeHipaaPrivacyNotice" @onchange="OnRevokeHipaaChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("hipaaAcknowledged"))" @onchange="OnRevokeHipaaChanged" disabled="@State.IsLocked" />
                 <span>HIPAA Privacy Notice</span>
             </label>
 
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.RevokeTreatmentConsent" @onchange="OnRevokeTreatmentChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("treatmentConsentAccepted"))" @onchange="OnRevokeTreatmentChanged" disabled="@State.IsLocked" />
                 <span>Treatment Consent</span>
             </label>
 
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.RevokeMarketingCommunications" @onchange="OnRevokeMarketingChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@MarketingCommunicationsRevoked" @onchange="OnRevokeMarketingChanged" disabled="@State.IsLocked" />
                 <span>Marketing Communications</span>
             </label>
 
             <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.RevokePhiRelease" @onchange="OnRevokePhiChanged" disabled="@State.IsLocked" />
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("phiReleaseAuthorized"))" @onchange="OnRevokePhiChanged" disabled="@State.IsLocked" />
                 <span>PHI Release</span>
             </label>
         </div>
@@ -348,6 +348,21 @@
                 <h2>Communication Consent Status</h2>
                 <p>Your current communication preferences are shown below.</p>
             </div>
+        </div>
+
+        <div class="review-step__check-grid">
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationCallConsent == true)" @onchange="OnCallConsentChanged" disabled="@State.IsLocked" />
+                <span>Allow phone call reminders and follow-up communication.</span>
+            </label>
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationTextConsent == true)" @onchange="OnTextConsentChanged" disabled="@State.IsLocked" />
+                <span>Allow text / SMS reminders and follow-up communication.</span>
+            </label>
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationEmailConsent == true)" @onchange="OnEmailConsentChanged" disabled="@State.IsLocked" />
+                <span>Allow email reminders and follow-up communication.</span>
+            </label>
         </div>
 
         <div class="review-step__status-grid">
@@ -380,30 +395,41 @@
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
-                <h2>Specialty Treatment Eligibility</h2>
-                <p>Specialized treatment eligibility reflects the current intake data available for this draft.</p>
+                <h2>Specialty Treatment Authorizations</h2>
+                <p>Specialized treatment consent is captured on the canonical intake consent packet.</p>
             </div>
+        </div>
+
+        <div class="review-step__check-grid">
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.DryNeedlingConsentAccepted == true)" @onchange="OnDryNeedlingChanged" disabled="@State.IsLocked" />
+                <span>I authorize dry needling treatment when clinically indicated.</span>
+            </label>
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PelvicFloorConsentAccepted == true)" @onchange="OnPelvicFloorChanged" disabled="@State.IsLocked" />
+                <span>I authorize pelvic floor therapy treatment when clinically indicated.</span>
+            </label>
         </div>
 
         <div class="review-step__row-list">
             <div class="review-step__row">
                 <div>
                     <span>Dry Needling</span>
-                    <p>Eligibility based on the current body region and consent selections.</p>
+                    <p>Authorization status captured on this intake draft.</p>
                 </div>
-                <StatusBadge Text="@(State.DryNeedlingEligible ? "Eligible" : "Not Eligible")" Variant="@(State.DryNeedlingEligible ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+                <StatusBadge Text="@(DryNeedlingAllowed ? "Authorized" : "Not Authorized")" Variant="@(DryNeedlingAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
             </div>
             <div class="review-step__row">
                 <div>
                     <span>Pelvic Floor Therapy</span>
-                    <p>Eligibility may require additional screening before treatment begins.</p>
+                    <p>Authorization may require additional clinical screening before treatment begins.</p>
                 </div>
-                <StatusBadge Text="@(State.PelvicFloorTherapyEligible ? "Eligible" : "Not Eligible")" Variant="@(State.PelvicFloorTherapyEligible ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+                <StatusBadge Text="@(PelvicFloorAllowed ? "Authorized" : "Not Authorized")" Variant="@(PelvicFloorAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
             </div>
         </div>
 
         <div class="review-step__success-box">
-            Final specialty-treatment eligibility will be confirmed by your care team when this intake is reviewed.
+            Final specialty-treatment eligibility will still be confirmed by your care team when this intake is reviewed.
         </div>
     </section>
 
@@ -415,6 +441,11 @@
             </div>
             <button type="button" class="review-step__text-button" @onclick="OpenPhiDetails">View Details</button>
         </div>
+
+        <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PhiReleaseAuthorized == true)" @onchange="OnPhiAuthorizedChanged" disabled="@State.IsLocked" />
+            <span>I authorize release of protected health information to approved recipients.</span>
+        </label>
 
         <div class="review-step__row review-step__row--panel">
             <div>
@@ -433,12 +464,66 @@
             </div>
         </div>
 
+        <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CreditCardAuthorizationAccepted == true)" @onchange="OnBillingConsentChanged" disabled="@State.IsLocked" />
+            <span>I authorize the billing and credit-card policy associated with this intake.</span>
+        </label>
+
         <div class="review-step__row review-step__row--panel">
             <div>
                 <span>Credit Card Authorization</span>
                 <p>@BillingTimestampText</p>
             </div>
-            <StatusBadge Text="@(State.BillingConsentAuthorized ? "Authorized" : "Pending")" Variant="@(State.BillingConsentAuthorized ? BadgeVariant.Success : BadgeVariant.Warning)" />
+            <StatusBadge Text="@(BillingConsentAuthorized ? "Authorized" : "Pending")" Variant="@(BillingConsentAuthorized ? BadgeVariant.Success : BadgeVariant.Warning)" />
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Additional Consent Details</h2>
+                <p>Optional consent details are stored directly on the canonical intake consent packet.</p>
+            </div>
+        </div>
+
+        <div class="review-step__check-grid">
+            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.MediaConsentAccepted == true)" @onchange="OnMediaConsentChanged" disabled="@State.IsLocked" />
+                <span>I authorize media capture related to treatment, education, or documentation.</span>
+            </label>
+        </div>
+
+        <div class="review-step__subsection">
+            <h3>Authorized Contacts</h3>
+            <p class="review-step__field-label">Up to three contacts may be authorized for care coordination or communication.</p>
+            @for (var index = 0; index < 3; index++)
+            {
+                var contact = GetAuthorizedContact(index);
+                var contactIndex = index;
+                <div class="review-step__field-grid">
+                    <div class="review-step__field">
+                        <span class="review-step__field-label">Contact @(contactIndex + 1) Name</span>
+                        <input class="form-control"
+                               value="@contact.Name"
+                               disabled="@State.IsLocked"
+                               @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.Name, args)" />
+                    </div>
+                    <div class="review-step__field">
+                        <span class="review-step__field-label">Phone Number</span>
+                        <input class="form-control"
+                               value="@contact.PhoneNumber"
+                               disabled="@State.IsLocked"
+                               @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.PhoneNumber, args)" />
+                    </div>
+                    <div class="review-step__field">
+                        <span class="review-step__field-label">Relationship</span>
+                        <input class="form-control"
+                               value="@contact.Relationship"
+                               disabled="@State.IsLocked"
+                               @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.Relationship, args)" />
+                    </div>
+                </div>
+            }
         </div>
     </section>
 
@@ -465,7 +550,7 @@
             <StatusBadge Text="HIPAA Acknowledged" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="Treatment Consent Accepted" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="Terms Accepted" Variant="@(State.TermsOfServiceAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
-            <StatusBadge Text="Answers Confirmed" Variant="@(State.AccuracyConfirmed ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="Answers Confirmed" Variant="@(FinalAttestationAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
         </div>
 
         <div class="@(SubmitReady ? "review-step__success-box" : "review-step__warning-box")">
@@ -513,15 +598,25 @@
     [Parameter] public EventCallback<IntakeStep> OnEditStep { get; set; }
     [Parameter] public bool ShowOutcomeMeasureRecommendations { get; set; }
 
+    private IntakeConsentPacket ConsentPacket => State.EnsureConsentPacket();
+    private (bool IsComplete, List<string> Missing, List<string> Revoked) ConsentCompleteness => IntakeConsentJson.EvaluateConsentCompleteness(ConsentPacket);
     private int? AgeYears => GetAge(State.DateOfBirth);
     private bool IsAgeVerified => AgeYears.HasValue && AgeYears.Value >= 18;
-    private bool HipaaConsentComplete => State.HipaaAcknowledged && !State.RevokeHipaaPrivacyNotice;
-    private bool TreatmentConsentComplete => !State.RevokeTreatmentConsent;
-    private bool SubmitReady => HipaaConsentComplete && TreatmentConsentComplete && State.TermsOfServiceAccepted && State.AccuracyConfirmed && !State.IsLocked;
-    private bool PhiReleaseAllowed => State.PhiReleaseAuthorized && !State.RevokePhiRelease;
-    private bool PhoneCallsAllowed => State.AllowPhoneCalls && !State.RevokeMarketingCommunications;
-    private bool TextMessagesAllowed => State.AllowTextMessages && !State.RevokeMarketingCommunications;
-    private bool EmailAllowed => State.AllowEmailMessages && !State.RevokeMarketingCommunications;
+    private bool HipaaConsentComplete => ConsentPacket.HipaaAcknowledged == true && !IsConsentRevoked("hipaaAcknowledged");
+    private bool TreatmentConsentComplete => ConsentPacket.TreatmentConsentAccepted == true && !IsConsentRevoked("treatmentConsentAccepted");
+    private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !State.IsLocked;
+    private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
+    private bool PhoneCallsAllowed => IntakeConsentJson.IsCallConsentActive(ConsentPacket);
+    private bool TextMessagesAllowed => IntakeConsentJson.IsTextConsentActive(ConsentPacket);
+    private bool EmailAllowed => IntakeConsentJson.IsEmailConsentActive(ConsentPacket);
+    private bool DryNeedlingAllowed => IntakeConsentJson.IsDryNeedlingConsentActive(ConsentPacket);
+    private bool PelvicFloorAllowed => IntakeConsentJson.IsPelvicFloorConsentActive(ConsentPacket);
+    private bool BillingConsentAuthorized => IntakeConsentJson.IsCreditCardAuthorizationConsentActive(ConsentPacket);
+    private bool FinalAttestationAccepted => ConsentPacket.FinalAttestationAccepted ?? State.AccuracyConfirmed;
+    private bool MarketingCommunicationsRevoked =>
+        IsConsentRevoked("communicationCallConsent")
+        && IsConsentRevoked("communicationTextConsent")
+        && IsConsentRevoked("communicationEmailConsent");
     private int? PainLevel => State.PainSeverityScore ?? GetPainLevel(State.PainDetailDrafts);
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
@@ -532,6 +627,18 @@
     private IReadOnlyList<string> SelectedRegionLabels => GetSelectedRegionLabels(State);
     private string PrimaryRegionLabel => GetPrimaryRegionLabel(State);
     private IReadOnlyList<string> SelectedMedicationLabels => GetSelectedMedicationLabels();
+    private IReadOnlyList<string> SelectedComorbidityLabels => GetSelectedCatalogLabels(
+        State.StructuredData?.ComorbidityIds,
+        IntakeReferenceData.GetComorbidity);
+    private IReadOnlyList<string> SelectedAssistiveDeviceLabels => GetSelectedCatalogLabels(
+        State.StructuredData?.AssistiveDeviceIds,
+        IntakeReferenceData.GetAssistiveDevice);
+    private IReadOnlyList<string> SelectedLivingSituationLabels => GetSelectedCatalogLabels(
+        State.StructuredData?.LivingSituationIds,
+        IntakeReferenceData.GetLivingSituation);
+    private IReadOnlyList<string> SelectedHouseLayoutLabels => GetSelectedCatalogLabels(
+        State.StructuredData?.HouseLayoutOptionIds,
+        IntakeReferenceData.GetHouseLayoutOption);
     private IReadOnlyList<string> SelectedPainDescriptorLabels => GetSelectedPainDescriptorLabels();
     private IReadOnlyList<string> SelectedBodyPartLabels => GetSelectedBodyPartLabels();
 
@@ -543,17 +650,127 @@
 
     private Task OnTermsChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.TermsOfServiceAccepted = ToBool(args));
 
-    private Task OnHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.HipaaAcknowledged = ToBool(args));
+    private Task OnHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var accepted = ToBool(args);
+        ConsentPacket.HipaaAcknowledged = accepted;
+        State.HipaaAcknowledged = accepted;
+    });
 
-    private Task OnAccuracyChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.AccuracyConfirmed = ToBool(args));
+    private Task OnAccuracyChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var accepted = ToBool(args);
+        ConsentPacket.FinalAttestationAccepted = accepted;
+        State.AccuracyConfirmed = accepted;
+    });
 
-    private Task OnRevokeHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeHipaaPrivacyNotice = ToBool(args));
+    private Task OnRevokeHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var revoked = ToBool(args);
+        SetConsentRevoked("hipaaAcknowledged", revoked);
+        State.RevokeHipaaPrivacyNotice = revoked;
+    });
 
-    private Task OnRevokeTreatmentChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeTreatmentConsent = ToBool(args));
+    private Task OnRevokeTreatmentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var revoked = ToBool(args);
+        SetConsentRevoked("treatmentConsentAccepted", revoked);
+        State.RevokeTreatmentConsent = revoked;
+    });
 
-    private Task OnRevokeMarketingChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokeMarketingCommunications = ToBool(args));
+    private Task OnRevokeMarketingChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var revoked = ToBool(args);
+        SetConsentRevoked("communicationCallConsent", revoked);
+        SetConsentRevoked("communicationTextConsent", revoked);
+        SetConsentRevoked("communicationEmailConsent", revoked);
+        State.RevokeMarketingCommunications = revoked;
+    });
 
-    private Task OnRevokePhiChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.RevokePhiRelease = ToBool(args));
+    private Task OnRevokePhiChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var revoked = ToBool(args);
+        SetConsentRevoked("phiReleaseAuthorized", revoked);
+        State.RevokePhiRelease = revoked;
+    });
+
+    private Task OnCallConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.CommunicationCallConsent = allowed;
+        State.AllowPhoneCalls = allowed;
+    });
+
+    private Task OnTextConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.CommunicationTextConsent = allowed;
+        State.AllowTextMessages = allowed;
+    });
+
+    private Task OnEmailConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.CommunicationEmailConsent = allowed;
+        State.AllowEmailMessages = allowed;
+        if (allowed && string.IsNullOrWhiteSpace(ConsentPacket.CommunicationEmail))
+        {
+            ConsentPacket.CommunicationEmail = State.EmailAddress;
+        }
+    });
+
+    private Task OnDryNeedlingChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.DryNeedlingConsentAccepted = allowed;
+        State.DryNeedlingEligible = allowed;
+    });
+
+    private Task OnPelvicFloorChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.PelvicFloorConsentAccepted = allowed;
+        State.PelvicFloorTherapyEligible = allowed;
+    });
+
+    private Task OnPhiAuthorizedChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.PhiReleaseAuthorized = allowed;
+        State.PhiReleaseAuthorized = allowed;
+    });
+
+    private Task OnBillingConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var allowed = ToBool(args);
+        ConsentPacket.CreditCardAuthorizationAccepted = allowed;
+        State.BillingConsentAuthorized = allowed;
+    });
+
+    private Task OnMediaConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        ConsentPacket.MediaConsentAccepted = ToBool(args);
+    });
+
+    private Task OnAuthorizedContactChanged(int index, ContactField field, ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var contact = EnsureAuthorizedContact(index);
+        var value = args.Value?.ToString();
+        switch (field)
+        {
+            case ContactField.Name:
+                contact.Name = value;
+                break;
+            case ContactField.PhoneNumber:
+                contact.PhoneNumber = value;
+                break;
+            case ContactField.Relationship:
+                contact.Relationship = value;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(field), field, null);
+        }
+    });
 
     private Task UpdateStateAsync(Action update)
     {
@@ -563,8 +780,47 @@
         }
 
         update();
+        ConsentPacket.CommunicationPhoneNumber = State.PhoneNumber;
+        ConsentPacket.CommunicationEmail = State.EmailAddress;
         State.IsDirty = true;
         return Task.CompletedTask;
+    }
+
+    private bool IsConsentRevoked(string key)
+    {
+        return ConsentPacket.RevokedConsentKeys.Any(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void SetConsentRevoked(string key, bool revoked)
+    {
+        if (revoked)
+        {
+            if (!ConsentPacket.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            {
+                ConsentPacket.RevokedConsentKeys.Add(key);
+            }
+
+            return;
+        }
+
+        ConsentPacket.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private AuthorizedContact GetAuthorizedContact(int index)
+    {
+        return index < ConsentPacket.AuthorizedContacts.Count
+            ? ConsentPacket.AuthorizedContacts[index]
+            : new AuthorizedContact();
+    }
+
+    private AuthorizedContact EnsureAuthorizedContact(int index)
+    {
+        while (ConsentPacket.AuthorizedContacts.Count <= index)
+        {
+            ConsentPacket.AuthorizedContacts.Add(new AuthorizedContact());
+        }
+
+        return ConsentPacket.AuthorizedContacts[index];
     }
 
     private void OpenPhiDetails()
@@ -755,6 +1011,22 @@
             .ToList();
     }
 
+    private static IReadOnlyList<string> GetSelectedCatalogLabels(
+        IReadOnlyCollection<string>? ids,
+        Func<string, IntakeCatalogOptionDto?> resolver)
+    {
+        if (ids is not { Count: > 0 })
+        {
+            return Array.Empty<string>();
+        }
+
+        return ids
+            .Select(id => resolver(id)?.Label ?? id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value)
+            .ToList();
+    }
+
     private IReadOnlyList<string> GetSelectedPainDescriptorLabels()
     {
         if (State.StructuredData?.PainDescriptorIds is not { Count: > 0 } descriptorIds)
@@ -805,6 +1077,13 @@
         return details.Count == 0
             ? item.Label
             : $"{item.Label} ({string.Join(" • ", details)})";
+    }
+
+    private enum ContactField
+    {
+        Name,
+        PhoneNumber,
+        Relationship
     }
 
     private static bool TryFindIntValue(object? draftValue, out int result)

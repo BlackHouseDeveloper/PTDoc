@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Configurations.Header
+@using PTDoc.Application.Intake
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.Auth
 @using PTDoc.UI.Components.Intake
@@ -411,19 +412,22 @@
             return;
         }
 
-        if (!State.HipaaAcknowledged)
+        var consentPacket = BuildConsentPacket(State);
+        var consentCompleteness = IntakeConsentJson.EvaluateConsentCompleteness(consentPacket);
+
+        if (consentPacket.HipaaAcknowledged != true)
         {
             _validationMessage = "You must acknowledge the HIPAA Privacy Notice before submitting.";
             return;
         }
 
-        if (!State.ConsentToTreatAcknowledged)
+        if (consentPacket.TreatmentConsentAccepted != true)
         {
             _validationMessage = "You must consent to receive physical therapy treatment before submitting.";
             return;
         }
 
-        if (!HasRequiredReviewConsents(State))
+        if (!HasRequiredReviewConsents(State, consentPacket, consentCompleteness))
         {
             _validationMessage = "Complete the required agreements and ensure HIPAA and treatment consent are not revoked before submitting.";
             return;
@@ -586,25 +590,30 @@
 
     private static IntakeResponseDraft ToDraft(IntakeWizardState state)
     {
+        var consentPacket = BuildConsentPacket(state);
         return new IntakeResponseDraft
         {
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
-            HipaaAcknowledged = state.HipaaAcknowledged,
-            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
+            ConsentPacket = consentPacket,
+            HipaaAcknowledged = consentPacket.HipaaAcknowledged == true,
+            ConsentToTreatAcknowledged = consentPacket.TreatmentConsentAccepted == true,
             TermsOfServiceAccepted = state.TermsOfServiceAccepted,
             AccuracyConfirmed = state.AccuracyConfirmed,
-            RevokeHipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
-            RevokeTreatmentConsent = state.RevokeTreatmentConsent,
-            RevokeMarketingCommunications = state.RevokeMarketingCommunications,
-            RevokePhiRelease = state.RevokePhiRelease,
-            AllowPhoneCalls = state.AllowPhoneCalls,
-            AllowTextMessages = state.AllowTextMessages,
-            AllowEmailMessages = state.AllowEmailMessages,
-            DryNeedlingEligible = state.DryNeedlingEligible,
-            PelvicFloorTherapyEligible = state.PelvicFloorTherapyEligible,
-            PhiReleaseAuthorized = state.PhiReleaseAuthorized,
-            BillingConsentAuthorized = state.BillingConsentAuthorized,
+            RevokeHipaaPrivacyNotice = IsConsentRevoked(consentPacket, "hipaaAcknowledged"),
+            RevokeTreatmentConsent = IsConsentRevoked(consentPacket, "treatmentConsentAccepted"),
+            RevokeMarketingCommunications =
+                IsConsentRevoked(consentPacket, "communicationCallConsent")
+                && IsConsentRevoked(consentPacket, "communicationTextConsent")
+                && IsConsentRevoked(consentPacket, "communicationEmailConsent"),
+            RevokePhiRelease = IsConsentRevoked(consentPacket, "phiReleaseAuthorized"),
+            AllowPhoneCalls = consentPacket.CommunicationCallConsent == true,
+            AllowTextMessages = consentPacket.CommunicationTextConsent == true,
+            AllowEmailMessages = consentPacket.CommunicationEmailConsent == true,
+            DryNeedlingEligible = consentPacket.DryNeedlingConsentAccepted == true,
+            PelvicFloorTherapyEligible = consentPacket.PelvicFloorConsentAccepted == true,
+            PhiReleaseAuthorized = consentPacket.PhiReleaseAuthorized == true,
+            BillingConsentAuthorized = consentPacket.CreditCardAuthorizationAccepted == true,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,
@@ -643,25 +652,32 @@
 
     private static IntakeWizardState FromDraft(IntakeResponseDraft draft)
     {
+        var consentPacket = BuildConsentPacket(draft);
         return new IntakeWizardState
         {
             PatientId = draft.PatientId,
             CurrentStep = Enum.IsDefined(typeof(IntakeStep), draft.CurrentStep)
                 ? (IntakeStep)draft.CurrentStep
                 : IntakeStep.Demographics,
-            HipaaAcknowledged = draft.HipaaAcknowledged,
-            ConsentToTreatAcknowledged = draft.ConsentToTreatAcknowledged,
-            AccuracyConfirmed = draft.AccuracyConfirmed,
-            RevokeTreatmentConsent = draft.RevokeTreatmentConsent,
-            RevokeMarketingCommunications = draft.RevokeMarketingCommunications,
-            RevokePhiRelease = draft.RevokePhiRelease,
-            AllowPhoneCalls = draft.AllowPhoneCalls,
-            AllowTextMessages = draft.AllowTextMessages,
-            AllowEmailMessages = draft.AllowEmailMessages,
-            DryNeedlingEligible = draft.DryNeedlingEligible,
-            PelvicFloorTherapyEligible = draft.PelvicFloorTherapyEligible,
-            PhiReleaseAuthorized = draft.PhiReleaseAuthorized,
-            BillingConsentAuthorized = draft.BillingConsentAuthorized,
+            ConsentPacket = consentPacket,
+            HipaaAcknowledged = consentPacket.HipaaAcknowledged == true,
+            ConsentToTreatAcknowledged = consentPacket.TreatmentConsentAccepted == true,
+            AccuracyConfirmed = consentPacket.FinalAttestationAccepted ?? draft.AccuracyConfirmed,
+            RevokeHipaaPrivacyNotice = IsConsentRevoked(consentPacket, "hipaaAcknowledged"),
+            RevokeTreatmentConsent = IsConsentRevoked(consentPacket, "treatmentConsentAccepted"),
+            RevokeMarketingCommunications =
+                IsConsentRevoked(consentPacket, "communicationCallConsent")
+                && IsConsentRevoked(consentPacket, "communicationTextConsent")
+                && IsConsentRevoked(consentPacket, "communicationEmailConsent"),
+            RevokePhiRelease = IsConsentRevoked(consentPacket, "phiReleaseAuthorized"),
+            AllowPhoneCalls = consentPacket.CommunicationCallConsent ?? draft.AllowPhoneCalls,
+            AllowTextMessages = consentPacket.CommunicationTextConsent ?? draft.AllowTextMessages,
+            AllowEmailMessages = consentPacket.CommunicationEmailConsent ?? draft.AllowEmailMessages,
+            DryNeedlingEligible = consentPacket.DryNeedlingConsentAccepted ?? draft.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = consentPacket.PelvicFloorConsentAccepted ?? draft.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = consentPacket.PhiReleaseAuthorized ?? draft.PhiReleaseAuthorized,
+            BillingConsentAuthorized = consentPacket.CreditCardAuthorizationAccepted ?? draft.BillingConsentAuthorized,
+            TermsOfServiceAccepted = draft.TermsOfServiceAccepted,
             FullName = draft.FullName,
             DateOfBirth = draft.DateOfBirth,
             EmailAddress = draft.EmailAddress,
@@ -707,13 +723,104 @@
         ShowStatusBadge = false
     };
 
-    private static bool HasRequiredReviewConsents(IntakeWizardState state)
+    private static bool HasRequiredReviewConsents(
+        IntakeWizardState state,
+        IntakeConsentPacket consentPacket,
+        (bool IsComplete, List<string> Missing, List<string> Revoked) consentCompleteness)
     {
-        return state.HipaaAcknowledged
+        return consentCompleteness.IsComplete
             && state.TermsOfServiceAccepted
-            && state.AccuracyConfirmed
-            && !state.RevokeHipaaPrivacyNotice
-            && !state.RevokeTreatmentConsent;
+            && (consentPacket.FinalAttestationAccepted ?? state.AccuracyConfirmed);
+    }
+
+    private static IntakeConsentPacket BuildConsentPacket(IntakeWizardState state)
+    {
+        var packet = CloneConsentPacket(state.ConsentPacket);
+        packet.HipaaAcknowledged ??= state.HipaaAcknowledged;
+        packet.TreatmentConsentAccepted ??= state.ConsentToTreatAcknowledged;
+        packet.PhiReleaseAuthorized ??= state.PhiReleaseAuthorized;
+        packet.CommunicationCallConsent ??= state.AllowPhoneCalls;
+        packet.CommunicationTextConsent ??= state.AllowTextMessages;
+        packet.CommunicationEmailConsent ??= state.AllowEmailMessages;
+        packet.DryNeedlingConsentAccepted ??= state.DryNeedlingEligible;
+        packet.PelvicFloorConsentAccepted ??= state.PelvicFloorTherapyEligible;
+        packet.CreditCardAuthorizationAccepted ??= state.BillingConsentAuthorized;
+        packet.FinalAttestationAccepted ??= state.AccuracyConfirmed;
+        packet.CommunicationPhoneNumber = string.IsNullOrWhiteSpace(state.PhoneNumber)
+            ? packet.CommunicationPhoneNumber
+            : state.PhoneNumber;
+        packet.CommunicationEmail = string.IsNullOrWhiteSpace(state.EmailAddress)
+            ? packet.CommunicationEmail
+            : state.EmailAddress;
+        SetRevoked(packet, "hipaaAcknowledged", state.RevokeHipaaPrivacyNotice);
+        SetRevoked(packet, "treatmentConsentAccepted", state.RevokeTreatmentConsent);
+        SetRevoked(packet, "phiReleaseAuthorized", state.RevokePhiRelease);
+        SetRevoked(packet, "communicationCallConsent", state.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationTextConsent", state.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationEmailConsent", state.RevokeMarketingCommunications);
+        return packet;
+    }
+
+    private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft draft)
+    {
+        var packet = CloneConsentPacket(draft.ConsentPacket);
+        packet.HipaaAcknowledged ??= draft.HipaaAcknowledged;
+        packet.TreatmentConsentAccepted ??= draft.ConsentToTreatAcknowledged;
+        packet.PhiReleaseAuthorized ??= draft.PhiReleaseAuthorized;
+        packet.CommunicationCallConsent ??= draft.AllowPhoneCalls;
+        packet.CommunicationTextConsent ??= draft.AllowTextMessages;
+        packet.CommunicationEmailConsent ??= draft.AllowEmailMessages;
+        packet.DryNeedlingConsentAccepted ??= draft.DryNeedlingEligible;
+        packet.PelvicFloorConsentAccepted ??= draft.PelvicFloorTherapyEligible;
+        packet.CreditCardAuthorizationAccepted ??= draft.BillingConsentAuthorized;
+        packet.FinalAttestationAccepted ??= draft.AccuracyConfirmed;
+        packet.CommunicationPhoneNumber = string.IsNullOrWhiteSpace(draft.PhoneNumber)
+            ? packet.CommunicationPhoneNumber
+            : draft.PhoneNumber;
+        packet.CommunicationEmail = string.IsNullOrWhiteSpace(draft.EmailAddress)
+            ? packet.CommunicationEmail
+            : draft.EmailAddress;
+        SetRevoked(packet, "hipaaAcknowledged", draft.RevokeHipaaPrivacyNotice);
+        SetRevoked(packet, "treatmentConsentAccepted", draft.RevokeTreatmentConsent);
+        SetRevoked(packet, "phiReleaseAuthorized", draft.RevokePhiRelease);
+        SetRevoked(packet, "communicationCallConsent", draft.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationTextConsent", draft.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
+        return packet;
+    }
+
+    private static IntakeConsentPacket CloneConsentPacket(IntakeConsentPacket? packet)
+    {
+        if (packet is null)
+        {
+            return new IntakeConsentPacket();
+        }
+
+        var json = IntakeConsentJson.Serialize(packet);
+        return IntakeConsentJson.TryParse(json, out var clone, out _)
+            ? clone
+            : new IntakeConsentPacket();
+    }
+
+    private static void SetRevoked(IntakeConsentPacket packet, string key, bool revoked)
+    {
+        packet.RevokedConsentKeys ??= new List<string>();
+        if (revoked)
+        {
+            if (!packet.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            {
+                packet.RevokedConsentKeys.Add(key);
+            }
+
+            return;
+        }
+
+        packet.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsConsentRevoked(IntakeConsentPacket packet, string key)
+    {
+        return packet.RevokedConsentKeys.Any(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string GetStepTitle(IntakeStep step)
