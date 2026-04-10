@@ -4,6 +4,14 @@ namespace PTDoc.Infrastructure.ReferenceData;
 
 public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCatalogService
 {
+    private const string CatalogVersion = "2026-03-30";
+    private const string BodyPartsDocumentPath = "docs/clinicrefdata/app-list-of-body-parts.md";
+    private const string MedicationsDocumentPath = "docs/clinicrefdata/app-list-of-medications.md";
+    private const string PainDescriptorsDocumentPath = "docs/clinicrefdata/app-pain-quality-descriptors-patient.md";
+    private const string SupplementalResourceName = "PTDoc.Application.Data.IntakeSupplementalReferenceData.json";
+
+    private static readonly IntakeSupplementalReferenceAsset SupplementalAsset =
+        EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<IntakeSupplementalReferenceAsset>(SupplementalResourceName);
     private static readonly IntakeReferenceCatalogDto Catalog = BuildCatalog();
     private static readonly Dictionary<string, IntakeBodyPartItemDto> BodyPartsById = Catalog.BodyPartGroups
         .SelectMany(group => group.Items)
@@ -11,6 +19,14 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
     private static readonly Dictionary<string, IntakeMedicationItemDto> MedicationsById = Catalog.Medications
         .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, IntakePainDescriptorItemDto> PainDescriptorsById = Catalog.PainDescriptors
+        .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, IntakeCatalogOptionDto> ComorbiditiesById = Catalog.Comorbidities
+        .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, IntakeCatalogOptionDto> AssistiveDevicesById = Catalog.AssistiveDevices
+        .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, IntakeCatalogOptionDto> LivingSituationsById = Catalog.LivingSituations
+        .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, IntakeCatalogOptionDto> HouseLayoutOptionsById = Catalog.HouseLayoutOptions
         .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 
     public IntakeReferenceCatalogDto GetCatalog() => Catalog;
@@ -20,6 +36,14 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
     public IReadOnlyList<IntakeMedicationItemDto> GetMedications() => Catalog.Medications;
 
     public IReadOnlyList<IntakePainDescriptorItemDto> GetPainDescriptors() => Catalog.PainDescriptors;
+
+    public IReadOnlyList<IntakeCatalogOptionDto> GetComorbidities() => Catalog.Comorbidities;
+
+    public IReadOnlyList<IntakeCatalogOptionDto> GetAssistiveDevices() => Catalog.AssistiveDevices;
+
+    public IReadOnlyList<IntakeCatalogOptionDto> GetLivingSituations() => Catalog.LivingSituations;
+
+    public IReadOnlyList<IntakeCatalogOptionDto> GetHouseLayoutOptions() => Catalog.HouseLayoutOptions;
 
     public IntakeBodyPartItemDto? GetBodyPart(string bodyPartId)
     {
@@ -49,6 +73,46 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
         }
 
         return PainDescriptorsById.TryGetValue(painDescriptorId, out var item) ? item : null;
+    }
+
+    public IntakeCatalogOptionDto? GetComorbidity(string comorbidityId)
+    {
+        if (string.IsNullOrWhiteSpace(comorbidityId))
+        {
+            return null;
+        }
+
+        return ComorbiditiesById.TryGetValue(comorbidityId, out var item) ? item : null;
+    }
+
+    public IntakeCatalogOptionDto? GetAssistiveDevice(string assistiveDeviceId)
+    {
+        if (string.IsNullOrWhiteSpace(assistiveDeviceId))
+        {
+            return null;
+        }
+
+        return AssistiveDevicesById.TryGetValue(assistiveDeviceId, out var item) ? item : null;
+    }
+
+    public IntakeCatalogOptionDto? GetLivingSituation(string livingSituationId)
+    {
+        if (string.IsNullOrWhiteSpace(livingSituationId))
+        {
+            return null;
+        }
+
+        return LivingSituationsById.TryGetValue(livingSituationId, out var item) ? item : null;
+    }
+
+    public IntakeCatalogOptionDto? GetHouseLayoutOption(string houseLayoutOptionId)
+    {
+        if (string.IsNullOrWhiteSpace(houseLayoutOptionId))
+        {
+            return null;
+        }
+
+        return HouseLayoutOptionsById.TryGetValue(houseLayoutOptionId, out var item) ? item : null;
     }
 
     private static IntakeReferenceCatalogDto BuildCatalog()
@@ -146,7 +210,17 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
 
         return new IntakeReferenceCatalogDto
         {
-            Version = "2026-03-30",
+            Version = CatalogVersion,
+            Sources =
+            [
+                CreateProvenance(BodyPartsDocumentPath, CatalogVersion),
+                CreateProvenance(MedicationsDocumentPath, CatalogVersion),
+                CreateProvenance(PainDescriptorsDocumentPath, CatalogVersion),
+                CreateProvenance(SupplementalAsset.Comorbidities.DocumentPath, SupplementalAsset.Version),
+                CreateProvenance(SupplementalAsset.AssistiveDevices.DocumentPath, SupplementalAsset.Version),
+                CreateProvenance(SupplementalAsset.LivingSituations.DocumentPath, SupplementalAsset.Version),
+                CreateProvenance(SupplementalAsset.HouseLayoutOptions.DocumentPath, SupplementalAsset.Version)
+            ],
             BodyPartGroups = bodyPartGroups,
             Medications =
             [
@@ -223,7 +297,11 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
                 PainDescriptor(18, "prickling"),
                 PainDescriptor(19, "cutting"),
                 PainDescriptor(20, "pounding")
-            ]
+            ],
+            Comorbidities = BuildSupplementalOptions(SupplementalAsset.Comorbidities, SupplementalAsset.Version),
+            AssistiveDevices = BuildSupplementalOptions(SupplementalAsset.AssistiveDevices, SupplementalAsset.Version),
+            LivingSituations = BuildSupplementalOptions(SupplementalAsset.LivingSituations, SupplementalAsset.Version),
+            HouseLayoutOptions = BuildSupplementalOptions(SupplementalAsset.HouseLayoutOptions, SupplementalAsset.Version)
         };
     }
 
@@ -252,7 +330,8 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
                 SupportsLaterality = item.SupportsLaterality,
                 SupportsDigitSelection = item.SupportsDigitSelection,
                 DigitOptions = item.DigitOptions,
-                SourceNote = item.SourceNote
+                SourceNote = item.SourceNote,
+                Provenance = CreateProvenance(BodyPartsDocumentPath, CatalogVersion, item.SourceNote)
             }).ToArray()
         };
     }
@@ -302,7 +381,8 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
             GenericName = genericName,
             IsCombinationMedication = isCombinationMedication,
             IsSourceOrderReversed = isSourceOrderReversed,
-            DisplayOrder = displayOrder
+            DisplayOrder = displayOrder,
+            Provenance = CreateProvenance(MedicationsDocumentPath, CatalogVersion)
         };
     }
 
@@ -316,7 +396,27 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
                 "electric-like" => "Electric-like",
                 _ => char.ToUpperInvariant(label[0]) + label[1..]
             },
-            DisplayOrder = displayOrder
+            DisplayOrder = displayOrder,
+            Provenance = CreateProvenance(PainDescriptorsDocumentPath, CatalogVersion)
+        };
+    }
+
+    private static List<IntakeCatalogOptionDto> BuildSupplementalOptions(
+        IntakeSupplementalOptionGroupAsset asset,
+        string version)
+    {
+        return asset.Items
+            .Select((item, index) => item.ToDto(index + 1, version, asset.DocumentPath))
+            .ToList();
+    }
+
+    private static ReferenceDataProvenance CreateProvenance(string documentPath, string version, string? notes = null)
+    {
+        return new ReferenceDataProvenance
+        {
+            DocumentPath = documentPath,
+            Version = version,
+            Notes = notes
         };
     }
 }

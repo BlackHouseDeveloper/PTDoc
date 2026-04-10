@@ -17,6 +17,9 @@ public sealed class CreateIntakeRequest
     /// <summary>Patient consents (HIPAA, treatment) as a JSON string. Maps to TDD Consents.</summary>
     public string Consents { get; set; } = "{}";
 
+    /// <summary>Canonical intake consent contract. When supplied, this is preferred over Consents JSON.</summary>
+    public IntakeConsentPacket? ConsentPacket { get; set; }
+
     /// <summary>Optional full response payload as JSON.</summary>
     public string ResponseJson { get; set; } = "{}";
 
@@ -37,6 +40,9 @@ public sealed class EnsureIntakeDraftRequest
     /// <summary>Optional patient consents payload to seed a new draft.</summary>
     public string Consents { get; set; } = "{}";
 
+    /// <summary>Canonical intake consent contract. When supplied, this is preferred over Consents JSON.</summary>
+    public IntakeConsentPacket? ConsentPacket { get; set; }
+
     /// <summary>Optional response payload used only when a new draft must be created.</summary>
     public string ResponseJson { get; set; } = "{}";
 
@@ -56,6 +62,9 @@ public sealed class UpdateIntakeRequest
 
     /// <summary>Patient consents as a JSON string.</summary>
     public string Consents { get; set; } = "{}";
+
+    /// <summary>Canonical intake consent contract. When supplied, this is preferred over Consents JSON.</summary>
+    public IntakeConsentPacket? ConsentPacket { get; set; }
 
     /// <summary>Optional full response payload as JSON.</summary>
     public string ResponseJson { get; set; } = "{}";
@@ -92,6 +101,7 @@ public sealed class IntakeResponse
     public Guid PatientId { get; set; }
     public string PainMapData { get; set; } = "{}";
     public string Consents { get; set; } = "{}";
+    public IntakeConsentPacket? ConsentPacket { get; set; }
     public string ResponseJson { get; set; } = "{}";
     public IntakeStructuredDataDto? StructuredData { get; set; }
 

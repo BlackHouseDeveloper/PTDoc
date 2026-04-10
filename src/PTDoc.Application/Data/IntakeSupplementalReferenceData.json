@@ -1,0 +1,95 @@
+{
+  "version": "2026-04-10",
+  "comorbidities": {
+    "documentPath": "docs/clinicrefdata/Comorbidities.md",
+    "items": [
+      { "id": "hypertension", "label": "Hypertension (High Blood Pressure)" },
+      { "id": "type-2-diabetes-mellitus", "label": "Type 2 Diabetes Mellitus" },
+      { "id": "obesity", "label": "Obesity" },
+      { "id": "hyperlipidemia", "label": "Hyperlipidemia (High Cholesterol)" },
+      { "id": "coronary-artery-disease", "label": "Coronary Artery Disease (CAD)" },
+      { "id": "copd", "label": "Chronic Obstructive Pulmonary Disease (COPD)" },
+      { "id": "asthma", "label": "Asthma" },
+      { "id": "osteoarthritis", "label": "Osteoarthritis" },
+      { "id": "rheumatoid-arthritis", "label": "Rheumatoid Arthritis" },
+      { "id": "ckd", "label": "Chronic Kidney Disease (CKD)" },
+      { "id": "depression", "label": "Depression" },
+      { "id": "anxiety-disorders", "label": "Anxiety Disorders" },
+      { "id": "sleep-apnea", "label": "Sleep Apnea (Obstructive Sleep Apnea - OSA)" },
+      { "id": "hypothyroidism", "label": "Hypothyroidism" },
+      { "id": "anemia", "label": "Anemia" },
+      { "id": "gerd", "label": "Gastroesophageal Reflux Disease (GERD)" },
+      { "id": "heart-failure", "label": "Heart Failure (Congestive Heart Failure - CHF)" },
+      { "id": "stroke", "label": "Stroke / Cerebrovascular Disease" },
+      { "id": "cancer", "label": "Cancer (e.g., breast, prostate, colon)" },
+      { "id": "dementia", "label": "Dementia / Alzheimer's" }
+    ]
+  },
+  "livingSituations": {
+    "documentPath": "docs/clinicrefdata/Living Situation.md",
+    "items": [
+      { "id": "lives-alone", "label": "Lives alone" },
+      { "id": "lives-with-spouse-partner", "label": "Lives with spouse/partner" },
+      { "id": "lives-with-family", "label": "Lives with family (e.g., adult children, siblings, extended family)" },
+      { "id": "lives-with-roommates", "label": "Lives with roommate(s)" },
+      { "id": "assisted-living", "label": "Lives in assisted living facility" },
+      { "id": "skilled-nursing-facility", "label": "Lives in skilled nursing facility (SNF)" },
+      { "id": "group-home", "label": "Lives in group home or supervised housing" },
+      { "id": "shelter-or-transitional-housing", "label": "Lives in shelter or transitional housing" },
+      { "id": "experiencing-homelessness", "label": "Experiencing homelessness / unhoused" },
+      { "id": "lives-with-caregiver", "label": "Lives with caregiver (paid or unpaid)" }
+    ]
+  },
+  "houseLayoutOptions": {
+    "documentPath": "docs/clinicrefdata/House Levels & Room Location Options.md",
+    "items": [
+      { "id": "single-story-main-floor-bed-bath", "label": "Single-Story Home: Bedroom and bathroom on main floor" },
+      { "id": "two-story-second-floor-bed-bath", "label": "Two-Story Home: Bedroom and bathroom on second floor" },
+      { "id": "two-story-second-floor-bedroom-first-floor-bathroom", "label": "Two-Story Home: Bedroom on second floor, bathroom on first floor" },
+      { "id": "two-story-second-floor-bed-bath-plus-first-floor-bathroom", "label": "Two-Story Home: Bedroom and bathroom on second floor, additional bathroom on first floor" },
+      { "id": "two-story-first-floor-bedroom-second-floor-bathroom", "label": "Two-Story Home: Bedroom on first floor, bathroom on second floor" },
+      { "id": "two-story-first-floor-bed-bath-other-upstairs", "label": "Two-Story Home: Bedroom and bathroom on first floor, other bedrooms/bath upstairs" }
+    ]
+  },
+  "assistiveDevices": {
+    "documentPath": "docs/clinicrefdata/Assistive Devices-patient.md",
+    "items": [
+      { "id": "cervical-collar", "label": "Cervical collar (soft or rigid)" },
+      { "id": "ergonomic-pens-mouse", "label": "Ergonomic pens / computer mouse" },
+      { "id": "arm-sling", "label": "Arm sling / shoulder immobilizer" },
+      { "id": "long-handled-sponge", "label": "Long-handled sponge / hairbrush" },
+      { "id": "one-handed-dressing-aids", "label": "One-handed dressing aids" },
+      { "id": "wheelchair-arm-troughs", "label": "Wheelchair with arm troughs or lap trays" },
+      { "id": "scooter-steering-modifications", "label": "Scooter with steering modifications" },
+      { "id": "elbow-brace", "label": "Elbow brace (static/dynamic)" },
+      { "id": "walker-forearm-support", "label": "Walker with forearm support" },
+      { "id": "wrist-brace", "label": "Wrist brace / splint" },
+      { "id": "universal-cuff", "label": "Universal cuff" },
+      { "id": "built-up-utensils", "label": "Built-up utensil handles" },
+      { "id": "jar-opener", "label": "Jar opener / grip aids" },
+      { "id": "electric-can-opener", "label": "Electric can opener" },
+      { "id": "thumb-spica-splint", "label": "Thumb spica splint" },
+      { "id": "button-hook", "label": "Button hook / zipper puller" },
+      { "id": "lumbar-support-belt", "label": "Lumbar support belt" },
+      { "id": "back-brace", "label": "Back brace (e.g., TLSO)" },
+      { "id": "shower-chair", "label": "Shower chair or transfer bench" },
+      { "id": "long-handled-reacher", "label": "Long-handled reacher" },
+      { "id": "sock-aid", "label": "Sock aid / dressing stick" },
+      { "id": "si-belt", "label": "SI belt" },
+      { "id": "hip-abduction-brace", "label": "Hip abduction brace" },
+      { "id": "raised-toilet-seat", "label": "Raised toilet seat / commode" },
+      { "id": "grab-bars-and-railings", "label": "Grab bars and railings" },
+      { "id": "knee-brace", "label": "Knee brace (hinged, compression)" },
+      { "id": "step-stool-or-transfer-bench", "label": "Step stool or transfer bench" },
+      { "id": "ankle-brace", "label": "Ankle brace or air-stirrup splint" },
+      { "id": "knee-scooter", "label": "Knee scooter" },
+      { "id": "crutches", "label": "Crutches" },
+      { "id": "walker", "label": "Walker" },
+      { "id": "cane", "label": "Cane" },
+      { "id": "cane-standard-quad", "label": "Cane (standard, quad)" },
+      { "id": "crutches-axillary-forearm", "label": "Crutches (axillary or forearm)" },
+      { "id": "walker-standard-front-wheeled-rollator", "label": "Walker (standard, front-wheeled, rollator)" },
+      { "id": "wheelchair-manual-powered", "label": "Wheelchair (manual or powered)" }
+    ]
+  }
+}

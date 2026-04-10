@@ -365,6 +365,22 @@ public sealed class NoteWorkspaceV2Service(
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
             .Select(label => new MedicationEntryV2 { Name = label })
             .ToList();
+        var livingSituationSelections = ResolveStructuredLabels(
+            structuredData.LivingSituationIds,
+            draft.SelectedLivingSituations,
+            intakeReferenceData.GetLivingSituation);
+        var houseLayoutSelections = ResolveStructuredLabels(
+            structuredData.HouseLayoutOptionIds,
+            draft.SelectedHouseLayoutOptions,
+            intakeReferenceData.GetHouseLayoutOption);
+        var comorbiditySelections = ResolveStructuredLabels(
+            structuredData.ComorbidityIds,
+            draft.SelectedComorbidities,
+            intakeReferenceData.GetComorbidity);
+        var assistiveDeviceSelections = ResolveStructuredLabels(
+            structuredData.AssistiveDeviceIds,
+            draft.SelectedAssistiveDevices,
+            intakeReferenceData.GetAssistiveDevice);
         var recommendedOutcomeMeasures = draft.RecommendedOutcomeMeasures
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
@@ -403,15 +419,15 @@ public sealed class NoteWorkspaceV2Service(
                 Locations = locations,
                 OtherLocation = otherLocation,
                 CurrentPainScore = Math.Clamp(draft.PainSeverityScore ?? 0, 0, 10),
-                LivingSituation = draft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
-                OtherLivingSituation = draft.SelectedHouseLayoutOptions.Count == 0
+                LivingSituation = livingSituationSelections.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                OtherLivingSituation = houseLayoutSelections.Count == 0
                     ? null
-                    : string.Join("; ", draft.SelectedHouseLayoutOptions.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)),
-                Comorbidities = draft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                    : string.Join("; ", houseLayoutSelections.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)),
+                Comorbidities = comorbiditySelections.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 AssistiveDevice = new AssistiveDeviceDetailsV2
                 {
-                    UsesAssistiveDevice = draft.UsesAssistiveDevices || draft.SelectedAssistiveDevices.Count > 0,
-                    Devices = draft.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    UsesAssistiveDevice = draft.UsesAssistiveDevices || assistiveDeviceSelections.Count > 0,
+                    Devices = assistiveDeviceSelections.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 },
                 TakingMedications = medicationEntries.Count > 0 ? true : null,
                 Medications = medicationEntries,
@@ -475,6 +491,32 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         return draft.StructuredData ?? new IntakeStructuredDataDto();
+    }
+
+    private static IReadOnlyList<string> ResolveStructuredLabels(
+        IEnumerable<string> canonicalIds,
+        IEnumerable<string> fallbackValues,
+        Func<string, PTDoc.Application.ReferenceData.IntakeCatalogOptionDto?> resolver)
+    {
+        var mappedValues = canonicalIds
+            .Select(id => resolver(id)?.Label)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Select(label => label!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (mappedValues.Count > 0)
+        {
+            return mappedValues;
+        }
+
+        return fallbackValues
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static (HashSet<string> Locations, string? OtherLocation) MapIntakeLocations(
