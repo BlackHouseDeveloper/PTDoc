@@ -1,4 +1,5 @@
 using PTDoc.Core.Models;
+using PTDoc.Application.ReferenceData;
 
 namespace PTDoc.Application.Outcomes;
 
@@ -92,6 +93,9 @@ public sealed record OutcomeMeasureDefinition
     /// <summary>Scoring bands used for interpretation (ordered by ascending score, min→max).
     /// <c>InterpretScore</c> relies on this ordering to clamp out-of-range values correctly.</summary>
     public required IReadOnlyList<ScoringBand> ScoringBands { get; init; }
+
+    /// <summary>Source provenance for the definition when loaded from clinic reference data.</summary>
+    public ReferenceDataProvenance? Provenance { get; init; }
 }
 
 /// <summary>

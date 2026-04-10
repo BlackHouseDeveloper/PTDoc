@@ -48,6 +48,23 @@ public sealed class WorkspaceReferenceCatalogServiceTests
 
         Assert.Contains(matches, item => item.Code == "R10.2");
         Assert.Contains(matches, item => item.Code == "N94.1");
+        Assert.All(matches, item =>
+        {
+            Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", item.Source);
+            Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", item.Provenance?.DocumentPath);
+        });
+    }
+
+    [Fact]
+    public void SearchCpt_GaitTraining_ReturnsDocumentBackedModifierCoverage()
+    {
+        var matches = _catalogs.SearchCpt("97116");
+
+        var match = Assert.Single(matches.Where(item => item.Code == "97116"));
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", match.Source);
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", match.Provenance?.DocumentPath);
+        Assert.Contains("GP", match.SuggestedModifiers);
+        Assert.Contains("CO", match.ModifierOptions);
     }
 
     [Fact]

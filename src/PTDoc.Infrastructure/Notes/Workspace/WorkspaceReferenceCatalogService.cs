@@ -1,152 +1,44 @@
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Infrastructure.Notes.Workspace;
 
 public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry outcomeMeasureRegistry)
     : IWorkspaceReferenceCatalogService
 {
-    private const string CptModifierSource = "Commonly used CPT codes and modifiers.md";
-    private const string CervicalGoalSource = "ClinicalReference_CSpineLimitationsGoals.docx.md";
-    private const string LumbarGoalSource = "Goals_LBPLimitations_SmartGoals.docx.md";
-    private const string LowerExtremityGoalSource = "Goals_LELimitations_SmartGoals.docx.md";
-    private const string PelvicFloorGoalSource = "Goals_PelvicFloorLimitations_SmartGoals.docx.md";
+    private const string CervicalGoalSource = "docs/clinicrefdata/C-spine limitations_objective_Goals.md";
+    private const string LumbarGoalSource = "docs/clinicrefdata/LBP limitations_object_smart goals.md";
+    private const string LowerExtremityGoalSource = "docs/clinicrefdata/LE limitations_objectives_Goals.md";
+    private const string PelvicFloorGoalSource = "docs/clinicrefdata/Pelvic Floor limitations_objectives_Goals.md";
     private const string UpperExtremityGoalSource = "Goals_UELimitations_SmartGoals.docx.md";
-    private const string NormalRomSource = "ClinicalReference_NormalROM.docx.md";
-    private const string SpecialTestsSource = "ClinicalReference_SpecialTests.docx.md";
-    private const string Icd10Source = "ClinicalReference_ICD10Codes.docx.md";
-    private const string OutcomeMeasuresSource = "ClinicalReference_FunctionalOutcomeMeasures.docx.md";
-    private const string ExercisesSource = "ClinicalReference_ExercisesLibrary.docx.md";
-    private const string JointMobilitySource = "ClinicalReference_JointMobility_MMT.docx.md";
-    private const string TreatmentInterventionsSource = "ClinicalReference_TreatmentInterventions.docx.md";
-    private const string TreatmentFocusSource = "ClinicalReference_JointTreatmentFocus.docx.md";
-    private const string TenderMusclesSource = "ClinicalReference_MusclesTTP.docx.md";
+    private const string NormalRomSource = "docs/clinicrefdata/Normal ROM Measurements.md";
+    private const string SpecialTestsSource = "docs/clinicrefdata/List of commonly used Special test.md";
+    private const string OutcomeMeasuresSource = "docs/clinicrefdata/List of functional outcome measures.md";
+    private const string ExercisesSource = "docs/clinicrefdata/Exercises.md";
+    private const string JointMobilitySource = "docs/clinicrefdata/Joint mobility and MMT.md";
+    private const string TreatmentInterventionsSource = "docs/clinicrefdata/what-generally-was-worked-on.md";
+    private const string TreatmentFocusSource = "docs/clinicrefdata/what-was-specifically-worked-on.md";
+    private const string TenderMusclesSource = "docs/clinicrefdata/Muscles TTP.md";
 
     private static readonly Lazy<IReadOnlyDictionary<BodyPart, BodyRegionCatalog>> Catalogs =
         new(BuildCatalogs);
 
-    private static readonly IReadOnlyList<CodeLookupEntry> SourceIcd10Codes =
-    [
-        new() { Code = "M62.81", Description = "Muscle weakness (generalized)", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "R26.89", Description = "Other abnormalities of gait and mobility", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "R26.2", Description = "Difficulty in walking, not elsewhere classified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "Z51.89", Description = "Encounter for other specified aftercare", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "R29.6", Description = "Repeated falls", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.50", Description = "Pain in unspecified joint", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M54.2", Description = "Cervicalgia (neck pain)", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M50.20", Description = "Cervical disc disorder with radiculopathy, unspecified level", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M53.82", Description = "Cervicocranial syndrome", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M54.12", Description = "Radiculopathy, cervical region", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M54.6", Description = "Thoracic spine pain", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M51.24", Description = "Thoracic disc disorder with radiculopathy", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M48.02", Description = "Spinal stenosis, thoracic region", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M54.5", Description = "Low back pain", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M54.16", Description = "Radiculopathy, lumbar region", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M51.26", Description = "Lumbar disc disorder with radiculopathy", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M48.06", Description = "Spinal stenosis, lumbar region", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S39.012A", Description = "Strain of muscle, fascia, and tendon of lower back (initial encounter)", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.101", Description = "Unspecified rotator cuff tear, right shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.102", Description = "Unspecified rotator cuff tear, left shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.111", Description = "Incomplete rotator cuff tear, right shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.112", Description = "Incomplete rotator cuff tear, left shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.51", Description = "Bursitis of shoulder, unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.511", Description = "Bursitis of right shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M75.512", Description = "Bursitis of left shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S43.401A", Description = "Sprain of shoulder joint, unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S43.411A", Description = "Sprain of right shoulder joint", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S43.412A", Description = "Sprain of left shoulder joint", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.511", Description = "Pain in right shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.512", Description = "Pain in left shoulder", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M77.10", Description = "Lateral epicondylitis, unspecified elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M77.11", Description = "Lateral epicondylitis, right elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M77.12", Description = "Lateral epicondylitis, left elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.521", Description = "Pain in right elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.522", Description = "Pain in left elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S53.401A", Description = "Sprain of elbow, unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S53.411A", Description = "Sprain of right elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S53.412A", Description = "Sprain of left elbow", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M65.4", Description = "Radial styloid tenosynovitis (De Quervain's), unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M65.311", Description = "Trigger finger, right hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M65.312", Description = "Trigger finger, left hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G56.01", Description = "Carpal tunnel syndrome, right upper limb", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G56.02", Description = "Carpal tunnel syndrome, left upper limb", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.641", Description = "Pain in right hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.642", Description = "Pain in left hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.531", Description = "Pain in right wrist", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.532", Description = "Pain in left wrist", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S63.501A", Description = "Sprain of unspecified hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S63.511A", Description = "Sprain of right hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S63.512A", Description = "Sprain of left hand", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.551", Description = "Pain in right hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.552", Description = "Pain in left hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M76.01", Description = "Gluteal tendinitis, right hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M76.02", Description = "Gluteal tendinitis, left hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M16.11", Description = "Unilateral primary osteoarthritis, right hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M16.12", Description = "Unilateral primary osteoarthritis, left hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S76.011A", Description = "Strain of muscle, fascia, and tendon of right hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S76.012A", Description = "Strain of muscle, fascia, and tendon of left hip", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M17.11", Description = "Unilateral primary osteoarthritis, right knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M17.12", Description = "Unilateral primary osteoarthritis, left knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.561", Description = "Pain in right knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.562", Description = "Pain in left knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M23.50", Description = "Chronic instability of knee, unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M23.511", Description = "Chronic instability of right knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M23.512", Description = "Chronic instability of left knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S83.511A", Description = "Sprain of ACL of right knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S83.512A", Description = "Sprain of ACL of left knee", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.571", Description = "Pain in right ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M25.572", Description = "Pain in left ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M77.31", Description = "Plantar fasciitis, right foot", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M77.32", Description = "Plantar fasciitis, left foot", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S93.401A", Description = "Sprain of unspecified ligament of right ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "S93.402A", Description = "Sprain of unspecified ligament of left ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.671", Description = "Pain in right foot", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.672", Description = "Pain in left foot", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M24.571", Description = "Contracture of right ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M24.572", Description = "Contracture of left ankle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G57.01", Description = "Sciatica, right lower limb", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G57.02", Description = "Sciatica, left lower limb", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.2", Description = "Neuralgia and neuritis, unspecified", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "R26.81", Description = "Unsteadiness on feet", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G25.81", Description = "Restless legs syndrome", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "G20", Description = "Parkinson's disease", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "R10.2", Description = "Pelvic and perineal pain", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "M79.4", Description = "Neuralgia/neuritis of unspecified site", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "N94.89", Description = "Other specified conditions associated with female genital organs and menstrual cycle", Source = Icd10Source, IsCompleteLibrary = false },
-        new() { Code = "N94.1", Description = "Dyspareunia (pelvic pain with intercourse)", Source = Icd10Source, IsCompleteLibrary = false }
-    ];
+    private static readonly Lazy<WorkspaceLookupReferenceDataAsset> LookupCatalog =
+        new(() => EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<WorkspaceLookupReferenceDataAsset>(
+            "PTDoc.Application.Data.WorkspaceLookupReferenceData.json"));
 
-    private static readonly IReadOnlyList<string> TherapyModifierOptions =
-    [
-        "GP",
-        "KX",
-        "59",
-        "XE",
-        "XS",
-        "XP",
-        "XU",
-        "CQ",
-        "GA",
-        "GY",
-        "GZ",
-        "22",
-        "76",
-        "77"
-    ];
+    private static readonly Lazy<IReadOnlyList<SearchableCodeLookupEntry>> SourceIcd10Codes =
+        new(() => BuildLookupEntries(LookupCatalog.Value.Icd10Codes, LookupCatalog.Value.Icd10Provenance));
 
-    private static readonly IReadOnlyList<string> DefaultPtSuggestedModifiers =
-    [
-        "GP"
-    ];
-
-    private static readonly IReadOnlyList<CodeLookupEntry> BootstrapCptCodes =
-    [
-        CreateCptLookupEntry("97110", "Therapeutic exercises"),
-        CreateCptLookupEntry("97112", "Neuromuscular re-education"),
-        CreateCptLookupEntry("97140", "Manual therapy techniques"),
-        CreateCptLookupEntry("97530", "Therapeutic activities")
-    ];
+    private static readonly Lazy<IReadOnlyList<SearchableCodeLookupEntry>> SourceCptCodes =
+        new(() => BuildLookupEntries(
+            LookupCatalog.Value.CptCodes,
+            LookupCatalog.Value.CptProvenance,
+            LookupCatalog.Value.DefaultCptModifierOptions,
+            LookupCatalog.Value.DefaultPtSuggestedModifiers));
 
     private static readonly IReadOnlyList<string> SharedTreatmentInterventions =
     [
@@ -232,55 +124,97 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     }
 
     public IReadOnlyList<CodeLookupEntry> SearchIcd10(string? query, int take = 20) =>
-        SearchCodes(SourceIcd10Codes, query, take);
+        SearchCodes(SourceIcd10Codes.Value, query, take);
 
     public IReadOnlyList<CodeLookupEntry> SearchCpt(string? query, int take = 20) =>
-        SearchCodes(BootstrapCptCodes, query, take);
+        SearchCodes(SourceCptCodes.Value, query, take);
 
     private static IReadOnlyList<CodeLookupEntry> SearchCodes(
-        IReadOnlyList<CodeLookupEntry> source,
+        IReadOnlyList<SearchableCodeLookupEntry> source,
         string? query,
         int take)
     {
         var trimmed = query?.Trim();
         var effectiveTake = take <= 0 ? 20 : Math.Min(take, 100);
 
-        IEnumerable<CodeLookupEntry> results = source;
+        IEnumerable<SearchableCodeLookupEntry> results = source;
         if (!string.IsNullOrWhiteSpace(trimmed))
         {
             results = results.Where(entry =>
-                entry.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                entry.Description.Contains(trimmed, StringComparison.OrdinalIgnoreCase));
+                entry.Entry.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                entry.Entry.Description.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                entry.SearchTerms.Any(term => term.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
         }
 
         return results
             .Take(effectiveTake)
-            .Select(entry => new CodeLookupEntry
+            .Select(searchable => new CodeLookupEntry
             {
-                Code = entry.Code,
-                Description = entry.Description,
-                Source = entry.Source,
-                IsCompleteLibrary = entry.IsCompleteLibrary,
-                ModifierOptions = [.. entry.ModifierOptions],
-                SuggestedModifiers = [.. entry.SuggestedModifiers],
-                ModifierSource = entry.ModifierSource
+                Code = searchable.Entry.Code,
+                Description = searchable.Entry.Description,
+                Source = searchable.Entry.Source,
+                Provenance = CloneProvenance(searchable.Entry.Provenance),
+                IsCompleteLibrary = searchable.Entry.IsCompleteLibrary,
+                ModifierOptions = [.. searchable.Entry.ModifierOptions],
+                SuggestedModifiers = [.. searchable.Entry.SuggestedModifiers],
+                ModifierSource = searchable.Entry.ModifierSource
             })
             .ToList()
             .AsReadOnly();
     }
 
-    private static CodeLookupEntry CreateCptLookupEntry(string code, string description)
+    private static IReadOnlyList<SearchableCodeLookupEntry> BuildLookupEntries(
+        IReadOnlyCollection<WorkspaceLookupCodeAsset> source,
+        ReferenceDataProvenance provenance,
+        IReadOnlyCollection<string>? defaultModifierOptions = null,
+        IReadOnlyCollection<string>? defaultSuggestedModifiers = null)
     {
-        return new CodeLookupEntry
-        {
-            Code = code,
-            Description = description,
-            Source = CptModifierSource,
-            IsCompleteLibrary = false,
-            ModifierOptions = [.. TherapyModifierOptions],
-            SuggestedModifiers = [.. DefaultPtSuggestedModifiers],
-            ModifierSource = CptModifierSource
-        };
+        var documentPath = provenance.DocumentPath;
+
+        return source
+            .Select(entry => new SearchableCodeLookupEntry
+            {
+                Entry = new CodeLookupEntry
+                {
+                    Code = entry.Code,
+                    Description = entry.Description,
+                    Source = documentPath,
+                    Provenance = CloneProvenance(provenance),
+                    IsCompleteLibrary = entry.IsCompleteLibrary,
+                    ModifierOptions = entry.ModifierOptions.Count > 0
+                        ? [.. entry.ModifierOptions]
+                        : [.. (defaultModifierOptions ?? Array.Empty<string>())],
+                    SuggestedModifiers = entry.SuggestedModifiers.Count > 0
+                        ? [.. entry.SuggestedModifiers]
+                        : [.. (defaultSuggestedModifiers ?? Array.Empty<string>())],
+                    ModifierSource = (entry.ModifierOptions.Count > 0 || (defaultModifierOptions?.Count ?? 0) > 0)
+                        ? documentPath
+                        : null
+                },
+                SearchTerms = entry.SearchTerms
+                    .Where(term => !string.IsNullOrWhiteSpace(term))
+                    .Select(term => term.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            })
+            .ToList()
+            .AsReadOnly();
+    }
+
+    private static ReferenceDataProvenance? CloneProvenance(ReferenceDataProvenance? provenance)
+        => provenance is null
+            ? null
+            : new ReferenceDataProvenance
+            {
+                DocumentPath = provenance.DocumentPath,
+                Version = provenance.Version,
+                Notes = provenance.Notes
+            };
+
+    private sealed class SearchableCodeLookupEntry
+    {
+        public CodeLookupEntry Entry { get; init; } = new();
+        public List<string> SearchTerms { get; init; } = new();
     }
 
     private static IReadOnlyDictionary<BodyPart, BodyRegionCatalog> BuildCatalogs()

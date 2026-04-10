@@ -1,5 +1,7 @@
 using PTDoc.Application.Outcomes;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Infrastructure.Outcomes;
 
@@ -10,6 +12,10 @@ namespace PTDoc.Infrastructure.Outcomes;
 /// </summary>
 public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
 {
+    private static readonly Lazy<OutcomeMeasureCatalogAsset> CatalogAsset = new(
+        () => EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<OutcomeMeasureCatalogAsset>(
+            "PTDoc.Application.Data.OutcomeMeasureReferenceData.json"));
+
     private static readonly IReadOnlyList<OutcomeMeasureDefinition> _allMeasures = BuildRegistry();
 
     /// <inheritdoc />
@@ -73,168 +79,63 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
 
     private static IReadOnlyList<OutcomeMeasureDefinition> BuildRegistry()
     {
-        return new List<OutcomeMeasureDefinition>
-        {
-            new()
-            {
-                MeasureType = OutcomeMeasureType.OswestryDisabilityIndex,
-                Abbreviation = "ODI",
-                FullName = "Oswestry Disability Index",
-                Description = "Measures the degree of disability caused by low back pain.",
-                MinScore = 0,
-                MaxScore = 100,
-                HigherIsBetter = false,
-                ScoreUnit = "%",
-                MinimumClinicallyImportantDifference = 10,
-                RecommendedForBodyParts = new[] { BodyPart.Lumbar, BodyPart.Thoracic },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "Minimal disability", MinScore = 0, MaxScore = 20 },
-                    new ScoringBand { Label = "Moderate disability", MinScore = 21, MaxScore = 40 },
-                    new ScoringBand { Label = "Severe disability", MinScore = 41, MaxScore = 60 },
-                    new ScoringBand { Label = "Crippling disability", MinScore = 61, MaxScore = 80 },
-                    new ScoringBand { Label = "Bed-bound or exaggerating", MinScore = 81, MaxScore = 100 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.DASH,
-                Abbreviation = "DASH",
-                FullName = "Disabilities of the Arm, Shoulder and Hand",
-                Description = "Measures disability and symptoms in upper extremity musculoskeletal disorders.",
-                MinScore = 0,
-                MaxScore = 100,
-                HigherIsBetter = false,
-                ScoreUnit = "points",
-                MinimumClinicallyImportantDifference = 10.2,
-                RecommendedForBodyParts = new[] { BodyPart.Shoulder, BodyPart.Elbow, BodyPart.Wrist, BodyPart.Hand },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "Minimal disability", MinScore = 0, MaxScore = 20 },
-                    new ScoringBand { Label = "Mild disability", MinScore = 21, MaxScore = 40 },
-                    new ScoringBand { Label = "Moderate disability", MinScore = 41, MaxScore = 60 },
-                    new ScoringBand { Label = "Severe disability", MinScore = 61, MaxScore = 80 },
-                    new ScoringBand { Label = "Maximum disability", MinScore = 81, MaxScore = 100 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.LEFS,
-                Abbreviation = "LEFS",
-                FullName = "Lower Extremity Functional Scale",
-                Description = "Measures functional limitations in lower extremity conditions.",
-                MinScore = 0,
-                MaxScore = 80,
-                HigherIsBetter = true,
-                ScoreUnit = "points",
-                MinimumClinicallyImportantDifference = 9,
-                RecommendedForBodyParts = new[] { BodyPart.Hip, BodyPart.Knee, BodyPart.Ankle, BodyPart.Foot },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "Maximum disability", MinScore = 0, MaxScore = 19 },
-                    new ScoringBand { Label = "Severe disability", MinScore = 20, MaxScore = 39 },
-                    new ScoringBand { Label = "Moderate disability", MinScore = 40, MaxScore = 59 },
-                    new ScoringBand { Label = "Mild disability", MinScore = 60, MaxScore = 72 },
-                    new ScoringBand { Label = "Minimal or no disability", MinScore = 73, MaxScore = 80 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.NeckDisabilityIndex,
-                Abbreviation = "NDI",
-                FullName = "Neck Disability Index",
-                Description = "Measures neck pain-related disability in cervical spine conditions.",
-                MinScore = 0,
-                MaxScore = 50,
-                HigherIsBetter = false,
-                ScoreUnit = "points",
-                MinimumClinicallyImportantDifference = 5,
-                RecommendedForBodyParts = new[] { BodyPart.Cervical },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "No disability", MinScore = 0, MaxScore = 4 },
-                    new ScoringBand { Label = "Mild disability", MinScore = 5, MaxScore = 14 },
-                    new ScoringBand { Label = "Moderate disability", MinScore = 15, MaxScore = 24 },
-                    new ScoringBand { Label = "Severe disability", MinScore = 25, MaxScore = 34 },
-                    new ScoringBand { Label = "Complete disability", MinScore = 35, MaxScore = 50 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.PSFS,
-                Abbreviation = "PSFS",
-                FullName = "Patient-Specific Functional Scale",
-                Description = "Patient-reported functional scale for up to 3 patient-selected activities.",
-                MinScore = 0,
-                MaxScore = 10,
-                HigherIsBetter = true,
-                ScoreUnit = "points",
-                MinimumClinicallyImportantDifference = 2,
-                RecommendedForBodyParts = new[]
-                {
-                    BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
-                    BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
-                },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "Unable to perform", MinScore = 0, MaxScore = 2 },
-                    new ScoringBand { Label = "Significant limitation", MinScore = 3, MaxScore = 5 },
-                    new ScoringBand { Label = "Moderate limitation", MinScore = 6, MaxScore = 7 },
-                    new ScoringBand { Label = "Mild limitation", MinScore = 8, MaxScore = 9 },
-                    new ScoringBand { Label = "No limitation", MinScore = 10, MaxScore = 10 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.NPRS,
-                Abbreviation = "NPRS",
-                FullName = "Numeric Pain Rating Scale",
-                Description = "Patient-reported pain intensity on an 11-point scale.",
-                MinScore = 0,
-                MaxScore = 10,
-                HigherIsBetter = false,
-                ScoreUnit = "/10",
-                MinimumClinicallyImportantDifference = 2,
-                RecommendedForBodyParts = new[]
-                {
-                    BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
-                    BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
-                },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "No pain", MinScore = 0, MaxScore = 0 },
-                    new ScoringBand { Label = "Mild pain", MinScore = 1, MaxScore = 3 },
-                    new ScoringBand { Label = "Moderate pain", MinScore = 4, MaxScore = 6 },
-                    new ScoringBand { Label = "Severe pain", MinScore = 7, MaxScore = 10 }
-                }
-            },
-            new()
-            {
-                MeasureType = OutcomeMeasureType.VAS,
-                Abbreviation = "VAS",
-                FullName = "Visual Analog Scale",
-                Description = "Patient-reported pain intensity on a 0–10 visual analog continuum.",
-                MinScore = 0,
-                MaxScore = 10,
-                HigherIsBetter = false,
-                ScoreUnit = "/10",
-                MinimumClinicallyImportantDifference = 1.5,
-                RecommendedForBodyParts = new[]
-                {
-                    BodyPart.Knee, BodyPart.Shoulder, BodyPart.Hip, BodyPart.Ankle,
-                    BodyPart.Elbow, BodyPart.Wrist, BodyPart.Cervical, BodyPart.Lumbar,
-                    BodyPart.Thoracic, BodyPart.Foot, BodyPart.Hand, BodyPart.PelvicFloor, BodyPart.Other
-                },
-                ScoringBands = new[]
-                {
-                    new ScoringBand { Label = "No pain", MinScore = 0, MaxScore = 0 },
-                    new ScoringBand { Label = "Mild pain", MinScore = 1, MaxScore = 3 },
-                    new ScoringBand { Label = "Moderate pain", MinScore = 4, MaxScore = 6 },
-                    new ScoringBand { Label = "Severe pain", MinScore = 7, MaxScore = 10 }
-                }
-            }
-        }.AsReadOnly();
+        return CatalogAsset.Value.Measures
+            .Select(MapDefinition)
+            .ToList()
+            .AsReadOnly();
     }
+
+    private static OutcomeMeasureDefinition MapDefinition(OutcomeMeasureDefinitionAsset asset)
+    {
+        var provenance = CloneProvenance(CatalogAsset.Value.Provenance);
+
+        return new OutcomeMeasureDefinition
+        {
+            MeasureType = ParseEnum<OutcomeMeasureType>(asset.MeasureType, nameof(asset.MeasureType)),
+            Abbreviation = asset.Abbreviation,
+            FullName = asset.FullName,
+            Description = asset.Description,
+            MinScore = asset.MinScore,
+            MaxScore = asset.MaxScore,
+            HigherIsBetter = asset.HigherIsBetter,
+            ScoreUnit = asset.ScoreUnit,
+            MinimumClinicallyImportantDifference = asset.MinimumClinicallyImportantDifference,
+            RecommendedForBodyParts = asset.RecommendedForBodyParts
+                .Select(value => ParseEnum<BodyPart>(value, nameof(asset.RecommendedForBodyParts)))
+                .ToList()
+                .AsReadOnly(),
+            ScoringBands = asset.ScoringBands
+                .Select(band => new ScoringBand
+                {
+                    Label = band.Label,
+                    MinScore = band.MinScore,
+                    MaxScore = band.MaxScore
+                })
+                .ToList()
+                .AsReadOnly(),
+            Provenance = provenance
+        };
+    }
+
+    private static TEnum ParseEnum<TEnum>(string rawValue, string fieldName)
+        where TEnum : struct, Enum
+    {
+        if (Enum.TryParse<TEnum>(rawValue, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException(
+            $"Outcome measure catalog value '{rawValue}' is not a valid {typeof(TEnum).Name} for {fieldName}.");
+    }
+
+    private static ReferenceDataProvenance? CloneProvenance(ReferenceDataProvenance? provenance)
+        => provenance is null
+            ? null
+            : new ReferenceDataProvenance
+            {
+                DocumentPath = provenance.DocumentPath,
+                Version = provenance.Version,
+                Notes = provenance.Notes
+            };
 }

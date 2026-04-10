@@ -125,7 +125,7 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PT
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
 builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
 builder.Services.AddScoped<PTDoc.Application.Services.INoteWriteService, PTDoc.Infrastructure.Services.NoteWriteService>();
-builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.BundledIcd10Service>();
+builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.WorkspaceCatalogIcd10Service>();
 builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
     builder.Configuration.GetSection(PTDoc.Application.Configuration.RetentionOptions.SectionName));
 builder.Services.AddSingleton<ITreatmentTaxonomyCatalogService, TreatmentTaxonomyCatalogService>();

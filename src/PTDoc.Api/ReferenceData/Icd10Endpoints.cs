@@ -6,7 +6,7 @@ namespace PTDoc.Api.ReferenceData;
 
 /// <summary>
 /// Endpoints for ICD-10 diagnosis code lookup.
-/// Uses the bundled code list (no external API required for MVP).
+/// Uses the canonical workspace reference catalog so generic and workspace search stay aligned.
 /// </summary>
 public static class Icd10Endpoints
 {
@@ -19,7 +19,7 @@ public static class Icd10Endpoints
         group.MapGet("/search", Search)
             .WithName("SearchIcd10Codes")
             .WithSummary("Search ICD-10 codes by code or description")
-            .WithDescription("Returns matching codes from the bundled PT-relevant ICD-10 list. Defaults to 20 results; configurable up to 100 via the maxResults parameter.");
+            .WithDescription("Returns matching codes from the canonical PT document-backed ICD-10 catalog. Defaults to 20 results; configurable up to 100 via the maxResults parameter.");
     }
 
     private static IResult Search(

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 
+using PTDoc.Application.Intake;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 
@@ -113,7 +114,7 @@ public sealed class InMemoryIntakeService : IIntakeService
             SelectedBodyRegion = state.SelectedBodyRegion,
             PainSeverityScore = state.PainSeverityScore,
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
-            StructuredData = state.StructuredData,
+            StructuredData = CloneStructuredData(state.StructuredData),
             SelectedComorbidities = state.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedAssistiveDevices = state.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedLivingSituations = state.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
@@ -122,5 +123,18 @@ public sealed class InMemoryIntakeService : IIntakeService
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
+    }
+
+    private static IntakeStructuredDataDto? CloneStructuredData(IntakeStructuredDataDto? structuredData)
+    {
+        if (structuredData is null)
+        {
+            return null;
+        }
+
+        var json = IntakeStructuredDataJson.Serialize(structuredData);
+        return IntakeStructuredDataJson.TryParse(json, out var clone, out _)
+            ? clone
+            : new IntakeStructuredDataDto();
     }
 }
