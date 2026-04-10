@@ -13,9 +13,7 @@ internal static class EmbeddedJsonResourceLoader
     public static T LoadFromApplicationAssembly<T>(string resourceName)
         where T : class, new()
     {
-        var appAssembly = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(assembly => assembly.GetName().Name == "PTDoc.Application")
-            ?? Assembly.Load("PTDoc.Application");
+        var appAssembly = typeof(T).Assembly;
 
         using var stream = appAssembly.GetManifestResourceStream(resourceName);
         if (stream is null)
