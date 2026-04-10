@@ -1,24 +1,236 @@
+@using System.Text.Json
+@using PTDoc.Application.Intake
+@using PTDoc.Application.ReferenceData
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Intake.Models
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 
 <section class="intake-step-shell" data-testid="pain-details-step">
-    <h2>Pain Details</h2>
-    <p>Body-region specific pain details will be added in a follow-up pass.</p>
-
-    @if (!string.IsNullOrWhiteSpace(State.SelectedBodyRegion))
-    {
-        <div class="intake-step-shell__panel">
-            <h3>@State.SelectedBodyRegion Pain Details</h3>
-            <p>Capture pain location, intensity, and movement triggers for the selected body region.</p>
+    <div class="intake-step-shell__hero">
+        <div>
+            <h2>Pain Details</h2>
+            <p>Convert the body map into validated body parts, pain qualities, and a structured pain severity score.</p>
         </div>
+
+        @if (SelectedMapRegions.Count > 0)
+        {
+            <div class="intake-step-shell__chip-list">
+                @foreach (var region in SelectedMapRegions)
+                {
+                    <span class="intake-step-shell__summary-chip">@HumanizeRegion(region)</span>
+                }
+            </div>
+        }
+    </div>
+
+    <section class="intake-step-shell__panel">
+        <div class="intake-step-shell__panel-header">
+            <div>
+                <h3>Structured Body Parts</h3>
+                <p>Select the exact body parts that match the patient’s complaint from the validated body-part document.</p>
+            </div>
+            @if (SuggestedGroups.Count > 0)
+            {
+                <div class="intake-step-shell__suggested">
+                    <span class="intake-step-shell__suggested-label">Suggested groups</span>
+                    <div class="intake-step-shell__chip-list">
+                        @foreach (var group in SuggestedGroups)
+                        {
+                            <span class="intake-step-shell__summary-chip">@group.Title</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <input class="form-control intake-step-shell__search"
+               type="search"
+               placeholder="Search body parts"
+               @bind="_bodyPartSearch"
+               @bind:event="oninput" />
+
+        <div class="intake-step-shell__group-stack">
+            @foreach (var group in FilteredGroups)
+            {
+                <div class="intake-step-shell__group">
+                    <h4>@group.Title</h4>
+                    <div class="intake-step-shell__chip-list">
+                        @foreach (var item in group.Items)
+                        {
+                            var isSelected = IsBodyPartSelected(item.Id);
+                            <button type="button"
+                                    class="intake-step-shell__chip @(isSelected ? "intake-step-shell__chip--selected" : "")"
+                                    @onclick="() => ToggleBodyPartAsync(item)">
+                                @item.Label
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+
+    @if (SelectedSelections.Count > 0)
+    {
+        <section class="intake-step-shell__panel">
+            <div class="intake-step-shell__panel-header">
+                <div>
+                    <h3>Body-Part Details</h3>
+                    <p>Capture laterality and digit detail where the source document supports it.</p>
+                </div>
+            </div>
+
+            <div class="intake-step-shell__selection-stack">
+                @foreach (var selection in SelectedSelections)
+                {
+                    var item = GetBodyPart(selection.BodyPartId);
+                    if (item is null)
+                    {
+                        continue;
+                    }
+
+                    <article class="intake-step-shell__selection-card">
+                        <div class="intake-step-shell__selection-header">
+                            <div>
+                                <h4>@item.Label</h4>
+                                <p>@item.GroupTitle</p>
+                            </div>
+                            <button type="button" class="intake-step-shell__remove" @onclick="() => RemoveBodyPartAsync(item.Id)">Remove</button>
+                        </div>
+
+                        @if (item.SupportsLaterality)
+                        {
+                            <div class="intake-step-shell__field-block">
+                                <span class="intake-step-shell__field-label">Laterality</span>
+                                <div class="intake-step-shell__chip-list">
+                                    @foreach (var laterality in IntakeLateralityValues.Ordered)
+                                    {
+                                        var isSelected = selection.Lateralities.Contains(laterality, StringComparer.OrdinalIgnoreCase);
+                                        <button type="button"
+                                                class="intake-step-shell__chip @(isSelected ? "intake-step-shell__chip--selected" : "")"
+                                                @onclick="() => ToggleLateralityAsync(selection, laterality)">
+                                            @char.ToUpperInvariant(laterality[0])@laterality[1..]
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (item.SupportsDigitSelection && item.DigitOptions.Count > 0)
+                        {
+                            <div class="intake-step-shell__field-block">
+                                <span class="intake-step-shell__field-label">Digits</span>
+                                <div class="intake-step-shell__chip-list">
+                                    @foreach (var digit in item.DigitOptions.OrderBy(option => option.DisplayOrder))
+                                    {
+                                        var isSelected = selection.DigitIds.Contains(digit.Id, StringComparer.OrdinalIgnoreCase);
+                                        <button type="button"
+                                                class="intake-step-shell__chip @(isSelected ? "intake-step-shell__chip--selected" : "")"
+                                                @onclick="() => ToggleDigitAsync(selection, digit.Id)">
+                                            @digit.Label
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        </section>
     }
     else
     {
-        <div class="intake-step-shell__helper">Select a body region in Pain Assessment to populate this panel.</div>
+        <div class="intake-step-shell__helper">Select at least one structured body part to continue.</div>
+    }
+
+    <section class="intake-step-shell__panel">
+        <div class="intake-step-shell__panel-header">
+            <div>
+                <h3>Pain Quality</h3>
+                <p>Select the pain descriptors from the validated patient language list.</p>
+            </div>
+        </div>
+
+        <div class="intake-step-shell__chip-list">
+            @foreach (var descriptor in IntakeReferenceData.GetPainDescriptors())
+            {
+                var isSelected = StructuredData.PainDescriptorIds.Contains(descriptor.Id, StringComparer.OrdinalIgnoreCase);
+                <button type="button"
+                        class="intake-step-shell__chip @(isSelected ? "intake-step-shell__chip--selected" : "")"
+                        @onclick="() => TogglePainDescriptorAsync(descriptor.Id)">
+                    @descriptor.Label
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-step-shell__panel intake-step-shell__panel--severity" style="@PainSeverityStyle">
+        <div class="intake-step-shell__severity-heading">
+            <div class="intake-step-shell__severity-title">
+                <svg class="intake-step-shell__severity-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12h4l2.4-7 4.2 14 2.5-7H22" />
+                </svg>
+                <h3>Pain Severity (0-10)</h3>
+            </div>
+            <p>Rate your overall pain level (0 = no pain, 10 = worst pain imaginable).</p>
+        </div>
+
+        <div class="intake-step-shell__severity-scale">
+            <div class="intake-step-shell__severity-range-labels" aria-hidden="true">
+                <span>No Pain</span>
+                <span>Worst Pain</span>
+            </div>
+
+            <div class="intake-step-shell__severity-value" aria-live="polite">@PainSeverityDisplay</div>
+
+            <input type="range"
+                   min="0"
+                   max="10"
+                   step="1"
+                   class="intake-step-shell__severity-slider"
+                   value="@PainSeveritySliderValue"
+                   aria-label="Pain severity from 0 to 10"
+                   @oninput="HandlePainSeverityChangedAsync" />
+
+            <div class="intake-step-shell__severity-ticks" aria-hidden="true">
+                @for (var tick = 0; tick <= 10; tick++)
+                {
+                    <span class="@(tick == PainSeveritySliderValue ? "intake-step-shell__severity-tick intake-step-shell__severity-tick--selected" : "intake-step-shell__severity-tick")">@tick</span>
+                }
+            </div>
+        </div>
+    </section>
+
+    @if (ShowOutcomeMeasureRecommendations)
+    {
+        <section class="intake-step-shell__panel intake-step-shell__panel--accent">
+            <div class="intake-step-shell__panel-header">
+                <div>
+                    <h3>Auto-Selected Outcome Measures</h3>
+                    <p>These measures are recommended from the selected body parts and the functional-outcome document.</p>
+                </div>
+            </div>
+
+            <div class="intake-step-shell__chip-list">
+                @if (State.RecommendedOutcomeMeasures.Count == 0)
+                {
+                    <span class="intake-step-shell__summary-chip">Select a structured body part to generate recommendations</span>
+                }
+                else
+                {
+                    @foreach (var measure in State.RecommendedOutcomeMeasures)
+                    {
+                        <span class="intake-step-shell__summary-chip intake-step-shell__summary-chip--accent">@measure</span>
+                    }
+                }
+            </div>
+        </section>
     }
 
     <IntakeFooterActions
         ShowBack="true"
         PrimaryText="Continue to Review"
+        PrimaryDisabled="@(!CanContinue)"
         PrimaryTestId="continue-button"
         OnBack="OnBack"
         OnPrimary="OnContinue" />
@@ -28,4 +240,233 @@
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+    [Parameter] public bool ShowOutcomeMeasureRecommendations { get; set; }
+
+    private string _bodyPartSearch = string.Empty;
+
+    private IntakeStructuredDataDto StructuredData => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
+
+    protected override void OnParametersSet()
+    {
+        State.PainSeverityScore ??= ExtractLegacyPainSeverity();
+
+        if (StructuredData.BodyPartSelections.Count > 0 && State.RecommendedOutcomeMeasures.Count == 0)
+        {
+            RecalculateOutcomeMeasures();
+        }
+    }
+
+    private IReadOnlyList<BodyRegion> SelectedMapRegions => State.SelectedBodyRegions.OrderBy(region => region.ToString()).ToList();
+
+    private IReadOnlyList<IntakeBodyPartGroupDto> SuggestedGroups => IntakeReferenceData.GetBodyPartGroups()
+        .Where(group => IntakeSupplementalOptionCatalog.GetSuggestedGroupIds(State.SelectedBodyRegions).Contains(group.Id, StringComparer.OrdinalIgnoreCase))
+        .ToList();
+
+    private IReadOnlyList<IntakeBodyPartGroupDto> FilteredGroups
+    {
+        get
+        {
+            var suggestedGroupIds = IntakeSupplementalOptionCatalog.GetSuggestedGroupIds(State.SelectedBodyRegions);
+            var groups = IntakeReferenceData.GetBodyPartGroups()
+                .Where(group => suggestedGroupIds.Count == 0
+                    || !string.IsNullOrWhiteSpace(_bodyPartSearch)
+                    || suggestedGroupIds.Contains(group.Id, StringComparer.OrdinalIgnoreCase)
+                    || group.Items.Any(item => IsBodyPartSelected(item.Id)))
+                .Where(group => string.IsNullOrWhiteSpace(_bodyPartSearch)
+                    || group.Title.Contains(_bodyPartSearch, StringComparison.OrdinalIgnoreCase)
+                    || group.Items.Any(item => item.Label.Contains(_bodyPartSearch, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(group => group.DisplayOrder)
+                .ToList();
+
+            return groups;
+        }
+    }
+
+    private IReadOnlyList<IntakeBodyPartSelectionDto> SelectedSelections => StructuredData.BodyPartSelections
+        .OrderBy(selection => GetBodyPart(selection.BodyPartId)?.GroupDisplayOrder ?? int.MaxValue)
+        .ThenBy(selection => GetBodyPart(selection.BodyPartId)?.DisplayOrder ?? int.MaxValue)
+        .ToList();
+
+    private bool CanContinue => StructuredData.BodyPartSelections.Count > 0;
+    private int PainSeveritySliderValue => Math.Clamp(State.PainSeverityScore ?? 0, 0, 10);
+    private string PainSeverityDisplay => State.PainSeverityScore.HasValue ? State.PainSeverityScore.Value.ToString() : "0";
+    private string PainSeverityStyle => $"--pain-severity-progress: {PainSeveritySliderValue * 10}%;";
+
+    private IntakeBodyPartItemDto? GetBodyPart(string bodyPartId) => IntakeReferenceData.GetBodyPart(bodyPartId);
+
+    private bool IsBodyPartSelected(string bodyPartId) =>
+        StructuredData.BodyPartSelections.Any(selection => string.Equals(selection.BodyPartId, bodyPartId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task ToggleBodyPartAsync(IntakeBodyPartItemDto item)
+    {
+        var existing = StructuredData.BodyPartSelections.FirstOrDefault(selection =>
+            string.Equals(selection.BodyPartId, item.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            StructuredData.BodyPartSelections.Add(new IntakeBodyPartSelectionDto
+            {
+                BodyPartId = item.Id
+            });
+        }
+        else
+        {
+            StructuredData.BodyPartSelections.Remove(existing);
+        }
+
+        RecalculateOutcomeMeasures();
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task RemoveBodyPartAsync(string bodyPartId)
+    {
+        StructuredData.BodyPartSelections.RemoveAll(selection =>
+            string.Equals(selection.BodyPartId, bodyPartId, StringComparison.OrdinalIgnoreCase));
+
+        RecalculateOutcomeMeasures();
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task ToggleLateralityAsync(IntakeBodyPartSelectionDto selection, string laterality)
+    {
+        selection.Lateralities ??= new List<string>();
+        if (selection.Lateralities.Contains(laterality, StringComparer.OrdinalIgnoreCase))
+        {
+            selection.Lateralities.RemoveAll(value => string.Equals(value, laterality, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            selection.Lateralities.Add(laterality);
+        }
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task ToggleDigitAsync(IntakeBodyPartSelectionDto selection, string digitId)
+    {
+        selection.DigitIds ??= new List<string>();
+        if (selection.DigitIds.Contains(digitId, StringComparer.OrdinalIgnoreCase))
+        {
+            selection.DigitIds.RemoveAll(value => string.Equals(value, digitId, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            selection.DigitIds.Add(digitId);
+        }
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task TogglePainDescriptorAsync(string descriptorId)
+    {
+        if (StructuredData.PainDescriptorIds.Contains(descriptorId, StringComparer.OrdinalIgnoreCase))
+        {
+            StructuredData.PainDescriptorIds.RemoveAll(id => string.Equals(id, descriptorId, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            StructuredData.PainDescriptorIds.Add(descriptorId);
+        }
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task HandlePainSeverityChangedAsync(ChangeEventArgs args)
+    {
+        State.PainSeverityScore = int.TryParse(args.Value?.ToString(), out var value)
+            ? Math.Clamp(value, 0, 10)
+            : null;
+
+        await NotifyStateChangedAsync();
+    }
+
+    private void RecalculateOutcomeMeasures()
+    {
+        State.RecommendedOutcomeMeasures = IntakeSupplementalOptionCatalog
+            .GetRecommendedOutcomeMeasures(StructuredData.BodyPartSelections.Select(selection => selection.BodyPartId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task NotifyStateChangedAsync()
+    {
+        State.IsDirty = true;
+
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
+
+    private int? ExtractLegacyPainSeverity()
+    {
+        foreach (var draft in State.PainDetailDrafts.Values)
+        {
+            if (TryFindLegacyPainSeverity(draft, out var value))
+            {
+                return Math.Clamp(value, 0, 10);
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryFindLegacyPainSeverity(object? draftValue, out int result)
+    {
+        result = 0;
+        if (draftValue is null)
+        {
+            return false;
+        }
+
+        var element = draftValue is JsonElement jsonElement
+            ? jsonElement
+            : JsonSerializer.SerializeToElement(draftValue);
+
+        return TryFindLegacyPainSeverity(element, out result);
+    }
+
+    private static bool TryFindLegacyPainSeverity(JsonElement element, out int result)
+    {
+        result = 0;
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Number:
+                return element.TryGetInt32(out result);
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (!string.Equals(property.Name, "painLevel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    return property.Value.ValueKind switch
+                    {
+                        JsonValueKind.Number => property.Value.TryGetInt32(out result),
+                        JsonValueKind.String => int.TryParse(property.Value.GetString(), out result),
+                        _ => false
+                    };
+                }
+
+                break;
+        }
+
+        return false;
+    }
+
+    private static string HumanizeRegion(BodyRegion region)
+    {
+        return region.ToString()
+            .Replace("Left", " Left ", StringComparison.Ordinal)
+            .Replace("Right", " Right ", StringComparison.Ordinal)
+            .Replace("Front", " Front", StringComparison.Ordinal)
+            .Replace("Back", " Back", StringComparison.Ordinal)
+            .Replace("Upperback", "Upper Back", StringComparison.Ordinal)
+            .Replace("Lowerback", "Lower Back", StringComparison.Ordinal)
+            .Replace("Midback", "Mid Back", StringComparison.Ordinal)
+            .Replace("Lowercalf", "Lower Calf", StringComparison.Ordinal)
+            .Replace("Midtorso", "Mid Torso", StringComparison.Ordinal)
+            .Trim();
+    }
 }

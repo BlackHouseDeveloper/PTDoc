@@ -1,7 +1,10 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
 @using PTDoc.Application.AI
+@using PTDoc.Application.Compliance
+@using PTDoc.Application.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Models
 @using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry
+@implements IDisposable
 
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
@@ -35,6 +38,50 @@
             }
         </div>
 
+        @if (!IsReadOnly)
+        {
+            <div class="pt-card__field">
+                <label class="pt-card__field-label" for="cpt-search-input">Search CPT Codes</label>
+                <input id="cpt-search-input"
+                       type="search"
+                       class="pt-card__search-input"
+                       placeholder="Search by CPT code or description"
+                       value="@_cptSearchQuery"
+                       @oninput="HandleCptSearchChangedAsync"
+                       data-testid="cpt-search-input" />
+            </div>
+
+            @if (_isSearchingCpt)
+            {
+                <p class="pt-card__search-status" role="status">Searching CPT codes…</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(_cptLookupError))
+            {
+                <p class="pt-card__search-status pt-card__search-status--error" role="alert">@_cptLookupError</p>
+            }
+            else if (_cptResults.Count > 0)
+            {
+                <div class="pt-card__search-results" data-testid="cpt-search-results">
+                    @foreach (var result in _cptResults)
+                    {
+                        var isSelected = Vm.SelectedCptCodes.Any(code => string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase));
+                        <button type="button"
+                                class="pt-card__search-result @(isSelected ? "pt-card__search-result--selected" : "")"
+                                disabled="@IsReadOnly"
+                                @onclick="() => AddCptCodeAsync(result)"
+                                data-testid="cpt-search-result">
+                            <span class="pt-card__search-result-code">@result.Code</span>
+                            <span class="pt-card__search-result-desc">@result.Description</span>
+                            @if (result.SuggestedModifiers.Count > 0)
+                            {
+                                <span class="pt-card__search-result-hint">Suggested: @string.Join(", ", result.SuggestedModifiers)</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        }
+
         <!-- Favorites grid (6 pre-loaded) -->
         <p class="pt-card__field-label">Favorite CPT Codes</p>
         <div class="pt-card__cpt-grid">
@@ -45,7 +92,7 @@
                         class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
                         disabled="@(IsReadOnly || (alreadySelected ? false : false))"
                         aria-pressed="@alreadySelected.ToString().ToLower()"
-                        @onclick="() => ToggleCptFavorite(fav)">
+                        @onclick="() => ToggleCptFavoriteAsync(fav)">
                     <span class="pt-card__cpt-code">@fav.Code</span>
                     <span class="pt-card__cpt-name">@fav.ShortName</span>
                     <span class="pt-card__cpt-unit">@fav.DefaultUnits min</span>
@@ -70,30 +117,94 @@
                 <span class="pt-card__field-label">Selected Codes</span>
                 <span class="pt-card__badge">@Vm.SelectedCptCodes.Count selected</span>
             </div>
+            @if (GetBillingAdvisories().Count > 0)
+            {
+                <div class="pt-card__advisory-list" role="status" aria-live="polite">
+                    @foreach (var advisory in GetBillingAdvisories())
+                    {
+                        <p class="pt-card__advisory-item">@advisory</p>
+                    }
+                </div>
+            }
             <ul class="pt-card__cpt-list">
                 @foreach (var entry in Vm.SelectedCptCodes)
                 {
                     <li class="pt-card__cpt-row">
-                        <span class="pt-card__cpt-code">@entry.Code</span>
-                        <span class="pt-card__cpt-desc">@entry.Description</span>
-                        <div class="pt-card__cpt-units-row">
-                            <button type="button" class="pt-card__stepper"
-                                    aria-label="Decrease units for @entry.Code"
-                                    disabled="@(IsReadOnly || entry.Units <= 1)"
-                                    @onclick="() => ChangeUnits(entry, -1)">−</button>
-                            <span class="pt-card__unit-value">@entry.Units</span>
-                            <button type="button" class="pt-card__stepper"
-                                    aria-label="Increase units for @entry.Code"
-                                    disabled="@IsReadOnly"
-                                    @onclick="() => ChangeUnits(entry, 1)">+</button>
-                            <span class="pt-card__unit-label">units</span>
+                        <div class="pt-card__cpt-main">
+                            <div class="pt-card__cpt-row-header">
+                                <div class="pt-card__cpt-summary">
+                                    <span class="pt-card__cpt-code">@entry.Code</span>
+                                    <span class="pt-card__cpt-desc">@entry.Description</span>
+                                </div>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="pt-card__remove-btn"
+                                            aria-label="Remove @entry.Code"
+                                            @onclick="() => RemoveCptCode(entry)">✕</button>
+                                }
+                            </div>
+
+                            <div class="pt-card__cpt-detail-grid">
+                                <div class="pt-card__cpt-units-row">
+                                    <button type="button" class="pt-card__stepper"
+                                            aria-label="Decrease units for @entry.Code"
+                                            disabled="@(IsReadOnly || entry.Units <= 1)"
+                                            @onclick="() => ChangeUnits(entry, -1)">−</button>
+                                    <span class="pt-card__unit-value">@entry.Units</span>
+                                    <button type="button" class="pt-card__stepper"
+                                            aria-label="Increase units for @entry.Code"
+                                            disabled="@IsReadOnly"
+                                            @onclick="() => ChangeUnits(entry, 1)">+</button>
+                                    <span class="pt-card__unit-label">units</span>
+                                </div>
+
+                                @if (KnownTimedCptCodes.Codes.Contains(entry.Code))
+                                {
+                                    <label class="pt-card__minutes-field">
+                                        <span class="pt-card__unit-label">Minutes</span>
+                                        <input type="number"
+                                               min="0"
+                                               step="1"
+                                               class="pt-card__minutes-input"
+                                               value="@(entry.Minutes?.ToString() ?? string.Empty)"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMinutes(entry, e.Value)"
+                                               data-testid="cpt-minutes-input" />
+                                    </label>
+                                }
+                            </div>
+
+                            @if (entry.ModifierOptions.Count > 0)
+                            {
+                                <div class="pt-card__modifier-section">
+                                    <p class="pt-card__modifier-label">Modifiers</p>
+                                    <div class="pt-card__modifier-chip-row">
+                                        @foreach (var modifier in entry.ModifierOptions)
+                                        {
+                                            var isSelected = entry.Modifiers.Contains(modifier, StringComparer.OrdinalIgnoreCase);
+                                            var isSuggested = entry.SuggestedModifiers.Contains(modifier, StringComparer.OrdinalIgnoreCase);
+                                            <button type="button"
+                                                    class="pt-card__modifier-chip @(isSelected ? "pt-card__modifier-chip--active" : "") @(isSuggested ? "pt-card__modifier-chip--suggested" : "")"
+                                                    disabled="@IsReadOnly"
+                                                    @onclick="() => ToggleModifier(entry, modifier)"
+                                                    data-testid="modifier-chip">
+                                                @modifier
+                                            </button>
+                                        }
+                                    </div>
+                                    @if (entry.SuggestedModifiers.Count > 0)
+                                    {
+                                        <p class="pt-card__modifier-hint">
+                                            Suggested: @string.Join(", ", entry.SuggestedModifiers)
+                                            @if (!string.IsNullOrWhiteSpace(entry.ModifierSource))
+                                            {
+                                                <span> · Source: @entry.ModifierSource</span>
+                                            }
+                                        </p>
+                                    }
+                                </div>
+                            }
                         </div>
-                        @if (!IsReadOnly)
-                        {
-                            <button type="button" class="pt-card__remove-btn"
-                                    aria-label="Remove @entry.Code"
-                                    @onclick="() => RemoveCptCode(entry)">✕</button>
-                        }
                     </li>
                 }
             </ul>
@@ -273,7 +384,12 @@
     private bool _isGeneratingDischarge;
     private bool _isGeneratingFollowUp;
     private bool _isGeneratingSummary;
+    private bool _isSearchingCpt;
     private string? _errorMessage;
+    private string? _cptLookupError;
+    private string _cptSearchQuery = string.Empty;
+    private List<CodeLookupEntry> _cptResults = [];
+    private CancellationTokenSource? _cptSearchCts;
     private EditableNarrativeBox? _dischargePlanningBox;
     private EditableNarrativeBox? _followUpBox;
     private EditableNarrativeBox? _clinicalSummaryBox;
@@ -312,19 +428,88 @@
         return VmChanged.InvokeAsync(Vm);
     }
 
-    private void ToggleCptFavorite(FavoriteCptCode fav)
+    private async Task ToggleCptFavoriteAsync(FavoriteCptCode fav)
     {
         var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == fav.Code);
         if (existing is not null)
+        {
             Vm.SelectedCptCodes.Remove(existing);
-        else
-            Vm.SelectedCptCodes.Add(new UiCptCodeEntry
+            await VmChanged.InvokeAsync(Vm);
+            return;
+        }
+
+        Vm.SelectedCptCodes.Add(await BuildCptEntryAsync(
+            fav.Code,
+            fav.ShortName,
+            fav.DefaultUnits));
+        await VmChanged.InvokeAsync(Vm);
+    }
+
+    private async Task AddCptCodeAsync(CodeLookupEntry result)
+    {
+        var existing = Vm.SelectedCptCodes.FirstOrDefault(code =>
+            string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is not null)
+        {
+            existing.Description = result.Description;
+            existing.ModifierOptions = [.. result.ModifierOptions];
+            existing.SuggestedModifiers = [.. result.SuggestedModifiers];
+            existing.ModifierSource = result.ModifierSource;
+            if (existing.Modifiers.Count == 0 && result.SuggestedModifiers.Count > 0)
             {
-                Code        = fav.Code,
-                Description = fav.ShortName,
-                Units       = fav.DefaultUnits
-            });
-        VmChanged.InvokeAsync(Vm);
+                existing.Modifiers = [.. result.SuggestedModifiers];
+            }
+            await VmChanged.InvokeAsync(Vm);
+            return;
+        }
+
+        Vm.SelectedCptCodes.Add(new UiCptCodeEntry
+        {
+            Code = result.Code,
+            Description = result.Description,
+            Units = ResolveDefaultUnits(result.Code),
+            Modifiers = [.. result.SuggestedModifiers],
+            ModifierOptions = [.. result.ModifierOptions],
+            SuggestedModifiers = [.. result.SuggestedModifiers],
+            ModifierSource = result.ModifierSource
+        });
+        await VmChanged.InvokeAsync(Vm);
+    }
+
+    private async Task<UiCptCodeEntry> BuildCptEntryAsync(string code, string description, int defaultUnits)
+    {
+        try
+        {
+            var matches = await NoteWorkspaceService.SearchCptAsync(code, take: 5);
+            var exactMatch = matches.FirstOrDefault(match =>
+                string.Equals(match.Code, code, StringComparison.OrdinalIgnoreCase));
+
+            if (exactMatch is not null)
+            {
+                return new UiCptCodeEntry
+                {
+                    Code = exactMatch.Code,
+                    Description = exactMatch.Description,
+                    Units = defaultUnits,
+                    Modifiers = [.. exactMatch.SuggestedModifiers],
+                    ModifierOptions = [.. exactMatch.ModifierOptions],
+                    SuggestedModifiers = [.. exactMatch.SuggestedModifiers],
+                    ModifierSource = exactMatch.ModifierSource
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to enrich CPT code {Code} with modifier metadata for note {NoteId}", code, NoteId);
+        }
+
+        return new UiCptCodeEntry
+        {
+            Code = code,
+            Description = description,
+            Units = defaultUnits
+        };
     }
 
     private void ChangeUnits(UiCptCodeEntry entry, int delta)
@@ -338,6 +523,117 @@
         Vm.SelectedCptCodes.Remove(entry);
         VmChanged.InvokeAsync(Vm);
     }
+
+    private void ToggleModifier(UiCptCodeEntry entry, string modifier)
+    {
+        if (entry.Modifiers.Contains(modifier, StringComparer.OrdinalIgnoreCase))
+        {
+            entry.Modifiers.RemoveAll(value => string.Equals(value, modifier, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            entry.Modifiers.Add(modifier);
+        }
+
+        VmChanged.InvokeAsync(Vm);
+    }
+
+    private void UpdateMinutes(UiCptCodeEntry entry, object? value)
+    {
+        if (int.TryParse(value?.ToString(), out var minutes))
+        {
+            entry.Minutes = Math.Max(0, minutes);
+        }
+        else
+        {
+            entry.Minutes = null;
+        }
+
+        VmChanged.InvokeAsync(Vm);
+    }
+
+    private async Task HandleCptSearchChangedAsync(ChangeEventArgs args)
+    {
+        _cptSearchQuery = args.Value?.ToString() ?? string.Empty;
+        _cptSearchCts?.Cancel();
+        _cptSearchCts?.Dispose();
+        _cptSearchCts = new CancellationTokenSource();
+        var cancellationToken = _cptSearchCts.Token;
+
+        if (string.IsNullOrWhiteSpace(_cptSearchQuery))
+        {
+            _cptResults = [];
+            _cptLookupError = null;
+            _isSearchingCpt = false;
+            StateHasChanged();
+            return;
+        }
+
+        _isSearchingCpt = true;
+        _cptLookupError = null;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(250, cancellationToken);
+            var results = await NoteWorkspaceService.SearchCptAsync(_cptSearchQuery, take: 8, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _cptResults = [.. results];
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "CPT lookup failed for note {NoteId} and query {Query}", NoteId, _cptSearchQuery);
+            _cptLookupError = "Unable to search CPT codes.";
+            _cptResults = [];
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _isSearchingCpt = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private List<string> GetBillingAdvisories()
+    {
+        var advisories = new List<string>();
+
+        var timedCodesMissingMinutes = Vm.SelectedCptCodes
+            .Where(entry => KnownTimedCptCodes.Codes.Contains(entry.Code) && entry.Units > 0 && entry.Minutes is null or <= 0)
+            .Select(entry => entry.Code)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (timedCodesMissingMinutes.Count > 0)
+        {
+            advisories.Add($"Timed CPT minutes are still needed for: {string.Join(", ", timedCodesMissingMinutes)}.");
+        }
+
+        var missingSuggestedModifiers = Vm.SelectedCptCodes
+            .Where(entry => entry.SuggestedModifiers.Any(suggested => !entry.Modifiers.Contains(suggested, StringComparer.OrdinalIgnoreCase)))
+            .Select(entry => entry.Code)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (missingSuggestedModifiers.Count > 0)
+        {
+            advisories.Add($"Review suggested modifiers before billing: {string.Join(", ", missingSuggestedModifiers)}.");
+        }
+
+        return advisories;
+    }
+
+    private static int ResolveDefaultUnits(string code) =>
+        KnownTimedCptCodes.Codes.Contains(code) ? 2 : 1;
 
     private Task HandleCustomizeCptAsync()
     {
@@ -472,5 +768,11 @@
             Precautions = PrecautionsSummary,
             IsNoteSigned = IsReadOnly
         };
+    }
+
+    public void Dispose()
+    {
+        _cptSearchCts?.Cancel();
+        _cptSearchCts?.Dispose();
     }
 }

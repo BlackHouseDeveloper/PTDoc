@@ -1,3 +1,4 @@
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 
 namespace PTDoc.UI.Components.Notes.Models;
@@ -20,6 +21,7 @@ public class SoapNoteVm
     public NoteSaveState SaveState { get; set; } = NoteSaveState.Unsaved;
     public NoteStatus Status { get; set; } = NoteStatus.Draft;
     public int? LocalDraftId { get; set; }
+    public NoteWorkspaceV2Payload? StructuredWorkspacePayload { get; set; }
 
     /// <summary>True when any section contains unsaved edits.</summary>
     public bool IsDirty { get; set; }

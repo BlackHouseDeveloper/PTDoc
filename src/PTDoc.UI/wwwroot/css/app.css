@@ -446,6 +446,12 @@ h1:focus {
     font-size: var(--text-sm);
 }
 
+.auth-field-hint {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
 .auth-actions {
     display: flex;
     justify-content: flex-end;

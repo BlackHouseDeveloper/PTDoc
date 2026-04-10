@@ -1,3 +1,5 @@
+using PTDoc.Application.Intake;
+
 namespace PTDoc.Application.Services;
 
 public sealed class IntakeResponseDraft
@@ -47,7 +49,14 @@ public sealed class IntakeResponseDraft
     public string? MedicalHistoryNotes { get; set; }
 
     public string? SelectedBodyRegion { get; set; }
+    public int? PainSeverityScore { get; set; }
     public Dictionary<string, object> PainDetailDrafts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public IntakeStructuredDataDto? StructuredData { get; set; }
+    public HashSet<string> SelectedComorbidities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedAssistiveDevices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedLivingSituations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedHouseLayoutOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> RecommendedOutcomeMeasures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsSubmitted { get; set; }
     public bool IsLocked { get; set; }

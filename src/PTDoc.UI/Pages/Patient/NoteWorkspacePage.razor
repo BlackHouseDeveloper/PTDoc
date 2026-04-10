@@ -1,7 +1,7 @@
 @page "/patient/{PatientId}/note/{NoteId}"
 @page "/patient/{PatientId}/notes/{NoteId}"
 @page "/patient/{PatientId}/new-note"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.NoteRead)]
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 
@@ -11,6 +11,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.AI
 @using PTDoc.Application.Compliance
+@using PTDoc.Application.Notes.Workspace
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes
@@ -57,6 +58,11 @@ else if (!string.IsNullOrWhiteSpace(_initialLoadError))
 else
 {
     <div class="note-workspace" data-testid="note-workspace-page">
+        @{
+            var subjectiveSeedChips = GetSubjectiveSeedChips();
+            var objectiveSeedChips = GetObjectiveSeedChips();
+        }
+
         @if (!string.IsNullOrWhiteSpace(_workspaceNotice))
         {
             <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-notice">
@@ -99,9 +105,76 @@ else
 
         @if (_requiresOverride)
         {
-            <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-override-required">
-                A PT compliance override is required before this note can be finalized.
-            </div>
+            <section class="note-workspace__override-panel"
+                     role="status"
+                     aria-live="polite"
+                     data-testid="note-workspace-override-panel">
+                <div class="note-workspace__override-header">
+                    <div class="note-workspace__override-copy">
+                        <h2 class="note-workspace__override-title">PT Compliance Override Required</h2>
+                        <p class="note-workspace__override-text">@GetOverrideSummaryText()</p>
+                    </div>
+
+                    @if (_overrideRuleType.HasValue)
+                    {
+                        <span class="note-workspace__seed-badge note-workspace__seed-badge--locked"
+                              data-testid="note-workspace-override-rule">
+                            Rule: @GetComplianceRuleDisplayLabel(_overrideRuleType.Value)
+                        </span>
+                    }
+                </div>
+
+                @if (_overrideRequirements.Count > 0)
+                {
+                    <ul class="note-workspace__override-list">
+                        @foreach (var requirement in _overrideRequirements)
+                        {
+                            <li>@requirement.Message</li>
+                        }
+                    </ul>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(GetOverrideAttestationText()))
+                {
+                    <p class="note-workspace__override-attestation" data-testid="note-workspace-override-attestation">
+                        @GetOverrideAttestationText()
+                    </p>
+                }
+
+                @if (CanCurrentUserApplyOverride)
+                {
+                    <div class="note-workspace__override-form">
+                        <label class="note-workspace__override-label" for="note-workspace-override-reason">
+                            PT justification
+                        </label>
+                        <textarea id="note-workspace-override-reason"
+                                  class="note-workspace__override-textarea"
+                                  @bind="_overrideReason"
+                                  @bind:event="oninput"
+                                  maxlength="1000"
+                                  data-testid="note-workspace-override-reason"></textarea>
+                        <p class="note-workspace__override-help">
+                            Document the clinical justification for proceeding with this draft despite the compliance warning.
+                        </p>
+                        <div class="note-workspace__override-actions">
+                            <button type="button"
+                                    class="btn btn--primary"
+                                    disabled="@(!CanApplyOverrideSubmission)"
+                                    @onclick="HandleOverrideSaveAsync"
+                                    data-testid="note-workspace-override-save">
+                                Apply PT Override and Save
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p class="note-workspace__override-help note-workspace__override-help--readonly"
+                       data-testid="note-workspace-override-readonly">
+                        @GetOverrideReadonlyMessage()
+                    </p>
+                }
+            </section>
         }
 
         @if (!string.IsNullOrWhiteSpace(DraftAutosaveService.LastErrorMessage))
@@ -109,6 +182,53 @@ else
             <div class="note-workspace__alert note-workspace__alert--error" role="alert" data-testid="note-workspace-autosave-error">
                 Autosave failed: @DraftAutosaveService.LastErrorMessage
             </div>
+        }
+
+        @if (ShouldShowSeedSummary(subjectiveSeedChips, objectiveSeedChips))
+        {
+            <section class="note-workspace__seed-summary" data-testid="note-workspace-seed-summary" aria-label="Prefilled structured context">
+                <div class="note-workspace__seed-summary-header">
+                    <div class="note-workspace__seed-summary-copy">
+                        <h2 class="note-workspace__seed-summary-title">Prefilled Structured Context</h2>
+                        <p class="note-workspace__seed-summary-text">@GetSeedSummaryText()</p>
+                    </div>
+
+                    <div class="note-workspace__seed-summary-badges">
+                        <span class="note-workspace__seed-badge note-workspace__seed-badge--source" data-testid="note-workspace-seed-source">
+                            @GetSeedSourceBadgeText()
+                        </span>
+                        <span class="@GetSeedStateBadgeClass()" data-testid="note-workspace-seed-state">
+                            @GetSeedStateBadgeText()
+                        </span>
+                    </div>
+                </div>
+
+                @if (subjectiveSeedChips.Count > 0)
+                {
+                    <div class="note-workspace__seed-group" data-testid="note-workspace-seed-subjective">
+                        <div class="note-workspace__seed-group-label">Subjective</div>
+                        <div class="note-workspace__seed-chip-list">
+                            @foreach (var chip in subjectiveSeedChips)
+                            {
+                                <span class="note-workspace__seed-chip">@chip</span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (objectiveSeedChips.Count > 0)
+                {
+                    <div class="note-workspace__seed-group" data-testid="note-workspace-seed-objective">
+                        <div class="note-workspace__seed-group-label">Objective</div>
+                        <div class="note-workspace__seed-chip-list">
+                            @foreach (var chip in objectiveSeedChips)
+                            {
+                                <span class="note-workspace__seed-chip">@chip</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
         }
 
         @if (IsDryNeedlingNote)
@@ -137,6 +257,7 @@ else
             }
 
             <SoapTabNav ActiveSection="@_note.ActiveSection"
+                        IsReadOnly="@IsWorkspaceReadOnly"
                         ActiveSectionChanged="HandleSectionChanged" />
 
             <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
@@ -321,6 +442,7 @@ else
 
 @code {
     [SupplyParameterFromQuery(Name = "section")] public string? RequestedSection { get; set; }
+    [SupplyParameterFromQuery(Name = "noteType")] public string? RequestedNoteType { get; set; }
 
     [Parameter, EditorRequired] public string PatientId { get; set; } = string.Empty;
     [Parameter] public string? NoteId { get; set; }
@@ -355,12 +477,19 @@ else
     private bool _showSignatureConsent;
     private bool _consentAccepted;
     private bool _intentConfirmed;
+    private bool _hasAppliedEvaluationSeed;
+    private bool _hasAttemptedEvaluationSeed;
+    private HashSet<string> _attemptedCarryForwardSeedNoteTypes = new(StringComparer.OrdinalIgnoreCase);
     private string? _allowedNavigationTarget;
     private IDisposable? _navGuard;
     private bool _disposed;
     private List<string> _blockingValidationMessages = [];
     private List<string> _warningValidationMessages = [];
     private bool _requiresOverride;
+    private ComplianceRuleType? _overrideRuleType;
+    private bool _isOverridable;
+    private List<OverrideRequirement> _overrideRequirements = [];
+    private string _overrideReason = string.Empty;
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
@@ -428,6 +557,9 @@ else
     private int GoalsMetPercent => GoalCount == 0 ? 0 : (int)Math.Round((double)GoalItems.Count(goal => goal.Status == GoalStatus.Met) / GoalCount * 100);
     private int ShortTermGoalCount => GoalItems.Count(goal => goal.Timeframe == GoalTimeframe.ShortTerm);
     private int LongTermGoalCount => GoalItems.Count(goal => goal.Timeframe == GoalTimeframe.LongTerm);
+    private WorkspaceSeedContextV2? CurrentSeedContext => _note.StructuredWorkspacePayload?.SeedContext is { Kind: not WorkspaceSeedKind.None } context
+        ? context
+        : null;
 
     private bool IsWorkspaceReadOnly => !CanEditCurrentDraft;
     private bool CanEditCurrentDraft => _note.Status == NoteStatus.Draft && HasDraftWritePermissionForNoteType(_note.NoteType);
@@ -435,6 +567,11 @@ else
     private bool CanSubmitCurrentNote => !_isInitialLoading && !_isSubmittingNote && (CanSignDraftNote || CanFinalizePendingCoSign);
     private bool CanSignDraftNote => _note.Status == NoteStatus.Draft && HasSignPermissionForNoteType(_note.NoteType);
     private bool CanSaveDraft => !_isInitialLoading && !_isSubmittingNote && CanEditCurrentDraft && _patientGuid.HasValue;
+    private bool CanCurrentUserApplyOverride => CanSaveDraft && IsPtUser && _requiresOverride && _isOverridable && _overrideRuleType.HasValue;
+    private bool CanApplyOverrideSubmission =>
+        CanCurrentUserApplyOverride &&
+        !DraftAutosaveService.IsSaving &&
+        !string.IsNullOrWhiteSpace(_overrideReason);
     private bool DisableSaveAction => !CanSaveDraft || DraftAutosaveService.IsSaving;
     private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
@@ -480,6 +617,21 @@ else
             {
                 await LoadExistingNoteAsync(_patientGuid.Value, routeNoteId.Value);
             }
+            else
+            {
+                var autoStartedEvaluation = await TryStartSeededEvaluationNoteAsync();
+                if (!autoStartedEvaluation)
+                {
+                    if (IsEvaluationNoteType(_note.NoteType))
+                    {
+                        await TryApplyEvaluationSeedAsync(showMissingNotice: false);
+                    }
+                    else
+                    {
+                        await TryApplyCarryForwardSeedAsync(_note.NoteType, showMissingNotice: false);
+                    }
+                }
+            }
 
             ApplyWorkspaceNotice();
             ApplyRequestedSection();
@@ -507,7 +659,7 @@ else
             PatientId = PatientId,
             PatientName = string.Empty,
             PatientDob = null,
-            NoteType = GetDefaultNoteType(),
+            NoteType = ResolveInitialNoteType(),
             Mode = routeNoteId.HasValue ? NoteMode.Existing : NoteMode.New,
             ActiveSection = SoapSection.Subjective,
             SaveState = NoteSaveState.Unsaved,
@@ -519,6 +671,19 @@ else
         _dateOfService = DateTime.UtcNow;
         _isDarkMode = false;
         _lastEditableSection = SoapSection.Plan;
+        _hasAppliedEvaluationSeed = false;
+        _hasAttemptedEvaluationSeed = false;
+        _attemptedCarryForwardSeedNoteTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string ResolveInitialNoteType()
+    {
+        if (TryResolveRequestedNoteType(out var requestedNoteType))
+        {
+            return requestedNoteType;
+        }
+
+        return GetDefaultNoteType();
     }
 
     private string GetDefaultNoteType() => IsPtaUser ? "Daily Treatment Note" : "Progress Note";
@@ -549,6 +714,7 @@ else
         _note.Objective = payload?.Objective ?? new ObjectiveVm();
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload?.Plan ?? new PlanVm();
+        _note.StructuredWorkspacePayload = payload?.StructuredPayload;
         _dryNeedling = payload?.DryNeedling ?? new DryNeedlingVm();
         _note.Status = status;
         _note.IsDirty = false;
@@ -626,17 +792,57 @@ else
         ClearStatusMessage();
     }
 
-    private Task HandleNoteTypeChanged(string value)
+    private async Task HandleNoteTypeChanged(string value)
     {
         if (!CanEditCurrentDraft)
         {
-            return Task.CompletedTask;
+            return;
         }
 
+        if (string.Equals(_note.NoteType, value, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var shouldTryEvaluationSeed = _note.Mode == NoteMode.New
+            && !_note.NoteId.HasValue
+            && !_note.IsDirty
+            && !_hasAppliedEvaluationSeed
+            && !_hasAttemptedEvaluationSeed
+            && !IsEvaluationNoteType(_note.NoteType)
+            && IsEvaluationNoteType(value);
+
+        var shouldTryCarryForwardSeed = _note.Mode == NoteMode.New
+            && !_note.NoteId.HasValue
+            && !_note.IsDirty
+            && !IsEvaluationNoteType(value)
+            && !_attemptedCarryForwardSeedNoteTypes.Contains(value);
+
         _note.NoteType = value;
-        MarkUnsaved();
+
+        if (shouldTryEvaluationSeed)
+        {
+            await TryApplyEvaluationSeedAsync(showMissingNotice: true);
+
+            if (!_note.IsDirty)
+            {
+                MarkUnsaved();
+            }
+        }
+        else if (shouldTryCarryForwardSeed)
+        {
+            var carryForwardApplied = await TryApplyCarryForwardSeedAsync(value, showMissingNotice: true);
+            if (!carryForwardApplied && !_note.IsDirty)
+            {
+                MarkUnsaved();
+            }
+        }
+        else
+        {
+            MarkUnsaved();
+        }
+
         ApplyWorkspaceNotice();
-        return Task.CompletedTask;
     }
 
     private Task HandleSubjectiveChanged(SubjectiveVm vm)
@@ -883,7 +1089,10 @@ else
         return await PersistDraftAsync(showFeedback: false, cancellationToken);
     }
 
-    private async Task<bool> PersistDraftAsync(bool showFeedback, CancellationToken cancellationToken)
+    private async Task<bool> PersistDraftAsync(
+        bool showFeedback,
+        CancellationToken cancellationToken,
+        OverrideSubmission? overrideSubmission = null)
     {
         if (!_patientGuid.HasValue || !CanSaveDraft)
         {
@@ -902,8 +1111,16 @@ else
             _note.StartSaving();
             await InvokeAsync(StateHasChanged);
 
-            var saveResult = await NoteWorkspaceService.SaveDraftAsync(BuildDraft(_patientGuid.Value), cancellationToken);
-            ApplyValidationDetails(saveResult.Errors, saveResult.Warnings, saveResult.RequiresOverride);
+            var saveResult = await NoteWorkspaceService.SaveDraftAsync(
+                BuildDraft(_patientGuid.Value, overrideSubmission),
+                cancellationToken);
+            ApplyValidationDetails(
+                saveResult.Errors,
+                saveResult.Warnings,
+                saveResult.RequiresOverride,
+                saveResult.RuleType,
+                saveResult.IsOverridable,
+                saveResult.OverrideRequirements);
 
             if (!saveResult.Success)
             {
@@ -938,11 +1155,19 @@ else
 
             if (saveResult.Warnings.Count > 0)
             {
-                SetStatusMessage(saveResult.ErrorMessage ?? "Draft saved with warnings.", "info");
+                SetStatusMessage(
+                    saveResult.ErrorMessage ?? (overrideSubmission is null
+                        ? "Draft saved with warnings."
+                        : "Draft saved with PT override and warnings."),
+                    "info");
             }
             else if (showFeedback)
             {
-                SetStatusMessage("Draft saved.", "success");
+                SetStatusMessage(
+                    overrideSubmission is null
+                        ? "Draft saved."
+                        : "Draft saved with PT override.",
+                    "success");
             }
             else
             {
@@ -1095,10 +1320,14 @@ else
     }
 
     private NoteWorkspaceDraft BuildDraft(Guid patientId)
+        => BuildDraft(patientId, overrideSubmission: null);
+
+    private NoteWorkspaceDraft BuildDraft(Guid patientId, OverrideSubmission? overrideSubmission)
     {
         var payload = new NoteWorkspacePayload
         {
             WorkspaceNoteType = _note.NoteType,
+            StructuredPayload = _note.StructuredWorkspacePayload,
             Subjective = _note.Subjective,
             Objective = _note.Objective,
             Assessment = _note.Assessment,
@@ -1113,8 +1342,161 @@ else
             WorkspaceNoteType = _note.NoteType,
             DateOfService = ResolveDateOfService(),
             IsExistingNote = _note.Mode == NoteMode.Existing && _note.NoteId.HasValue,
+            Override = overrideSubmission,
             Payload = payload
         };
+    }
+
+    private async Task HandleOverrideSaveAsync()
+    {
+        if (!CanCurrentUserApplyOverride)
+        {
+            return;
+        }
+
+        if (!_overrideRuleType.HasValue)
+        {
+            SetStatusMessage("Override rule metadata is missing for this draft. Please review the note and retry.", "error");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_overrideReason))
+        {
+            SetStatusMessage("A PT override justification is required before saving.", "error");
+            return;
+        }
+
+        await PersistDraftAsync(
+            showFeedback: true,
+            CancellationToken.None,
+            new OverrideSubmission
+            {
+                RuleType = _overrideRuleType.Value,
+                Reason = _overrideReason.Trim()
+            });
+    }
+
+    private async Task TryApplyEvaluationSeedAsync(bool showMissingNotice)
+    {
+        if (!_patientGuid.HasValue
+            || _hasAppliedEvaluationSeed
+            || _hasAttemptedEvaluationSeed
+            || _note.Mode != NoteMode.New
+            || _note.NoteId.HasValue
+            || _note.IsDirty
+            || !IsEvaluationNoteType(_note.NoteType))
+        {
+            return;
+        }
+
+        var seedResult = await NoteWorkspaceService.GetEvaluationSeedAsync(_patientGuid.Value);
+        if (!seedResult.Success)
+        {
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error");
+            return;
+        }
+
+        _hasAttemptedEvaluationSeed = true;
+
+        if (!seedResult.HasSeed)
+        {
+            if (showMissingNotice)
+            {
+                SetStatusMessage("No intake data is available to prefill this Evaluation note yet.", "info");
+            }
+
+            return;
+        }
+
+        ApplyEvaluationSeed(seedResult.Payload);
+        _hasAppliedEvaluationSeed = true;
+        SetStatusMessage(
+            seedResult.FromLockedSubmittedIntake
+                ? "Evaluation note prefilled from the latest submitted intake."
+                : "Evaluation note prefilled from the latest intake draft.",
+            "success");
+    }
+
+    private async Task<bool> TryStartSeededEvaluationNoteAsync()
+    {
+        if (!_patientGuid.HasValue
+            || _hasAppliedEvaluationSeed
+            || _note.Mode != NoteMode.New
+            || _note.NoteId.HasValue
+            || _note.IsDirty
+            || IsPtaUser
+            || TryResolveRequestedNoteType(out _))
+        {
+            return false;
+        }
+
+        var seedResult = await NoteWorkspaceService.GetEvaluationSeedAsync(_patientGuid.Value);
+        if (!seedResult.Success || !seedResult.HasSeed)
+        {
+            return false;
+        }
+
+        _note.NoteType = "Evaluation Note";
+        ApplyEvaluationSeed(seedResult.Payload);
+        _hasAppliedEvaluationSeed = true;
+        _hasAttemptedEvaluationSeed = true;
+        SetStatusMessage(
+            seedResult.FromLockedSubmittedIntake
+                ? "Started a new Evaluation note with the latest submitted intake prefill."
+                : "Started a new Evaluation note with the latest intake draft prefill.",
+            "success");
+        return true;
+    }
+
+    private async Task<bool> TryApplyCarryForwardSeedAsync(string noteType, bool showMissingNotice)
+    {
+        if (!_patientGuid.HasValue
+            || _note.Mode != NoteMode.New
+            || _note.NoteId.HasValue
+            || _note.IsDirty
+            || IsEvaluationNoteType(noteType)
+            || !CanApplyCarryForwardSeed(noteType)
+            || _attemptedCarryForwardSeedNoteTypes.Contains(noteType))
+        {
+            return false;
+        }
+
+        var seedResult = await NoteWorkspaceService.GetCarryForwardSeedAsync(_patientGuid.Value, noteType);
+        if (!seedResult.Success)
+        {
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load signed note carry-forward data right now.", "error");
+            return false;
+        }
+
+        _attemptedCarryForwardSeedNoteTypes.Add(noteType);
+
+        if (!seedResult.HasSeed)
+        {
+            if (showMissingNotice)
+            {
+                SetStatusMessage($"No signed note carry-forward is available for this {noteType} yet.", "info");
+            }
+
+            return false;
+        }
+
+        ApplyEvaluationSeed(seedResult.Payload);
+        SetStatusMessage(
+            $"Started a new {noteType} with carry-forward from the latest signed {seedResult.SourceNoteType}.",
+            "success");
+        return true;
+    }
+
+    private void ApplyEvaluationSeed(NoteWorkspacePayload payload)
+    {
+        _note.Subjective = payload.Subjective ?? new SubjectiveVm();
+        _note.Objective = payload.Objective ?? new ObjectiveVm();
+        _note.Assessment = payload.Assessment ?? new AssessmentWorkspaceVm();
+        _note.Plan = payload.Plan ?? new PlanVm();
+        _note.StructuredWorkspacePayload = payload.StructuredPayload;
+        _note.MarkDirty();
+        DraftAutosaveService.Reset();
+        ClearValidationDetails();
     }
 
     private DateTime ResolveDateOfService()
@@ -1125,6 +1507,33 @@ else
         }
 
         return _dateOfService == default ? DateTime.UtcNow : _dateOfService;
+    }
+
+    private static bool IsEvaluationNoteType(string noteType) =>
+        string.Equals(noteType, "Evaluation Note", StringComparison.OrdinalIgnoreCase);
+
+    private static bool CanApplyCarryForwardSeed(string noteType) =>
+        string.Equals(noteType, "Progress Note", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(noteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(noteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
+
+    private bool TryResolveRequestedNoteType(out string noteType)
+    {
+        noteType = string.Empty;
+        if (string.IsNullOrWhiteSpace(RequestedNoteType))
+        {
+            return false;
+        }
+
+        var allowedNoteTypes = IsPtaUser
+            ? new[] { "Daily Treatment Note" }
+            : _allNoteTypes;
+
+        noteType = allowedNoteTypes.FirstOrDefault(candidate =>
+                       string.Equals(candidate, RequestedNoteType, StringComparison.OrdinalIgnoreCase))
+                   ?? string.Empty;
+
+        return !string.IsNullOrWhiteSpace(noteType);
     }
 
     private string? ValidateForSubmit()
@@ -1212,9 +1621,19 @@ else
         _blockingValidationMessages = [];
         _warningValidationMessages = [];
         _requiresOverride = false;
+        _overrideRuleType = null;
+        _isOverridable = false;
+        _overrideRequirements = [];
+        _overrideReason = string.Empty;
     }
 
-    private void ApplyValidationDetails(IEnumerable<string>? blockingMessages, IEnumerable<string>? warningMessages, bool requiresOverride)
+    private void ApplyValidationDetails(
+        IEnumerable<string>? blockingMessages,
+        IEnumerable<string>? warningMessages,
+        bool requiresOverride,
+        ComplianceRuleType? ruleType,
+        bool isOverridable,
+        IEnumerable<OverrideRequirement>? overrideRequirements)
     {
         _blockingValidationMessages = (blockingMessages ?? [])
             .Where(message => !string.IsNullOrWhiteSpace(message))
@@ -1228,7 +1647,26 @@ else
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        _requiresOverride = requiresOverride;
+        _overrideRequirements = (overrideRequirements ?? [])
+            .Where(requirement => !string.IsNullOrWhiteSpace(requirement.Message) || !string.IsNullOrWhiteSpace(requirement.AttestationText))
+            .GroupBy(
+                requirement => new
+                {
+                    requirement.RuleType,
+                    Message = requirement.Message?.Trim() ?? string.Empty,
+                    AttestationText = requirement.AttestationText?.Trim() ?? string.Empty
+                })
+            .Select(group => group.First())
+            .ToList();
+
+        _overrideRuleType = ruleType ?? _overrideRequirements.FirstOrDefault()?.RuleType;
+        _isOverridable = isOverridable || _overrideRequirements.Any(requirement => requirement.IsOverridable);
+        _requiresOverride = requiresOverride || _overrideRequirements.Count > 0;
+
+        if (!_requiresOverride)
+        {
+            _overrideReason = string.Empty;
+        }
     }
 
     private void ApplyValidationFailures(IEnumerable<RuleEvaluationResult>? validationFailures)
@@ -1254,7 +1692,47 @@ else
             .ToList();
 
         _requiresOverride = false;
+        _overrideRuleType = null;
+        _isOverridable = false;
+        _overrideRequirements = [];
+        _overrideReason = string.Empty;
     }
+
+    private string GetOverrideSummaryText()
+    {
+        if (_overrideRuleType.HasValue)
+        {
+            return $"A {GetComplianceRuleDisplayLabel(_overrideRuleType.Value)} warning requires PT attestation before this draft can be saved.";
+        }
+
+        return "A PT compliance override is required before this draft can be saved.";
+    }
+
+    private string? GetOverrideAttestationText()
+    {
+        return _overrideRequirements
+            .Select(requirement => requirement.AttestationText?.Trim())
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+    }
+
+    private string GetOverrideReadonlyMessage()
+    {
+        if (!_overrideRuleType.HasValue || !_isOverridable)
+        {
+            return "Override metadata is unavailable for this draft. Review the note and retry the save.";
+        }
+
+        return "Only a PT can attest and save this override.";
+    }
+
+    private static string GetComplianceRuleDisplayLabel(ComplianceRuleType ruleType) => ruleType switch
+    {
+        ComplianceRuleType.EightMinuteRule => "Eight-minute rule",
+        ComplianceRuleType.ProgressNoteRequired => "Progress note required",
+        ComplianceRuleType.MissingCoSign => "Missing co-sign",
+        ComplianceRuleType.TimeUnitMismatch => "Time and unit mismatch",
+        _ => "Compliance override"
+    };
 
     private string GetChiefComplaintText()
     {
@@ -1286,6 +1764,171 @@ else
         }
 
         return string.Join(" | ", parts);
+    }
+
+    private bool ShouldShowSeedSummary(IReadOnlyList<string> subjectiveSeedChips, IReadOnlyList<string> objectiveSeedChips) =>
+        !IsDryNeedlingNote
+        && CurrentSeedContext is not null
+        && (subjectiveSeedChips.Count > 0 || objectiveSeedChips.Count > 0);
+
+    private IReadOnlyList<string> GetSubjectiveSeedChips()
+    {
+        var payload = _note.StructuredWorkspacePayload;
+        if (payload is null || CurrentSeedContext is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var chips = new List<string>();
+        var subjective = payload.Subjective;
+
+        if (subjective.CurrentPainScore > 0 || subjective.Problems.Contains("Pain"))
+        {
+            chips.Add($"Pain {subjective.CurrentPainScore}/10");
+        }
+
+        chips.AddRange(subjective.Locations
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(value => $"Location: {value}"));
+
+        if (!string.IsNullOrWhiteSpace(subjective.OtherLocation))
+        {
+            chips.Add($"Location: {subjective.OtherLocation.Trim()}");
+        }
+
+        if (subjective.AssistiveDevice.UsesAssistiveDevice == true)
+        {
+            if (subjective.AssistiveDevice.Devices.Count == 0)
+            {
+                chips.Add("Assistive device in use");
+            }
+            else
+            {
+                chips.AddRange(subjective.AssistiveDevice.Devices
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .Select(value => $"Assistive device: {value}"));
+            }
+        }
+
+        chips.AddRange(subjective.LivingSituation
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(value => $"Living: {value}"));
+
+        if (!string.IsNullOrWhiteSpace(subjective.OtherLivingSituation))
+        {
+            chips.Add($"Home setup: {subjective.OtherLivingSituation.Trim()}");
+        }
+
+        chips.AddRange(subjective.Comorbidities
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(value => $"Comorbidity: {value}"));
+
+        chips.AddRange(subjective.Medications
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => $"Medication: {entry.Name.Trim()}"));
+
+        return chips;
+    }
+
+    private IReadOnlyList<string> GetObjectiveSeedChips()
+    {
+        var payload = _note.StructuredWorkspacePayload;
+        if (payload is null || CurrentSeedContext is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var chips = new List<string>();
+        var objective = payload.Objective;
+
+        if (objective.PrimaryBodyPart != BodyPart.Other)
+        {
+            chips.Add($"Primary body part: {GetBodyPartDisplayLabel(objective.PrimaryBodyPart)}");
+        }
+
+        chips.AddRange(objective.RecommendedOutcomeMeasures
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(value => $"Outcome measure: {value.Trim()}"));
+
+        return chips;
+    }
+
+    private string GetSeedSummaryText()
+    {
+        return CurrentSeedContext?.Kind switch
+        {
+            WorkspaceSeedKind.IntakePrefill => "Structured intake responses were copied into this note. Review and refine them here before you save or sign.",
+            WorkspaceSeedKind.SignedCarryForward => "Stable clinical context was copied forward from the latest signed note. Document today's findings before finalizing this draft.",
+            _ => string.Empty
+        };
+    }
+
+    private string GetSeedSourceBadgeText()
+    {
+        if (CurrentSeedContext is null)
+        {
+            return string.Empty;
+        }
+
+        return CurrentSeedContext.Kind switch
+        {
+            WorkspaceSeedKind.IntakePrefill => CurrentSeedContext.FromLockedSubmittedIntake
+                ? $"Source: Submitted intake{FormatSeedReferenceDate(CurrentSeedContext.SourceReferenceDateUtc)}"
+                : $"Source: Intake draft{FormatSeedReferenceDate(CurrentSeedContext.SourceReferenceDateUtc)}",
+            WorkspaceSeedKind.SignedCarryForward => $"Source: Signed {GetWorkspaceNoteTypeLabel(CurrentSeedContext.SourceNoteType ?? NoteType.ProgressNote)}{FormatSeedReferenceDate(CurrentSeedContext.SourceReferenceDateUtc)}",
+            _ => string.Empty
+        };
+    }
+
+    private string GetSeedStateBadgeText()
+    {
+        if (_note.Status == NoteStatus.Signed)
+        {
+            return "State: Locked after signature";
+        }
+
+        if (_note.Status == NoteStatus.PendingCoSign)
+        {
+            return "State: Locked pending PT co-sign";
+        }
+
+        return CanEditCurrentDraft ? "State: Editable draft" : "State: Read-only view";
+    }
+
+    private string GetSeedStateBadgeClass()
+    {
+        if (_note.Status == NoteStatus.Signed || _note.Status == NoteStatus.PendingCoSign)
+        {
+            return "note-workspace__seed-badge note-workspace__seed-badge--locked";
+        }
+
+        return CanEditCurrentDraft
+            ? "note-workspace__seed-badge note-workspace__seed-badge--editable"
+            : "note-workspace__seed-badge note-workspace__seed-badge--readonly";
+    }
+
+    private static string GetBodyPartDisplayLabel(BodyPart bodyPart) => bodyPart switch
+    {
+        BodyPart.PelvicFloor => "Pelvic Floor",
+        _ => bodyPart.ToString()
+    };
+
+    private static string GetWorkspaceNoteTypeLabel(NoteType noteType) => noteType switch
+    {
+        NoteType.Evaluation => "Evaluation Note",
+        NoteType.ProgressNote => "Progress Note",
+        NoteType.Daily => "Daily Treatment Note",
+        NoteType.Discharge => "Discharge Note",
+        _ => noteType.ToString()
+    };
+
+    private static string FormatSeedReferenceDate(DateTime? date)
+    {
+        return date.HasValue
+            ? $" • {date.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture)}"
+            : string.Empty;
     }
 
     private async Task LoadPatientContextAsync(Guid patientId)

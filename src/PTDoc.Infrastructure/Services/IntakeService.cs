@@ -373,8 +373,15 @@ public sealed class IntakeService : IIntakeService
         target.HasPreviousSurgeriesOrInjuries = source.HasPreviousSurgeriesOrInjuries;
         target.MedicalHistoryNotes = source.MedicalHistoryNotes;
         target.SelectedBodyRegion = source.SelectedBodyRegion;
+        target.PainSeverityScore = source.PainSeverityScore;
         target.PainDetailDrafts = source.PainDetailDrafts
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        target.StructuredData = source.StructuredData;
+        target.SelectedComorbidities = source.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.SelectedAssistiveDevices = source.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.SelectedLivingSituations = source.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.SelectedHouseLayoutOptions = source.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.RecommendedOutcomeMeasures = source.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.IsSubmitted = source.IsSubmitted;
         target.IsLocked = source.IsLocked;
     }

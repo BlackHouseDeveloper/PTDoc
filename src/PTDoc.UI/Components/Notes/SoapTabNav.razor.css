@@ -75,6 +75,22 @@
     outline-offset: 2px;
 }
 
+.soap-tab-nav--readonly {
+    background: color-mix(in srgb, var(--card) 70%, var(--muted) 30%);
+}
+
+.soap-tab-nav--readonly .soap-tab-nav__tab {
+    cursor: default;
+}
+
+.soap-tab-nav--readonly .soap-tab-nav__tab:hover {
+    opacity: 1;
+}
+
+.soap-tab-nav__tab--readonly:not(.soap-tab-nav__tab--active):not(.soap-tab-nav__tab--completed) {
+    color: color-mix(in srgb, var(--muted-foreground) 82%, var(--foreground) 18%);
+}
+
 @media (max-width: 768px) {
     .soap-tab-nav {
         padding-inline: var(--spacing-3);

@@ -223,7 +223,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
             return numericStep switch
             {
                 0 => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
-                1 => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
+                1 => SetSubtitle("Step 2 of 4: Medical History / Pain Assessment", out subtitle),
                 2 => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
                 3 => SetSubtitle("Step 4 of 4: Review", out subtitle),
                 4 => SetSubtitle("Step 4 of 4: Review", out subtitle),
@@ -236,7 +236,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
         return normalizedStep switch
         {
             "demographics" => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
-            "painassessment" => SetSubtitle("Step 2 of 4: Pain Assessment", out subtitle),
+            "painassessment" => SetSubtitle("Step 2 of 4: Medical History / Pain Assessment", out subtitle),
             "paindetails" => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
             "review" => SetSubtitle("Step 4 of 4: Review", out subtitle),
             _ => false

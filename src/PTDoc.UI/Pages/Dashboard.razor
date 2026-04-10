@@ -1,4 +1,5 @@
 @page "/"
+@attribute [Authorize]
 @using PTDoc.Application.Services
 @using PTDoc.Application.Dashboard
 @using PTDoc.Application.DTOs
@@ -21,42 +22,50 @@
 
     <!-- Quick Action Buttons -->
     <div class="quick-actions-section">
-        <button type="button" class="action-btn action-btn-primary" @onclick="HandleAddPatient" aria-label="Add new patient">
-            <div class="action-btn-content">
-                <div class="action-icon-container action-icon-primary">
-                    <svg class="action-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M8 14.6667C11.6819 14.6667 14.6667 11.6819 14.6667 8C14.6667 4.3181 11.6819 1.33337 8 1.33337C4.3181 1.33337 1.33334 4.3181 1.33334 8C1.33334 11.6819 4.3181 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+            <Authorized>
+                <button type="button" class="action-btn action-btn-primary" @onclick="HandleAddPatient" aria-label="Add new patient">
+                    <div class="action-btn-content">
+                        <div class="action-icon-container action-icon-primary">
+                            <svg class="action-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M8 14.6667C11.6819 14.6667 14.6667 11.6819 14.6667 8C14.6667 4.3181 11.6819 1.33337 8 1.33337C4.3181 1.33337 1.33334 4.3181 1.33334 8C1.33334 11.6819 4.3181 14.6667 8 14.6667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="action-text-container">
+                            <div class="action-title">Add Patient</div>
+                            <div class="action-description">Create new patient profile</div>
+                        </div>
+                    </div>
+                    <svg class="action-arrow" width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                </div>
-                <div class="action-text-container">
-                    <div class="action-title">Add Patient</div>
-                    <div class="action-description">Create new patient profile</div>
-                </div>
-            </div>
-            <svg class="action-arrow" width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </button>
+                </button>
+            </Authorized>
+        </AuthorizeView>
 
-        <button type="button" class="action-btn action-btn-info" @onclick="HandleSendIntake" aria-label="Send intake form to patient">
-            <div class="action-btn-content">
-                <div class="action-icon-container action-icon-info">
-                    <svg class="action-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M14.6667 2L7.33334 9.33333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M14.6667 2L10 14.6667L7.33334 9.33333L2 6.66667L14.6667 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
+            <Authorized>
+                <button type="button" class="action-btn action-btn-info" @onclick="HandleSendIntake" aria-label="Send intake form to patient">
+                    <div class="action-btn-content">
+                        <div class="action-icon-container action-icon-info">
+                            <svg class="action-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M14.6667 2L7.33334 9.33333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M14.6667 2L10 14.6667L7.33334 9.33333L2 6.66667L14.6667 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="action-text-container">
+                            <div class="action-title">Send Intake</div>
+                            <div class="action-description">Email intake form to patient</div>
+                        </div>
+                    </div>
+                    <svg class="action-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                </div>
-                <div class="action-text-container">
-                    <div class="action-title">Send Intake</div>
-                    <div class="action-description">Email intake form to patient</div>
-                </div>
-            </div>
-            <svg class="action-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </button>
+                </button>
+            </Authorized>
+        </AuthorizeView>
     </div>
 
     @if (_isDashboardLoading && !_hasLoadedDashboard)

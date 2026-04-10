@@ -13,11 +13,29 @@ public sealed class NoteWorkspaceV2Payload
 {
     public int SchemaVersion { get; set; } = WorkspaceSchemaVersions.EvalReevalProgressV2;
     public NoteType NoteType { get; set; }
+    public WorkspaceSeedContextV2 SeedContext { get; set; } = new();
     public WorkspaceSubjectiveV2 Subjective { get; set; } = new();
     public WorkspaceObjectiveV2 Objective { get; set; } = new();
     public WorkspaceAssessmentV2 Assessment { get; set; } = new();
     public WorkspacePlanV2 Plan { get; set; } = new();
     public WorkspaceProgressNoteQuestionnaireV2 ProgressQuestionnaire { get; set; } = new();
+}
+
+public enum WorkspaceSeedKind
+{
+    None = 0,
+    IntakePrefill = 1,
+    SignedCarryForward = 2
+}
+
+public sealed class WorkspaceSeedContextV2
+{
+    public WorkspaceSeedKind Kind { get; set; }
+    public Guid? SourceIntakeId { get; set; }
+    public bool FromLockedSubmittedIntake { get; set; }
+    public Guid? SourceNoteId { get; set; }
+    public NoteType? SourceNoteType { get; set; }
+    public DateTime? SourceReferenceDateUtc { get; set; }
 }
 
 public sealed class WorkspaceSubjectiveV2
@@ -46,6 +64,7 @@ public sealed class WorkspaceSubjectiveV2
     public string? OtherSupport { get; set; }
     public HashSet<string> Comorbidities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public PriorTreatmentDetailsV2 PriorTreatment { get; set; } = new();
+    public bool? TakingMedications { get; set; }
     public List<MedicationEntryV2> Medications { get; set; } = new();
     public SubjectNarrativeContextV2 NarrativeContext { get; set; } = new();
 }
@@ -107,6 +126,7 @@ public sealed class WorkspaceObjectiveV2
 {
     public BodyPart PrimaryBodyPart { get; set; } = BodyPart.Other;
     public List<ObjectiveMetricInputV2> Metrics { get; set; } = new();
+    public List<string> RecommendedOutcomeMeasures { get; set; } = new();
     public List<OutcomeMeasureEntryV2> OutcomeMeasures { get; set; } = new();
     public List<SpecialTestResultV2> SpecialTests { get; set; } = new();
     public GaitObservationV2 GaitObservation { get; set; } = new();
@@ -173,12 +193,15 @@ public sealed class WorkspaceAssessmentV2
     public List<DiagnosisCodeV2> DiagnosisCodes { get; set; } = new();
     public List<WorkspaceGoalEntryV2> Goals { get; set; } = new();
     public bool? AppearsMotivated { get; set; }
+    public string? MotivationLevel { get; set; }
+    public HashSet<string> MotivatingFactors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? MotivationNotes { get; set; }
     public string? PatientPersonalGoals { get; set; }
     public string? SupportSystemLevel { get; set; }
     public HashSet<string> AvailableResources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> BarriersToRecovery { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? SupportSystemDetails { get; set; }
+    public string? SupportAdditionalNotes { get; set; }
     public string? OverallPrognosis { get; set; }
     public string? SkilledPtJustification { get; set; }
     public List<WorkspaceGoalSuggestionV2> GoalSuggestions { get; set; } = new();
@@ -229,6 +252,10 @@ public sealed class PlannedCptCodeV2
     public string Description { get; set; } = string.Empty;
     public int Units { get; set; } = 1;
     public int? Minutes { get; set; }
+    public List<string> Modifiers { get; set; } = new();
+    public List<string> ModifierOptions { get; set; } = new();
+    public List<string> SuggestedModifiers { get; set; } = new();
+    public string? ModifierSource { get; set; }
 }
 
 public sealed class ComputedPlanOfCareV2
@@ -279,6 +306,24 @@ public sealed class NoteWorkspaceV2LoadResponse
     public NoteType NoteType { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
+    public NoteWorkspaceV2Payload Payload { get; set; } = new();
+}
+
+public sealed class NoteWorkspaceV2EvaluationSeedResponse
+{
+    public Guid PatientId { get; set; }
+    public Guid SourceIntakeId { get; set; }
+    public bool FromLockedSubmittedIntake { get; set; }
+    public NoteWorkspaceV2Payload Payload { get; set; } = new();
+}
+
+public sealed class NoteWorkspaceV2CarryForwardResponse
+{
+    public Guid PatientId { get; set; }
+    public Guid SourceNoteId { get; set; }
+    public NoteType SourceNoteType { get; set; }
+    public DateTime SourceNoteDateOfService { get; set; }
+    public NoteType TargetNoteType { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
 }
 
@@ -338,6 +383,9 @@ public sealed class CodeLookupEntry
     public string Description { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
     public bool IsCompleteLibrary { get; set; }
+    public List<string> ModifierOptions { get; set; } = new();
+    public List<string> SuggestedModifiers { get; set; } = new();
+    public string? ModifierSource { get; set; }
 }
 
 public sealed class SuggestedGoalTransition

@@ -16,6 +16,7 @@ public class ObjectiveVm
     public string? AdditionalGaitObservations { get; set; }
 
     // Outcome measures (added via OutcomeMeasurePanel)
+    public List<string> RecommendedOutcomeMeasures { get; set; } = new();
     public List<OutcomeMeasureEntry> OutcomeMeasures { get; set; } = new();
 
     // Free-text notes (body-part-dependent sections collapsed until body part selected)

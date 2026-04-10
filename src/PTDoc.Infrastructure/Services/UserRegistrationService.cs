@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
@@ -20,16 +21,18 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     private static readonly IReadOnlyList<RoleSummary> RegisterableRoles =
     [
-        new("PT", "Physical Therapist"),
-        new("PTA", "Physical Therapist Assistant"),
-        new("FrontDesk", "Front Desk"),
-        new("Owner", "Owner")
+        new(Roles.PT, "Physical Therapist"),
+        new(Roles.PTA, "Physical Therapist Assistant"),
+        new(Roles.FrontDesk, "Front Desk"),
+        new(Roles.Owner, "Owner"),
+        new(Roles.Billing, "Billing"),
+        new(Roles.Patient, "Patient")
     ];
 
     private static readonly IReadOnlySet<string> AllowedRoleKeys =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "PT", "PTA", "FrontDesk", "Owner"
+            Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Owner, Roles.Billing, Roles.Patient
         };
 
     private readonly ApplicationDbContext dbContext;

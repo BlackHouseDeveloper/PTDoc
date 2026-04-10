@@ -61,6 +61,7 @@ public sealed class IntakeApiService(
             ResponseJson = seedState is null
                 ? "{}"
                 : JsonSerializer.Serialize(seedState, SerializerOptions),
+            StructuredData = seedState?.StructuredData,
             TemplateVersion = "1.0"
         };
 
@@ -198,6 +199,7 @@ public sealed class IntakeApiService(
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
             ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
+            StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
         };
 
@@ -274,6 +276,7 @@ public sealed class IntakeApiService(
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
             ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
+            StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
         };
 
@@ -398,6 +401,7 @@ public sealed class IntakeApiService(
 
         draft.PatientId = response.PatientId;
         draft.IntakeId = response.Id;
+        draft.StructuredData = response.StructuredData ?? draft.StructuredData;
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
         return draft;

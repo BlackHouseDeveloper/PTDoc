@@ -5,6 +5,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 
 namespace PTDoc.UI.Pages;
 
@@ -34,6 +35,10 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool showPendingConfirmation;
     protected bool isDarkTheme;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
+    protected string DateOfBirthInputValue => signUpModel.DateOfBirth?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+    protected string registrationConfirmationTitle = "Registration submitted";
+    protected string registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
+    private bool _pendingLoginFieldReset;
 
     protected enum AuthMode
     {
@@ -44,25 +49,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected override void OnInitialized()
     {
         returnUrl = ReturnUrlValidator.ExtractFromUri(Navigation.Uri);
-
-        if (Navigation.Uri.Contains("auth_unavailable=1", StringComparison.OrdinalIgnoreCase))
-        {
-            errorMessage = "Authentication service is currently unavailable. Please try again in a moment.";
-        }
-        else
-        if (Navigation.Uri.Contains("error=1", StringComparison.OrdinalIgnoreCase))
-        {
-            errorMessage = "Invalid PIN. Please try again.";
-        }
-        else
-        if (Navigation.Uri.Contains("pending_approval=1", StringComparison.OrdinalIgnoreCase))
-        {
-            isPendingApprovalNotice = true;
-        }
-
-        authMode = Navigation.Uri.Contains("/signup", StringComparison.OrdinalIgnoreCase)
-            ? AuthMode.SignUp
-            : AuthMode.Login;
+        ApplyAuthStateFromUri(Navigation.Uri);
 
         // Subscribe to theme changes
         ThemeService.OnThemeChanged += OnThemeChanged;
@@ -95,6 +82,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
             await ThemeService.InitializeAsync();
             isDarkTheme = ThemeService.IsDarkMode;
             StateHasChanged(); // Refresh UI with theme state
+        }
+
+        if (authMode == AuthMode.Login && (firstRender || _pendingLoginFieldReset))
+        {
+            _pendingLoginFieldReset = false;
+            await ResetLoginFieldsAsync();
         }
     }
 
@@ -146,7 +139,20 @@ public abstract class LoginBase : ComponentBase, IDisposable
         authMode = mode;
         errorMessage = null;
         showPendingConfirmation = false;
+        isPendingApprovalNotice = false;
         isExternalLoginRedirecting = false;
+        registrationConfirmationTitle = "Registration submitted";
+        registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
+
+        if (mode == AuthMode.Login)
+        {
+            ResetLoginModel();
+            _pendingLoginFieldReset = true;
+        }
+        else
+        {
+            ResetSignUpModel();
+        }
 
         // Update URL without navigation
         var targetUrl = mode == AuthMode.Login ? "/login" : "/signup";
@@ -200,7 +206,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
             if (!success)
             {
-                errorMessage = "Invalid PIN. Please try again.";
+                errorMessage = "Invalid credentials. Please try again.";
                 isLoading = false;
                 StateHasChanged();
                 return;
@@ -267,9 +273,14 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 signUpModel.LicenseNumber,
                 signUpModel.LicenseState);
 
-            if (result.IsPending)
+            if (result.IsPending || result.Succeeded)
             {
                 Logger.LogInformation("Sign up successful for {Email}", signUpModel.Email);
+                registrationConfirmationTitle = result.IsPending ? "Registration submitted" : "Account created";
+                registrationConfirmationMessage = result.IsPending
+                    ? "Your account is pending admin approval. You can sign in once your clinic administrator activates access."
+                    : "Your account was created successfully. Return to Login to continue.";
+                ResetSignUpModel();
                 showPendingConfirmation = true;
             }
             else
@@ -282,6 +293,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                     RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
                     RegistrationStatus.ValidationFailed => result.Error ?? "Please complete the required registration fields.",
                     RegistrationStatus.UsernameCollision => "Unable to create a unique username. Please contact support.",
+                    RegistrationStatus.Succeeded => "Your account was created successfully. Return to Login to continue.",
                     _ => result.Error ?? "Unable to create account. Please check your information and try again."
                 };
             }
@@ -315,6 +327,95 @@ public abstract class LoginBase : ComponentBase, IDisposable
     {
         OnRoleChanged(signUpModel.RoleKey);
         return Task.CompletedTask;
+    }
+
+    protected void OnDateOfBirthChanged(ChangeEventArgs args)
+    {
+        var rawValue = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            signUpModel.DateOfBirth = null;
+            return;
+        }
+
+        if (DateTime.TryParseExact(rawValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exactDate)
+            || DateTime.TryParse(rawValue, CultureInfo.CurrentCulture, DateTimeStyles.None, out exactDate)
+            || DateTime.TryParse(rawValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out exactDate))
+        {
+            signUpModel.DateOfBirth = exactDate.Date;
+            return;
+        }
+
+        signUpModel.DateOfBirth = null;
+    }
+
+    private void ApplyAuthStateFromUri(string uri)
+    {
+        errorMessage = null;
+        isPendingApprovalNotice = false;
+
+        if (uri.Contains("auth_unavailable=1", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Authentication service is currently unavailable. Please try again in a moment.";
+        }
+        else if (uri.Contains("error=1", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Invalid credentials. Please try again.";
+        }
+        else if (uri.Contains("pending_approval=1", StringComparison.OrdinalIgnoreCase))
+        {
+            isPendingApprovalNotice = true;
+        }
+
+        authMode = uri.Contains("/signup", StringComparison.OrdinalIgnoreCase)
+            ? AuthMode.SignUp
+            : AuthMode.Login;
+
+        if (authMode == AuthMode.Login)
+        {
+            ResetLoginModel();
+            _pendingLoginFieldReset = true;
+        }
+    }
+
+    private void ResetLoginModel()
+    {
+        loginModel.Username = string.Empty;
+        loginModel.Pin = string.Empty;
+    }
+
+    private void ResetSignUpModel()
+    {
+        signUpModel.FullName = string.Empty;
+        signUpModel.DateOfBirth = null;
+        signUpModel.Email = string.Empty;
+        signUpModel.RoleKey = string.Empty;
+        signUpModel.ClinicId = null;
+        signUpModel.Pin = string.Empty;
+        signUpModel.ConfirmPin = string.Empty;
+        signUpModel.LicenseNumber = string.Empty;
+        signUpModel.LicenseState = string.Empty;
+        isPtaFieldsActive = false;
+    }
+
+    private async Task ResetLoginFieldsAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ptdocAuth.resetLoginFields");
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is navigating away; a stale login field reset is no longer relevant.
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogDebug(ex, "Login field reset skipped because the browser DOM is not ready.");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Login field reset skipped because the auth browser helper is unavailable.");
+        }
     }
 
     protected sealed class LoginModel
@@ -356,7 +457,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
         [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
         public string ConfirmPin { get; set; } = string.Empty;
 
-        [StringLength(50, MinimumLength = 3, ErrorMessage = "License number must be between 3 and 50 characters")]
         public string LicenseNumber { get; set; } = string.Empty;
 
         public string LicenseState { get; set; } = string.Empty;

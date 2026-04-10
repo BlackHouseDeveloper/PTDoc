@@ -84,7 +84,7 @@
           <InputText id="username"
                      class="auth-input"
                      placeholder="Enter your username or email"
-                     autocomplete="off"
+                     autocomplete="username"
                      @bind-Value="loginModel.Username" />
         </div>
 
@@ -94,7 +94,7 @@
                      type="password"
                      class="auth-input"
                      placeholder="Enter 4-digit PIN"
-                     autocomplete="off"
+                     autocomplete="current-password"
                      maxlength="4"
                      aria-describedby="pin-error"
                      @bind-Value="loginModel.Pin" />
@@ -138,8 +138,8 @@
         <div class="auth-info-alert" role="status">
           <span class="auth-info-icon">ℹ️</span>
           <div class="auth-info-content">
-            <strong>Registration submitted</strong>
-            <p>Your account is pending admin approval. You can sign in once your clinic administrator activates access.</p>
+            <strong>@registrationConfirmationTitle</strong>
+            <p>@registrationConfirmationMessage</p>
           </div>
         </div>
         <button type="button" class="auth-primary" @onclick="() => SwitchMode(AuthMode.Login)">
@@ -171,10 +171,15 @@
             <span class="auth-required" aria-label="required">*</span>
             <span class="auth-info-icon" title="You must be at least 18 years old to create an account">ⓘ</span>
           </label>
-          <InputDate id="dateOfBirth"
-                     class="auth-input"
-                     placeholder="Select your date of birth"
-                     @bind-Value="signUpModel.DateOfBirth" />
+          <input id="dateOfBirth"
+                 type="date"
+                 class="auth-input"
+                 value="@DateOfBirthInputValue"
+                 autocomplete="bday"
+                 aria-describedby="dateOfBirth-help"
+                 @oninput="OnDateOfBirthChanged"
+                 @onchange="OnDateOfBirthChanged" />
+          <p id="dateOfBirth-help" class="auth-field-hint">Use YYYY-MM-DD or pick a date from the calendar.</p>
           <ValidationMessage For="@(() => signUpModel.DateOfBirth)" class="auth-validation" />
         </div>
 
@@ -295,8 +300,8 @@
         <div class="auth-info-alert">
           <span class="auth-info-icon">ℹ️</span>
           <div class="auth-info-content">
-            <strong>License Verification:</strong>
-            <p>Your credentials will be automatically generated after sign-up. In a production environment, license information would be verified against state licensing boards.</p>
+            <strong>Account Approval:</strong>
+            <p>Your credentials will be generated after sign-up. PT and PTA registrations include license details for admin review before activation.</p>
           </div>
         </div>
 
@@ -307,7 +312,7 @@
           }
           else
           {
-            <span>Create Professional Account</span>
+            <span>Create Account</span>
           }
         </button>
 

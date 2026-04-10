@@ -1,4 +1,6 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.Outcomes
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
 @using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
 
@@ -24,6 +26,15 @@
                     </div>
                 </div>
             }
+
+            <div class="objective-tab__section" data-testid="objective-outcome-measures-section">
+                <OutcomeMeasurePanel PatientId="@ParsedPatientId"
+                                     FilterBodyPart="@SelectedBodyPartFilter"
+                                     SuggestedMeasures="@_vm.RecommendedOutcomeMeasures"
+                                     RecordedEntries="@_vm.OutcomeMeasures"
+                                     IsReadOnly="@IsReadOnly"
+                                     OnScoreRecorded="HandleOutcomeScoreRecorded" />
+            </div>
 
             <!-- Gait Analysis -->
             <div class="objective-tab__section" data-testid="gait-analysis-section">
@@ -129,6 +140,10 @@
     [Parameter] public IReadOnlyList<string> GoalHints { get; set; } = Array.Empty<string>();
 
     protected override void OnParametersSet() => _vm = Vm;
+    private Guid ParsedPatientId => Guid.TryParse(PatientId, out var parsed) ? parsed : Guid.Empty;
+    private BodyPart? SelectedBodyPartFilter => Enum.TryParse<BodyPart>(_vm.SelectedBodyPart, ignoreCase: true, out var parsed)
+        ? parsed
+        : null;
 
     private static readonly string[] _bodyPartSections =
     [
@@ -174,6 +189,14 @@
         update(_vm);
         return VmChanged.InvokeAsync(_vm);
     }
+
+    private Task HandleOutcomeScoreRecorded(OutcomeScoreEntry entry) => SetAndNotify(vm =>
+        vm.OutcomeMeasures.Add(new OutcomeMeasureEntry
+        {
+            Name = entry.MeasureType.ToString(),
+            Score = entry.Score.ToString("F1"),
+            Date = entry.DateRecorded
+        }));
 
     private Task UpdateExercises(List<string> value) => SetAndNotify(vm => vm.TherapeuticExercises = value);
 

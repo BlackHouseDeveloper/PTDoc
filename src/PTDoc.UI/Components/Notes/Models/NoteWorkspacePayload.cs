@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using PTDoc.Application.Notes.Workspace;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -6,6 +9,7 @@ namespace PTDoc.UI.Components.Notes.Models;
 public class NoteWorkspacePayload
 {
     public string WorkspaceNoteType { get; set; } = "Evaluation Note";
+    [JsonIgnore] public NoteWorkspaceV2Payload? StructuredPayload { get; set; }
     public SubjectiveVm Subjective { get; set; } = new();
     public ObjectiveVm Objective { get; set; } = new();
     public AssessmentWorkspaceVm Assessment { get; set; } = new();

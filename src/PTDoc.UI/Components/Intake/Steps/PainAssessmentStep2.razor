@@ -1,12 +1,24 @@
+@using PTDoc.UI.Components.Intake.Cards
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Intake.Models
 
 <section class="pain-assessment-step2" data-testid="pain-assessment-step2">
-    <PainDescriptionCard />
+    <div class="pain-assessment-step2__hero">
+        <div>
+            <h2>Medical History / Pain Assessment</h2>
+            <p>Confirm the patient’s health history and map the affected regions before moving into detailed pain capture.</p>
+        </div>
+    </div>
 
-    <BodyViewToggle Value="@_view" ValueChanged="OnBodyViewChangedAsync" OnResetRequested="ResetSelectionAsync" />
+    <section class="pain-assessment-step2__panel">
+        <PainDescriptionCard />
 
-    <BodySvgSelector View="@_view" SelectedRegions="@_selectedRegions" SelectedRegionsChanged="OnSelectedRegionsChangedAsync" />
+        <BodyViewToggle Value="@_view" ValueChanged="OnBodyViewChangedAsync" OnResetRequested="ResetSelectionAsync" />
+
+        <BodySvgSelector View="@_view" SelectedRegions="@_selectedRegions" SelectedRegionsChanged="OnSelectedRegionsChangedAsync" />
+    </section>
+
+    <MedicalHistoryCard State="@State" StateChanged="HandleMedicalHistoryChangedAsync" />
 
     <IntakeFooterActions
         ShowBack="true"
@@ -69,6 +81,13 @@
         _selectedRegions = selectedRegions;
         State.SelectedBodyRegions = selectedRegions.ToHashSet();
         State.SelectedBodyRegion = selectedRegions.Count > 0 ? selectedRegions.First().ToString() : null;
+        if (selectedRegions.Count == 0 && State.StructuredData is not null)
+        {
+            State.StructuredData.BodyPartSelections.Clear();
+            State.StructuredData.PainDescriptorIds.Clear();
+            State.RecommendedOutcomeMeasures.Clear();
+        }
+
         State.IsDirty = true;
 
         if (OnStateChanged.HasDelegate)
@@ -81,4 +100,7 @@
     {
         return OnSelectedRegionsChangedAsync(new HashSet<BodyRegion>());
     }
+
+    private Task HandleMedicalHistoryChangedAsync() =>
+        OnStateChanged.HasDelegate ? OnStateChanged.InvokeAsync() : Task.CompletedTask;
 }

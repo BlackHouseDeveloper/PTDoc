@@ -1,7 +1,11 @@
 @namespace PTDoc.UI.Components.Notes
 @using PTDoc.UI.Components.Notes.Models
 
-<nav class="soap-tab-nav" role="tablist" aria-label="SOAP note sections" data-testid="soap-tab-nav">
+<nav class="soap-tab-nav @(IsReadOnly ? "soap-tab-nav--readonly" : string.Empty)"
+     role="tablist"
+     aria-label="SOAP note sections"
+     aria-readonly="@(IsReadOnly ? "true" : "false")"
+     data-testid="soap-tab-nav">
     @for (var index = 0; index < _sections.Length; index++)
     {
         var soapSection = _sections[index];
@@ -10,7 +14,7 @@
 
         <button type="button"
                 role="tab"
-                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty)"
+                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty) @(IsReadOnly ? "soap-tab-nav__tab--readonly" : string.Empty)"
                 aria-selected="@isActive"
                 aria-controls="soap-tab-panel"
                 data-testid="@($"soap-tab-{soapSection.ToString().ToLower()}")"
@@ -39,6 +43,7 @@
 
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
 
     private Task HandleTabClickAsync(SoapSection section) =>
         ActiveSectionChanged.InvokeAsync(section);

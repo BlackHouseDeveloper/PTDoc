@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
+using PTDoc.Application.ReferenceData;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -19,6 +22,8 @@ public sealed class NoteWorkspaceV2Service(
     IAssessmentCompositionService assessmentCompositionService,
     IGoalManagementService goalManagementService,
     IOutcomeMeasureRegistry outcomeMeasureRegistry,
+    IIntakeReferenceDataCatalogService intakeReferenceData,
+    ICarryForwardService carryForwardService,
     IAuditService? auditService = null,
     IOverrideService? overrideService = null) : INoteWorkspaceV2Service
 {
@@ -41,6 +46,96 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         return await BuildLoadResponseAsync(note, cancellationToken);
+    }
+
+    public async Task<NoteWorkspaceV2EvaluationSeedResponse?> GetEvaluationSeedAsync(
+        Guid patientId,
+        CancellationToken cancellationToken = default)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .Where(form => form.PatientId == patientId && (form.IsLocked || form.SubmittedAt.HasValue))
+            .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
+            .ThenByDescending(form => form.LastModifiedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var fromLockedSubmittedIntake = true;
+
+        if (intake is null)
+        {
+            intake = await db.IntakeForms
+                .AsNoTracking()
+                .Where(form => form.PatientId == patientId && !form.IsLocked)
+                .OrderByDescending(form => form.LastModifiedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            fromLockedSubmittedIntake = false;
+        }
+
+        if (intake is null)
+        {
+            return null;
+        }
+
+        var intakeReferenceUtc = intake.SubmittedAt ?? intake.LastModifiedUtc;
+        var hasSubsequentEvaluation = await db.ClinicalNotes
+            .AsNoTracking()
+            .AnyAsync(note =>
+                    note.PatientId == patientId &&
+                    note.NoteType == NoteType.Evaluation &&
+                    !note.IsAddendum &&
+                    note.CreatedUtc >= intakeReferenceUtc,
+                cancellationToken);
+
+        if (hasSubsequentEvaluation)
+        {
+            return null;
+        }
+
+        return new NoteWorkspaceV2EvaluationSeedResponse
+        {
+            PatientId = patientId,
+            SourceIntakeId = intake.Id,
+            FromLockedSubmittedIntake = fromLockedSubmittedIntake,
+            Payload = BuildEvaluationSeedPayload(intake, fromLockedSubmittedIntake)
+        };
+    }
+
+    public async Task<NoteWorkspaceV2CarryForwardResponse?> GetCarryForwardSeedAsync(
+        Guid patientId,
+        NoteType targetNoteType,
+        CancellationToken cancellationToken = default)
+    {
+        var carryForwardData = await carryForwardService.GetCarryForwardDataAsync(patientId, targetNoteType, cancellationToken);
+        if (carryForwardData is null)
+        {
+            return null;
+        }
+
+        var sourceNote = await db.ClinicalNotes
+            .Include(note => note.ObjectiveMetrics)
+            .FirstOrDefaultAsync(note => note.Id == carryForwardData.SourceNoteId && note.PatientId == patientId, cancellationToken);
+
+        if (sourceNote is null)
+        {
+            return null;
+        }
+
+        var sourceWorkspace = await BuildLoadResponseAsync(sourceNote, cancellationToken);
+        return new NoteWorkspaceV2CarryForwardResponse
+        {
+            PatientId = patientId,
+            SourceNoteId = carryForwardData.SourceNoteId,
+            SourceNoteType = carryForwardData.SourceNoteType,
+            SourceNoteDateOfService = carryForwardData.SourceNoteDateOfService,
+            TargetNoteType = targetNoteType,
+            Payload = BuildCarryForwardSeedPayload(
+                sourceWorkspace.Payload,
+                targetNoteType,
+                carryForwardData.SourceNoteId,
+                carryForwardData.SourceNoteType,
+                carryForwardData.SourceNoteDateOfService)
+        };
     }
 
     public async Task<NoteWorkspaceV2SaveResponse> SaveAsync(NoteWorkspaceV2SaveRequest request, CancellationToken cancellationToken = default)
@@ -137,7 +232,25 @@ public sealed class NoteWorkspaceV2Service(
                     Code = normalizedCode,
                     Units = Math.Max(0, code.Units),
                     Minutes = code.Minutes,
-                    IsTimed = KnownTimedCptCodes.Codes.Contains(normalizedCode)
+                    IsTimed = KnownTimedCptCodes.Codes.Contains(normalizedCode),
+                    Modifiers = code.Modifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierOptions = code.ModifierOptions
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    SuggestedModifiers = code.SuggestedModifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                        ? null
+                        : code.ModifierSource.Trim()
                 };
             })
             .ToList();
@@ -238,6 +351,483 @@ public sealed class NoteWorkspaceV2Service(
 
         saveResponse.Workspace = await BuildLoadResponseAsync(note, cancellationToken);
         return saveResponse;
+    }
+
+    private NoteWorkspaceV2Payload BuildEvaluationSeedPayload(IntakeForm intake, bool fromLockedSubmittedIntake)
+    {
+        var draft = DeserializeIntakeDraft(intake);
+        var structuredData = ResolveStructuredIntakeData(intake, draft);
+        var (locations, otherLocation) = MapIntakeLocations(draft, structuredData);
+        var medicationEntries = structuredData.MedicationIds
+            .Select(id => intakeReferenceData.GetMedication(id)?.DisplayLabel ?? id)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .Select(label => new MedicationEntryV2 { Name = label })
+            .ToList();
+        var recommendedOutcomeMeasures = draft.RecommendedOutcomeMeasures
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var painDescriptorLabels = structuredData.PainDescriptorIds
+            .Select(id => intakeReferenceData.GetPainDescriptor(id)?.Label ?? id)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var bodyPartLabels = structuredData.BodyPartSelections
+            .Select(selection => intakeReferenceData.GetBodyPart(selection.BodyPartId)?.Label)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Select(label => label!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            SeedContext = new WorkspaceSeedContextV2
+            {
+                Kind = WorkspaceSeedKind.IntakePrefill,
+                SourceIntakeId = intake.Id,
+                FromLockedSubmittedIntake = fromLockedSubmittedIntake,
+                SourceReferenceDateUtc = intake.SubmittedAt ?? intake.LastModifiedUtc
+            },
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                Problems = draft.PainSeverityScore.HasValue || bodyPartLabels.Count > 0 || painDescriptorLabels.Count > 0
+                    ? ["Pain"]
+                    : new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                Locations = locations,
+                OtherLocation = otherLocation,
+                CurrentPainScore = Math.Clamp(draft.PainSeverityScore ?? 0, 0, 10),
+                LivingSituation = draft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                OtherLivingSituation = draft.SelectedHouseLayoutOptions.Count == 0
+                    ? null
+                    : string.Join("; ", draft.SelectedHouseLayoutOptions.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)),
+                Comorbidities = draft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                AssistiveDevice = new AssistiveDeviceDetailsV2
+                {
+                    UsesAssistiveDevice = draft.UsesAssistiveDevices || draft.SelectedAssistiveDevices.Count > 0,
+                    Devices = draft.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                },
+                TakingMedications = medicationEntries.Count > 0 ? true : null,
+                Medications = medicationEntries,
+                NarrativeContext = new SubjectNarrativeContextV2
+                {
+                    ChiefComplaint = bodyPartLabels.Count == 0
+                        ? null
+                        : $"Intake concern areas: {string.Join(", ", bodyPartLabels)}",
+                    HistoryOfPresentIllness = painDescriptorLabels.Count == 0
+                        ? null
+                        : $"Intake pain descriptors: {string.Join(", ", painDescriptorLabels)}",
+                    PatientHistorySummary = string.IsNullOrWhiteSpace(draft.MedicalHistoryNotes)
+                        ? null
+                        : draft.MedicalHistoryNotes.Trim()
+                }
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = ResolvePrimaryBodyPart(draft, structuredData),
+                RecommendedOutcomeMeasures = recommendedOutcomeMeasures
+            }
+        };
+
+        return payload;
+    }
+
+    private static IntakeResponseDraft DeserializeIntakeDraft(IntakeForm intake)
+    {
+        try
+        {
+            var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, SerializerOptions);
+            if (draft is not null)
+            {
+                draft.PatientId = intake.PatientId;
+                draft.IntakeId = intake.Id;
+                draft.IsLocked = intake.IsLocked;
+                draft.IsSubmitted = intake.SubmittedAt.HasValue;
+                return draft;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return new IntakeResponseDraft
+        {
+            PatientId = intake.PatientId,
+            IntakeId = intake.Id,
+            IsLocked = intake.IsLocked,
+            IsSubmitted = intake.SubmittedAt.HasValue
+        };
+    }
+
+    private static IntakeStructuredDataDto ResolveStructuredIntakeData(IntakeForm intake, IntakeResponseDraft draft)
+    {
+        if (!string.IsNullOrWhiteSpace(intake.StructuredDataJson)
+            && !string.Equals(intake.StructuredDataJson.Trim(), "{}", StringComparison.Ordinal)
+            && IntakeStructuredDataJson.TryParse(intake.StructuredDataJson, out var structuredData, out _))
+        {
+            return structuredData;
+        }
+
+        return draft.StructuredData ?? new IntakeStructuredDataDto();
+    }
+
+    private static (HashSet<string> Locations, string? OtherLocation) MapIntakeLocations(
+        IntakeResponseDraft draft,
+        IntakeStructuredDataDto structuredData)
+    {
+        var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var otherLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var region in (draft.SelectedBodyRegion ?? string.Empty)
+                     .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            MapRegionKey(region, locations, otherLocations);
+        }
+
+        foreach (var selection in structuredData.BodyPartSelections)
+        {
+            MapBodyPartSelection(selection, locations, otherLocations);
+        }
+
+        return (locations, otherLocations.Count == 0 ? null : string.Join(", ", otherLocations.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static void MapRegionKey(string regionKey, HashSet<string> locations, HashSet<string> otherLocations)
+    {
+        if (regionKey.Contains("Neck", StringComparison.OrdinalIgnoreCase) || regionKey.Contains("Head", StringComparison.OrdinalIgnoreCase))
+        {
+            locations.Add("Neck");
+            return;
+        }
+
+        if (regionKey.Contains("Back", StringComparison.OrdinalIgnoreCase) || regionKey.Contains("Torso", StringComparison.OrdinalIgnoreCase))
+        {
+            locations.Add("Back");
+            return;
+        }
+
+        if (regionKey.Contains("Shoulder", StringComparison.OrdinalIgnoreCase))
+        {
+            if (regionKey.Contains("Right", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Right shoulder");
+                return;
+            }
+
+            if (regionKey.Contains("Left", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Left shoulder");
+                return;
+            }
+        }
+
+        if (regionKey.Contains("Arm", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Hand", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Elbow", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Forearm", StringComparison.OrdinalIgnoreCase))
+        {
+            if (regionKey.Contains("Right", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Right arm");
+                return;
+            }
+
+            if (regionKey.Contains("Left", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Left arm");
+                return;
+            }
+        }
+
+        if (regionKey.Contains("Leg", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Thigh", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Knee", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Calf", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Foot", StringComparison.OrdinalIgnoreCase))
+        {
+            if (regionKey.Contains("Right", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Right leg");
+                return;
+            }
+
+            if (regionKey.Contains("Left", StringComparison.OrdinalIgnoreCase))
+            {
+                locations.Add("Left leg");
+                return;
+            }
+        }
+
+        otherLocations.Add(HumanizeRegion(regionKey));
+    }
+
+    private static void MapBodyPartSelection(
+        IntakeBodyPartSelectionDto selection,
+        HashSet<string> locations,
+        HashSet<string> otherLocations)
+    {
+        var bodyPartId = selection.BodyPartId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(bodyPartId))
+        {
+            return;
+        }
+
+        var lateralities = selection.Lateralities ?? [];
+
+        if (bodyPartId.Contains("neck", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("cervical", StringComparison.OrdinalIgnoreCase))
+        {
+            locations.Add("Neck");
+            return;
+        }
+
+        if (bodyPartId.Contains("lumbar", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("thoracic", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("sacrum", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("coccyx", StringComparison.OrdinalIgnoreCase))
+        {
+            locations.Add("Back");
+            return;
+        }
+
+        if (bodyPartId.Contains("shoulder", StringComparison.OrdinalIgnoreCase))
+        {
+            AddLateralityScopedLocation(locations, lateralities, "shoulder");
+            return;
+        }
+
+        if (bodyPartId.Contains("elbow", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("wrist", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("hand", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("finger", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("thumb", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("forearm", StringComparison.OrdinalIgnoreCase))
+        {
+            AddLateralityScopedLocation(locations, lateralities, "arm");
+            return;
+        }
+
+        if (bodyPartId.Contains("hip", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("knee", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("ankle", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("foot", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("toe", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("heel", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("arch", StringComparison.OrdinalIgnoreCase)
+            || bodyPartId.Contains("achilles", StringComparison.OrdinalIgnoreCase))
+        {
+            AddLateralityScopedLocation(locations, lateralities, "leg");
+            return;
+        }
+
+        if (bodyPartId.Contains("pelvic", StringComparison.OrdinalIgnoreCase))
+        {
+            otherLocations.Add("Pelvic floor");
+            return;
+        }
+
+        otherLocations.Add(bodyPartId.Replace('-', ' '));
+    }
+
+    private static void AddLateralityScopedLocation(HashSet<string> locations, IReadOnlyCollection<string> lateralities, string suffix)
+    {
+        if (lateralities.Any(value => string.Equals(value, "right", StringComparison.OrdinalIgnoreCase)))
+        {
+            locations.Add($"Right {suffix}");
+        }
+
+        if (lateralities.Any(value => string.Equals(value, "left", StringComparison.OrdinalIgnoreCase)))
+        {
+            locations.Add($"Left {suffix}");
+        }
+
+        if (lateralities.Count == 0)
+        {
+            locations.Add(suffix.Equals("shoulder", StringComparison.OrdinalIgnoreCase) ? "Right shoulder" : $"Right {suffix}");
+            locations.Add(suffix.Equals("shoulder", StringComparison.OrdinalIgnoreCase) ? "Left shoulder" : $"Left {suffix}");
+        }
+    }
+
+    private static BodyPart ResolvePrimaryBodyPart(IntakeResponseDraft draft, IntakeStructuredDataDto structuredData)
+    {
+        foreach (var selection in structuredData.BodyPartSelections)
+        {
+            if (TryMapIntakeBodyPart(selection.BodyPartId, out var mapped))
+            {
+                return mapped;
+            }
+        }
+
+        foreach (var region in (draft.SelectedBodyRegion ?? string.Empty)
+                     .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (TryMapRegionBodyPart(region, out var mapped))
+            {
+                return mapped;
+            }
+        }
+
+        return BodyPart.Other;
+    }
+
+    private static bool TryMapIntakeBodyPart(string? bodyPartId, out BodyPart mapped)
+    {
+        var normalized = bodyPartId?.Trim() ?? string.Empty;
+
+        mapped = normalized switch
+        {
+            "knee" => BodyPart.Knee,
+            "shoulder" => BodyPart.Shoulder,
+            "hip" => BodyPart.Hip,
+            "ankle" => BodyPart.Ankle,
+            "elbow" => BodyPart.Elbow,
+            "wrist" => BodyPart.Wrist,
+            "foot" or "toes" or "heel" or "arch" => BodyPart.Foot,
+            "hand" or "fingers" or "thumb" => BodyPart.Hand,
+            "neck" or "cervical-spine" or "head-neck-cervical-spine" => BodyPart.Cervical,
+            "lumbar-spine" or "sacrum" or "coccyx" => BodyPart.Lumbar,
+            "thoracic-spine" or "upper-back-thoracic-spine" => BodyPart.Thoracic,
+            _ when normalized.Contains("achilles", StringComparison.OrdinalIgnoreCase) => BodyPart.Ankle,
+            _ when normalized.Contains("pelvic", StringComparison.OrdinalIgnoreCase) => BodyPart.PelvicFloor,
+            _ when normalized.Contains("forearm", StringComparison.OrdinalIgnoreCase) => BodyPart.Elbow,
+            _ => BodyPart.Other
+        };
+
+        return mapped != BodyPart.Other;
+    }
+
+    private static bool TryMapRegionBodyPart(string regionKey, out BodyPart mapped)
+    {
+        if (regionKey.Contains("Neck", StringComparison.OrdinalIgnoreCase) || regionKey.Contains("Head", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Cervical;
+            return true;
+        }
+
+        if (regionKey.Contains("Upperback", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Midback", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Thoracic;
+            return true;
+        }
+
+        if (regionKey.Contains("Lowerback", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Pelvis", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Gluteal", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Lumbar;
+            return true;
+        }
+
+        if (regionKey.Contains("Shoulder", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Shoulder;
+            return true;
+        }
+
+        if (regionKey.Contains("Arm", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Forearm", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Elbow", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Elbow;
+            return true;
+        }
+
+        if (regionKey.Contains("Hand", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Hand;
+            return true;
+        }
+
+        if (regionKey.Contains("Hip", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Thigh", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Hip;
+            return true;
+        }
+
+        if (regionKey.Contains("Knee", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Knee;
+            return true;
+        }
+
+        if (regionKey.Contains("Calf", StringComparison.OrdinalIgnoreCase)
+            || regionKey.Contains("Ankle", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Ankle;
+            return true;
+        }
+
+        if (regionKey.Contains("Foot", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = BodyPart.Foot;
+            return true;
+        }
+
+        mapped = BodyPart.Other;
+        return false;
+    }
+
+    private static string HumanizeRegion(string rawValue)
+    {
+        return rawValue
+            .Replace("Left", " Left ", StringComparison.Ordinal)
+            .Replace("Right", " Right ", StringComparison.Ordinal)
+            .Replace("Front", " Front", StringComparison.Ordinal)
+            .Replace("Back", " Back", StringComparison.Ordinal)
+            .Replace("Upperback", "Upper Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Lowerback", "Lower Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Midback", "Mid Back", StringComparison.OrdinalIgnoreCase)
+            .Replace("Lowercalf", "Lower Calf", StringComparison.OrdinalIgnoreCase)
+            .Replace("Midtorso", "Mid Torso", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+    }
+
+    private static NoteWorkspaceV2Payload BuildCarryForwardSeedPayload(
+        NoteWorkspaceV2Payload sourcePayload,
+        NoteType targetNoteType,
+        Guid sourceNoteId,
+        NoteType sourceNoteType,
+        DateTime sourceNoteDateOfService)
+    {
+        var payload = ClonePayload(sourcePayload);
+        payload.NoteType = targetNoteType;
+        payload.SeedContext = new WorkspaceSeedContextV2
+        {
+            Kind = WorkspaceSeedKind.SignedCarryForward,
+            SourceNoteId = sourceNoteId,
+            SourceNoteType = sourceNoteType,
+            SourceReferenceDateUtc = sourceNoteDateOfService
+        };
+
+        // Carry forward stable structured context, but clear prior visit measurements,
+        // scored outcomes, AI/narrative artifacts, and billing selections.
+        payload.Objective.Metrics = [];
+        payload.Objective.OutcomeMeasures = [];
+        payload.Objective.SpecialTests = [];
+        payload.Objective.GaitObservation = new GaitObservationV2();
+        payload.Objective.PostureObservation = new PostureObservationV2();
+        payload.Objective.PalpationObservation = new PalpationObservationV2();
+        payload.Objective.ClinicalObservationNotes = null;
+
+        payload.Assessment.AssessmentNarrative = string.Empty;
+        payload.Assessment.FunctionalLimitationsSummary = string.Empty;
+        payload.Assessment.DeficitsSummary = string.Empty;
+        payload.Assessment.SkilledPtJustification = null;
+        payload.Assessment.GoalSuggestions = [];
+
+        payload.Plan.SelectedCptCodes = [];
+        payload.Plan.ClinicalSummary = null;
+        payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
+
+        return payload;
     }
 
     private async Task<NoteWorkspaceV2LoadResponse> BuildLoadResponseAsync(
@@ -566,6 +1156,7 @@ public sealed class NoteWorkspaceV2Service(
                     Treatments = legacy.Subjective?.PriorTreatments ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                     OtherTreatment = legacy.Subjective?.OtherTreatment
                 },
+                TakingMedications = legacy.Subjective?.TakingMedications,
                 Medications = string.IsNullOrWhiteSpace(legacy.Subjective?.MedicationDetails)
                     ? []
                     : [new MedicationEntryV2 { Name = legacy.Subjective.MedicationDetails }]
@@ -599,11 +1190,14 @@ public sealed class NoteWorkspaceV2Service(
                         Status = GoalStatus.Active
                     })
                     .ToList() ?? [],
+                MotivationLevel = legacy?.Assessment?.MotivationLevel,
+                MotivatingFactors = legacy?.Assessment?.MotivatingFactors ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 PatientPersonalGoals = legacy?.Assessment?.PatientPersonalGoals,
                 SupportSystemLevel = legacy?.Assessment?.SupportSystemLevel,
                 AvailableResources = legacy?.Assessment?.AvailableResources ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 BarriersToRecovery = legacy?.Assessment?.BarriersToRecovery ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 SupportSystemDetails = legacy?.Assessment?.SupportSystemDetails,
+                SupportAdditionalNotes = legacy?.Assessment?.SupportAdditionalNotes,
                 OverallPrognosis = legacy?.Assessment?.OverallPrognosis,
                 MotivationNotes = legacy?.Assessment?.AdditionalMotivationNotes
             },
@@ -616,7 +1210,24 @@ public sealed class NoteWorkspaceV2Service(
                     {
                         Code = code.Code,
                         Description = code.Description,
-                        Units = code.Units
+                        Units = code.Units,
+                        Minutes = code.Minutes,
+                        Modifiers = code.Modifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        ModifierOptions = code.ModifierOptions
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        SuggestedModifiers = code.SuggestedModifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        ModifierSource = code.ModifierSource
                     })
                     .ToList() ?? [],
                 HomeExerciseProgramNotes = legacy?.Plan?.HomeExerciseProgramNotes,
@@ -657,6 +1268,14 @@ public sealed class NoteWorkspaceV2Service(
                 .ToList() ?? [];
 
         return payload;
+    }
+
+    private static NoteWorkspaceV2Payload ClonePayload(NoteWorkspaceV2Payload payload)
+    {
+        return JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+                   JsonSerializer.Serialize(payload, SerializerOptions),
+                   SerializerOptions)
+               ?? new NoteWorkspaceV2Payload { NoteType = payload.NoteType };
     }
 
     private async Task<Dictionary<(BodyPart BodyPart, MetricType MetricType), string>> GetPreviousMetricMapAsync(
@@ -833,6 +1452,7 @@ public sealed class NoteWorkspaceV2Service(
         public HashSet<string> Comorbidities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> PriorTreatments { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string? OtherTreatment { get; set; }
+        public bool? TakingMedications { get; set; }
         public string? MedicationDetails { get; set; }
     }
 
@@ -854,12 +1474,15 @@ public sealed class NoteWorkspaceV2Service(
         public List<string> DeficitCategories { get; set; } = new();
         public List<LegacyDiagnosisCode> DiagnosisCodes { get; set; } = new();
         public List<LegacyGoal> Goals { get; set; } = new();
+        public string? MotivationLevel { get; set; }
+        public HashSet<string> MotivatingFactors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string? PatientPersonalGoals { get; set; }
         public string? AdditionalMotivationNotes { get; set; }
         public string? SupportSystemLevel { get; set; }
         public HashSet<string> AvailableResources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> BarriersToRecovery { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string? SupportSystemDetails { get; set; }
+        public string? SupportAdditionalNotes { get; set; }
         public string? OverallPrognosis { get; set; }
     }
 
@@ -892,6 +1515,11 @@ public sealed class NoteWorkspaceV2Service(
         public string Code { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public int Units { get; set; } = 1;
+        public int? Minutes { get; set; }
+        public List<string> Modifiers { get; set; } = [];
+        public List<string> ModifierOptions { get; set; } = [];
+        public List<string> SuggestedModifiers { get; set; } = [];
+        public string? ModifierSource { get; set; }
     }
 
     private sealed class LegacyOutcomeMeasureEntry

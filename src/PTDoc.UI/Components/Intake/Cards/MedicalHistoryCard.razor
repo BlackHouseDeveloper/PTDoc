@@ -1,44 +1,243 @@
+@using PTDoc.Application.ReferenceData
+@using PTDoc.UI.Components.Intake.Models
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
+
 <section class="intake-card">
-    <h2>Medical History</h2>
-    <p class="intake-card__subtext">Please select all that apply to your current medical situation:</p>
-
-    <div class="intake-card__checks">
-        <label>
-            <input type="checkbox" class="form-check-input" checked="@HasCurrentMedications" @onchange="(args) => HasCurrentMedicationsChanged.InvokeAsync((bool)(args.Value ?? false))" />
-            <span>Current Medications</span>
-        </label>
-
-        <label>
-            <input type="checkbox" class="form-check-input" checked="@HasOtherMedicalConditions" @onchange="(args) => HasOtherMedicalConditionsChanged.InvokeAsync((bool)(args.Value ?? false))" />
-            <span>Other Medical Conditions</span>
-        </label>
-
-        <label>
-            <input type="checkbox" class="form-check-input" checked="@UsesAssistiveDevices" @onchange="(args) => UsesAssistiveDevicesChanged.InvokeAsync((bool)(args.Value ?? false))" />
-            <span>Assistive Devices</span>
-        </label>
-
-        <label>
-            <input type="checkbox" class="form-check-input" checked="@HasPreviousSurgeriesOrInjuries" @onchange="(args) => HasPreviousSurgeriesOrInjuriesChanged.InvokeAsync((bool)(args.Value ?? false))" />
-            <span>Previous Surgeries or Injuries</span>
-        </label>
+    <div class="intake-card__header">
+        <div>
+            <h2>Medical History</h2>
+            <p class="intake-card__subtext">Use the validated intake lists instead of typing where structured options are available.</p>
+        </div>
+        <div class="intake-card__status-group">
+            <span class="intake-card__status @(State.HasCurrentMedications ? "intake-card__status--active" : "")">Medications</span>
+            <span class="intake-card__status @(State.HasOtherMedicalConditions ? "intake-card__status--active" : "")">Comorbidities</span>
+            <span class="intake-card__status @(State.UsesAssistiveDevices ? "intake-card__status--active" : "")">Assistive Devices</span>
+        </div>
     </div>
 
-    <label class="intake-card__notes">Notes (optional)
-        <textarea class="form-control" value="@MedicalHistoryNotes" @oninput="(args) => MedicalHistoryNotesChanged.InvokeAsync(args.Value?.ToString())"></textarea>
-    </label>
+    <section class="intake-card__section">
+        <label class="intake-card__field-label" for="medication-search">Medication Search</label>
+        <input id="medication-search"
+               class="form-control intake-card__search"
+               type="search"
+               placeholder="Search brand or generic medication"
+               @bind="_medicationSearch"
+               @bind:event="oninput" />
+
+        @if (SelectedMedicationItems.Count > 0)
+        {
+            <div class="intake-card__chip-list">
+                @foreach (var medication in SelectedMedicationItems)
+                {
+                    <button type="button" class="intake-card__chip intake-card__chip--selected" @onclick="() => ToggleMedicationAsync(medication.Id)">
+                        @medication.DisplayLabel
+                    </button>
+                }
+            </div>
+        }
+
+        <div class="intake-card__option-grid">
+            @foreach (var medication in FilteredMedications)
+            {
+                var isSelected = SelectedMedicationIds.Contains(medication.Id, StringComparer.OrdinalIgnoreCase);
+                <button type="button"
+                        class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        @onclick="() => ToggleMedicationAsync(medication.Id)">
+                    @medication.DisplayLabel
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-card__section">
+        <span class="intake-card__field-label">Comorbidities</span>
+        <div class="intake-card__option-grid">
+            @foreach (var option in IntakeSupplementalOptionCatalog.Comorbidities)
+            {
+                var isSelected = State.SelectedComorbidities.Contains(option);
+                <button type="button"
+                        class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        @onclick="() => ToggleSelectionAsync(State.SelectedComorbidities, option, syncFlagsOnly: true)">
+                    @option
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-card__section">
+        <span class="intake-card__field-label">Living Situation</span>
+        <div class="intake-card__option-grid">
+            @foreach (var option in IntakeSupplementalOptionCatalog.LivingSituations)
+            {
+                var isSelected = State.SelectedLivingSituations.Contains(option);
+                <button type="button"
+                        class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        @onclick="() => ToggleSelectionAsync(State.SelectedLivingSituations, option)">
+                    @option
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-card__section">
+        <label class="intake-card__field-label" for="assistive-search">Assistive Devices</label>
+        <input id="assistive-search"
+               class="form-control intake-card__search"
+               type="search"
+               placeholder="Search assistive devices"
+               @bind="_assistiveSearch"
+               @bind:event="oninput" />
+
+        <div class="intake-card__option-grid">
+            @foreach (var option in FilteredAssistiveDevices)
+            {
+                var isSelected = State.SelectedAssistiveDevices.Contains(option);
+                <button type="button"
+                        class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        @onclick="() => ToggleSelectionAsync(State.SelectedAssistiveDevices, option, syncFlagsOnly: true)">
+                    @option
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-card__section">
+        <span class="intake-card__field-label">Home Layout</span>
+        <div class="intake-card__option-grid">
+            @foreach (var option in IntakeSupplementalOptionCatalog.HouseLayoutOptions)
+            {
+                var isSelected = State.SelectedHouseLayoutOptions.Contains(option);
+                <button type="button"
+                        class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        @onclick="() => SelectHouseLayoutAsync(option)">
+                    @option
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="intake-card__section intake-card__section--stacked">
+        <label class="intake-card__toggle">
+            <input type="checkbox"
+                   class="form-check-input"
+                   checked="@State.HasPreviousSurgeriesOrInjuries"
+                   @onchange="OnPreviousSurgeriesChangedAsync" />
+            <span>Previous Surgeries or Injuries</span>
+        </label>
+
+        <label class="intake-card__notes">Notes (optional)
+            <textarea class="form-control"
+                      value="@State.MedicalHistoryNotes"
+                      @oninput="OnMedicalHistoryNotesChangedAsync"></textarea>
+        </label>
+    </section>
 </section>
 
 @code {
-    [Parameter] public bool HasCurrentMedications { get; set; }
-    [Parameter] public bool HasOtherMedicalConditions { get; set; }
-    [Parameter] public bool UsesAssistiveDevices { get; set; }
-    [Parameter] public bool HasPreviousSurgeriesOrInjuries { get; set; }
-    [Parameter] public string? MedicalHistoryNotes { get; set; }
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback StateChanged { get; set; }
 
-    [Parameter] public EventCallback<bool> HasCurrentMedicationsChanged { get; set; }
-    [Parameter] public EventCallback<bool> HasOtherMedicalConditionsChanged { get; set; }
-    [Parameter] public EventCallback<bool> UsesAssistiveDevicesChanged { get; set; }
-    [Parameter] public EventCallback<bool> HasPreviousSurgeriesOrInjuriesChanged { get; set; }
-    [Parameter] public EventCallback<string?> MedicalHistoryNotesChanged { get; set; }
+    private string _medicationSearch = string.Empty;
+    private string _assistiveSearch = string.Empty;
+
+    private IReadOnlyList<IntakeMedicationItemDto> MedicationCatalog => IntakeReferenceData.GetMedications();
+
+    private IReadOnlyList<string> SelectedMedicationIds => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version).MedicationIds;
+
+    private IReadOnlyList<IntakeMedicationItemDto> SelectedMedicationItems => MedicationCatalog
+        .Where(item => SelectedMedicationIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+        .OrderBy(item => item.DisplayOrder)
+        .ToList();
+
+    private IReadOnlyList<IntakeMedicationItemDto> FilteredMedications => MedicationCatalog
+        .Where(item => string.IsNullOrWhiteSpace(_medicationSearch)
+            || item.DisplayLabel.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase)
+            || item.BrandName.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase)
+            || item.GenericName.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase))
+        .Take(string.IsNullOrWhiteSpace(_medicationSearch) ? 8 : 12)
+        .ToList();
+
+    private IReadOnlyList<string> FilteredAssistiveDevices => IntakeSupplementalOptionCatalog.AssistiveDevices
+        .Where(option => string.IsNullOrWhiteSpace(_assistiveSearch)
+            || option.Contains(_assistiveSearch, StringComparison.OrdinalIgnoreCase))
+        .Take(string.IsNullOrWhiteSpace(_assistiveSearch) ? 12 : 20)
+        .ToList();
+
+    private async Task ToggleMedicationAsync(string medicationId)
+    {
+        var structuredData = State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
+        if (structuredData.MedicationIds.Contains(medicationId, StringComparer.OrdinalIgnoreCase))
+        {
+            structuredData.MedicationIds.RemoveAll(id => string.Equals(id, medicationId, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            structuredData.MedicationIds.Add(medicationId);
+        }
+
+        State.HasCurrentMedications = structuredData.MedicationIds.Count > 0;
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task ToggleSelectionAsync(HashSet<string> values, string option, bool syncFlagsOnly = false)
+    {
+        if (!values.Add(option))
+        {
+            values.Remove(option);
+        }
+
+        if (ReferenceEquals(values, State.SelectedComorbidities))
+        {
+            State.HasOtherMedicalConditions = State.SelectedComorbidities.Count > 0;
+        }
+
+        if (ReferenceEquals(values, State.SelectedAssistiveDevices))
+        {
+            State.UsesAssistiveDevices = State.SelectedAssistiveDevices.Count > 0;
+        }
+
+        if (!syncFlagsOnly)
+        {
+            State.IsDirty = true;
+        }
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task SelectHouseLayoutAsync(string option)
+    {
+        if (State.SelectedHouseLayoutOptions.Contains(option))
+        {
+            State.SelectedHouseLayoutOptions.Clear();
+        }
+        else
+        {
+            State.SelectedHouseLayoutOptions.Clear();
+            State.SelectedHouseLayoutOptions.Add(option);
+        }
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task OnPreviousSurgeriesChangedAsync(ChangeEventArgs args)
+    {
+        State.HasPreviousSurgeriesOrInjuries = (bool)(args.Value ?? false);
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task OnMedicalHistoryNotesChangedAsync(ChangeEventArgs args)
+    {
+        State.MedicalHistoryNotes = args.Value?.ToString();
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task NotifyStateChangedAsync()
+    {
+        State.IsDirty = true;
+
+        if (StateChanged.HasDelegate)
+        {
+            await StateChanged.InvokeAsync();
+        }
+    }
 }

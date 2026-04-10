@@ -1,5 +1,7 @@
+@using System.Globalization
 @using PTDoc.Application.Outcomes
 @using PTDoc.Core.Models
+@using PTDoc.UI.Components.Notes.Models
 @inject IOutcomeMeasureRegistry Registry
 
 <div class="outcome-panel" data-testid="outcome-measure-panel">
@@ -11,6 +13,41 @@
     {
         <div class="outcome-panel__error" role="alert" data-testid="outcome-panel-error">
             @_errorMessage
+        </div>
+    }
+
+    @if (SuggestedMeasures.Count > 0)
+    {
+        <div class="outcome-panel__suggestions" data-testid="outcome-suggested-measures">
+            <div class="outcome-panel__suggestions-header">
+                <h4 class="outcome-panel__suggestions-title">Suggested from Intake</h4>
+                <p class="outcome-panel__suggestions-copy">Suggested measures stay separate from outcome history until you record a score.</p>
+            </div>
+
+            <div class="outcome-panel__suggestions-list">
+                @foreach (var suggestion in SuggestedMeasures.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+                {
+                    var isSupported = TryResolveDefinition(suggestion, out var definition);
+                    var isSelected = isSupported && _selectedDefinition?.MeasureType == definition!.MeasureType;
+
+                    if (isSupported)
+                    {
+                        <button type="button"
+                                class="@(isSelected ? "outcome-panel__suggestion-chip outcome-panel__suggestion-chip--selected" : "outcome-panel__suggestion-chip")"
+                                disabled="@IsReadOnly"
+                                @onclick="() => SelectSuggestedMeasure(definition!.MeasureType)">
+                            @suggestion
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="outcome-panel__suggestion-chip outcome-panel__suggestion-chip--unsupported"
+                              title="This suggested measure is not yet configured for scoring in PTDoc.">
+                            @suggestion
+                        </span>
+                    }
+                }
+            </div>
         </div>
     }
 
@@ -83,7 +120,7 @@
         }
     }
 
-    @if (History.Count > 0)
+    @if (RecordedEntries.Count > 0)
     {
         <div class="outcome-panel__history" data-testid="outcome-history">
             <h4 class="outcome-panel__history-title">Recorded Scores</h4>
@@ -97,14 +134,19 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var entry in History.OrderByDescending(h => h.DateRecorded))
+                    @foreach (var entry in RecordedEntries
+                        .Where(record => record.Date.HasValue)
+                        .OrderByDescending(record => record.Date))
                     {
-                        var def = Registry.GetDefinition(entry.MeasureType);
-                        var label = Registry.InterpretScore(entry.MeasureType, entry.Score);
+                        var isSupported = TryResolveDefinition(entry.Name, out var def);
+                        var parsedScore = TryParseScore(entry.Score, out var score);
+                        var label = isSupported && parsedScore
+                            ? Registry.InterpretScore(def!.MeasureType, score)
+                            : "Recorded";
                         <tr data-testid="outcome-history-row">
-                            <td>@entry.DateRecorded.ToLocalTime().ToString("MM/dd/yyyy")</td>
-                            <td>@def.Abbreviation</td>
-                            <td>@entry.Score.ToString("F1") @def.ScoreUnit</td>
+                            <td>@entry.Date!.Value.ToLocalTime().ToString("MM/dd/yyyy")</td>
+                            <td>@(isSupported ? def!.Abbreviation : entry.Name)</td>
+                            <td>@FormatRecordedScore(entry, def, parsedScore, score)</td>
                             <td>@label</td>
                         </tr>
                     }
@@ -131,7 +173,13 @@
     /// Previously recorded outcome results for trend display.
     /// </summary>
     [Parameter]
-    public IReadOnlyList<OutcomeMeasureResult> History { get; set; } = Array.Empty<OutcomeMeasureResult>();
+    public IReadOnlyList<string> SuggestedMeasures { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Outcome measures already recorded on this note.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<OutcomeMeasureEntry> RecordedEntries { get; set; } = Array.Empty<OutcomeMeasureEntry>();
 
     /// <summary>
     /// When true, disables score entry (note is signed).
@@ -157,6 +205,7 @@
     private string _selectedMeasureTypeRaw = string.Empty;
     private double? _scoreInput;
     private string _errorMessage = string.Empty;
+    private bool _hasInitializedSuggestedSelection;
 
     private string _selectedMeasureType
     {
@@ -188,6 +237,23 @@
         _availableMeasures = FilterBodyPart.HasValue
             ? Registry.GetMeasuresForBodyPart(FilterBodyPart.Value)
             : Registry.GetAllMeasures();
+
+        if (_hasInitializedSuggestedSelection || _selectedDefinition is not null)
+        {
+            return;
+        }
+
+        var firstSupportedSuggestion = SuggestedMeasures
+            .Select(suggestion => TryResolveDefinition(suggestion, out var definition) ? definition : null)
+            .FirstOrDefault(definition => definition is not null);
+
+        if (firstSupportedSuggestion is not null)
+        {
+            _selectedMeasureTypeRaw = ((int)firstSupportedSuggestion.MeasureType).ToString();
+            _selectedDefinition = firstSupportedSuggestion;
+        }
+
+        _hasInitializedSuggestedSelection = true;
     }
 
     private async Task RecordScoreAsync()
@@ -214,5 +280,57 @@
         {
             _errorMessage = "Failed to record score. Please try again.";
         }
+    }
+
+    private void SelectSuggestedMeasure(OutcomeMeasureType measureType)
+    {
+        _selectedMeasureTypeRaw = ((int)measureType).ToString();
+        _selectedDefinition = Registry.GetDefinition(measureType);
+        _scoreInput = null;
+        _errorMessage = string.Empty;
+    }
+
+    private bool TryResolveDefinition(string? rawValue, out OutcomeMeasureDefinition? definition)
+    {
+        definition = null;
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        var normalized = rawValue.Trim();
+        if (Enum.TryParse<OutcomeMeasureType>(normalized, ignoreCase: true, out var measureType))
+        {
+            definition = Registry.GetDefinition(measureType);
+            return true;
+        }
+
+        definition = Registry.GetAllMeasures().FirstOrDefault(candidate =>
+            string.Equals(candidate.Abbreviation, normalized, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate.FullName, normalized, StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains(candidate.Abbreviation, StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains(candidate.FullName, StringComparison.OrdinalIgnoreCase));
+
+        return definition is not null;
+    }
+
+    private static bool TryParseScore(string? rawValue, out double score)
+    {
+        return double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out score)
+            || double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out score);
+    }
+
+    private static string FormatRecordedScore(
+        OutcomeMeasureEntry entry,
+        OutcomeMeasureDefinition? definition,
+        bool parsedScore,
+        double score)
+    {
+        if (definition is not null && parsedScore)
+        {
+            return $"{score:F1} {definition.ScoreUnit}";
+        }
+
+        return string.IsNullOrWhiteSpace(entry.Score) ? "Not recorded" : entry.Score;
     }
 }

@@ -1,3 +1,4 @@
+using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
 
 namespace PTDoc.UI.Components.Intake.Models;
@@ -53,7 +54,27 @@ public sealed class IntakeWizardState
     public string? MedicalHistoryNotes { get; set; }
 
     public string? SelectedBodyRegion { get; set; }
+    public int? PainSeverityScore { get; set; }
     public HashSet<BodyRegion> SelectedBodyRegions { get; set; } = new();
     public Dictionary<string, object> PainDetailDrafts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public IntakeStructuredDataDto? StructuredData { get; set; }
+    public HashSet<string> SelectedComorbidities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedAssistiveDevices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedLivingSituations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedHouseLayoutOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> RecommendedOutcomeMeasures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public IntakeStructuredDataDto EnsureStructuredData(string schemaVersion)
+    {
+        StructuredData ??= new IntakeStructuredDataDto();
+        if (string.IsNullOrWhiteSpace(StructuredData.SchemaVersion))
+        {
+            StructuredData.SchemaVersion = schemaVersion;
+        }
+
+        StructuredData.BodyPartSelections ??= new List<IntakeBodyPartSelectionDto>();
+        StructuredData.MedicationIds ??= new List<string>();
+        StructuredData.PainDescriptorIds ??= new List<string>();
+        return StructuredData;
+    }
 }

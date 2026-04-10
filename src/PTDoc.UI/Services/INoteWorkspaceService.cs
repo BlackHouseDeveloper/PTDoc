@@ -10,6 +10,8 @@ namespace PTDoc.UI.Services;
 public interface INoteWorkspaceService
 {
     Task<NoteWorkspaceLoadResult> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceEvaluationSeedResult> GetEvaluationSeedAsync(Guid patientId, CancellationToken cancellationToken = default);
+    Task<NoteWorkspaceCarryForwardSeedResult> GetCarryForwardSeedAsync(Guid patientId, string workspaceNoteType, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSaveResult> SaveDraftAsync(NoteWorkspaceDraft draft, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceSubmitResult> SubmitAsync(Guid noteId, bool consentAccepted, bool intentConfirmed, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceAiAcceptanceResult> AcceptAiSuggestionAsync(
@@ -20,6 +22,8 @@ public interface INoteWorkspaceService
         CancellationToken cancellationToken = default);
     Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
+    Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(BodyPart bodyPart, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(string? query, int take = 20, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(string? query, int take = 20, CancellationToken cancellationToken = default);
 }
 
@@ -31,6 +35,7 @@ public sealed class NoteWorkspaceDraft
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
     public bool IsExistingNote { get; init; }
+    public OverrideSubmission? Override { get; init; }
     public NoteWorkspacePayload Payload { get; init; } = new();
 }
 
@@ -46,6 +51,25 @@ public sealed class NoteWorkspaceLoadResult
     public NoteWorkspacePayload Payload { get; init; } = new();
 }
 
+public sealed class NoteWorkspaceEvaluationSeedResult
+{
+    public bool Success { get; init; }
+    public bool HasSeed { get; init; }
+    public string? ErrorMessage { get; init; }
+    public bool FromLockedSubmittedIntake { get; init; }
+    public NoteWorkspacePayload Payload { get; init; } = new();
+}
+
+public sealed class NoteWorkspaceCarryForwardSeedResult
+{
+    public bool Success { get; init; }
+    public bool HasSeed { get; init; }
+    public string? ErrorMessage { get; init; }
+    public string SourceNoteType { get; init; } = string.Empty;
+    public DateTime? SourceNoteDateOfService { get; init; }
+    public NoteWorkspacePayload Payload { get; init; } = new();
+}
+
 public sealed class NoteWorkspaceSaveResult
 {
     public bool Success { get; init; }
@@ -57,6 +81,9 @@ public sealed class NoteWorkspaceSaveResult
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public bool RequiresOverride { get; init; }
+    public ComplianceRuleType? RuleType { get; init; }
+    public bool IsOverridable { get; init; }
+    public IReadOnlyList<OverrideRequirement> OverrideRequirements { get; init; } = Array.Empty<OverrideRequirement>();
     public ComplianceWarning? ComplianceWarning { get; init; }
     public NoteWorkspacePayload? Payload { get; init; }
 }

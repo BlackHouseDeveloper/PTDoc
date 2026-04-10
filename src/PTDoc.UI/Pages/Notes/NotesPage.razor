@@ -1,5 +1,5 @@
 @page "/notes"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.NoteRead)]
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 @using PTDoc.Application.Configurations.Header

@@ -1,7 +1,8 @@
 @page "/progress-tracking"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
 @rendermode InteractiveServer
 @using System.Globalization
+@using PTDoc.Application.Services
 @using PTDoc.UI.Components.ProgressTracking
 @using PTDoc.UI.Components.ProgressTracking.Models
 @implements IDisposable

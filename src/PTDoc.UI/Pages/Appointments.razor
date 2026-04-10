@@ -1,5 +1,5 @@
 @page "/appointments"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.SchedulingAccess)]
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models

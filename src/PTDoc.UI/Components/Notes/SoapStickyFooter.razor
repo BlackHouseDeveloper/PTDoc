@@ -73,49 +73,58 @@
         </button>
 
         <span class="soap-sticky-footer__state-label" data-testid="footer-state-label">
-            @NoteType • @ActiveSection • @GetSaveStateLabel()
+            @NoteType • @ActiveSection • @GetFooterStateLabel()
         </span>
     </div>
 
     <!-- Right: Save + Submit -->
-    <div class="soap-sticky-footer__actions">
-        <button type="button"
-                class="soap-sticky-footer__save-btn @(SaveState == NoteSaveState.Saving ? "soap-sticky-footer__save-btn--saving" : "")"
-                disabled="@(IsReadOnly || DisableSave || SaveState == NoteSaveState.Saving)"
-                @onclick="() => OnSave.InvokeAsync()"
-                aria-label="Save draft"
-                data-testid="footer-save">
-            @if (SaveState == NoteSaveState.Saving)
+    @if (ShowSaveAction || ShowSubmitAction)
+    {
+        <div class="soap-sticky-footer__actions">
+            @if (ShowSaveAction)
             {
-                <span class="soap-sticky-footer__spinner" aria-hidden="true"></span>
+                <button type="button"
+                        class="soap-sticky-footer__save-btn @(SaveState == NoteSaveState.Saving ? "soap-sticky-footer__save-btn--saving" : "")"
+                        disabled="@(DisableSave || SaveState == NoteSaveState.Saving)"
+                        @onclick="() => OnSave.InvokeAsync()"
+                        aria-label="Save draft"
+                        data-testid="footer-save">
+                    @if (SaveState == NoteSaveState.Saving)
+                    {
+                        <span class="soap-sticky-footer__spinner" aria-hidden="true"></span>
+                    }
+                    else
+                    {
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M11.6667 12.8333H2.33333C1.96667 12.8333 1.61533 12.6878 1.3653 12.4348C1.1153 12.1818 0.975 11.8333 0.975 11.4667V2.53333C0.975 2.16667 1.1153 1.81818 1.3653 1.56515C1.61533 1.31212 1.96667 1.16667 2.33333 1.16667H9.91667L13.0253 4.275V11.4667C13.0253 11.8333 12.885 12.1818 12.635 12.4348C12.385 12.6878 12.033 12.8333 11.6667 12.8333Z"
+                                  stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M9.91667 12.8333V7.58333H4.08333V12.8333" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M4.08333 1.16667V4.66667H8.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    }
+                    Save
+                </button>
             }
-            else
-            {
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
-                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M11.6667 12.8333H2.33333C1.96667 12.8333 1.61533 12.6878 1.3653 12.4348C1.1153 12.1818 0.975 11.8333 0.975 11.4667V2.53333C0.975 2.16667 1.1153 1.81818 1.3653 1.56515C1.61533 1.31212 1.96667 1.16667 2.33333 1.16667H9.91667L13.0253 4.275V11.4667C13.0253 11.8333 12.885 12.1818 12.635 12.4348C12.385 12.6878 12.033 12.8333 11.6667 12.8333Z"
-                          stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M9.91667 12.8333V7.58333H4.08333V12.8333" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M4.08333 1.16667V4.66667H8.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            }
-            Save
-        </button>
 
-        <button type="button"
-                class="soap-sticky-footer__submit-btn"
-                disabled="@(DisableSubmit || (IsReadOnly && !AllowSubmitWhenReadOnly))"
-                @onclick="() => OnSubmit.InvokeAsync()"
-                data-testid="footer-submit">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
-                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7"
-                      stroke="currentColor" stroke-width="1.5"
-                      stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Submit
-        </button>
-    </div>
+            @if (ShowSubmitAction)
+            {
+                <button type="button"
+                        class="soap-sticky-footer__submit-btn"
+                        disabled="@DisableSubmit"
+                        @onclick="() => OnSubmit.InvokeAsync()"
+                        data-testid="footer-submit">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                         xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M11.6667 3.5L5.25 9.91667L2.33333 7"
+                              stroke="currentColor" stroke-width="1.5"
+                              stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Submit
+                </button>
+            }
+        </div>
+    }
 </footer>
 
 @code {
@@ -139,6 +148,11 @@
 
     private bool IsFirstSection => ActiveSection == _sections[0];
     private bool IsLastSection  => ActiveSection == _sections[^1];
+    private bool ShowSaveAction => !IsReadOnly;
+    private bool ShowSubmitAction => !IsReadOnly || AllowSubmitWhenReadOnly;
+    private string GetFooterStateLabel() => IsReadOnly && !AllowSubmitWhenReadOnly
+        ? "Read-only"
+        : GetSaveStateLabel();
 
     private string GetSaveStateLabel() => SaveState switch
     {

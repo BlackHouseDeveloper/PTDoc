@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -16,6 +17,16 @@ public static class NoteWorkspaceV2Endpoints
             .RequireAuthorization(AuthorizationPolicies.NoteRead)
             .WithName("LoadNoteWorkspaceV2")
             .WithSummary("Load a typed v2 eval/reeval/progress workspace snapshot");
+
+        group.MapGet("/{patientId:guid}/evaluation-seed", GetEvaluationSeed)
+            .RequireAuthorization(AuthorizationPolicies.NoteRead)
+            .WithName("GetEvaluationSeedWorkspaceV2")
+            .WithSummary("Build a typed Evaluation workspace seed from the latest applicable intake");
+
+        group.MapGet("/{patientId:guid}/carry-forward", GetCarryForwardSeed)
+            .RequireAuthorization(AuthorizationPolicies.NoteRead)
+            .WithName("GetCarryForwardSeedWorkspaceV2")
+            .WithSummary("Build a typed signed-note carry-forward seed for a new workspace draft");
 
         group.MapPost("/", SaveWorkspace)
             .RequireAuthorization(AuthorizationPolicies.NoteWrite)
@@ -50,6 +61,29 @@ public static class NoteWorkspaceV2Endpoints
         return workspace is null
             ? Results.NotFound(new { error = $"Workspace note {noteId} was not found for patient {patientId}." })
             : Results.Ok(workspace);
+    }
+
+    private static async Task<IResult> GetEvaluationSeed(
+        Guid patientId,
+        INoteWorkspaceV2Service service,
+        CancellationToken cancellationToken)
+    {
+        var seed = await service.GetEvaluationSeedAsync(patientId, cancellationToken);
+        return seed is null
+            ? Results.NotFound(new { error = $"No applicable intake seed was found for patient {patientId}." })
+            : Results.Ok(seed);
+    }
+
+    private static async Task<IResult> GetCarryForwardSeed(
+        Guid patientId,
+        [FromQuery] NoteType noteType,
+        INoteWorkspaceV2Service service,
+        CancellationToken cancellationToken)
+    {
+        var seed = await service.GetCarryForwardSeedAsync(patientId, noteType, cancellationToken);
+        return seed is null
+            ? Results.NotFound(new { error = $"No applicable signed-note carry-forward seed was found for patient {patientId} and note type {noteType}." })
+            : Results.Ok(seed);
     }
 
     private static async Task<IResult> SaveWorkspace(
@@ -104,6 +138,32 @@ public static class NoteWorkspaceV2Endpoints
                 IsValid = false,
                 Errors = [ex.Message]
             });
+        }
+        catch (ArgumentException ex)
+        {
+            var response = new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = [ex.Message]
+            };
+
+            if (request.Override?.RuleType is { } overrideRuleType)
+            {
+                response.RequiresOverride = true;
+                response.RuleType = overrideRuleType;
+                response.IsOverridable = true;
+                response.OverrideRequirements =
+                [
+                    new OverrideRequirement
+                    {
+                        RuleType = overrideRuleType,
+                        IsOverridable = true,
+                        Message = ex.Message
+                    }
+                ];
+            }
+
+            return Results.UnprocessableEntity(response);
         }
     }
 

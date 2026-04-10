@@ -15,6 +15,7 @@ using PTDoc.Api.Notes;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -22,6 +23,7 @@ using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Sync;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 using Xunit;
 
 namespace PTDoc.Tests.Security;
@@ -1231,7 +1233,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         {
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily),
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = ptaUserId,
@@ -1269,7 +1271,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         {
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily),
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = ptaUserId,
@@ -1308,7 +1310,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         {
             PatientId = patient.Id,
             NoteType = NoteType.Evaluation,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(),
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = ptUserId,
@@ -1329,7 +1331,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     // ─── RQ-033: Diagnosis code required before signing ────────────────────────
 
     [Fact]
-    public async Task RQ033_SignNote_BlockedWhenPatientHasNoDiagnoses()
+    public async Task RQ033_SignNote_BlockedWhenNoteHasNoDiagnoses()
     {
         var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
@@ -1366,19 +1368,19 @@ public class PfptRoleComplianceTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RQ033_SignNote_SucceedsWhenPatientHasDiagnosis()
+    public async Task RQ033_SignNote_SucceedsWhenNoteHasDiagnosis()
     {
         var signatureService = CreateSignatureService();
         var userId = Guid.NewGuid();
         await CreateClinicianAsync(Roles.PT, userId);
-        var patient = CreateTestPatient(); // has DiagnosisCodesJson with M54.5
+        var patient = CreateTestPatient();
         _db.Patients.Add(patient);
 
         var note = new ClinicalNote
         {
             PatientId = patient.Id,
             NoteType = NoteType.Daily,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily),
             DateOfService = DateTime.UtcNow,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -1651,4 +1653,26 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         SyncState = SyncState.Pending,
         DiagnosisCodesJson = "[{\"IcdCode\":\"M54.5\",\"Description\":\"Low back pain\",\"IsPrimary\":true}]"
     };
+
+    private static string CreateWorkspaceNoteContentWithDiagnosis(
+        string code = "M54.5",
+        string description = "Low back pain",
+        NoteType noteType = NoteType.Evaluation)
+    {
+        return JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = noteType,
+            Assessment = new WorkspaceAssessmentV2
+            {
+                DiagnosisCodes =
+                [
+                    new DiagnosisCodeV2
+                    {
+                        Code = code,
+                        Description = description
+                    }
+                ]
+            }
+        });
+    }
 }

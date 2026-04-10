@@ -42,4 +42,8 @@ public class CptCodeEntry
     /// <summary>Billing units (each unit = 15 minutes per CMS guidance).</summary>
     public int Units { get; set; } = 2;
     public int? Minutes { get; set; }
+    public List<string> Modifiers { get; set; } = new();
+    public List<string> ModifierOptions { get; set; } = new();
+    public List<string> SuggestedModifiers { get; set; } = new();
+    public string? ModifierSource { get; set; }
 }

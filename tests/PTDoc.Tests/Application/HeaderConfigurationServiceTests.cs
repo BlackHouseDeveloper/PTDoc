@@ -9,11 +9,11 @@ public sealed class HeaderConfigurationServiceTests
 
     [Theory]
     [InlineData("/intake?step=0", "Step 1 of 4: Demographics")]
-    [InlineData("/intake?step=1", "Step 2 of 4: Pain Assessment")]
+    [InlineData("/intake?step=1", "Step 2 of 4: Medical History / Pain Assessment")]
     [InlineData("/intake?step=2", "Step 3 of 4: Pain Details")]
     [InlineData("/intake?step=3", "Step 4 of 4: Review")]
     [InlineData("/intake?step=4", "Step 4 of 4: Review")] // 1-based query values are supported
-    [InlineData("/intake?step=PainAssessment", "Step 2 of 4: Pain Assessment")]
+    [InlineData("/intake?step=PainAssessment", "Step 2 of 4: Medical History / Pain Assessment")]
     [InlineData("/intake/123?step=Review", "Step 4 of 4: Review")]
     public void GetConfiguration_ReturnsStepSubtitle_ForIntakeRoutes(string route, string expectedSubtitle)
     {

@@ -37,6 +37,57 @@
     gap: var(--spacing-1);
 }
 
+.outcome-panel__suggestions,
+.outcome-panel__suggestions-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.outcome-panel__suggestions-title {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin: 0;
+}
+
+.outcome-panel__suggestions-copy {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+.outcome-panel__suggestions-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.outcome-panel__suggestion-chip {
+    align-items: center;
+    background: color-mix(in srgb, var(--muted) 82%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--foreground);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--text-sm);
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+.outcome-panel__suggestion-chip--selected {
+    background: color-mix(in srgb, var(--accent) 82%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+    color: var(--primary);
+}
+
+.outcome-panel__suggestion-chip--unsupported {
+    background: color-mix(in srgb, var(--muted) 72%, transparent);
+    color: var(--muted-foreground);
+    cursor: default;
+}
+
 .outcome-panel__label {
     font-size: var(--text-sm);
     font-weight: 500;

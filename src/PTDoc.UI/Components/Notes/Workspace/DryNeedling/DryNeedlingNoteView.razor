@@ -27,8 +27,18 @@
                                  OnChanged="HandleChanged" />
 
     <footer class="dry-note__actions">
-        <button type="button" class="dry-note__save-btn" disabled="@(IsReadOnly || DisableSave)" @onclick="OnSave">Save Dry Needling Note</button>
-        <button type="button" class="dry-note__submit-btn" disabled="@(DisableSubmit || ((IsReadOnly && !AllowSubmitWhenReadOnly) || HasRequiredFieldsMissing))" @onclick="OnSubmit">Submit Dry Needling Note</button>
+        @if (!IsReadOnly)
+        {
+            <button type="button" class="dry-note__save-btn" disabled="@DisableSave" @onclick="OnSave">Save Dry Needling Note</button>
+        }
+
+        @if (!IsReadOnly || AllowSubmitWhenReadOnly)
+        {
+            <button type="button"
+                    class="dry-note__submit-btn"
+                    disabled="@(DisableSubmit || HasRequiredFieldsMissing)"
+                    @onclick="OnSubmit">Submit Dry Needling Note</button>
+        }
     </footer>
 </section>
 

@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 
 @using System.Net
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Configurations.Header
@@ -73,10 +74,19 @@
                             <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                             break;
                         case IntakeStep.PainDetails:
-                            <PainDetailsStep State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainDetailsContinueAsync" />
+                            <PainDetailsStep State="@State"
+                                             OnBack="HandleBackAsync"
+                                             OnContinue="HandlePainDetailsContinueAsync"
+                                             OnStateChanged="HandleStateChangedAsync"
+                                             ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                             break;
                         case IntakeStep.Review:
-                            <ReviewStep State="@State" ValidationMessage="@_validationMessage" OnBack="HandleBackAsync" OnSubmit="HandleSubmitAsync" OnEditStep="HandleEditStepAsync" />
+                            <ReviewStep State="@State"
+                                        ValidationMessage="@_validationMessage"
+                                        OnBack="HandleBackAsync"
+                                        OnSubmit="HandleSubmitAsync"
+                                        OnEditStep="HandleEditStepAsync"
+                                        ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                             break;
                         default:
                             <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
@@ -97,6 +107,7 @@
     private bool _showDraftUnavailable;
     private bool _canSelectPatient;
     private bool _canManageDrafts;
+    private bool _canViewOutcomeMeasureRecommendations;
     private bool _isLoadingDraft;
     private bool _isSavingDraft;
     private string? _validationMessage;
@@ -107,6 +118,7 @@
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner},{Roles.FrontDesk}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+    private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
     private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
     private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || !CanEditDraft;
     private string? ReadOnlyNoticeMessage => State.IsLocked
@@ -138,6 +150,12 @@
              user.IsInRole(Roles.PTA) ||
              user.IsInRole(Roles.Admin) ||
              user.IsInRole(Roles.FrontDesk));
+
+        _canViewOutcomeMeasureRecommendations = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.Owner));
 
         State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) ||
             !isAuthenticated ||
@@ -610,7 +628,14 @@
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
             SelectedBodyRegion = SerializeSelectedRegions(state),
+            PainSeverityScore = state.PainSeverityScore,
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            StructuredData = state.StructuredData,
+            SelectedComorbidities = state.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedAssistiveDevices = state.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedLivingSituations = state.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
@@ -660,7 +685,14 @@
             MedicalHistoryNotes = draft.MedicalHistoryNotes,
             SelectedBodyRegion = draft.SelectedBodyRegion,
             SelectedBodyRegions = DeserializeSelectedRegions(draft.SelectedBodyRegion),
+            PainSeverityScore = draft.PainSeverityScore ?? ExtractLegacyPainSeverity(draft.PainDetailDrafts),
             PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            StructuredData = draft.StructuredData,
+            SelectedComorbidities = draft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedAssistiveDevices = draft.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedLivingSituations = draft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedHouseLayoutOptions = draft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RecommendedOutcomeMeasures = draft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = draft.IsSubmitted,
             IsLocked = draft.IsLocked
         };
@@ -689,10 +721,76 @@
         return step switch
         {
             IntakeStep.Demographics => "Demographics",
-            IntakeStep.PainAssessment => "Pain Assessment",
+            IntakeStep.PainAssessment => "Medical History / Pain Assessment",
             IntakeStep.PainDetails => "Pain Details",
             _ => "Review"
         };
+    }
+
+    private static int? ExtractLegacyPainSeverity(IReadOnlyDictionary<string, object> painDetailDrafts)
+    {
+        foreach (var draft in painDetailDrafts.Values)
+        {
+            if (TryFindLegacyPainSeverity(draft, out var value))
+            {
+                return Math.Clamp(value, 0, 10);
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryFindLegacyPainSeverity(object? value, out int result)
+    {
+        switch (value)
+        {
+            case null:
+                result = default;
+                return false;
+            case int intValue:
+                result = intValue;
+                return true;
+            case long longValue when longValue is >= int.MinValue and <= int.MaxValue:
+                result = (int)longValue;
+                return true;
+            case JsonElement jsonElement:
+                return TryFindLegacyPainSeverity(jsonElement, out result);
+            default:
+                result = default;
+                return false;
+        }
+    }
+
+    private static bool TryFindLegacyPainSeverity(JsonElement element, out int result)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Number when element.TryGetInt32(out result):
+                return true;
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (TryFindLegacyPainSeverity(property.Value, out result))
+                    {
+                        return true;
+                    }
+                }
+
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (TryFindLegacyPainSeverity(item, out result))
+                    {
+                        return true;
+                    }
+                }
+
+                break;
+        }
+
+        result = default;
+        return false;
     }
 
     private static string? SerializeSelectedRegions(IntakeWizardState state)

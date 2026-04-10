@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -73,6 +74,99 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         };
     }
 
+    public async Task<NoteWorkspaceEvaluationSeedResult> GetEvaluationSeedAsync(
+        Guid patientId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync(
+            $"/api/v2/notes/workspace/{patientId}/evaluation-seed",
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            };
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = false,
+                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+            };
+        }
+
+        var seed = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>(SerializerOptions, cancellationToken);
+        if (seed is null)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = false,
+                ErrorMessage = "Evaluation seed payload was empty."
+            };
+        }
+
+        return new NoteWorkspaceEvaluationSeedResult
+        {
+            Success = true,
+            HasSeed = true,
+            FromLockedSubmittedIntake = seed.FromLockedSubmittedIntake,
+            Payload = MapToUiPayload(seed.Payload)
+        };
+    }
+
+    public async Task<NoteWorkspaceCarryForwardSeedResult> GetCarryForwardSeedAsync(
+        Guid patientId,
+        string workspaceNoteType,
+        CancellationToken cancellationToken = default)
+    {
+        var noteType = ToApiNoteType(workspaceNoteType);
+        using var response = await httpClient.GetAsync(
+            $"/api/v2/notes/workspace/{patientId}/carry-forward?noteType={Uri.EscapeDataString(noteType.ToString())}",
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            };
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = false,
+                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+            };
+        }
+
+        var seed = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2CarryForwardResponse>(SerializerOptions, cancellationToken);
+        if (seed is null)
+        {
+            return new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = false,
+                ErrorMessage = "Carry-forward seed payload was empty."
+            };
+        }
+
+        return new NoteWorkspaceCarryForwardSeedResult
+        {
+            Success = true,
+            HasSeed = true,
+            SourceNoteType = ToWorkspaceNoteType(seed.SourceNoteType),
+            SourceNoteDateOfService = seed.SourceNoteDateOfService,
+            Payload = MapToUiPayload(seed.Payload)
+        };
+    }
+
     public async Task<NoteWorkspaceSaveResult> SaveDraftAsync(
         NoteWorkspaceDraft draft,
         CancellationToken cancellationToken = default)
@@ -89,7 +183,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             PatientId = draft.PatientId,
             DateOfService = draft.DateOfService,
             NoteType = noteType,
-            Payload = MapToV2Payload(draft.Payload, noteType)
+            Payload = MapToV2Payload(draft.Payload, noteType),
+            Override = draft.Override
         };
 
         var response = await httpClient.PostAsJsonAsync("/api/v2/notes/workspace/", request, cancellationToken);
@@ -106,7 +201,10 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                         ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
                     Errors = failedSave.Errors,
                     Warnings = failedSave.Warnings,
-                    RequiresOverride = failedSave.RequiresOverride
+                    RequiresOverride = failedSave.RequiresOverride,
+                    RuleType = failedSave.RuleType,
+                    IsOverridable = failedSave.IsOverridable,
+                    OverrideRequirements = failedSave.OverrideRequirements
                 };
             }
 
@@ -135,6 +233,9 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             Errors = saved.Errors,
             Warnings = saved.Warnings,
             RequiresOverride = saved.RequiresOverride,
+            RuleType = saved.RuleType,
+            IsOverridable = saved.IsOverridable,
+            OverrideRequirements = saved.OverrideRequirements,
             Payload = MapToUiPayload(saved.Workspace.Payload)
         };
     }
@@ -308,6 +409,52 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
     }
 
+    public async Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(
+        BodyPart bodyPart,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync(
+            $"/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}",
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load the body-region catalog.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync<BodyRegionCatalog>(SerializerOptions, cancellationToken)
+            ?? new BodyRegionCatalog { BodyPart = bodyPart };
+    }
+
+    public async Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(
+        string? query,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Array.Empty<CodeLookupEntry>();
+        }
+
+        using var response = await httpClient.GetAsync(
+            $"/api/v2/notes/workspace/lookup/cpt?q={Uri.EscapeDataString(query.Trim())}&take={Math.Clamp(take, 1, 100)}",
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to search CPT codes.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
+        return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
+    }
+
     private async Task<NoteResponse?> LoadLegacyNoteAsync(
         Guid patientId,
         Guid noteId,
@@ -337,7 +484,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             {
                 ContentJson = payloadJson,
                 DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson
+                CptCodesJson = cptCodesJson,
+                Override = draft.Override
             };
 
             response = await httpClient.PutAsJsonAsync($"/api/v1/notes/{draft.NoteId.Value}", updateRequest, cancellationToken);
@@ -350,7 +498,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 NoteType = ToApiNoteType(draft.WorkspaceNoteType),
                 ContentJson = payloadJson,
                 DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson
+                CptCodesJson = cptCodesJson,
+                Override = draft.Override
             };
 
             response = await httpClient.PostAsJsonAsync("/api/v1/notes/", createRequest, cancellationToken);
@@ -369,7 +518,10 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                         ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
                     Errors = failedSave.Errors,
                     Warnings = failedSave.Warnings,
-                    RequiresOverride = failedSave.RequiresOverride
+                    RequiresOverride = failedSave.RequiresOverride,
+                    RuleType = failedSave.RuleType,
+                    IsOverridable = failedSave.IsOverridable,
+                    OverrideRequirements = failedSave.OverrideRequirements
                 };
             }
 
@@ -398,6 +550,9 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             Errors = operation.Errors,
             Warnings = operation.Warnings,
             RequiresOverride = operation.RequiresOverride,
+            RuleType = operation.RuleType,
+            IsOverridable = operation.IsOverridable,
+            OverrideRequirements = operation.OverrideRequirements,
             ComplianceWarning = operation.ComplianceWarning,
             Payload = ParseLegacyPayload(operation.Note.ContentJson, operation.Note.NoteType)
         };
@@ -430,7 +585,25 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 Code = code.Code,
                 Units = code.Units,
                 Minutes = code.Minutes,
-                IsTimed = false
+                IsTimed = false,
+                Modifiers = code.Modifiers
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ModifierOptions = code.ModifierOptions
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                SuggestedModifiers = code.SuggestedModifiers
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                    ? null
+                    : code.ModifierSource.Trim()
             })
             .ToList();
 
@@ -470,6 +643,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         var uiPayload = new NoteWorkspacePayload
         {
             WorkspaceNoteType = ToWorkspaceNoteType(payload.NoteType),
+            StructuredPayload = ClonePayload(payload),
             Subjective = new SubjectiveVm
             {
                 Problems = CloneSet(payload.Subjective.Problems),
@@ -500,7 +674,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 Comorbidities = CloneSet(payload.Subjective.Comorbidities),
                 PriorTreatments = CloneSet(payload.Subjective.PriorTreatment.Treatments),
                 OtherTreatment = payload.Subjective.PriorTreatment.OtherTreatment,
-                TakingMedications = payload.Subjective.Medications.Count > 0 ? true : null,
+                TakingMedications = payload.Subjective.TakingMedications
+                    ?? (payload.Subjective.Medications.Count > 0 ? true : null),
                 MedicationDetails = payload.Subjective.Medications.Count == 0
                     ? null
                     : string.Join(", ", payload.Subjective.Medications.Select(med => med.Name).Where(name => !string.IsNullOrWhiteSpace(name)))
@@ -514,6 +689,11 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 GaitDeviations = CloneSet(payload.Objective.GaitObservation.Deviations),
                 AdditionalGaitObservations = payload.Objective.GaitObservation.AdditionalObservations,
                 ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes,
+                RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
                 OutcomeMeasures = payload.Objective.OutcomeMeasures
                     .Select(entry => new OutcomeMeasureEntry
                     {
@@ -564,11 +744,14 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                     .Select(group => group.First())
                     .ToList(),
                 PatientPersonalGoals = payload.Assessment.PatientPersonalGoals,
+                MotivationLevel = payload.Assessment.MotivationLevel,
+                MotivatingFactors = CloneSet(payload.Assessment.MotivatingFactors),
                 AdditionalMotivationNotes = payload.Assessment.MotivationNotes,
                 SupportSystemLevel = payload.Assessment.SupportSystemLevel,
                 AvailableResources = CloneSet(payload.Assessment.AvailableResources),
                 BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery),
                 SupportSystemDetails = payload.Assessment.SupportSystemDetails,
+                SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes,
                 OverallPrognosis = payload.Assessment.OverallPrognosis
             },
             Plan = new PlanVm
@@ -579,7 +762,11 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                         Code = code.Code,
                         Description = code.Description,
                         Units = code.Units,
-                        Minutes = code.Minutes
+                        Minutes = code.Minutes,
+                        Modifiers = [.. code.Modifiers],
+                        ModifierOptions = [.. code.ModifierOptions],
+                        SuggestedModifiers = [.. code.SuggestedModifiers],
+                        ModifierSource = code.ModifierSource
                     })
                     .ToList(),
                 TreatmentFrequency = FormatFrequency(payload.Plan.TreatmentFrequencyDaysPerWeek),
@@ -596,136 +783,371 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
 
     private static NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
     {
-        var goals = payload.Assessment.Goals
-            .Where(goal => !string.IsNullOrWhiteSpace(goal.Description) && (!goal.IsAiSuggested || goal.IsAccepted))
-            .Select(goal => new WorkspaceGoalEntryV2
+        var preservedPayload = ClonePayload(payload.StructuredPayload) ?? new NoteWorkspaceV2Payload();
+        preservedPayload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
+        preservedPayload.NoteType = noteType;
+        preservedPayload.Subjective ??= new WorkspaceSubjectiveV2();
+        preservedPayload.Objective ??= new WorkspaceObjectiveV2();
+        preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
+        preservedPayload.Plan ??= new WorkspacePlanV2();
+        preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+
+        var primaryBodyPart = ParseBodyPart(payload.Objective.SelectedBodyPart);
+
+        preservedPayload.Subjective.Problems = CloneSet(payload.Subjective.Problems);
+        preservedPayload.Subjective.OtherProblem = payload.Subjective.OtherProblem;
+        preservedPayload.Subjective.Locations = CloneSet(payload.Subjective.Locations);
+        preservedPayload.Subjective.OtherLocation = payload.Subjective.OtherLocation;
+        preservedPayload.Subjective.CurrentPainScore = payload.Subjective.CurrentPainScore;
+        preservedPayload.Subjective.BestPainScore = payload.Subjective.BestPainScore;
+        preservedPayload.Subjective.WorstPainScore = payload.Subjective.WorstPainScore;
+        preservedPayload.Subjective.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.Subjective.OnsetDate = payload.Subjective.OnsetDate;
+        preservedPayload.Subjective.OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo;
+        preservedPayload.Subjective.CauseUnknown = payload.Subjective.CauseUnknown;
+        preservedPayload.Subjective.KnownCause = payload.Subjective.KnownCause;
+        preservedPayload.Subjective.PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel);
+        preservedPayload.Subjective.FunctionalLimitations = MergeFunctionalLimitations(
+            preservedPayload.Subjective.FunctionalLimitations,
+            payload.Subjective.FunctionalLimitations,
+            primaryBodyPart);
+        preservedPayload.Subjective.AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations;
+        preservedPayload.Subjective.Imaging ??= new ImagingDetailsV2();
+        preservedPayload.Subjective.Imaging.HasImaging = payload.Subjective.HasImaging;
+        preservedPayload.Subjective.AssistiveDevice ??= new AssistiveDeviceDetailsV2();
+        preservedPayload.Subjective.AssistiveDevice.UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice;
+        preservedPayload.Subjective.EmploymentStatus = payload.Subjective.EmploymentStatus;
+        preservedPayload.Subjective.LivingSituation = CloneSet(payload.Subjective.LivingSituation);
+        preservedPayload.Subjective.OtherLivingSituation = payload.Subjective.OtherLivingSituation;
+        preservedPayload.Subjective.SupportSystem = CloneSet(payload.Subjective.SupportSystem);
+        preservedPayload.Subjective.OtherSupport = payload.Subjective.OtherSupport;
+        preservedPayload.Subjective.Comorbidities = CloneSet(payload.Subjective.Comorbidities);
+        preservedPayload.Subjective.PriorTreatment ??= new PriorTreatmentDetailsV2();
+        preservedPayload.Subjective.PriorTreatment.Treatments = CloneSet(payload.Subjective.PriorTreatments);
+        preservedPayload.Subjective.PriorTreatment.OtherTreatment = payload.Subjective.OtherTreatment;
+        preservedPayload.Subjective.TakingMedications = payload.Subjective.TakingMedications;
+        preservedPayload.Subjective.Medications = payload.Subjective.TakingMedications == false
+            ? []
+            : MergeMedications(
+                preservedPayload.Subjective.Medications,
+                payload.Subjective.MedicationDetails);
+
+        preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
+        preservedPayload.Objective.GaitObservation ??= new GaitObservationV2();
+        preservedPayload.Objective.GaitObservation.PrimaryPattern = payload.Objective.PrimaryGaitPattern ?? string.Empty;
+        preservedPayload.Objective.GaitObservation.Deviations = CloneSet(payload.Objective.GaitDeviations);
+        preservedPayload.Objective.GaitObservation.AdditionalObservations = payload.Objective.AdditionalGaitObservations;
+        preservedPayload.Objective.ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes;
+        preservedPayload.Objective.RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        preservedPayload.Objective.OutcomeMeasures = payload.Objective.OutcomeMeasures
+            .Select(TryMapOutcomeMeasure)
+            .Where(entry => entry is not null)
+            .Select(entry => entry!)
+            .ToList();
+
+        preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
+        preservedPayload.Assessment.FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations;
+        preservedPayload.Assessment.DeficitsSummary = payload.Assessment.DeficitsSummary;
+        preservedPayload.Assessment.DeficitCategories = [.. payload.Assessment.DeficitCategories];
+        preservedPayload.Assessment.DiagnosisCodes = payload.Assessment.DiagnosisCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code => new DiagnosisCodeV2
+            {
+                Code = code.Code.Trim(),
+                Description = code.Description?.Trim() ?? string.Empty
+            })
+            .ToList();
+        preservedPayload.Assessment.Goals = MergeGoals(preservedPayload.Assessment.Goals, payload.Assessment.Goals);
+        preservedPayload.Assessment.MotivationLevel = payload.Assessment.MotivationLevel;
+        preservedPayload.Assessment.MotivatingFactors = CloneSet(payload.Assessment.MotivatingFactors);
+        preservedPayload.Assessment.AppearsMotivated = DeriveAppearsMotivated(payload.Assessment.MotivationLevel);
+        preservedPayload.Assessment.PatientPersonalGoals = payload.Assessment.PatientPersonalGoals;
+        preservedPayload.Assessment.MotivationNotes = payload.Assessment.AdditionalMotivationNotes;
+        preservedPayload.Assessment.SupportSystemLevel = payload.Assessment.SupportSystemLevel;
+        preservedPayload.Assessment.AvailableResources = CloneSet(payload.Assessment.AvailableResources);
+        preservedPayload.Assessment.BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery);
+        preservedPayload.Assessment.SupportSystemDetails = payload.Assessment.SupportSystemDetails;
+        preservedPayload.Assessment.SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes;
+        preservedPayload.Assessment.OverallPrognosis = payload.Assessment.OverallPrognosis;
+
+        preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
+        preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
+        preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
+            preservedPayload.Plan.SelectedCptCodes,
+            payload.Plan.SelectedCptCodes);
+        preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
+        preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
+        preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
+        preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+
+        preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
+        preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
+        preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
+        preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
+
+        return preservedPayload;
+    }
+
+    private static NoteWorkspaceV2Payload? ClonePayload(NoteWorkspaceV2Payload? payload)
+    {
+        if (payload is null)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+            JsonSerializer.Serialize(payload, SerializerOptions),
+            SerializerOptions);
+    }
+
+    private static List<FunctionalLimitationEntryV2> MergeFunctionalLimitations(
+        IReadOnlyCollection<FunctionalLimitationEntryV2>? preservedEntries,
+        IEnumerable<string> selectedDescriptions,
+        BodyPart defaultBodyPart)
+    {
+        var preservedByDescription = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Description))
+            .GroupBy(entry => entry.Description.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<FunctionalLimitationEntryV2>(group.Select(CloneFunctionalLimitation)),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedDescriptions
+            .Where(description => !string.IsNullOrWhiteSpace(description))
+            .Select(description => description.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(description =>
+            {
+                if (preservedByDescription.TryGetValue(description, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Description = description;
+                    return existing;
+                }
+
+                return new FunctionalLimitationEntryV2
+                {
+                    BodyPart = defaultBodyPart,
+                    Category = "Legacy",
+                    Description = description
+                };
+            })
+            .ToList();
+    }
+
+    private static FunctionalLimitationEntryV2 CloneFunctionalLimitation(FunctionalLimitationEntryV2 entry) => new()
+    {
+        Id = entry.Id,
+        BodyPart = entry.BodyPart,
+        Category = entry.Category,
+        Description = entry.Description,
+        IsSourceBacked = entry.IsSourceBacked,
+        MeasurePrompt = entry.MeasurePrompt,
+        QuantifiedValue = entry.QuantifiedValue,
+        QuantifiedUnit = entry.QuantifiedUnit,
+        Notes = entry.Notes
+    };
+
+    private static List<MedicationEntryV2> MergeMedications(
+        IReadOnlyCollection<MedicationEntryV2>? preservedEntries,
+        string? medicationDetails)
+    {
+        var selectedNames = SplitDelimitedValues(medicationDetails);
+        if (selectedNames.Count == 0)
+        {
+            return [];
+        }
+
+        var preservedByName = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .GroupBy(entry => entry.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<MedicationEntryV2>(group.Select(entry => new MedicationEntryV2
+                {
+                    Name = entry.Name,
+                    Dosage = entry.Dosage,
+                    Frequency = entry.Frequency
+                })),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedNames
+            .Select(name =>
+            {
+                if (preservedByName.TryGetValue(name, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Name = name;
+                    return existing;
+                }
+
+                return new MedicationEntryV2 { Name = name };
+            })
+            .ToList();
+    }
+
+    private static bool? DeriveAppearsMotivated(string? motivationLevel)
+    {
+        if (string.IsNullOrWhiteSpace(motivationLevel))
+        {
+            return null;
+        }
+
+        return motivationLevel.Trim() switch
+        {
+            "Highly motivated — eager to participate and comply" => true,
+            "Motivated — willing to participate with occasional prompting" => true,
+            "Moderately motivated — participates with consistent encouragement" => true,
+            "Low motivation — significant barriers to engagement" => false,
+            "Unmotivated — resistant or disengaged" => false,
+            _ => null
+        };
+    }
+
+    private static List<WorkspaceGoalEntryV2> MergeGoals(
+        IReadOnlyCollection<WorkspaceGoalEntryV2>? preservedEntries,
+        IEnumerable<SmartGoalEntry> visibleGoals)
+    {
+        var preservedGoals = (preservedEntries ?? []).ToList();
+        var merged = new List<WorkspaceGoalEntryV2>();
+
+        foreach (var goal in visibleGoals
+                     .Where(goal => !string.IsNullOrWhiteSpace(goal.Description) && (!goal.IsAiSuggested || goal.IsAccepted)))
+        {
+            var existing = preservedGoals.FirstOrDefault(entry =>
+                (goal.PatientGoalId.HasValue && entry.PatientGoalId == goal.PatientGoalId)
+                || string.Equals(entry.Description, goal.Description.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            merged.Add(new WorkspaceGoalEntryV2
             {
                 PatientGoalId = goal.PatientGoalId,
                 Description = goal.Description.Trim(),
-                Category = goal.Category,
+                Category = goal.Category ?? existing?.Category,
                 Timeframe = goal.Timeframe,
+                Status = goal.Status,
                 Source = goal.IsAiSuggested ? GoalSource.SystemSuggested : GoalSource.ClinicianAuthored,
-                Status = goal.Status
+                MatchedFunctionalLimitationId = existing?.MatchedFunctionalLimitationId
+            });
+        }
+
+        return merged;
+    }
+
+    private static List<PlannedCptCodeV2> MergePlannedCptCodes(
+        IReadOnlyCollection<PlannedCptCodeV2>? preservedEntries,
+        IEnumerable<UiCptCodeEntry> selectedCodes)
+    {
+        var preservedByCode = (preservedEntries ?? [])
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .GroupBy(code => code.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<PlannedCptCodeV2>(group.Select(code => new PlannedCptCodeV2
+                {
+                    Code = code.Code,
+                    Description = code.Description,
+                    Units = code.Units,
+                    Minutes = code.Minutes,
+                    Modifiers = [.. code.Modifiers],
+                    ModifierOptions = [.. code.ModifierOptions],
+                    SuggestedModifiers = [.. code.SuggestedModifiers],
+                    ModifierSource = code.ModifierSource
+                })),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code =>
+            {
+                var normalizedCode = code.Code.Trim();
+                if (preservedByCode.TryGetValue(normalizedCode, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Code = normalizedCode;
+                    existing.Description = string.IsNullOrWhiteSpace(code.Description)
+                        ? existing.Description
+                        : code.Description.Trim();
+                    existing.Units = Math.Max(1, code.Units);
+                    existing.Minutes = code.Minutes;
+                    existing.Modifiers = code.Modifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    existing.ModifierOptions = code.ModifierOptions.Count > 0
+                        ? code.ModifierOptions
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                        : existing.ModifierOptions
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    existing.SuggestedModifiers = code.SuggestedModifiers.Count > 0
+                        ? code.SuggestedModifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                        : existing.SuggestedModifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    existing.ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                        ? existing.ModifierSource
+                        : code.ModifierSource.Trim();
+                    return existing;
+                }
+
+                return new PlannedCptCodeV2
+                {
+                    Code = normalizedCode,
+                    Description = code.Description?.Trim() ?? string.Empty,
+                    Units = Math.Max(1, code.Units),
+                    Minutes = code.Minutes,
+                    Modifiers = code.Modifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierOptions = code.ModifierOptions
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    SuggestedModifiers = code.SuggestedModifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                        ? null
+                        : code.ModifierSource.Trim()
+                };
             })
             .ToList();
+    }
 
-        return new NoteWorkspaceV2Payload
+    private static List<string> SplitDelimitedValues(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
         {
-            NoteType = noteType,
-            Subjective = new WorkspaceSubjectiveV2
-            {
-                Problems = CloneSet(payload.Subjective.Problems),
-                OtherProblem = payload.Subjective.OtherProblem,
-                Locations = CloneSet(payload.Subjective.Locations),
-                OtherLocation = payload.Subjective.OtherLocation,
-                CurrentPainScore = payload.Subjective.CurrentPainScore,
-                BestPainScore = payload.Subjective.BestPainScore,
-                WorstPainScore = payload.Subjective.WorstPainScore,
-                PainFrequency = payload.Subjective.PainFrequency,
-                OnsetDate = payload.Subjective.OnsetDate,
-                OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo,
-                CauseUnknown = payload.Subjective.CauseUnknown,
-                KnownCause = payload.Subjective.KnownCause,
-                PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel),
-                FunctionalLimitations = payload.Subjective.FunctionalLimitations
-                    .Where(description => !string.IsNullOrWhiteSpace(description))
-                    .Select(description => new FunctionalLimitationEntryV2
-                    {
-                        BodyPart = ParseBodyPart(payload.Objective.SelectedBodyPart),
-                        Category = "Legacy",
-                        Description = description
-                    })
-                    .ToList(),
-                AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations,
-                Imaging = new ImagingDetailsV2
-                {
-                    HasImaging = payload.Subjective.HasImaging
-                },
-                AssistiveDevice = new AssistiveDeviceDetailsV2
-                {
-                    UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice
-                },
-                EmploymentStatus = payload.Subjective.EmploymentStatus,
-                LivingSituation = CloneSet(payload.Subjective.LivingSituation),
-                OtherLivingSituation = payload.Subjective.OtherLivingSituation,
-                SupportSystem = CloneSet(payload.Subjective.SupportSystem),
-                OtherSupport = payload.Subjective.OtherSupport,
-                Comorbidities = CloneSet(payload.Subjective.Comorbidities),
-                PriorTreatment = new PriorTreatmentDetailsV2
-                {
-                    Treatments = CloneSet(payload.Subjective.PriorTreatments),
-                    OtherTreatment = payload.Subjective.OtherTreatment
-                },
-                Medications = string.IsNullOrWhiteSpace(payload.Subjective.MedicationDetails)
-                    ? []
-                    : [new MedicationEntryV2 { Name = payload.Subjective.MedicationDetails.Trim() }]
-            },
-            Objective = new WorkspaceObjectiveV2
-            {
-                PrimaryBodyPart = ParseBodyPart(payload.Objective.SelectedBodyPart),
-                GaitObservation = new GaitObservationV2
-                {
-                    PrimaryPattern = payload.Objective.PrimaryGaitPattern ?? string.Empty,
-                    Deviations = CloneSet(payload.Objective.GaitDeviations),
-                    AdditionalObservations = payload.Objective.AdditionalGaitObservations
-                },
-                ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes,
-                OutcomeMeasures = payload.Objective.OutcomeMeasures
-                    .Select(TryMapOutcomeMeasure)
-                    .Where(entry => entry is not null)
-                    .Select(entry => entry!)
-                    .ToList()
-            },
-            Assessment = new WorkspaceAssessmentV2
-            {
-                AssessmentNarrative = payload.Assessment.AssessmentNarrative,
-                FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations,
-                DeficitsSummary = payload.Assessment.DeficitsSummary,
-                DeficitCategories = [.. payload.Assessment.DeficitCategories],
-                DiagnosisCodes = payload.Assessment.DiagnosisCodes
-                    .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-                    .Select(code => new DiagnosisCodeV2
-                    {
-                        Code = code.Code.Trim(),
-                        Description = code.Description?.Trim() ?? string.Empty
-                    })
-                    .ToList(),
-                Goals = goals,
-                PatientPersonalGoals = payload.Assessment.PatientPersonalGoals,
-                MotivationNotes = payload.Assessment.AdditionalMotivationNotes,
-                SupportSystemLevel = payload.Assessment.SupportSystemLevel,
-                AvailableResources = CloneSet(payload.Assessment.AvailableResources),
-                BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery),
-                SupportSystemDetails = JoinOptionalLines(payload.Assessment.SupportSystemDetails, payload.Assessment.SupportAdditionalNotes),
-                OverallPrognosis = payload.Assessment.OverallPrognosis
-            },
-            Plan = new WorkspacePlanV2
-            {
-                TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency),
-                TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration),
-                SelectedCptCodes = payload.Plan.SelectedCptCodes
-                    .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-                    .Select(code => new PlannedCptCodeV2
-                    {
-                        Code = code.Code.Trim(),
-                        Description = code.Description?.Trim() ?? string.Empty,
-                        Units = Math.Max(1, code.Units),
-                        Minutes = code.Minutes
-                    })
-                    .ToList(),
-                HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes,
-                DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
-                FollowUpInstructions = payload.Plan.FollowUpInstructions,
-                ClinicalSummary = payload.Plan.ClinicalSummary
-            },
-            ProgressQuestionnaire = new WorkspaceProgressNoteQuestionnaireV2
-            {
-                CurrentPainLevel = payload.Subjective.CurrentPainScore,
-                BestPainLevel = payload.Subjective.BestPainScore,
-                WorstPainLevel = payload.Subjective.WorstPainScore,
-                PainFrequency = payload.Subjective.PainFrequency
-            }
-        };
+            return [];
+        }
+
+        return value
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static OutcomeMeasureEntryV2? TryMapOutcomeMeasure(OutcomeMeasureEntry entry)
@@ -845,16 +1267,10 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
     }
 
     private static bool RequiresLegacyCompatibility(string workspaceNoteType) =>
-        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(workspaceNoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
+        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
 
     private static bool RequiresLegacyCompatibility(NoteType noteType, string contentJson)
     {
-        if (noteType == NoteType.Discharge)
-        {
-            return true;
-        }
-
         if (string.IsNullOrWhiteSpace(contentJson))
         {
             return false;

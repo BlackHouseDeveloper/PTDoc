@@ -42,6 +42,57 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task EnsureDraftAsync_IncludesStructuredDataInRequest()
+    {
+        var patientId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/intake/drafts/{patientId}", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                StructuredData = new IntakeStructuredDataDto
+                {
+                    SchemaVersion = "2026-03-30"
+                },
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        await service.EnsureDraftAsync(patientId, new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                MedicationIds = ["zestril-lisinopril"],
+                PainDescriptorIds = ["aching"]
+            }
+        });
+
+        Assert.NotNull(requestBody);
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.Equal("2026-03-30", document.RootElement.GetProperty("structuredData").GetProperty("schemaVersion").GetString());
+        Assert.Equal("zestril-lisinopril", document.RootElement.GetProperty("structuredData").GetProperty("medicationIds")[0].GetString());
+    }
+
+    [Fact]
     public async Task SearchEligiblePatientsAsync_UsesWorkflowSpecificEndpoint()
     {
         var patientId = Guid.NewGuid();
@@ -127,7 +178,19 @@ public sealed class IntakeApiServiceTests
             PatientId = patientId,
             FullName = "Pat Ient",
             EmailAddress = "patient@example.com",
-            HipaaAcknowledged = true
+            HipaaAcknowledged = true,
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "knee",
+                        Lateralities = ["left"]
+                    }
+                ]
+            }
         });
 
         Assert.Equal(2, requests.Count);
@@ -142,6 +205,47 @@ public sealed class IntakeApiServiceTests
         using var document = JsonDocument.Parse(requests[1].Body ?? "{}");
         Assert.True(document.RootElement.TryGetProperty("responseJson", out _));
         Assert.True(document.RootElement.TryGetProperty("consents", out _));
+        Assert.Equal("knee", document.RootElement.GetProperty("structuredData").GetProperty("bodyPartSelections")[0].GetProperty("bodyPartId").GetString());
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_HydratesStructuredDataFromResponse()
+    {
+        var patientId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal($"/api/v1/intake/patient/{patientId}/draft", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                StructuredData = new IntakeStructuredDataDto
+                {
+                    SchemaVersion = "2026-03-30",
+                    MedicationIds = ["zestril-lisinopril"]
+                },
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        var draft = await service.GetDraftByPatientIdAsync(patientId);
+
+        Assert.NotNull(draft);
+        Assert.Equal("2026-03-30", draft!.StructuredData?.SchemaVersion);
+        Assert.Equal("zestril-lisinopril", Assert.Single(draft.StructuredData!.MedicationIds));
     }
 
     private static NavigationManager CreateNavigationManager(string uri)

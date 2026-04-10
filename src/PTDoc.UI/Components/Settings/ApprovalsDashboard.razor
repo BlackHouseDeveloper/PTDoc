@@ -113,82 +113,104 @@
     </section>
 
     <div class="approvals-table-card">
-        <div class="approvals-table-wrapper" role="region" aria-label="Approval requests table">
-            <table class="approvals-table">
-                <thead>
-                    <tr>
-                        <th scope="col">Request ID</th>
-                        <th scope="col">Applicant Name</th>
-                        <th scope="col">Email</th>
-                        <th scope="col">Requested Role</th>
-                        <th scope="col">Clinic / Organization</th>
-                        <th scope="col">Submitted Timestamp</th>
-                        <th scope="col">Credential Check</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Reviewed By</th>
-                        <th scope="col">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var request in FilteredRequests)
-                    {
-                        <tr>
-                            <td>@request.RequestId</td>
-                            <td>@request.ApplicantName</td>
-                            <td>@request.Email</td>
-                            <td>@request.RequestedRole</td>
-                            <td>@request.Clinic</td>
-                            <td>@request.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                            <td>
-                                <span class="credential-indicator @(request.CredentialsComplete ? "is-complete" : "is-warning")"
-                                      aria-label="@(request.CredentialsComplete ? "Credential fields complete" : "Credential fields missing")">
-                                    @if (request.CredentialsComplete)
-                                    {
-                                        <span aria-hidden="true">&#10003;</span>
-                                        <span>Complete</span>
-                                    }
-                                    else
-                                    {
-                                        <span aria-hidden="true">&#9888;</span>
-                                        <span>Missing data</span>
-                                    }
-                                </span>
-                            </td>
-                            <td>
-                                <ApprovalStatusBadge Status="@request.Status" />
-                            </td>
-                            <td>@(string.IsNullOrWhiteSpace(request.ReviewedBy) ? "-" : request.ReviewedBy)</td>
-                            <td>
-                                <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenReview(request)">
-                                    Review
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="approvals-table-meta" aria-live="polite">
+            <span class="approvals-table-summary">@ResultsSummary</span>
+            @if (HasActiveFilters)
+            {
+                <button type="button" class="btn btn-outline btn-sm" @onclick="ClearFilters">Clear filters</button>
+            }
         </div>
 
+        @if (!isLoading && string.IsNullOrWhiteSpace(loadError) && !FilteredRequests.Any())
+        {
+            <div class="data-state approvals-empty-state" role="status" data-testid="approvals-empty-state">
+                <strong>No results found</strong>
+                <p>@NoResultsMessage</p>
+                @if (HasActiveFilters)
+                {
+                    <button type="button" class="btn btn-outline" @onclick="ClearFilters">Reset filters</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="approvals-table-wrapper" role="region" aria-label="Approval requests table">
+                <table class="approvals-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Request ID</th>
+                            <th scope="col">Applicant Name</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Requested Role</th>
+                            <th scope="col">Clinic / Organization</th>
+                            <th scope="col">Submitted Timestamp</th>
+                            <th scope="col">Credential Check</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Reviewed By</th>
+                            <th scope="col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var request in FilteredRequests)
+                        {
+                            <tr>
+                                <td>@request.RequestId</td>
+                                <td>@request.ApplicantName</td>
+                                <td>@request.Email</td>
+                                <td>@request.RequestedRole</td>
+                                <td>@request.Clinic</td>
+                                <td>@request.SubmittedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>
+                                    <span class="credential-indicator @(request.CredentialsComplete ? "is-complete" : "is-warning")"
+                                          aria-label="@(request.CredentialsComplete ? "Credential fields complete" : "Credential fields missing")">
+                                        @if (request.CredentialsComplete)
+                                        {
+                                            <span aria-hidden="true">&#10003;</span>
+                                            <span>Complete</span>
+                                        }
+                                        else
+                                        {
+                                            <span aria-hidden="true">&#9888;</span>
+                                            <span>Missing data</span>
+                                        }
+                                    </span>
+                                </td>
+                                <td>
+                                    <ApprovalStatusBadge Status="@request.Status" />
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(request.ReviewedBy) ? "-" : request.ReviewedBy)</td>
+                                <td>
+                                    <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenReview(request)">
+                                        Review
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
             <footer class="pagination-row" aria-label="Pagination controls">
-            <div class="pagination-meta">
-                <label class="filter-field inline-field">
-                    <span>Page Size</span>
-                    <select value="@pageSize" @onchange="OnPageSizeChanged">
-                        <option value="10">10</option>
-                        <option value="25">25</option>
-                        <option value="50">50</option>
-                    </select>
-                </label>
+                <div class="pagination-meta">
+                    <label class="filter-field inline-field">
+                        <span>Page Size</span>
+                        <select value="@pageSize" @onchange="OnPageSizeChanged">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                    </label>
 
-                <span>Page @currentPage of @TotalPages</span>
-                <span>@FilteredCount total results</span>
-            </div>
+                    <span>Page @currentPage of @TotalPages</span>
+                    <span>@FilteredCount total results</span>
+                </div>
 
-            <div class="pagination-actions">
-                <button type="button" class="btn btn-outline" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
-                <button type="button" class="btn btn-outline" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next</button>
-            </div>
-        </footer>
+                <div class="pagination-actions">
+                    <button type="button" class="btn btn-outline" @onclick="PreviousPage" disabled="@(currentPage <= 1)">Previous</button>
+                    <button type="button" class="btn btn-outline" @onclick="NextPage" disabled="@(currentPage >= TotalPages)">Next</button>
+                </div>
+            </footer>
+        }
     </div>
 </section>
 
@@ -449,7 +471,9 @@
         new("PT", "Physical Therapist"),
         new("PTA", "Physical Therapist Assistant"),
         new("FrontDesk", "Front Desk"),
-        new("Owner", "Owner")
+        new("Owner", "Owner"),
+        new("Billing", "Billing"),
+        new("Patient", "Patient")
     ];
 
     private static readonly IReadOnlyList<(string Code, string Name)> licenseStates =
@@ -482,6 +506,38 @@
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(totalServerCount / (double)Math.Max(1, pageSize)));
 
     private IEnumerable<ApprovalRequestRow> FilteredRequests => requests;
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(searchQuery)
+        || !string.Equals(selectedStatusTab, DefaultStatusTab, StringComparison.Ordinal)
+        || !string.Equals(statusFilter, DefaultStatusFilter, StringComparison.Ordinal)
+        || !string.Equals(roleFilter, DefaultRoleFilter, StringComparison.Ordinal)
+        || !string.Equals(clinicFilter, DefaultClinicFilter, StringComparison.Ordinal)
+        || dateFrom.HasValue
+        || dateTo.HasValue
+        || !string.Equals(sortBy, DefaultSortBy, StringComparison.Ordinal);
+
+    private string ResultsSummary => FilteredCount == 1
+        ? BuildResultsSummary("1 request")
+        : BuildResultsSummary($"{FilteredCount} requests");
+
+    private string NoResultsMessage
+    {
+        get
+        {
+            if (!HasActiveFilters)
+            {
+                return "There are no requests to review right now.";
+            }
+
+            if (string.IsNullOrWhiteSpace(searchQuery))
+            {
+                return "No requests matched the current filters.";
+            }
+
+            return $"No requests matched the current filters for \"{searchQuery.Trim()}\".";
+        }
+    }
 
     private IEnumerable<string> AvailableRoleFilters =>
         requests
@@ -811,6 +867,20 @@
         SyncQueryFromState();
     }
 
+    private void ClearFilters()
+    {
+        selectedStatusTab = DefaultStatusTab;
+        searchQuery = string.Empty;
+        statusFilter = DefaultStatusFilter;
+        roleFilter = DefaultRoleFilter;
+        clinicFilter = DefaultClinicFilter;
+        dateFrom = null;
+        dateTo = null;
+        sortBy = DefaultSortBy;
+        currentPage = 1;
+        SyncQueryFromState();
+    }
+
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         var nextQuery = GetQueryPart(e.Location);
@@ -1016,6 +1086,16 @@
     {
         var uri = new Uri(location, UriKind.Absolute);
         return uri.Query;
+    }
+
+    private string BuildResultsSummary(string countLabel)
+    {
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            return string.Concat(countLabel, " matching \"", searchQuery.Trim(), "\"");
+        }
+
+        return HasActiveFilters ? $"{countLabel} matching the current filters" : countLabel;
     }
 
     public void Dispose()
