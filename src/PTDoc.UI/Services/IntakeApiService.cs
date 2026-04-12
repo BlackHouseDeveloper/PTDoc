@@ -503,12 +503,11 @@ public sealed class IntakeApiService(
             return new IntakeConsentPacket();
         }
 
-        packet.AuthorizedContacts ??= new List<AuthorizedContact>();
-        packet.RevokedConsentKeys ??= new List<string>();
-        var json = IntakeConsentJson.Serialize(packet);
-        return IntakeConsentJson.TryParse(json, out var clone, out _)
-            ? clone
-            : new IntakeConsentPacket();
+        var json = JsonSerializer.Serialize(packet);
+        var clone = JsonSerializer.Deserialize<IntakeConsentPacket>(json) ?? new IntakeConsentPacket();
+        clone.AuthorizedContacts ??= new List<AuthorizedContact>();
+        clone.RevokedConsentKeys ??= new List<string>();
+        return clone;
     }
 
     private static void SetRevoked(IntakeConsentPacket packet, string key, bool revoked)

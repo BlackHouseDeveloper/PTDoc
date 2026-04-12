@@ -615,8 +615,8 @@
     private bool FinalAttestationAccepted => ConsentPacket.FinalAttestationAccepted ?? State.AccuracyConfirmed;
     private bool MarketingCommunicationsRevoked =>
         IsConsentRevoked("communicationCallConsent")
-        && IsConsentRevoked("communicationTextConsent")
-        && IsConsentRevoked("communicationEmailConsent");
+        || IsConsentRevoked("communicationTextConsent")
+        || IsConsentRevoked("communicationEmailConsent");
     private int? PainLevel => State.PainSeverityScore ?? GetPainLevel(State.PainDetailDrafts);
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
@@ -780,8 +780,16 @@
         }
 
         update();
-        ConsentPacket.CommunicationPhoneNumber = State.PhoneNumber;
-        ConsentPacket.CommunicationEmail = State.EmailAddress;
+        if (!string.IsNullOrWhiteSpace(State.PhoneNumber))
+        {
+            ConsentPacket.CommunicationPhoneNumber = State.PhoneNumber;
+        }
+
+        if (!string.IsNullOrWhiteSpace(State.EmailAddress))
+        {
+            ConsentPacket.CommunicationEmail = State.EmailAddress;
+        }
+
         State.IsDirty = true;
         return Task.CompletedTask;
     }
