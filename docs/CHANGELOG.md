@@ -759,6 +759,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.UI/Components/Intake/Steps/DemographicsStep.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`** — Bound HIPAA/treatment consent, communication preferences, specialty authorizations, PHI release, billing authorization, media consent, authorized contacts, and review completion state to `IntakeConsentPacket`, and switched the review summary to read supplemental medical-history selections from canonical structured intake ids. Reason: make the intake review UX consume and edit the same canonical consent and structured-data payload that the backend now persists.
 - **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Updated intake UI coverage to seed canonical supplemental intake ids and added a focused request-contract test for typed consent-packet submission. Reason: protect the Branch 3 canonical intake UI slice without mixing in workspace structured-editor coverage.
 
+### Fixed - canonical consent packet null-safety
+
+#### Normalize `RevokedConsentKeys` and `AuthorizedContacts` before first use
+- **`src/PTDoc.UI/Services/IntakeApiService.cs`** — Normalized `draft.ConsentPacket.RevokedConsentKeys` and `AuthorizedContacts` to non-null immediately after assigning the packet from the server response, preventing `NullReferenceException` on `.Contains(...)` calls when a persisted draft carries `revokedConsentKeys: null` or `authorizedContacts: null`. Also applied the same `??=` normalization in `CloneConsentPacket` before calling `IntakeConsentJson.Serialize`, which accesses both lists without null guards. Reason: `JsonSerializer` can deserialize list properties as `null` even when the class initializer sets them to `new()`, so any path that reads or serializes a server-sourced packet must normalize first.
+- **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`** — Applied the same `??=` normalization in the page-local `CloneConsentPacket` helper before calling `IntakeConsentJson.Serialize`, for the same reason. Reason: the page rehydrates draft state from persisted JSON on navigation, so the same null-list scenario applies during state clone operations.
+
 ---
 
 ## Version History

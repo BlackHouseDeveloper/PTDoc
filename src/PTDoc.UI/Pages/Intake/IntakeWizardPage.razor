@@ -796,6 +796,8 @@
             return new IntakeConsentPacket();
         }
 
+        packet.AuthorizedContacts ??= new List<AuthorizedContact>();
+        packet.RevokedConsentKeys ??= new List<string>();
         var json = IntakeConsentJson.Serialize(packet);
         return IntakeConsentJson.TryParse(json, out var clone, out _)
             ? clone

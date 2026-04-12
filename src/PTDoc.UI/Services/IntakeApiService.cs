@@ -407,6 +407,8 @@ public sealed class IntakeApiService(
         draft.ConsentPacket = response.ConsentPacket ?? draft.ConsentPacket;
         if (draft.ConsentPacket is not null)
         {
+            draft.ConsentPacket.RevokedConsentKeys ??= new List<string>();
+            draft.ConsentPacket.AuthorizedContacts ??= new List<AuthorizedContact>();
             draft.HipaaAcknowledged = draft.ConsentPacket.HipaaAcknowledged == true;
             draft.ConsentToTreatAcknowledged = draft.ConsentPacket.TreatmentConsentAccepted == true;
             draft.RevokeHipaaPrivacyNotice = draft.ConsentPacket.RevokedConsentKeys.Contains("hipaaAcknowledged", StringComparer.OrdinalIgnoreCase);
@@ -501,6 +503,8 @@ public sealed class IntakeApiService(
             return new IntakeConsentPacket();
         }
 
+        packet.AuthorizedContacts ??= new List<AuthorizedContact>();
+        packet.RevokedConsentKeys ??= new List<string>();
         var json = IntakeConsentJson.Serialize(packet);
         return IntakeConsentJson.TryParse(json, out var clone, out _)
             ? clone
