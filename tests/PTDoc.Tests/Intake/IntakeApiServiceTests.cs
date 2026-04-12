@@ -93,6 +93,72 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_IncludesCanonicalConsentPacketInRequest()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+                {
+                    Id = intakeId,
+                    PatientId = patientId,
+                    PainMapData = "{}",
+                    Consents = "{}",
+                    ResponseJson = "{}",
+                    Locked = false,
+                    TemplateVersion = "1.0",
+                    LastModifiedUtc = DateTime.UtcNow
+                }, JsonOptions));
+            }
+
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        await service.SaveDraftAsync(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            PhoneNumber = "555-0100",
+            EmailAddress = "patient@example.com",
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                CommunicationCallConsent = true,
+                FinalAttestationAccepted = true
+            }
+        });
+
+        Assert.NotNull(requestBody);
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.True(document.RootElement.TryGetProperty("consentPacket", out var consentPacket));
+        Assert.True(consentPacket.GetProperty("hipaaAcknowledged").GetBoolean());
+        Assert.True(consentPacket.GetProperty("treatmentConsentAccepted").GetBoolean());
+        Assert.Equal("555-0100", consentPacket.GetProperty("communicationPhoneNumber").GetString());
+        Assert.Equal("patient@example.com", consentPacket.GetProperty("communicationEmail").GetString());
+    }
+
+    [Fact]
     public async Task SearchEligiblePatientsAsync_UsesWorkflowSpecificEndpoint()
     {
         var patientId = Guid.NewGuid();

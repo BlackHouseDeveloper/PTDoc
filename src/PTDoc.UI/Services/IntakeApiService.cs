@@ -58,6 +58,7 @@ public sealed class IntakeApiService(
         {
             PainMapData = BuildPainMapJson(seedState),
             Consents = BuildConsentJson(seedState),
+            ConsentPacket = BuildConsentPacket(seedState),
             ResponseJson = seedState is null
                 ? "{}"
                 : JsonSerializer.Serialize(seedState, SerializerOptions),
@@ -198,6 +199,7 @@ public sealed class IntakeApiService(
         {
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
+            ConsentPacket = BuildConsentPacket(state),
             ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
             StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
@@ -275,6 +277,7 @@ public sealed class IntakeApiService(
             PatientId = patientId,
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
+            ConsentPacket = BuildConsentPacket(state),
             ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
             StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
@@ -401,6 +404,30 @@ public sealed class IntakeApiService(
 
         draft.PatientId = response.PatientId;
         draft.IntakeId = response.Id;
+        draft.ConsentPacket = response.ConsentPacket ?? draft.ConsentPacket;
+        if (draft.ConsentPacket is not null)
+        {
+            draft.ConsentPacket.RevokedConsentKeys ??= new List<string>();
+            draft.ConsentPacket.AuthorizedContacts ??= new List<AuthorizedContact>();
+            draft.HipaaAcknowledged = draft.ConsentPacket.HipaaAcknowledged == true;
+            draft.ConsentToTreatAcknowledged = draft.ConsentPacket.TreatmentConsentAccepted == true;
+            draft.RevokeHipaaPrivacyNotice = draft.ConsentPacket.RevokedConsentKeys.Contains("hipaaAcknowledged", StringComparer.OrdinalIgnoreCase);
+            draft.RevokeTreatmentConsent = draft.ConsentPacket.RevokedConsentKeys.Contains("treatmentConsentAccepted", StringComparer.OrdinalIgnoreCase);
+            draft.RevokePhiRelease = draft.ConsentPacket.RevokedConsentKeys.Contains("phiReleaseAuthorized", StringComparer.OrdinalIgnoreCase);
+            draft.RevokeMarketingCommunications =
+                draft.ConsentPacket.RevokedConsentKeys.Contains("communicationCallConsent", StringComparer.OrdinalIgnoreCase)
+                && draft.ConsentPacket.RevokedConsentKeys.Contains("communicationTextConsent", StringComparer.OrdinalIgnoreCase)
+                && draft.ConsentPacket.RevokedConsentKeys.Contains("communicationEmailConsent", StringComparer.OrdinalIgnoreCase);
+            draft.AllowPhoneCalls = draft.ConsentPacket.CommunicationCallConsent ?? draft.AllowPhoneCalls;
+            draft.AllowTextMessages = draft.ConsentPacket.CommunicationTextConsent ?? draft.AllowTextMessages;
+            draft.AllowEmailMessages = draft.ConsentPacket.CommunicationEmailConsent ?? draft.AllowEmailMessages;
+            draft.DryNeedlingEligible = draft.ConsentPacket.DryNeedlingConsentAccepted ?? draft.DryNeedlingEligible;
+            draft.PelvicFloorTherapyEligible = draft.ConsentPacket.PelvicFloorConsentAccepted ?? draft.PelvicFloorTherapyEligible;
+            draft.PhiReleaseAuthorized = draft.ConsentPacket.PhiReleaseAuthorized ?? draft.PhiReleaseAuthorized;
+            draft.BillingConsentAuthorized = draft.ConsentPacket.CreditCardAuthorizationAccepted ?? draft.BillingConsentAuthorized;
+            draft.AccuracyConfirmed = draft.ConsentPacket.FinalAttestationAccepted ?? draft.AccuracyConfirmed;
+        }
+
         draft.StructuredData = response.StructuredData ?? draft.StructuredData;
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
@@ -425,35 +452,77 @@ public sealed class IntakeApiService(
 
     private static string BuildConsentJson(IntakeResponseDraft? state)
     {
+        return state is null
+            ? "{}"
+            : IntakeConsentJson.Serialize(BuildConsentPacket(state));
+    }
+
+    private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft? state)
+    {
         if (state is null)
         {
-            return "{}";
+            return new IntakeConsentPacket();
         }
 
-        var payload = new
-        {
-            hipaaAcknowledged = state.HipaaAcknowledged && !state.RevokeHipaaPrivacyNotice,
-            termsOfServiceAccepted = state.TermsOfServiceAccepted,
-            accuracyConfirmed = state.AccuracyConfirmed,
-            treatmentConsentAccepted = !state.RevokeTreatmentConsent,
-            phiReleaseAuthorized = state.PhiReleaseAuthorized && !state.RevokePhiRelease,
-            billingConsentAuthorized = state.BillingConsentAuthorized,
-            communicationPreferences = new
-            {
-                phoneCalls = state.AllowPhoneCalls,
-                textMessages = state.AllowTextMessages,
-                emailMessages = state.AllowEmailMessages
-            },
-            revocations = new
-            {
-                hipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
-                treatmentConsent = state.RevokeTreatmentConsent,
-                marketingCommunications = state.RevokeMarketingCommunications,
-                phiRelease = state.RevokePhiRelease
-            }
-        };
+        var packet = CloneConsentPacket(state.ConsentPacket);
+        packet.HipaaAcknowledged ??= state.HipaaAcknowledged;
+        packet.TreatmentConsentAccepted ??= state.ConsentToTreatAcknowledged;
+        packet.PhiReleaseAuthorized ??= state.PhiReleaseAuthorized;
+        packet.CommunicationCallConsent ??= state.AllowPhoneCalls;
+        packet.CommunicationTextConsent ??= state.AllowTextMessages;
+        packet.CommunicationEmailConsent ??= state.AllowEmailMessages;
+        packet.DryNeedlingConsentAccepted ??= state.DryNeedlingEligible;
+        packet.PelvicFloorConsentAccepted ??= state.PelvicFloorTherapyEligible;
+        packet.CreditCardAuthorizationAccepted ??= state.BillingConsentAuthorized;
+        packet.FinalAttestationAccepted ??= state.AccuracyConfirmed;
 
-        return JsonSerializer.Serialize(payload, SerializerOptions);
+        if (!string.IsNullOrWhiteSpace(state.PhoneNumber))
+        {
+            packet.CommunicationPhoneNumber = state.PhoneNumber;
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.EmailAddress))
+        {
+            packet.CommunicationEmail = state.EmailAddress;
+        }
+
+        SetRevoked(packet, "hipaaAcknowledged", state.RevokeHipaaPrivacyNotice);
+        SetRevoked(packet, "treatmentConsentAccepted", state.RevokeTreatmentConsent);
+        SetRevoked(packet, "phiReleaseAuthorized", state.RevokePhiRelease);
+        SetRevoked(packet, "communicationCallConsent", state.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationTextConsent", state.RevokeMarketingCommunications);
+        SetRevoked(packet, "communicationEmailConsent", state.RevokeMarketingCommunications);
+
+        return packet;
+    }
+
+    private static IntakeConsentPacket CloneConsentPacket(IntakeConsentPacket? packet)
+    {
+        if (packet is null)
+        {
+            return new IntakeConsentPacket();
+        }
+
+        var json = JsonSerializer.Serialize(packet);
+        var clone = JsonSerializer.Deserialize<IntakeConsentPacket>(json) ?? new IntakeConsentPacket();
+        clone.AuthorizedContacts ??= new List<AuthorizedContact>();
+        clone.RevokedConsentKeys ??= new List<string>();
+        return clone;
+    }
+
+    private static void SetRevoked(IntakeConsentPacket packet, string key, bool revoked)
+    {
+        if (revoked)
+        {
+            if (!packet.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            {
+                packet.RevokedConsentKeys.Add(key);
+            }
+
+            return;
+        }
+
+        packet.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
     }
 
     private static (string FirstName, string LastName) SplitName(string? fullName)

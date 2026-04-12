@@ -1,3 +1,4 @@
+@using PTDoc.Application.Intake
 @using PTDoc.Application.ReferenceData
 @using PTDoc.UI.Components.Intake.Models
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
@@ -52,13 +53,13 @@
     <section class="intake-card__section">
         <span class="intake-card__field-label">Comorbidities</span>
         <div class="intake-card__option-grid">
-            @foreach (var option in IntakeSupplementalOptionCatalog.Comorbidities)
+            @foreach (var option in ComorbidityCatalog)
             {
-                var isSelected = State.SelectedComorbidities.Contains(option);
+                var isSelected = SelectedComorbidityIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        @onclick="() => ToggleSelectionAsync(State.SelectedComorbidities, option, syncFlagsOnly: true)">
-                    @option
+                        @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.Comorbidity)">
+                    @option.Label
                 </button>
             }
         </div>
@@ -67,13 +68,13 @@
     <section class="intake-card__section">
         <span class="intake-card__field-label">Living Situation</span>
         <div class="intake-card__option-grid">
-            @foreach (var option in IntakeSupplementalOptionCatalog.LivingSituations)
+            @foreach (var option in LivingSituationCatalog)
             {
-                var isSelected = State.SelectedLivingSituations.Contains(option);
+                var isSelected = SelectedLivingSituationIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        @onclick="() => ToggleSelectionAsync(State.SelectedLivingSituations, option)">
-                    @option
+                        @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.LivingSituation)">
+                    @option.Label
                 </button>
             }
         </div>
@@ -91,11 +92,11 @@
         <div class="intake-card__option-grid">
             @foreach (var option in FilteredAssistiveDevices)
             {
-                var isSelected = State.SelectedAssistiveDevices.Contains(option);
+                var isSelected = SelectedAssistiveDeviceIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        @onclick="() => ToggleSelectionAsync(State.SelectedAssistiveDevices, option, syncFlagsOnly: true)">
-                    @option
+                        @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.AssistiveDevice)">
+                    @option.Label
                 </button>
             }
         </div>
@@ -104,13 +105,13 @@
     <section class="intake-card__section">
         <span class="intake-card__field-label">Home Layout</span>
         <div class="intake-card__option-grid">
-            @foreach (var option in IntakeSupplementalOptionCatalog.HouseLayoutOptions)
+            @foreach (var option in HouseLayoutCatalog)
             {
-                var isSelected = State.SelectedHouseLayoutOptions.Contains(option);
+                var isSelected = SelectedHouseLayoutOptionIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        @onclick="() => SelectHouseLayoutAsync(option)">
-                    @option
+                        @onclick="() => SelectHouseLayoutAsync(option.Id)">
+                    @option.Label
                 </button>
             }
         </div>
@@ -141,8 +142,18 @@
     private string _assistiveSearch = string.Empty;
 
     private IReadOnlyList<IntakeMedicationItemDto> MedicationCatalog => IntakeReferenceData.GetMedications();
+    private IReadOnlyList<IntakeCatalogOptionDto> ComorbidityCatalog => IntakeReferenceData.GetComorbidities();
+    private IReadOnlyList<IntakeCatalogOptionDto> LivingSituationCatalog => IntakeReferenceData.GetLivingSituations();
+    private IReadOnlyList<IntakeCatalogOptionDto> AssistiveDeviceCatalog => IntakeReferenceData.GetAssistiveDevices();
+    private IReadOnlyList<IntakeCatalogOptionDto> HouseLayoutCatalog => IntakeReferenceData.GetHouseLayoutOptions();
 
-    private IReadOnlyList<string> SelectedMedicationIds => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version).MedicationIds;
+    private IntakeStructuredDataDto StructuredData => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
+
+    private IReadOnlyList<string> SelectedMedicationIds => StructuredData.MedicationIds;
+    private IReadOnlyList<string> SelectedComorbidityIds => StructuredData.ComorbidityIds;
+    private IReadOnlyList<string> SelectedLivingSituationIds => StructuredData.LivingSituationIds;
+    private IReadOnlyList<string> SelectedAssistiveDeviceIds => StructuredData.AssistiveDeviceIds;
+    private IReadOnlyList<string> SelectedHouseLayoutOptionIds => StructuredData.HouseLayoutOptionIds;
 
     private IReadOnlyList<IntakeMedicationItemDto> SelectedMedicationItems => MedicationCatalog
         .Where(item => SelectedMedicationIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
@@ -157,65 +168,64 @@
         .Take(string.IsNullOrWhiteSpace(_medicationSearch) ? 8 : 12)
         .ToList();
 
-    private IReadOnlyList<string> FilteredAssistiveDevices => IntakeSupplementalOptionCatalog.AssistiveDevices
+    private IReadOnlyList<IntakeCatalogOptionDto> FilteredAssistiveDevices => AssistiveDeviceCatalog
         .Where(option => string.IsNullOrWhiteSpace(_assistiveSearch)
-            || option.Contains(_assistiveSearch, StringComparison.OrdinalIgnoreCase))
+            || option.Label.Contains(_assistiveSearch, StringComparison.OrdinalIgnoreCase))
         .Take(string.IsNullOrWhiteSpace(_assistiveSearch) ? 12 : 20)
         .ToList();
 
     private async Task ToggleMedicationAsync(string medicationId)
     {
-        var structuredData = State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
-        if (structuredData.MedicationIds.Contains(medicationId, StringComparer.OrdinalIgnoreCase))
+        if (StructuredData.MedicationIds.Contains(medicationId, StringComparer.OrdinalIgnoreCase))
         {
-            structuredData.MedicationIds.RemoveAll(id => string.Equals(id, medicationId, StringComparison.OrdinalIgnoreCase));
+            StructuredData.MedicationIds.RemoveAll(id => string.Equals(id, medicationId, StringComparison.OrdinalIgnoreCase));
         }
         else
         {
-            structuredData.MedicationIds.Add(medicationId);
+            StructuredData.MedicationIds.Add(medicationId);
         }
 
-        State.HasCurrentMedications = structuredData.MedicationIds.Count > 0;
+        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
         await NotifyStateChangedAsync();
     }
 
-    private async Task ToggleSelectionAsync(HashSet<string> values, string option, bool syncFlagsOnly = false)
+    private async Task ToggleCatalogSelectionAsync(string optionId, SelectionKind selectionKind)
     {
-        if (!values.Add(option))
+        var target = selectionKind switch
         {
-            values.Remove(option);
-        }
+            SelectionKind.Comorbidity => StructuredData.ComorbidityIds,
+            SelectionKind.AssistiveDevice => StructuredData.AssistiveDeviceIds,
+            SelectionKind.LivingSituation => StructuredData.LivingSituationIds,
+            _ => throw new ArgumentOutOfRangeException(nameof(selectionKind), selectionKind, null)
+        };
 
-        if (ReferenceEquals(values, State.SelectedComorbidities))
+        if (target.Contains(optionId, StringComparer.OrdinalIgnoreCase))
         {
-            State.HasOtherMedicalConditions = State.SelectedComorbidities.Count > 0;
-        }
-
-        if (ReferenceEquals(values, State.SelectedAssistiveDevices))
-        {
-            State.UsesAssistiveDevices = State.SelectedAssistiveDevices.Count > 0;
-        }
-
-        if (!syncFlagsOnly)
-        {
-            State.IsDirty = true;
-        }
-
-        await NotifyStateChangedAsync();
-    }
-
-    private async Task SelectHouseLayoutAsync(string option)
-    {
-        if (State.SelectedHouseLayoutOptions.Contains(option))
-        {
-            State.SelectedHouseLayoutOptions.Clear();
+            target.RemoveAll(id => string.Equals(id, optionId, StringComparison.OrdinalIgnoreCase));
         }
         else
         {
-            State.SelectedHouseLayoutOptions.Clear();
-            State.SelectedHouseLayoutOptions.Add(option);
+            target.Add(optionId);
         }
 
+        SyncLegacySupplementalSelections();
+
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task SelectHouseLayoutAsync(string optionId)
+    {
+        if (StructuredData.HouseLayoutOptionIds.Contains(optionId, StringComparer.OrdinalIgnoreCase))
+        {
+            StructuredData.HouseLayoutOptionIds.Clear();
+        }
+        else
+        {
+            StructuredData.HouseLayoutOptionIds.Clear();
+            StructuredData.HouseLayoutOptionIds.Add(optionId);
+        }
+
+        SyncLegacySupplementalSelections();
         await NotifyStateChangedAsync();
     }
 
@@ -239,5 +249,37 @@
         {
             await StateChanged.InvokeAsync();
         }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _ = StructuredData;
+        SyncLegacySupplementalSelections();
+        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
+    }
+
+    private void SyncLegacySupplementalSelections()
+    {
+        State.SelectedComorbidities = StructuredData.ComorbidityIds
+            .Select(id => IntakeReferenceData.GetComorbidity(id)?.Label ?? id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        State.SelectedAssistiveDevices = StructuredData.AssistiveDeviceIds
+            .Select(id => IntakeReferenceData.GetAssistiveDevice(id)?.Label ?? id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        State.SelectedLivingSituations = StructuredData.LivingSituationIds
+            .Select(id => IntakeReferenceData.GetLivingSituation(id)?.Label ?? id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        State.SelectedHouseLayoutOptions = StructuredData.HouseLayoutOptionIds
+            .Select(id => IntakeReferenceData.GetHouseLayoutOption(id)?.Label ?? id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        State.HasOtherMedicalConditions = StructuredData.ComorbidityIds.Count > 0;
+        State.UsesAssistiveDevices = StructuredData.AssistiveDeviceIds.Count > 0;
+    }
+
+    private enum SelectionKind
+    {
+        Comorbidity,
+        AssistiveDevice,
+        LivingSituation
     }
 }

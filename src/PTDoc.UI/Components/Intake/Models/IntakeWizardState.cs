@@ -8,6 +8,7 @@ public sealed class IntakeWizardState
     public Guid? PatientId { get; set; }
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;
     public bool IsPatientMode { get; set; }
+    public IntakeConsentPacket? ConsentPacket { get; set; }
     public bool HipaaAcknowledged { get; set; }
     public bool ConsentToTreatAcknowledged { get; set; }
     public bool TermsOfServiceAccepted { get; set; }
@@ -75,6 +76,18 @@ public sealed class IntakeWizardState
         StructuredData.BodyPartSelections ??= new List<IntakeBodyPartSelectionDto>();
         StructuredData.MedicationIds ??= new List<string>();
         StructuredData.PainDescriptorIds ??= new List<string>();
+        StructuredData.ComorbidityIds ??= new List<string>();
+        StructuredData.AssistiveDeviceIds ??= new List<string>();
+        StructuredData.LivingSituationIds ??= new List<string>();
+        StructuredData.HouseLayoutOptionIds ??= new List<string>();
         return StructuredData;
+    }
+
+    public IntakeConsentPacket EnsureConsentPacket()
+    {
+        ConsentPacket ??= new IntakeConsentPacket();
+        ConsentPacket.RevokedConsentKeys ??= new List<string>();
+        ConsentPacket.AuthorizedContacts ??= new List<AuthorizedContact>();
+        return ConsentPacket;
     }
 }

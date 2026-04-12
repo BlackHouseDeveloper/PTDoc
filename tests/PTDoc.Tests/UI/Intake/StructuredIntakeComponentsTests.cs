@@ -26,12 +26,12 @@ public sealed class StructuredIntakeComponentsTests : TestContext
             StructuredData = new IntakeStructuredDataDto
             {
                 SchemaVersion = "2026-03-30",
-                MedicationIds = ["zestril-lisinopril"]
+                MedicationIds = ["zestril-lisinopril"],
+                ComorbidityIds = ["hypertension"],
+                AssistiveDeviceIds = ["cane"],
+                LivingSituationIds = ["lives-alone"],
+                HouseLayoutOptionIds = ["single-story-main-floor-bed-bath"]
             },
-            SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
-            SelectedAssistiveDevices = ["Cane"],
-            SelectedLivingSituations = ["Lives alone"],
-            SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"],
             HasCurrentMedications = true,
             HasOtherMedicalConditions = true,
             UsesAssistiveDevices = true
@@ -119,5 +119,34 @@ public sealed class StructuredIntakeComponentsTests : TestContext
 
         Assert.Contains("6/10", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Auto-Selected Outcome Measures", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReviewStep_UsesCanonicalConsentPacketForCompletionAndSupplementalSelections()
+    {
+        var state = new IntakeWizardState
+        {
+            TermsOfServiceAccepted = true,
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                ComorbidityIds = ["hypertension"]
+            },
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true,
+                CommunicationCallConsent = true,
+                CreditCardAuthorizationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.Contains("All required consents complete.", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Hypertension (High Blood Pressure)", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Authorized", cut.Markup, StringComparison.OrdinalIgnoreCase);
     }
 }
