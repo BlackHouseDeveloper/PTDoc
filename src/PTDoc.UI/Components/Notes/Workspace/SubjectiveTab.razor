@@ -1,10 +1,39 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
+@using PTDoc.UI.Services
+
+@inject INoteWorkspaceService NoteWorkspaceService
+@inject ILogger<SubjectiveTab> Logger
 
 <section class="subjective-tab" data-testid="subjective-tab" role="tabpanel" aria-label="Subjective section">
     <h2 class="subjective-tab__title">Subjective</h2>
 
-    <!-- Q1 -->
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">Chief Complaint Body Part</p>
+        <select class="subjective-tab__select"
+                value="@(_vm.SelectedBodyPart ?? string.Empty)"
+                disabled="@IsReadOnly"
+                @onchange="HandleSelectedBodyPartChangedAsync"
+                data-testid="subjective-body-part-select">
+            <option value="">Select body part ↓</option>
+            @foreach (var option in _bodyPartOptions)
+            {
+                <option value="@option" selected="@string.Equals(_vm.SelectedBodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+            }
+        </select>
+
+        @if (!string.IsNullOrWhiteSpace(_catalogError))
+        {
+            <p class="subjective-tab__helper subjective-tab__helper--error" role="alert">@_catalogError</p>
+        }
+        else if (_isLoadingCatalog)
+        {
+            <p class="subjective-tab__helper" role="status">Loading structured body-region catalog…</p>
+        }
+    </div>
+
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">1. What problem are you currently experiencing? (Check all that apply)</p>
         <div class="subjective-tab__checkbox-grid">
@@ -30,7 +59,6 @@
         </div>
     </div>
 
-    <!-- Q2 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">2. Where is the issue located? (Check all that apply)</p>
         <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
@@ -56,7 +84,6 @@
         </div>
     </div>
 
-    <!-- Q3 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">3. How would you rate your symptoms on a scale of 0–10?</p>
         <div class="subjective-tab__pain-scale-row">
@@ -87,7 +114,6 @@
         </div>
     </div>
 
-    <!-- Q3a -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">3a. Frequency of pain:</p>
         @foreach (var freq in _frequencies)
@@ -104,7 +130,6 @@
         }
     </div>
 
-    <!-- Q4 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">4. When did the issue begin?</p>
         <input type="date" id="onset-date" name="onset-date" class="subjective-tab__date-input"
@@ -121,7 +146,6 @@
         </label>
     </div>
 
-    <!-- Q5 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">5. What caused the issue?</p>
         <label class="subjective-tab__checkbox-item">
@@ -143,7 +167,6 @@
                   @onchange="e => SetAndNotify(v => v.KnownCause = e.Value?.ToString())"></textarea>
     </div>
 
-    <!-- Prior functional level -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">What was your level of function prior to the onset of your current condition/injury? (Select all that apply)</p>
         @foreach (var level in _functionalLevels)
@@ -159,28 +182,60 @@
         }
     </div>
 
-    <!-- Q6 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">6. What functional activities are limited due to the issue you are being seen for?</p>
-        @foreach (var category in _functionalLimitationCategories)
+        @if (string.IsNullOrWhiteSpace(_vm.SelectedBodyPart))
         {
-            <details class="subjective-tab__accordion">
-                <summary class="subjective-tab__accordion-summary">@category</summary>
-                <div class="subjective-tab__accordion-content">
-                    @foreach (var item in GetFunctionalLimitationItems(category))
-                    {
-                        <label class="subjective-tab__checkbox-item">
-                            <input type="checkbox"
-                                   name="functional-limitations"
-                                   checked="@_vm.FunctionalLimitations.Contains(item)"
-                                   disabled="@IsReadOnly"
-                                   @onchange="e => ToggleSet(_vm.FunctionalLimitations, item, (bool)e.Value!)" />
-                            @item
-                        </label>
-                    }
-                </div>
-            </details>
+            <p class="subjective-tab__helper">Select the chief-complaint body part above to load the structured limitation catalog.</p>
         }
+        else if (_catalog is null || _catalog.FunctionalLimitationCategories.Count == 0)
+        {
+            <p class="subjective-tab__helper">No structured limitation catalog is available for the selected body part yet.</p>
+        }
+        else
+        {
+            @foreach (var category in _catalog.FunctionalLimitationCategories)
+            {
+                <details class="subjective-tab__accordion">
+                    <summary class="subjective-tab__accordion-summary">@category.Name</summary>
+                    <div class="subjective-tab__accordion-content">
+                        @foreach (var item in category.Items.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+                        {
+                            var isSelected = HasStructuredFunctionalLimitation(category.Name, item);
+                            <label class="subjective-tab__checkbox-item">
+                                <input type="checkbox"
+                                       name="functional-limitations"
+                                       checked="@isSelected"
+                                       disabled="@IsReadOnly"
+                                       @onchange="e => ToggleStructuredFunctionalLimitation(category.Name, item, (bool)e.Value!)" />
+                                @item
+                            </label>
+                        }
+                    </div>
+                </details>
+            }
+        }
+
+        @if (VisibleStructuredFunctionalLimitations.Count > 0)
+        {
+            <div class="subjective-tab__selected-list" data-testid="subjective-structured-limitations">
+                @foreach (var limitation in VisibleStructuredFunctionalLimitations)
+                {
+                    <div class="subjective-tab__selected-item">
+                        <span>@limitation.Category: @limitation.Description</span>
+                        @if (!IsReadOnly)
+                        {
+                            <button type="button"
+                                    class="subjective-tab__remove-btn"
+                                    @onclick="() => RemoveStructuredFunctionalLimitation(limitation.Id)">
+                                Remove
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         <p class="subjective-tab__field-label">Additional functional limitations:</p>
         <textarea id="additional-functional-limitations"
                   name="additional-functional-limitations"
@@ -192,7 +247,6 @@
                   @onchange="e => SetAndNotify(v => v.AdditionalFunctionalLimitations = e.Value?.ToString())"></textarea>
     </div>
 
-    <!-- Q7 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">7. Have you had imaging for this concern?</p>
         <div class="subjective-tab__yn-row">
@@ -211,7 +265,6 @@
         </div>
     </div>
 
-    <!-- Q8 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">8. Are you currently using an assistive device (AD)?</p>
         <div class="subjective-tab__yn-row">
@@ -230,7 +283,6 @@
         </div>
     </div>
 
-    <!-- Q9 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">9. What is your employment status?</p>
         <select id="employment-status" name="employment-status" class="subjective-tab__select"
@@ -245,7 +297,6 @@
         </select>
     </div>
 
-    <!-- Q10 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">10. What is your living situation? (Check all that apply)</p>
         <div class="subjective-tab__checkbox-grid">
@@ -271,7 +322,6 @@
         </div>
     </div>
 
-    <!-- Q11 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">11. Do you have a support system to help with daily needs?</p>
         @foreach (var item in _supportOptions)
@@ -295,7 +345,6 @@
         </div>
     </div>
 
-    <!-- Q12 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">12. Do you have any other health conditions (comorbidities)? (Check all that apply)</p>
         <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
@@ -313,7 +362,6 @@
         </div>
     </div>
 
-    <!-- Q13 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">13. Have you received other treatment for this issue?</p>
         @foreach (var item in _priorTreatments)
@@ -337,7 +385,6 @@
         </div>
     </div>
 
-    <!-- Q14 -->
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">14. Are you currently taking any medications?</p>
         <div class="subjective-tab__yn-row">
@@ -370,18 +417,27 @@
 
 @code {
     private SubjectiveVm _vm = new();
+    private BodyRegionCatalog? _catalog;
+    private bool _isLoadingCatalog;
+    private string? _catalogError;
+    private string? _loadedCatalogBodyPart;
 
     [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        // Never mutate the parameter; work from an internal copy
         _vm = Vm;
+        await EnsureCatalogAsync();
     }
 
-    // ── Static option lists ──────────────────────────────────────────
+    private static readonly string[] _bodyPartOptions = Enum.GetValues<BodyPart>()
+        .Where(part => part != BodyPart.Other)
+        .Select(part => part.ToString())
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
     private static readonly string[] _problems =
     [
         "Pain", "Numbness", "Tingling", "Loss of balance",
@@ -407,20 +463,6 @@
         "Required verbal cues or supervision",
         "Dependent for mobility or self-care"
     ];
-
-    private static readonly string[] _functionalLimitationCategories =
-    [
-        "Self Care", "Mobility", "Household Activities", "Community Activities", "Sleep"
-    ];
-
-    private static readonly Dictionary<string, string[]> _functionalLimitationItems = new()
-    {
-        ["Self Care"]             = ["Bathing", "Dressing", "Grooming", "Toileting"],
-        ["Mobility"]              = ["Walking", "Stairs", "Stand from chair", "Transfers"],
-        ["Household Activities"]  = ["Cooking", "Cleaning", "Laundry", "Yard work"],
-        ["Community Activities"]  = ["Driving", "Shopping", "Social activities", "Work/school tasks"],
-        ["Sleep"]                 = ["Unable to find comfortable position", "Woken by pain", "Difficulty falling asleep"]
-    };
 
     private static readonly string[] _employmentStatuses =
     [
@@ -453,13 +495,122 @@
         "Yes – Acupuncture", "Yes – Injection", "Yes – Surgery"
     ];
 
-    // ── Helpers ──────────────────────────────────────────────────────
-    private IEnumerable<string> GetFunctionalLimitationItems(string category) =>
-        _functionalLimitationItems.TryGetValue(category, out var items) ? items : Array.Empty<string>();
+    private List<FunctionalLimitationEditorEntry> VisibleStructuredFunctionalLimitations =>
+        _vm.StructuredFunctionalLimitations
+            .Where(entry => string.Equals(entry.BodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Description, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private async Task EnsureCatalogAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_vm.SelectedBodyPart))
+        {
+            _catalog = null;
+            _catalogError = null;
+            _loadedCatalogBodyPart = null;
+            return;
+        }
+
+        if (string.Equals(_loadedCatalogBodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _isLoadingCatalog = true;
+        _catalogError = null;
+
+        try
+        {
+            _catalog = await NoteWorkspaceService.GetBodyRegionCatalogAsync(ParseBodyPart(_vm.SelectedBodyPart));
+            _loadedCatalogBodyPart = _vm.SelectedBodyPart;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to load body-region catalog for {BodyPart}", _vm.SelectedBodyPart);
+            _catalog = null;
+            _catalogError = "Unable to load the structured limitation catalog right now.";
+            _loadedCatalogBodyPart = null;
+        }
+        finally
+        {
+            _isLoadingCatalog = false;
+        }
+    }
+
+    private async Task HandleSelectedBodyPartChangedAsync(ChangeEventArgs args)
+    {
+        _vm.SelectedBodyPart = args.Value?.ToString();
+        await EnsureCatalogAsync();
+        await VmChanged.InvokeAsync(_vm);
+    }
+
+    private bool HasStructuredFunctionalLimitation(string category, string description) =>
+        _vm.StructuredFunctionalLimitations.Any(entry =>
+            string.Equals(entry.BodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Category, category, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Description, description, StringComparison.OrdinalIgnoreCase));
+
+    private Task ToggleStructuredFunctionalLimitation(string category, string description, bool add)
+    {
+        if (string.IsNullOrWhiteSpace(_vm.SelectedBodyPart))
+        {
+            return Task.CompletedTask;
+        }
+
+        var existing = _vm.StructuredFunctionalLimitations.FirstOrDefault(entry =>
+            string.Equals(entry.BodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Category, category, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Description, description, StringComparison.OrdinalIgnoreCase));
+
+        if (add)
+        {
+            if (existing is null)
+            {
+                _vm.StructuredFunctionalLimitations.Add(new FunctionalLimitationEditorEntry
+                {
+                    BodyPart = _vm.SelectedBodyPart,
+                    Category = category,
+                    Description = description,
+                    IsSourceBacked = true
+                });
+            }
+        }
+        else if (existing is not null)
+        {
+            _vm.StructuredFunctionalLimitations.Remove(existing);
+        }
+
+        SyncFlatFunctionalLimitationSet();
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task RemoveStructuredFunctionalLimitation(string id)
+    {
+        _vm.StructuredFunctionalLimitations.RemoveAll(entry => string.Equals(entry.Id, id, StringComparison.OrdinalIgnoreCase));
+        SyncFlatFunctionalLimitationSet();
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private void SyncFlatFunctionalLimitationSet()
+    {
+        _vm.FunctionalLimitations = _vm.StructuredFunctionalLimitations
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Description))
+            .Select(entry => entry.Description.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
 
     private Task ToggleSet(HashSet<string> set, string item, bool add)
     {
-        if (add) set.Add(item); else set.Remove(item);
+        if (add)
+        {
+            set.Add(item);
+        }
+        else
+        {
+            set.Remove(item);
+        }
+
         return VmChanged.InvokeAsync(_vm);
     }
 
@@ -481,8 +632,11 @@
     }
 
     private static int ParseInt(object? value) =>
-        int.TryParse(value?.ToString(), out var i) ? Math.Clamp(i, 0, 10) : 0;
+        int.TryParse(value?.ToString(), out var parsed) ? Math.Clamp(parsed, 0, 10) : 0;
 
     private static DateTime? ParseDate(string? value) =>
-        DateTime.TryParse(value, out var d) ? d : null;
+        DateTime.TryParse(value, out var parsed) ? parsed : null;
+
+    private static BodyPart ParseBodyPart(string? value) =>
+        Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
 }
