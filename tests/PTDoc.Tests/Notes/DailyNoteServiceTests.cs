@@ -10,6 +10,8 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Notes.Workspace;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
 using Xunit;
@@ -58,7 +60,8 @@ public class DailyNoteServiceTests : IDisposable
         _taxonomyCatalog = new TreatmentTaxonomyCatalogService();
         var auditService = new AuditService(_db);
         var rulesEngine = new RulesEngine(_db, auditService);
-        var validationService = new NoteSaveValidationService(_db, rulesEngine);
+        var catalogs = new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
+        var validationService = new NoteSaveValidationService(_db, rulesEngine, catalogs);
 
         _service = new DailyNoteService(
             _db,

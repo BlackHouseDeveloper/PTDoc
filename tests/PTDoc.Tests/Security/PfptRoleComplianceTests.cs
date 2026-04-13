@@ -294,7 +294,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             AccessToken = Guid.NewGuid().ToString(),
             IsLocked = false,
             ResponseJson = "{\"pain\":\"7/10\"}",
-            Consents = "{\"hipaaAcknowledged\":true}",
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true}",
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
@@ -551,7 +551,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             AccessToken = Guid.NewGuid().ToString(),
             IsLocked = false,
             ResponseJson = "{}",
-            Consents = "{\"hipaaAcknowledged\":true}",
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true}",
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
@@ -575,6 +575,43 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
         Assert.True(updated.IsLocked);
         Assert.NotNull(updated.SubmittedAt);
+    }
+
+    [Fact]
+    public async Task UCBeta_SubmitIntake_MissingTreatmentConsent_Returns400AndLeavesDraftUnlocked()
+    {
+        var patient = CreateTestPatient();
+        _db.Patients.Add(patient);
+
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString(),
+            IsLocked = false,
+            ResponseJson = "{}",
+            Consents = "{\"hipaaAcknowledged\":true}",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        _db.IntakeForms.Add(intake);
+        await _db.SaveChangesAsync();
+
+        var identityMock = new Mock<IIdentityContextAccessor>();
+        identityMock.Setup(x => x.GetCurrentUserId()).Returns(Guid.NewGuid());
+
+        var auditMock = new Mock<IAuditService>();
+        var patientContextMock = new Mock<IPatientContextAccessor>();
+
+        var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
+
+        var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(400, statusResult.StatusCode);
+
+        var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
+        Assert.False(updated.IsLocked);
+        Assert.Null(updated.SubmittedAt);
     }
 
     [Fact]
@@ -629,7 +666,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
             AccessToken = Guid.NewGuid().ToString(),
             IsLocked = false,
             ResponseJson = "{}",
-            Consents = "{\"hipaaAcknowledged\":true}",
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true}",
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending

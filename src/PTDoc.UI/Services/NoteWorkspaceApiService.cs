@@ -1033,7 +1033,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 return new FunctionalLimitationEntryV2
                 {
                     BodyPart = defaultBodyPart,
-                    Category = "Legacy",
+                    Category = string.Empty,
                     Description = description
                 };
             })

@@ -201,7 +201,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         {
             PatientId = patientId,
             PainMapData = "{\"regions\":[\"knee\"]}",
-            Consents = "{\"hipaaAcknowledged\":true}",
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true}",
             ResponseJson = "{}"
         });
         using var createResponse = await fdClient.PostAsync("/api/v1/intake", createBody);
@@ -370,7 +370,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             Content = JsonContent(new UpdateIntakeRequest
             {
                 PainMapData = """{"regions":["lumbar"]}""",
-                Consents = """{"hipaaAcknowledged":true,"termsOfServiceAccepted":true}""",
+                Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}""",
                 ResponseJson = """{"fullName":"Patient Updated Through Invite"}""",
                 TemplateVersion = "1.1"
             })
@@ -1070,7 +1070,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         {
             PatientId = patientId,
             PainMapData = """{"regions":["knee"]}""",
-            Consents = """{"hipaaAcknowledged":true}""",
+            Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true}""",
             ResponseJson = """{"status":"draft"}"""
         }));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);

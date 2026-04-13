@@ -201,9 +201,29 @@ public static class IntakeConsentJson
             result.AddError("communicationEmail", "An email address is required when email reminders are authorized.");
         }
 
-        if (requireHipaaAcknowledgement && packet.HipaaAcknowledged != true)
+        if (requireHipaaAcknowledgement)
         {
-            result.AddError("hipaaAcknowledged", "HIPAA acknowledgement is required before submission.");
+            var (_, missing, revoked) = EvaluateConsentCompleteness(packet);
+
+            if (missing.Contains("hipaaAcknowledged", StringComparer.OrdinalIgnoreCase))
+            {
+                result.AddError("hipaaAcknowledged", "HIPAA acknowledgement is required before submission.");
+            }
+
+            if (missing.Contains("treatmentConsentAccepted", StringComparer.OrdinalIgnoreCase))
+            {
+                result.AddError("treatmentConsentAccepted", "Treatment consent is required before submission.");
+            }
+
+            if (revoked.Contains("hipaaAcknowledged", StringComparer.OrdinalIgnoreCase))
+            {
+                result.AddError("hipaaAcknowledged", "HIPAA acknowledgement has been revoked and must be re-authorized before submission.");
+            }
+
+            if (revoked.Contains("treatmentConsentAccepted", StringComparer.OrdinalIgnoreCase))
+            {
+                result.AddError("treatmentConsentAccepted", "Treatment consent has been revoked and must be re-authorized before submission.");
+            }
         }
 
         return result;

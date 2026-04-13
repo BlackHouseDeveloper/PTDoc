@@ -33,7 +33,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var catalogs = new WorkspaceReferenceCatalogService(registry);
         var auditService = new AuditService(_context);
         var rulesEngine = new RulesEngine(_context, auditService);
-        var validationService = new NoteSaveValidationService(_context, rulesEngine);
+        var validationService = new NoteSaveValidationService(_context, rulesEngine, catalogs);
         var carryForwardService = new CarryForwardService(_context);
         _service = new NoteWorkspaceV2Service(
             _context,
@@ -284,6 +284,47 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.True(result.IsValid);
         Assert.NotNull(result.Workspace);
         Assert.Contains(result.Warnings, warning => warning.Contains("Timed CPT minutes are missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SaveAsync_MoreThanFourDiagnosisCodes_ReturnsValidationError()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Diagnosis",
+            LastName = "Limit",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 2),
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    DiagnosisCodes =
+                    [
+                        new DiagnosisCodeV2 { Code = "M25.561", Description = "Pain in right knee" },
+                        new DiagnosisCodeV2 { Code = "M25.562", Description = "Pain in left knee" },
+                        new DiagnosisCodeV2 { Code = "M54.5", Description = "Low back pain" },
+                        new DiagnosisCodeV2 { Code = "M54.2", Description = "Cervicalgia" },
+                        new DiagnosisCodeV2 { Code = "R26.2", Description = "Difficulty in walking" }
+                    ]
+                }
+            }
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains("Maximum of 4 ICD-10 diagnosis codes allowed.", result.Errors);
+        Assert.Null(result.Workspace);
     }
 
     [Fact]

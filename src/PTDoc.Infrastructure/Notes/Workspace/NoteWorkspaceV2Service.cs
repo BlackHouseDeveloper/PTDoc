@@ -261,7 +261,11 @@ public sealed class NoteWorkspaceV2Service(
             ExistingNoteId = note?.Id,
             NoteType = request.NoteType,
             DateOfService = request.DateOfService,
-            CptEntries = cptEntries
+            CptEntries = cptEntries,
+            DiagnosisCodes = payload.Assessment.DiagnosisCodes
+                .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+                .Select(code => code.Code.Trim())
+                .ToList()
         }, cancellationToken);
 
         var saveResponse = new NoteWorkspaceV2SaveResponse();
@@ -1180,7 +1184,7 @@ public sealed class NoteWorkspaceV2Service(
                     .Select(item => new FunctionalLimitationEntryV2
                     {
                         BodyPart = note.NoteType == NoteType.Evaluation ? BodyPart.Other : note.ObjectiveMetrics.FirstOrDefault()?.BodyPart ?? BodyPart.Other,
-                        Category = "Legacy",
+                        Category = string.Empty,
                         Description = item
                     })
                     .ToList() ?? [],

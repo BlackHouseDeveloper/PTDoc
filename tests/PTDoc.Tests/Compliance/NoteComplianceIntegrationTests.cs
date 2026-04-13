@@ -4,6 +4,8 @@ using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Notes.Workspace;
+using PTDoc.Infrastructure.Outcomes;
 using Xunit;
 
 namespace PTDoc.Tests.Compliance;
@@ -32,7 +34,8 @@ public class NoteComplianceIntegrationTests : IDisposable
         _context = new ApplicationDbContext(options);
         _auditService = new AuditService(_context);
         _rulesEngine = new RulesEngine(_context, _auditService);
-        _validationService = new NoteSaveValidationService(_context, _rulesEngine);
+        var catalogs = new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
+        _validationService = new NoteSaveValidationService(_context, _rulesEngine, catalogs);
     }
 
     [Fact]
@@ -116,6 +119,52 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.Equal(RuleSeverity.Error, result.Severity);
         Assert.Equal("8MIN_RULE", result.RuleId);
         Assert.Contains("negative", result.Message.ToLower());
+    }
+
+    [Fact]
+    public async Task ValidateAsync_MoreThanFourDiagnosisCodes_ReturnsError()
+    {
+        var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 1),
+            DiagnosisCodes =
+            [
+                "M25.561",
+                "M25.562",
+                "M54.5",
+                "M54.2",
+                "R26.2"
+            ]
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains("Maximum of 4 ICD-10 diagnosis codes allowed.", result.Errors);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_UnsupportedCptModifier_ReturnsError()
+    {
+        var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 1),
+            CptEntries =
+            [
+                new CptCodeEntry
+                {
+                    Code = "97110",
+                    Units = 1,
+                    Minutes = 8,
+                    Modifiers = ["ZZ"]
+                }
+            ]
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("unsupported modifier", StringComparison.OrdinalIgnoreCase));
     }
 
     // ─── Audit logging for note edits ─────────────────────────────────────────

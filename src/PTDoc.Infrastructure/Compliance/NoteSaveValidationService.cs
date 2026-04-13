@@ -1,11 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Compliance;
 
-public sealed class NoteSaveValidationService(ApplicationDbContext db, IRulesEngine rulesEngine) : INoteSaveValidationService
+public sealed class NoteSaveValidationService(
+    ApplicationDbContext db,
+    IRulesEngine rulesEngine,
+    IWorkspaceReferenceCatalogService workspaceCatalogs) : INoteSaveValidationService
 {
     public async Task<ValidationResult> ValidateAsync(NoteSaveComplianceRequest request, CancellationToken ct = default)
     {
@@ -28,11 +32,44 @@ public sealed class NoteSaveValidationService(ApplicationDbContext db, IRulesEng
                 Code = entry.Code?.Trim() ?? string.Empty,
                 Units = entry.Units,
                 Minutes = entry.Minutes,
-                IsTimed = entry.IsTimed
+                IsTimed = entry.IsTimed,
+                Modifiers = entry.Modifiers
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ModifierOptions = entry.ModifierOptions
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                SuggestedModifiers = entry.SuggestedModifiers
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                ModifierSource = string.IsNullOrWhiteSpace(entry.ModifierSource)
+                    ? null
+                    : entry.ModifierSource.Trim()
             })
+            .ToList();
+        var diagnosisCodes = (request.DiagnosisCodes ?? [])
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         TimedUnitCalculator.EnforceKnownTimedCptStatus(normalizedEntries);
+
+        if ((request.DiagnosisCodes ?? []).Any(code => string.IsNullOrWhiteSpace(code)))
+        {
+            merged.Errors.Add("ICD-10 diagnosis codes cannot be blank.");
+        }
+
+        if (diagnosisCodes.Count > 4)
+        {
+            merged.Errors.Add("Maximum of 4 ICD-10 diagnosis codes allowed.");
+        }
 
         foreach (var entry in normalizedEntries)
         {
@@ -49,6 +86,28 @@ public sealed class NoteSaveValidationService(ApplicationDbContext db, IRulesEng
             if (entry.Minutes < 0)
             {
                 merged.Errors.Add($"CPT code {entry.Code} must record zero or more minutes.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.Code))
+            {
+                var canonicalEntry = FindCanonicalCptEntry(entry.Code);
+                if (canonicalEntry is not null)
+                {
+                    var allowedModifiers = canonicalEntry.ModifierOptions
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var invalidModifiers = entry.Modifiers
+                        .Where(value => !allowedModifiers.Contains(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (invalidModifiers.Count > 0)
+                    {
+                        merged.Errors.Add(
+                            $"CPT code {entry.Code} includes unsupported modifier(s): {string.Join(", ", invalidModifiers)}.");
+                    }
+                }
             }
         }
 
@@ -115,6 +174,13 @@ public sealed class NoteSaveValidationService(ApplicationDbContext db, IRulesEng
         var timedValidation = await rulesEngine.ValidateTimedUnitsAsync(normalizedEntries, ct);
         merged.MergeFrom(timedValidation);
         return await PopulateOverrideMetadataAsync(merged, ct);
+
+        CodeLookupEntry? FindCanonicalCptEntry(string code)
+        {
+            return workspaceCatalogs
+                .SearchCpt(code, take: 100)
+                .FirstOrDefault(entry => string.Equals(entry.Code, code, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     private async Task<ValidationResult> PopulateOverrideMetadataAsync(ValidationResult result, CancellationToken ct)
