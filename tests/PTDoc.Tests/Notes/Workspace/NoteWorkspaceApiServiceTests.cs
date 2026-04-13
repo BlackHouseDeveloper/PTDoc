@@ -235,6 +235,7 @@ public sealed class NoteWorkspaceApiServiceTests
                             [
                                 new ObjectiveMetricInputV2
                                 {
+                                    Name = "ROM",
                                     BodyPart = BodyPart.Knee,
                                     MetricType = MetricType.ROM,
                                     Value = "110",
@@ -267,6 +268,15 @@ public sealed class NoteWorkspaceApiServiceTests
                         Plan = new WorkspacePlanV2
                         {
                             TreatmentFocuses = ["Mobility"],
+                            GeneralInterventions =
+                            [
+                                new GeneralInterventionEntryV2
+                                {
+                                    Name = "Manual therapy",
+                                    Category = "Manual",
+                                    IsSourceBacked = true
+                                }
+                            ],
                             SelectedCptCodes =
                             [
                                 new PlannedCptCodeV2
@@ -315,13 +325,20 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.True(loaded.Success);
         Assert.NotNull(loaded.Payload.StructuredPayload);
         Assert.True(loaded.Payload.Subjective.TakingMedications);
+        Assert.Single(loaded.Payload.Subjective.StructuredFunctionalLimitations);
+        Assert.Equal(BodyPart.Knee.ToString(), loaded.Payload.Subjective.StructuredFunctionalLimitations[0].BodyPart);
+        Assert.Single(loaded.Payload.Objective.SpecialTests);
+        Assert.Single(loaded.Payload.Plan.GeneralInterventions);
         Assert.Equal("Motivated — willing to participate with occasional prompting", loaded.Payload.Assessment.MotivationLevel);
         Assert.Contains("Reduce pain", loaded.Payload.Assessment.MotivatingFactors);
         Assert.Equal("Needs transportation backup for late visits.", loaded.Payload.Assessment.SupportAdditionalNotes);
 
-        loaded.Payload.Subjective.FunctionalLimitations = ["Difficulty squatting"];
+        loaded.Payload.Subjective.StructuredFunctionalLimitations[0].Notes = "Needs railing on stairs";
         loaded.Payload.Subjective.MedicationDetails = "Lisinopril";
         loaded.Payload.Objective.SelectedBodyPart = BodyPart.Knee.ToString();
+        loaded.Payload.Objective.Metrics[0].Value = "115";
+        loaded.Payload.Objective.SpecialTests[0].Notes = "Medial joint line pain";
+        loaded.Payload.Plan.GeneralInterventions[0].Notes = "Mobilization grade III";
         loaded.Payload.Assessment.AssessmentNarrative = "Improving steadily";
         loaded.Payload.Assessment.MotivationLevel = "Highly motivated — eager to participate and comply";
         loaded.Payload.Assessment.MotivatingFactors = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -348,13 +365,21 @@ public sealed class NoteWorkspaceApiServiceTests
 
         using var document = JsonDocument.Parse(saveRequestBody!);
         var payload = document.RootElement.GetProperty("payload");
+        var objective = payload.GetProperty("objective");
+        var specialTests = objective.GetProperty("specialTests");
+        var metrics = objective.GetProperty("metrics");
 
         Assert.Equal((int)WorkspaceSeedKind.SignedCarryForward, payload.GetProperty("seedContext").GetProperty("kind").GetInt32());
         Assert.Equal("Mobility", payload.GetProperty("plan").GetProperty("treatmentFocuses")[0].GetString());
         Assert.Equal("10 mg", payload.GetProperty("subjective").GetProperty("medications")[0].GetProperty("dosage").GetString());
         Assert.Equal("Mobility", payload.GetProperty("subjective").GetProperty("functionalLimitations")[0].GetProperty("category").GetString());
-        Assert.Equal("McMurray", payload.GetProperty("objective").GetProperty("specialTests")[0].GetProperty("name").GetString());
-        Assert.Equal((int)MetricType.ROM, payload.GetProperty("objective").GetProperty("metrics")[0].GetProperty("metricType").GetInt32());
+        Assert.Equal("Needs railing on stairs", payload.GetProperty("subjective").GetProperty("functionalLimitations")[0].GetProperty("notes").GetString());
+        Assert.True(specialTests.GetArrayLength() > 0, $"Expected objective.specialTests to contain at least one entry. Payload: {saveRequestBody}");
+        Assert.True(metrics.GetArrayLength() > 0, $"Expected objective.metrics to contain at least one entry. Payload: {saveRequestBody}");
+        Assert.Equal("McMurray", specialTests[0].GetProperty("name").GetString());
+        Assert.Equal("Medial joint line pain", specialTests[0].GetProperty("notes").GetString());
+        Assert.Equal((int)MetricType.ROM, metrics[0].GetProperty("metricType").GetInt32());
+        Assert.Equal("115", metrics[0].GetProperty("value").GetString());
         Assert.Equal("Highly motivated — eager to participate and comply", payload.GetProperty("assessment").GetProperty("motivationLevel").GetString());
         var motivatingFactors = payload.GetProperty("assessment").GetProperty("motivatingFactors")
             .EnumerateArray()
@@ -363,6 +388,8 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Contains("Reduce pain", motivatingFactors);
         Assert.Contains("Return to work", motivatingFactors);
         Assert.Equal("Family will help with transportation.", payload.GetProperty("assessment").GetProperty("supportAdditionalNotes").GetString());
+        Assert.Equal("Manual therapy", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("name").GetString());
+        Assert.Equal("Mobilization grade III", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("notes").GetString());
         Assert.Equal("GP", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifiers")[0].GetString());
         Assert.Equal("Commonly used CPT codes and modifiers.md", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifierSource").GetString());
     }

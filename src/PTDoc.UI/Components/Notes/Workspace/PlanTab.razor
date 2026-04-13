@@ -2,6 +2,7 @@
 @using PTDoc.Application.AI
 @using PTDoc.Application.Compliance
 @using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
 @using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry
 @implements IDisposable
@@ -282,6 +283,101 @@
             <h3 class="pt-card__title">Additional Planning</h3>
         </div>
 
+        <div class="pt-card__field">
+            <label class="pt-card__field-label">Treatment Focuses</label>
+            @if (!string.IsNullOrWhiteSpace(_catalogError))
+            {
+                <p class="pt-card__search-status pt-card__search-status--error" role="alert">@_catalogError</p>
+            }
+            else if (_isLoadingCatalog)
+            {
+                <p class="pt-card__search-status" role="status">Loading treatment-focus catalog…</p>
+            }
+            else if (TreatmentFocusOptions.Count == 0)
+            {
+                <p class="pt-card__poc-placeholder">Select a structured body part in Subjective or Objective to load source-backed treatment focuses.</p>
+            }
+            else
+            {
+                <div class="pt-card__modifier-chip-row" data-testid="plan-treatment-focuses">
+                    @foreach (var focus in TreatmentFocusOptions)
+                    {
+                        var isSelected = Vm.TreatmentFocuses.Contains(focus);
+                        <button type="button"
+                                class="pt-card__modifier-chip @(isSelected ? "pt-card__modifier-chip--active" : "")"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleTreatmentFocus(focus)">
+                            @focus
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="pt-card__field">
+            <div class="pt-card__field-header">
+                <p class="pt-card__field-label">General Interventions</p>
+                @if (!IsReadOnly)
+                {
+                    <button type="button" class="pt-card__secondary-btn" @onclick="AddManualIntervention">+ Add Manual Intervention</button>
+                }
+            </div>
+
+            @if (InterventionOptions.Count > 0)
+            {
+                <div class="pt-card__modifier-chip-row" data-testid="plan-general-intervention-options">
+                    @foreach (var intervention in InterventionOptions)
+                    {
+                        var isSelected = Vm.GeneralInterventions.Any(entry => string.Equals(entry.Name, intervention, StringComparison.OrdinalIgnoreCase));
+                        <button type="button"
+                                class="pt-card__modifier-chip @(isSelected ? "pt-card__modifier-chip--active" : "")"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleGeneralIntervention(intervention)">
+                            @intervention
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (Vm.GeneralInterventions.Count == 0)
+            {
+                <p class="pt-card__poc-placeholder">No structured interventions documented yet.</p>
+            }
+            else
+            {
+                <div class="pt-card__editor-list" data-testid="plan-general-interventions">
+                    @foreach (var intervention in Vm.GeneralInterventions)
+                    {
+                        <div class="pt-card__editor-row">
+                            <div class="pt-card__editor-row-header">
+                                <strong>@intervention.Name</strong>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="pt-card__remove-btn" @onclick="() => RemoveGeneralIntervention(intervention)">✕</button>
+                                }
+                            </div>
+                            <div class="pt-card__row-2col">
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Category</span>
+                                    <input class="pt-card__search-input"
+                                           value="@intervention.Category"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Category = e.Value?.ToString())" />
+                                </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Notes</span>
+                                    <input class="pt-card__search-input"
+                                           value="@intervention.Notes"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Notes = e.Value?.ToString())" />
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
         <!-- Home Exercise Program -->
         <div class="pt-card__field">
             <label class="pt-card__field-label" for="hep-notes">Home Exercise Program (HEP)</label>
@@ -376,19 +472,24 @@
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Guid NoteId { get; set; }
+    [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
 
+    private bool _isLoadingCatalog;
     private bool _isGeneratingDischarge;
     private bool _isGeneratingFollowUp;
     private bool _isGeneratingSummary;
     private bool _isSearchingCpt;
     private string? _errorMessage;
+    private string? _catalogError;
     private string? _cptLookupError;
     private string _cptSearchQuery = string.Empty;
     private List<CodeLookupEntry> _cptResults = [];
+    private BodyRegionCatalog? _catalog;
+    private string? _loadedCatalogBodyPart;
     private CancellationTokenSource? _cptSearchCts;
     private EditableNarrativeBox? _dischargePlanningBox;
     private EditableNarrativeBox? _followUpBox;
@@ -420,7 +521,56 @@
         "12 weeks", "16 weeks", "20 weeks", "24 weeks", "Ongoing"
     ];
 
+    protected override async Task OnParametersSetAsync()
+    {
+        await EnsureCatalogAsync();
+    }
+
+    private List<string> TreatmentFocusOptions => _catalog?.TreatmentFocusOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<string> InterventionOptions => _catalog?.TreatmentInterventionOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
     // ── Helpers ────────────────────────────────────────────────────
+
+    private async Task EnsureCatalogAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedBodyPart))
+        {
+            _catalog = null;
+            _catalogError = null;
+            _loadedCatalogBodyPart = null;
+            return;
+        }
+
+        if (string.Equals(_loadedCatalogBodyPart, SelectedBodyPart, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _isLoadingCatalog = true;
+        _catalogError = null;
+
+        try
+        {
+            _catalog = await NoteWorkspaceService.GetBodyRegionCatalogAsync(ParseBodyPart(SelectedBodyPart));
+            _loadedCatalogBodyPart = SelectedBodyPart;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to load planning catalog for {BodyPart}", SelectedBodyPart);
+            _catalog = null;
+            _catalogError = "Unable to load the structured treatment catalog right now.";
+            _loadedCatalogBodyPart = null;
+        }
+        finally
+        {
+            _isLoadingCatalog = false;
+        }
+    }
 
     private Task SetAndNotify(Action<PlanVm> update)
     {
@@ -641,6 +791,59 @@
         return Task.CompletedTask;
     }
 
+    private Task ToggleTreatmentFocus(string focus)
+    {
+        if (Vm.TreatmentFocuses.Contains(focus))
+        {
+            Vm.TreatmentFocuses.Remove(focus);
+        }
+        else
+        {
+            Vm.TreatmentFocuses.Add(focus);
+        }
+
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task ToggleGeneralIntervention(string interventionName)
+    {
+        var existing = Vm.GeneralInterventions.FirstOrDefault(entry =>
+            string.Equals(entry.Name, interventionName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            Vm.GeneralInterventions.Add(new GeneralInterventionEntry
+            {
+                Name = interventionName,
+                IsSourceBacked = true
+            });
+        }
+        else
+        {
+            Vm.GeneralInterventions.Remove(existing);
+        }
+
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task AddManualIntervention()
+    {
+        Vm.GeneralInterventions.Add(new GeneralInterventionEntry());
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task RemoveGeneralIntervention(GeneralInterventionEntry intervention)
+    {
+        Vm.GeneralInterventions.Remove(intervention);
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task UpdateGeneralIntervention(GeneralInterventionEntry intervention, Action<GeneralInterventionEntry> update)
+    {
+        update(intervention);
+        return VmChanged.InvokeAsync(Vm);
+    }
+
     private async Task HandleAiSuggestDischargeAsync()
     {
         if (IsReadOnly) return;
@@ -775,4 +978,7 @@
         _cptSearchCts?.Cancel();
         _cptSearchCts?.Dispose();
     }
+
+    private static BodyPart ParseBodyPart(string? value) =>
+        Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
 }

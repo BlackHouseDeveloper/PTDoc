@@ -1,31 +1,173 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.Notes.Workspace
 @using PTDoc.Application.Outcomes
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
-@using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Services
+
+@inject INoteWorkspaceService NoteWorkspaceService
+@inject ILogger<ObjectiveTab> Logger
 
 <section class="objective-tab" data-testid="objective-tab" role="tabpanel" aria-label="Objective section">
     <div class="objective-tab__layout">
-        <!-- Main content column -->
         <div class="objective-tab__main">
             <h2 class="objective-tab__title">Objective</h2>
 
-            <!-- Body-part-dependent sections (locked until body part selected in Subjective) -->
-            @foreach (var sectionName in _bodyPartSections)
-            {
-                <div class="objective-tab__locked-section">
-                    <h3 class="objective-tab__section-heading">@sectionName</h3>
-                    <div class="objective-tab__locked-placeholder">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
-                             xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
-                            <path d="M8 5.5V8M8 10.5H8.01" stroke="currentColor" stroke-width="1.5"
-                                  stroke-linecap="round"/>
-                        </svg>
-                        <span>Select a body part in the Chief Complaint section to see @sectionName measurements.</span>
-                    </div>
+            <div class="objective-tab__section">
+                <h3 class="objective-tab__section-heading">Body Region</h3>
+                <select class="objective-tab__select"
+                        value="@(_vm.SelectedBodyPart ?? string.Empty)"
+                        disabled="@IsReadOnly"
+                        @onchange="HandleSelectedBodyPartChangedAsync"
+                        data-testid="objective-body-part-select">
+                    <option value="">Select body part ↓</option>
+                    @foreach (var option in _bodyPartOptions)
+                    {
+                        <option value="@option" selected="@string.Equals(_vm.SelectedBodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                    }
+                </select>
+
+                @if (!string.IsNullOrWhiteSpace(_catalogError))
+                {
+                    <p class="objective-tab__helper objective-tab__helper--error" role="alert">@_catalogError</p>
+                }
+                else if (_isLoadingCatalog)
+                {
+                    <p class="objective-tab__helper" role="status">Loading structured objective catalog…</p>
+                }
+            </div>
+
+            <div class="objective-tab__section" data-testid="objective-rom-section">
+                <div class="objective-tab__section-header">
+                    <h3 class="objective-tab__section-heading">Range of Motion (ROM)</h3>
                 </div>
-            }
+
+                @if (RomCatalogOptions.Count == 0)
+                {
+                    <p class="objective-tab__helper">Select a body part to load source-backed ROM options.</p>
+                }
+                else
+                {
+                    <div class="objective-tab__option-grid">
+                        @foreach (var option in RomCatalogOptions)
+                        {
+                            var isSelected = HasMetric(option, MetricType.ROM);
+                            <button type="button"
+                                    class="objective-tab__chip @(isSelected ? "objective-tab__chip--active" : "")"
+                                    disabled="@IsReadOnly"
+                                    @onclick="() => AddMetric(option, MetricType.ROM)">
+                                @option
+                            </button>
+                        }
+                    </div>
+                }
+
+                @if (RomMetrics.Count > 0)
+                {
+                    <div class="objective-tab__editor-list">
+                        @foreach (var metric in RomMetrics)
+                        {
+                            <div class="objective-tab__editor-row" data-testid="objective-rom-row">
+                                <div class="objective-tab__editor-header">
+                                    <strong>@metric.Name</strong>
+                                    @if (!IsReadOnly)
+                                    {
+                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveMetric(metric)">Remove</button>
+                                    }
+                                </div>
+                                <div class="objective-tab__editor-grid">
+                                    <label>
+                                        <span>Measured value</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.Value"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)" />
+                                    </label>
+                                    <label>
+                                        <span>Normal value</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.NormValue"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                    </label>
+                                    <label>
+                                        <span>Previous value</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.PreviousValue"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
+                                    </label>
+                                    <label class="objective-tab__checkbox-item">
+                                        <input type="checkbox"
+                                               checked="@metric.IsWithinNormalLimits"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.IsWithinNormalLimits = (bool)e.Value!)" />
+                                        Within normal limits
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="objective-tab__section" data-testid="objective-mmt-section">
+                <div class="objective-tab__section-header">
+                    <h3 class="objective-tab__section-heading">MMT / Joint Mobility</h3>
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" class="objective-tab__secondary-btn" @onclick="AddBlankMmtMetric">+ Add Row</button>
+                    }
+                </div>
+
+                @if (MmtMetrics.Count == 0)
+                {
+                    <p class="objective-tab__helper">No structured MMT or joint-mobility rows documented yet.</p>
+                }
+                else
+                {
+                    <div class="objective-tab__editor-list">
+                        @foreach (var metric in MmtMetrics)
+                        {
+                            <div class="objective-tab__editor-row" data-testid="objective-mmt-row">
+                                <div class="objective-tab__editor-grid">
+                                    <label>
+                                        <span>Measurement</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.Name"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.Name = e.Value?.ToString() ?? string.Empty)" />
+                                    </label>
+                                    <label>
+                                        <span>Value</span>
+                                        <select class="objective-tab__select"
+                                                value="@metric.Value"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)">
+                                            <option value="">Select grade ↓</option>
+                                            @foreach (var grade in StrengthGradeOptions)
+                                            {
+                                                <option value="@grade" selected="@string.Equals(metric.Value, grade, StringComparison.OrdinalIgnoreCase)">@grade</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Normal value</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.NormValue"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                    </label>
+                                    @if (!IsReadOnly)
+                                    {
+                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveMetric(metric)">Remove</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
 
             <div class="objective-tab__section" data-testid="objective-outcome-measures-section">
                 <OutcomeMeasurePanel PatientId="@ParsedPatientId"
@@ -36,7 +178,120 @@
                                      OnScoreRecorded="HandleOutcomeScoreRecorded" />
             </div>
 
-            <!-- Gait Analysis -->
+            <div class="objective-tab__section" data-testid="objective-special-tests-section">
+                <div class="objective-tab__section-header">
+                    <h3 class="objective-tab__section-heading">Special Tests</h3>
+                </div>
+
+                @if (SpecialTestOptions.Count == 0)
+                {
+                    <p class="objective-tab__helper">No source-backed special tests are available for the selected body part.</p>
+                }
+                else
+                {
+                    <div class="objective-tab__option-grid">
+                        @foreach (var option in SpecialTestOptions)
+                        {
+                            var isSelected = _vm.SpecialTests.Any(test => string.Equals(test.Name, option, StringComparison.OrdinalIgnoreCase));
+                            <button type="button"
+                                    class="objective-tab__chip @(isSelected ? "objective-tab__chip--active" : "")"
+                                    disabled="@IsReadOnly"
+                                    @onclick="() => ToggleSpecialTest(option)">
+                                @option
+                            </button>
+                        }
+                    </div>
+                }
+
+                @if (_vm.SpecialTests.Count > 0)
+                {
+                    <div class="objective-tab__editor-list">
+                        @foreach (var test in _vm.SpecialTests.OrderBy(test => test.Name, StringComparer.OrdinalIgnoreCase))
+                        {
+                            <div class="objective-tab__editor-row" data-testid="objective-special-test-row">
+                                <div class="objective-tab__editor-header">
+                                    <strong>@test.Name</strong>
+                                    @if (!IsReadOnly)
+                                    {
+                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveSpecialTest(test)">Remove</button>
+                                    }
+                                </div>
+                                <div class="objective-tab__editor-grid">
+                                    <label>
+                                        <span>Side</span>
+                                        <select class="objective-tab__select"
+                                                value="@test.Side"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateSpecialTest(test, item => item.Side = e.Value?.ToString())">
+                                            <option value="">Not specified</option>
+                                            <option value="Left">Left</option>
+                                            <option value="Right">Right</option>
+                                            <option value="Bilateral">Bilateral</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Result</span>
+                                        <select class="objective-tab__select"
+                                                value="@test.Result"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateSpecialTest(test, item => item.Result = e.Value?.ToString() ?? string.Empty)">
+                                            <option value="Positive">Positive</option>
+                                            <option value="Negative">Negative</option>
+                                            <option value="WNL">WNL</option>
+                                            <option value="Not Tested">Not Tested</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Notes</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@test.Notes"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateSpecialTest(test, item => item.Notes = e.Value?.ToString())" />
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="objective-tab__section" data-testid="objective-tender-muscles-section">
+                <h3 class="objective-tab__section-heading">Tender Muscles / Palpation</h3>
+                @if (TenderMuscleOptions.Count == 0)
+                {
+                    <p class="objective-tab__helper">No source-backed tender-muscle catalog is available for the selected body part.</p>
+                }
+                else
+                {
+                    <div class="objective-tab__option-grid">
+                        @foreach (var muscle in TenderMuscleOptions)
+                        {
+                            var isSelected = _vm.TenderMuscles.Contains(muscle);
+                            <label class="objective-tab__checkbox-chip">
+                                <input type="checkbox"
+                                       checked="@isSelected"
+                                       disabled="@IsReadOnly"
+                                       @onchange="e => ToggleTenderMuscle(muscle, (bool)e.Value!)" />
+                                @muscle
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="objective-tab__section" data-testid="objective-posture-section">
+                <h3 class="objective-tab__section-heading">Posture / Additional Measurements</h3>
+                <label class="objective-tab__field">
+                    <span class="objective-tab__sub-heading">Postural findings</span>
+                    <textarea class="objective-tab__textarea"
+                              rows="2"
+                              placeholder="Enter posture findings separated by commas"
+                              disabled="@IsReadOnly"
+                              value="@JoinDelimitedValues(_vm.PostureFindings, _vm.OtherPostureFinding)"
+                              @onchange="HandlePostureFindingsChanged"></textarea>
+                </label>
+            </div>
+
             <div class="objective-tab__section" data-testid="gait-analysis-section">
                 <h3 class="objective-tab__section-heading">Gait Analysis</h3>
 
@@ -85,32 +340,97 @@
                           @onchange="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
             </div>
 
-            <!-- Therapeutic Exercises -->
-            <div class="objective-tab__section" data-testid="therapeutic-exercises-section">
-                <InterventionChecklist Title="Therapeutic Exercises"
-                                       CountLabel="exercises"
-                                       Items="_vm.TherapeuticExercises"
-                                       ItemsChanged="UpdateExercises"
-                                       IsReadOnly="IsReadOnly"
-                                       AddButtonText="+ Add Exercise"
-                                       EmptyMessage="No exercises documented yet. Add a manual entry to record the work performed."
-                                       TestId="objective-therapeutic-exercises" />
+            <div class="objective-tab__section" data-testid="objective-exercises-section">
+                <div class="objective-tab__section-header">
+                    <h3 class="objective-tab__section-heading">Exercises Performed</h3>
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" class="objective-tab__secondary-btn" @onclick="AddManualExerciseRow">+ Add Manual Row</button>
+                    }
+                </div>
+
+                @if (ExerciseOptions.Count > 0)
+                {
+                    <div class="objective-tab__option-grid">
+                        @foreach (var exercise in ExerciseOptions)
+                        {
+                            var isSelected = _vm.ExerciseRows.Any(row =>
+                                string.Equals(row.SuggestedExercise, exercise, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(row.ActualExercisePerformed, exercise, StringComparison.OrdinalIgnoreCase));
+                            <button type="button"
+                                    class="objective-tab__chip @(isSelected ? "objective-tab__chip--active" : "")"
+                                    disabled="@IsReadOnly"
+                                    @onclick="() => AddSuggestedExercise(exercise)">
+                                @exercise
+                            </button>
+                        }
+                    </div>
+                }
+
+                @if (_vm.ExerciseRows.Count == 0)
+                {
+                    <p class="objective-tab__helper">No structured exercise rows documented yet.</p>
+                }
+                else
+                {
+                    <div class="objective-tab__editor-list">
+                        @foreach (var row in _vm.ExerciseRows)
+                        {
+                            <div class="objective-tab__editor-row" data-testid="objective-exercise-row">
+                                <div class="objective-tab__editor-header">
+                                    <strong>@(string.IsNullOrWhiteSpace(row.SuggestedExercise) ? "Exercise Row" : row.SuggestedExercise)</strong>
+                                    @if (!IsReadOnly)
+                                    {
+                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveExerciseRow(row)">Remove</button>
+                                    }
+                                </div>
+                                <div class="objective-tab__editor-grid">
+                                    <label>
+                                        <span>Suggested exercise</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@row.SuggestedExercise"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseRow(row, item => item.SuggestedExercise = e.Value?.ToString() ?? string.Empty)" />
+                                    </label>
+                                    <label>
+                                        <span>Performed</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@row.ActualExercisePerformed"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
+                                    </label>
+                                    <label>
+                                        <span>Sets / reps / duration</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@row.SetsRepsDuration"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
+                                    </label>
+                                    <label>
+                                        <span>Resistance / weight</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@row.ResistanceOrWeight"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseRow(row, item => item.ResistanceOrWeight = e.Value?.ToString())" />
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
 
-            <!-- Manual Work Techniques -->
-            <div class="objective-tab__section" data-testid="manual-techniques-section">
-                <InterventionChecklist Title="Manual Work Techniques"
-                                       CountLabel="techniques"
-                                       Items="_vm.ManualTechniques"
-                                       ItemsChanged="UpdateManualTechniques"
-                                       IsReadOnly="IsReadOnly"
-                                       AddButtonText="+ Add Technique"
-                                       EmptyMessage="No manual techniques documented yet. Add a manual entry to record the treatment performed."
-                                       TestId="objective-manual-techniques" />
+            <div class="objective-tab__section">
+                <h3 class="objective-tab__section-heading">Clinical Observation Notes</h3>
+                <textarea class="objective-tab__textarea"
+                          rows="3"
+                          placeholder="Additional objective findings, measurements, or clinical observations..."
+                          disabled="@IsReadOnly"
+                          value="@_vm.ClinicalObservationNotes"
+                          @onchange="e => SetAndNotify(v => v.ClinicalObservationNotes = e.Value?.ToString())"></textarea>
             </div>
         </div>
 
-        <!-- Sidebar -->
         <div class="objective-tab__sidebar">
             <PatientGoalsSidebar PatientId="@PatientId"
                                  ActiveGoalCount="@GoalCount"
@@ -125,13 +445,15 @@
 
 @code {
     private ObjectiveVm _vm = new();
+    private BodyRegionCatalog? _catalog;
+    private bool _isLoadingCatalog;
+    private string? _catalogError;
+    private string? _loadedCatalogBodyPart;
 
     [Parameter, EditorRequired] public ObjectiveVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<ObjectiveVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public string PatientId { get; set; } = string.Empty;
-
-    // Goal sidebar data is provided by the parent container.
     [Parameter] public int GoalCount { get; set; }
     [Parameter] public int GoalProgressPercent { get; set; }
     [Parameter] public int ShortTermGoalCount { get; set; }
@@ -139,54 +461,159 @@
     [Parameter] public IReadOnlyList<PatientGoalItem> GoalItems { get; set; } = Array.Empty<PatientGoalItem>();
     [Parameter] public IReadOnlyList<string> GoalHints { get; set; } = Array.Empty<string>();
 
-    protected override void OnParametersSet() => _vm = Vm;
+    protected override async Task OnParametersSetAsync()
+    {
+        _vm = Vm;
+        await EnsureCatalogAsync();
+    }
+
     private Guid ParsedPatientId => Guid.TryParse(PatientId, out var parsed) ? parsed : Guid.Empty;
     private BodyPart? SelectedBodyPartFilter => Enum.TryParse<BodyPart>(_vm.SelectedBodyPart, ignoreCase: true, out var parsed)
         ? parsed
         : null;
 
-    private static readonly string[] _bodyPartSections =
-    [
-        "Range of Motion (ROM)",
-        "Manual Muscle Testing (MMT)",
-        "Standardized Outcome Measures",
-        "Special Tests",
-        "Clinical Observations",
-        "Measurements",
-        "Postural Assessment"
-    ];
+    private static readonly string[] _bodyPartOptions = Enum.GetValues<BodyPart>()
+        .Where(part => part != BodyPart.Other)
+        .Select(part => part.ToString())
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     private record GaitPatternOption(string Value, string Label, string Description);
 
     private static readonly GaitPatternOption[] _gaitPatterns =
     [
-        new("normal",        "Normal gait",        "No deviations observed"),
-        new("antalgic",      "Antalgic gait",      "Pain-avoiding pattern"),
-        new("trendelenburg", "Trendelenburg gait",  "Hip abductor weakness"),
-        new("steppage",      "Steppage gait",       "Foot drop pattern"),
-        new("circumduction", "Circumduction gait",  "Swinging leg outward"),
-        new("festinating",   "Festinating gait",    "Short, shuffling steps"),
+        new("normal", "Normal gait", "No deviations observed"),
+        new("antalgic", "Antalgic gait", "Pain-avoiding pattern"),
+        new("trendelenburg", "Trendelenburg gait", "Hip abductor weakness"),
+        new("steppage", "Steppage gait", "Foot drop pattern"),
+        new("circumduction", "Circumduction gait", "Swinging leg outward"),
+        new("festinating", "Festinating gait", "Short, shuffling steps"),
     ];
 
     private static readonly string[] _gaitDeviations =
     [
         "Decreased stride length", "Decreased walking speed",
-        "Decreased arm swing",     "Trunk lean",
-        "Hip hiking",              "Foot drop",
-        "Toe walking",             "Absent heel strike",
-        "Knee hyperextension",     "Excessive knee flexion",
-        "Limping",                 "Patient uses assistive device"
+        "Decreased arm swing", "Trunk lean",
+        "Hip hiking", "Foot drop",
+        "Toe walking", "Absent heel strike",
+        "Knee hyperextension", "Excessive knee flexion",
+        "Limping", "Patient uses assistive device"
     ];
 
-    private Task ToggleDeviation(string item, bool add)
+    private List<string> RomCatalogOptions => _catalog?.NormalRangeOfMotionOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<string> StrengthGradeOptions => _catalog?.MmtGradeOptions
+        .Concat(_catalog?.JointMobilityGradeOptions ?? [])
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<string> SpecialTestOptions => _catalog?.SpecialTestsOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<string> TenderMuscleOptions => _catalog?.TenderMuscleOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<string> ExerciseOptions => _catalog?.ExerciseOptions
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList() ?? [];
+
+    private List<ObjectiveMetricRowEntry> RomMetrics => _vm.Metrics
+        .Where(metric => metric.MetricType == MetricType.ROM)
+        .OrderBy(metric => metric.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private List<ObjectiveMetricRowEntry> MmtMetrics => _vm.Metrics
+        .Where(metric => metric.MetricType == MetricType.MMT || metric.MetricType == MetricType.Other)
+        .OrderBy(metric => metric.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private async Task EnsureCatalogAsync()
     {
-        if (add) _vm.GaitDeviations.Add(item); else _vm.GaitDeviations.Remove(item);
+        if (string.IsNullOrWhiteSpace(_vm.SelectedBodyPart))
+        {
+            _catalog = null;
+            _catalogError = null;
+            _loadedCatalogBodyPart = null;
+            return;
+        }
+
+        if (string.Equals(_loadedCatalogBodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _isLoadingCatalog = true;
+        _catalogError = null;
+
+        try
+        {
+            _catalog = await NoteWorkspaceService.GetBodyRegionCatalogAsync(ParseBodyPart(_vm.SelectedBodyPart));
+            _loadedCatalogBodyPart = _vm.SelectedBodyPart;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to load objective catalog for {BodyPart}", _vm.SelectedBodyPart);
+            _catalog = null;
+            _catalogError = "Unable to load the structured objective catalog right now.";
+            _loadedCatalogBodyPart = null;
+        }
+        finally
+        {
+            _isLoadingCatalog = false;
+        }
+    }
+
+    private async Task HandleSelectedBodyPartChangedAsync(ChangeEventArgs args)
+    {
+        _vm.SelectedBodyPart = args.Value?.ToString();
+        await EnsureCatalogAsync();
+        await VmChanged.InvokeAsync(_vm);
+    }
+
+    private bool HasMetric(string name, MetricType metricType) =>
+        _vm.Metrics.Any(metric =>
+            metric.MetricType == metricType
+            && string.Equals(metric.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private Task AddMetric(string name, MetricType metricType)
+    {
+        if (!HasMetric(name, metricType))
+        {
+            _vm.Metrics.Add(new ObjectiveMetricRowEntry
+            {
+                Name = name,
+                MetricType = metricType
+            });
+        }
+
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private Task SetAndNotify(Action<ObjectiveVm> update)
+    private Task AddBlankMmtMetric()
     {
-        update(_vm);
+        _vm.Metrics.Add(new ObjectiveMetricRowEntry
+        {
+            MetricType = MetricType.MMT
+        });
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task RemoveMetric(ObjectiveMetricRowEntry metric)
+    {
+        _vm.Metrics.Remove(metric);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateMetric(ObjectiveMetricRowEntry metric, Action<ObjectiveMetricRowEntry> update)
+    {
+        update(metric);
         return VmChanged.InvokeAsync(_vm);
     }
 
@@ -198,7 +625,157 @@
             Date = entry.DateRecorded
         }));
 
-    private Task UpdateExercises(List<string> value) => SetAndNotify(vm => vm.TherapeuticExercises = value);
+    private Task ToggleSpecialTest(string name)
+    {
+        var existing = _vm.SpecialTests.FirstOrDefault(test => string.Equals(test.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            _vm.SpecialTests.Add(new SpecialTestEntry
+            {
+                Name = name,
+                Result = "Positive"
+            });
+        }
+        else
+        {
+            _vm.SpecialTests.Remove(existing);
+        }
 
-    private Task UpdateManualTechniques(List<string> value) => SetAndNotify(vm => vm.ManualTechniques = value);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task RemoveSpecialTest(SpecialTestEntry entry)
+    {
+        _vm.SpecialTests.Remove(entry);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateSpecialTest(SpecialTestEntry entry, Action<SpecialTestEntry> update)
+    {
+        update(entry);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task ToggleTenderMuscle(string name, bool add)
+    {
+        if (add)
+        {
+            _vm.TenderMuscles.Add(name);
+        }
+        else
+        {
+            _vm.TenderMuscles.Remove(name);
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task HandlePostureFindingsChanged(ChangeEventArgs args)
+    {
+        var tokens = SplitDelimitedValues(args.Value?.ToString());
+        _vm.PostureFindings = tokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _vm.OtherPostureFinding = null;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task ToggleDeviation(string item, bool add)
+    {
+        if (add)
+        {
+            _vm.GaitDeviations.Add(item);
+        }
+        else
+        {
+            _vm.GaitDeviations.Remove(item);
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task AddSuggestedExercise(string exercise)
+    {
+        var existing = _vm.ExerciseRows.FirstOrDefault(row =>
+            string.Equals(row.SuggestedExercise, exercise, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            _vm.ExerciseRows.Add(new ExerciseRowEntry
+            {
+                SuggestedExercise = exercise,
+                ActualExercisePerformed = exercise,
+                IsCheckedSuggestedExercise = true,
+                IsSourceBacked = true
+            });
+        }
+
+        SyncLegacyExerciseList();
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task AddManualExerciseRow()
+    {
+        _vm.ExerciseRows.Add(new ExerciseRowEntry());
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task RemoveExerciseRow(ExerciseRowEntry row)
+    {
+        _vm.ExerciseRows.Remove(row);
+        SyncLegacyExerciseList();
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateExerciseRow(ExerciseRowEntry row, Action<ExerciseRowEntry> update)
+    {
+        update(row);
+        SyncLegacyExerciseList();
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private void SyncLegacyExerciseList()
+    {
+        _vm.TherapeuticExercises = _vm.ExerciseRows
+            .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private Task SetAndNotify(Action<ObjectiveVm> update)
+    {
+        update(_vm);
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private static string JoinDelimitedValues(IEnumerable<string> values, string? otherValue)
+    {
+        var items = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(otherValue))
+        {
+            items.Add(otherValue.Trim());
+        }
+
+        return string.Join(", ", items);
+    }
+
+    private static List<string> SplitDelimitedValues(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return value
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static BodyPart ParseBodyPart(string? value) =>
+        Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
 }

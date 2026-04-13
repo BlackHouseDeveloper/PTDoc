@@ -139,6 +139,7 @@ public sealed class WorkspaceObjectiveV2
 
 public sealed class ObjectiveMetricInputV2
 {
+    public string Name { get; set; } = string.Empty;
     public BodyPart BodyPart { get; set; } = BodyPart.Other;
     public MetricType MetricType { get; set; } = MetricType.Other;
     public string Value { get; set; } = string.Empty;

@@ -361,6 +361,7 @@ else
                                      Vm="@_note.Plan"
                                      VmChanged="HandlePlanChanged"
                                      IsReadOnly="@IsWorkspaceReadOnly"
+                                     SelectedBodyPart="@GetSelectedBodyPart()"
                                      DiagnosisSummary="@GetDiagnosisSummary()"
                                      AssessmentSummary="@GetAssessmentSummary()"
                                      GoalsSummary="@GetGoalsSummary()"
@@ -848,6 +849,7 @@ else
     private Task HandleSubjectiveChanged(SubjectiveVm vm)
     {
         _note.Subjective = vm;
+        SyncSelectedBodyPart(vm.SelectedBodyPart);
         MarkUnsaved();
         return Task.CompletedTask;
     }
@@ -855,6 +857,7 @@ else
     private Task HandleObjectiveChanged(ObjectiveVm vm)
     {
         _note.Objective = vm;
+        SyncSelectedBodyPart(vm.SelectedBodyPart);
         MarkUnsaved();
         return Task.CompletedTask;
     }
@@ -872,6 +875,22 @@ else
         MarkUnsaved();
         return Task.CompletedTask;
     }
+
+    private void SyncSelectedBodyPart(string? bodyPart)
+    {
+        if (string.IsNullOrWhiteSpace(bodyPart))
+        {
+            return;
+        }
+
+        _note.Subjective.SelectedBodyPart = bodyPart;
+        _note.Objective.SelectedBodyPart = bodyPart;
+    }
+
+    private string? GetSelectedBodyPart() =>
+        !string.IsNullOrWhiteSpace(_note.Objective.SelectedBodyPart)
+            ? _note.Objective.SelectedBodyPart
+            : _note.Subjective.SelectedBodyPart;
 
     private Task HandleDryNeedlingChanged(DryNeedlingVm vm)
     {
@@ -1748,6 +1767,21 @@ else
     {
         var parts = new List<string>();
 
+        if (_note.Objective.Metrics.Count > 0)
+        {
+            parts.Add($"Metrics: {string.Join(", ", _note.Objective.Metrics.Where(metric => !string.IsNullOrWhiteSpace(metric.Name)).Select(metric => $"{metric.Name} {metric.Value}".Trim()).Where(value => !string.IsNullOrWhiteSpace(value)))}");
+        }
+
+        if (_note.Objective.SpecialTests.Count > 0)
+        {
+            parts.Add($"Special tests: {string.Join(", ", _note.Objective.SpecialTests.Where(test => !string.IsNullOrWhiteSpace(test.Name)).Select(test => $"{test.Name} {test.Result}".Trim()))}");
+        }
+
+        if (_note.Objective.TenderMuscles.Count > 0)
+        {
+            parts.Add($"Tender muscles: {string.Join(", ", _note.Objective.TenderMuscles.OrderBy(v => v))}");
+        }
+
         if (!string.IsNullOrWhiteSpace(_note.Objective.PrimaryGaitPattern))
         {
             parts.Add($"Primary gait pattern: {_note.Objective.PrimaryGaitPattern}");
@@ -1761,6 +1795,11 @@ else
         if (!string.IsNullOrWhiteSpace(_note.Objective.AdditionalGaitObservations))
         {
             parts.Add(_note.Objective.AdditionalGaitObservations);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_note.Objective.ClinicalObservationNotes))
+        {
+            parts.Add(_note.Objective.ClinicalObservationNotes);
         }
 
         return string.Join(" | ", parts);

@@ -6,6 +6,8 @@ namespace PTDoc.UI.Components.Notes.Models;
 /// </summary>
 public class SubjectiveVm
 {
+    public string? SelectedBodyPart { get; set; }
+
     // Q1: Problems
     public HashSet<string> Problems { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? OtherProblem { get; set; }
@@ -35,6 +37,7 @@ public class SubjectiveVm
 
     // Q6: Functional limitations
     public HashSet<string> FunctionalLimitations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<FunctionalLimitationEditorEntry> StructuredFunctionalLimitations { get; set; } = new();
     public string? AdditionalFunctionalLimitations { get; set; }
 
     // Q7: Imaging
@@ -64,4 +67,17 @@ public class SubjectiveVm
     // Q14: Medications
     public bool? TakingMedications { get; set; }
     public string? MedicationDetails { get; set; }
+}
+
+public sealed class FunctionalLimitationEditorEntry
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string? BodyPart { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool IsSourceBacked { get; set; }
+    public string? MeasurePrompt { get; set; }
+    public decimal? QuantifiedValue { get; set; }
+    public string? QuantifiedUnit { get; set; }
+    public string? Notes { get; set; }
 }

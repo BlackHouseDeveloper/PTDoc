@@ -15,6 +15,8 @@ public class PlanVm
     public string? TreatmentDuration { get; set; }
 
     // Additional Planning
+    public HashSet<string> TreatmentFocuses { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<GeneralInterventionEntry> GeneralInterventions { get; set; } = new();
     public string? HomeExerciseProgramNotes { get; set; }
 
     // Discharge Planning — AI suggest flow: Generate → Review → Accept
@@ -33,6 +35,14 @@ public class PlanVm
     public string? PrimaryDischargeReason { get; set; }
     public string? DischargeRecommendations { get; set; }
     public List<string> CompletedDischargeChecklistItems { get; set; } = new();
+}
+
+public sealed class GeneralInterventionEntry
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Category { get; set; }
+    public bool IsSourceBacked { get; set; }
+    public string? Notes { get; set; }
 }
 
 public class CptCodeEntry

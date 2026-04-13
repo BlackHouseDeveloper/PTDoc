@@ -349,6 +349,16 @@
             </div>
 
             <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">Treatment Focuses</span>
+                <span class="soap-review-page__field-value">@GetTreatmentFocuses()</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
+                <span class="soap-review-page__field-label">General Interventions</span>
+                <span class="soap-review-page__field-value">@GetGeneralInterventions()</span>
+            </div>
+
+            <div class="soap-review-page__field-panel">
                 <span class="soap-review-page__field-label">Follow-Up</span>
                 <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.FollowUpInstructions)</span>
             </div>
@@ -483,7 +493,9 @@
     }
 
     private string GetFunctionalLimitations() =>
-        JoinValues(Note.Subjective.FunctionalLimitations, Note.Subjective.AdditionalFunctionalLimitations);
+        JoinValues(
+            Note.Subjective.StructuredFunctionalLimitations.Select(entry => entry.Description).Concat(Note.Subjective.FunctionalLimitations),
+            Note.Subjective.AdditionalFunctionalLimitations);
 
     private string GetPainScoreLabel() => HasPainScore() ? $"{Math.Clamp(Note.Subjective.CurrentPainScore, 0, 10)}/10" : EmptyState;
 
@@ -495,9 +507,9 @@
 
     private string GetRangeOfMotion()
     {
-        var entries = Note.Objective.OutcomeMeasures
-            .Where(measure => measure.Name.Contains("rom", StringComparison.OrdinalIgnoreCase))
-            .Select(FormatOutcomeMeasure)
+        var entries = Note.Objective.Metrics
+            .Where(metric => metric.MetricType == PTDoc.Core.Models.MetricType.ROM)
+            .Select(FormatMetric)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
 
@@ -506,11 +518,9 @@
 
     private string GetManualMuscleTest()
     {
-        var entries = Note.Objective.OutcomeMeasures
-            .Where(measure =>
-                measure.Name.Contains("mmt", StringComparison.OrdinalIgnoreCase) ||
-                measure.Name.Contains("strength", StringComparison.OrdinalIgnoreCase))
-            .Select(FormatOutcomeMeasure)
+        var entries = Note.Objective.Metrics
+            .Where(metric => metric.MetricType == PTDoc.Core.Models.MetricType.MMT)
+            .Select(FormatMetric)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
 
@@ -519,12 +529,22 @@
 
     private string GetSpecialTests()
     {
-        var entries = Note.Objective.OutcomeMeasures
-            .Where(measure =>
-                !measure.Name.Contains("rom", StringComparison.OrdinalIgnoreCase) &&
-                !measure.Name.Contains("mmt", StringComparison.OrdinalIgnoreCase) &&
-                !measure.Name.Contains("strength", StringComparison.OrdinalIgnoreCase))
-            .Select(FormatOutcomeMeasure)
+        var entries = Note.Objective.SpecialTests
+            .Select(test =>
+            {
+                var parts = new List<string> { $"{test.Name}: {test.Result}" };
+                if (!string.IsNullOrWhiteSpace(test.Side))
+                {
+                    parts.Add(test.Side.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(test.Notes))
+                {
+                    parts.Add(test.Notes.Trim());
+                }
+
+                return string.Join(" • ", parts);
+            })
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
 
@@ -540,9 +560,30 @@
             details.Add($"Gait: {Note.Objective.PrimaryGaitPattern}");
         }
 
+        if (Note.Objective.PostureFindings.Count > 0)
+        {
+            details.Add($"Posture: {string.Join(", ", Note.Objective.PostureFindings.OrderBy(value => value))}");
+        }
+
+        if (Note.Objective.TenderMuscles.Count > 0)
+        {
+            details.Add($"Tender muscles: {string.Join(", ", Note.Objective.TenderMuscles.OrderBy(value => value))}");
+        }
+
         if (Note.Objective.GaitDeviations.Count > 0)
         {
             details.Add($"Deviations: {string.Join(", ", Note.Objective.GaitDeviations.OrderBy(value => value))}");
+        }
+
+        var exercises = Note.Objective.ExerciseRows
+            .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (exercises.Count > 0)
+        {
+            details.Add($"Exercises: {string.Join(", ", exercises)}");
         }
 
         if (!string.IsNullOrWhiteSpace(Note.Objective.ClinicalObservationNotes))
@@ -564,6 +605,29 @@
     }
 
     private string GetPrognosis() => DisplayOrEmpty(Note.Assessment.OverallPrognosis);
+
+    private string GetTreatmentFocuses() =>
+        Note.Plan.TreatmentFocuses.Count == 0
+            ? EmptyState
+            : string.Join(", ", Note.Plan.TreatmentFocuses.OrderBy(value => value));
+
+    private string GetGeneralInterventions()
+    {
+        var values = Note.Plan.GeneralInterventions
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry =>
+            {
+                if (string.IsNullOrWhiteSpace(entry.Category))
+                {
+                    return entry.Name.Trim();
+                }
+
+                return $"{entry.Name.Trim()} ({entry.Category.Trim()})";
+            })
+            .ToList();
+
+        return values.Count == 0 ? EmptyState : string.Join(" • ", values);
+    }
 
     private IReadOnlyList<string> GetGoalItems()
     {
@@ -597,6 +661,27 @@
         return string.IsNullOrWhiteSpace(entry.Score)
             ? entry.Name.Trim()
             : $"{entry.Name.Trim()}: {entry.Score.Trim()}";
+    }
+
+    private static string FormatMetric(ObjectiveMetricRowEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Name))
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string> { entry.Name.Trim() };
+        if (!string.IsNullOrWhiteSpace(entry.Value))
+        {
+            parts.Add(entry.Value.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.NormValue))
+        {
+            parts.Add($"Norm {entry.NormValue.Trim()}");
+        }
+
+        return string.Join(": ", parts.Take(2)) + (parts.Count > 2 ? $" • {string.Join(" • ", parts.Skip(2))}" : string.Empty);
     }
 
     private static string JoinValues(IEnumerable<string> values, string? additionalValue)
