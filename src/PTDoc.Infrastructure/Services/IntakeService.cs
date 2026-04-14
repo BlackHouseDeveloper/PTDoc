@@ -419,6 +419,8 @@ public sealed class IntakeService : IIntakeService
                     draft.StructuredData = structuredData;
                 }
 
+                IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
+
                 return draft;
             }
         }
@@ -430,11 +432,13 @@ public sealed class IntakeService : IIntakeService
             fallback.StructuredData = fallbackStructuredData;
         }
 
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(fallback);
+
         return fallback;
     }
 
     private static string SerializeDraft(IntakeResponseDraft state)
-        => JsonSerializer.Serialize(state, SerializerOptions);
+        => JsonSerializer.Serialize(IntakeDraftPersistence.CreatePersistenceCopy(state), SerializerOptions);
 
     private static string? SerializeStructuredData(IntakeStructuredDataDto? structuredData)
         => structuredData is null ? null : IntakeStructuredDataJson.Serialize(structuredData);
@@ -445,6 +449,7 @@ public sealed class IntakeService : IIntakeService
         CopyDraftProperties(state, draft);
         draft.IntakeId = state.IntakeId;
         draft.PatientId = state.PatientId;
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
         return draft;
     }
 

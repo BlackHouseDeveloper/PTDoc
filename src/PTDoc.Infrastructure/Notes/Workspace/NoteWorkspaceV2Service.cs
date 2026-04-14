@@ -880,7 +880,8 @@ public sealed class NoteWorkspaceV2Service(
         ClinicalNote note,
         CancellationToken cancellationToken)
     {
-        var payload = await DeserializePayloadAsync(note, cancellationToken);
+        var deserialization = await DeserializePayloadAsync(note, cancellationToken);
+        var payload = deserialization.Payload;
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
         payload.Objective.Metrics = note.ObjectiveMetrics
@@ -955,6 +956,12 @@ public sealed class NoteWorkspaceV2Service(
         if (string.IsNullOrWhiteSpace(payload.Plan.PlanOfCareNarrative))
         {
             payload.Plan.PlanOfCareNarrative = BuildPlanOfCareNarrative(payload.Plan);
+        }
+
+        if (deserialization.CanBackfill && ShouldBackfillCanonicalWorkspacePayload(note))
+        {
+            note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
+            await db.SaveChangesAsync(cancellationToken);
         }
 
         return new NoteWorkspaceV2LoadResponse
@@ -1122,33 +1129,63 @@ public sealed class NoteWorkspaceV2Service(
         }
     }
 
-    private async Task<NoteWorkspaceV2Payload> DeserializePayloadAsync(
+    private async Task<PayloadDeserializationResult> DeserializePayloadAsync(
         ClinicalNote note,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(note.ContentJson))
         {
-            return new NoteWorkspaceV2Payload { NoteType = note.NoteType };
+            return new PayloadDeserializationResult(
+                new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                CanBackfill: false);
         }
 
+        JsonDocument document;
         try
         {
-            var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions);
-            if (payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2)
-            {
-                payload.NoteType = note.NoteType;
-                return payload;
-            }
+            document = JsonDocument.Parse(note.ContentJson);
         }
         catch (JsonException)
         {
-            // Fall back to legacy translation below.
+            return new PayloadDeserializationResult(
+                new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                CanBackfill: false);
+        }
+
+        using (document)
+        {
+            if (TryReadSchemaVersion(document.RootElement, out var schemaVersion)
+                && schemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2)
+            {
+                try
+                {
+                    var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions);
+                    if (payload is not null)
+                    {
+                        payload.NoteType = note.NoteType;
+                        return new PayloadDeserializationResult(payload, CanBackfill: false);
+                    }
+                }
+                catch (JsonException)
+                {
+                    return new PayloadDeserializationResult(
+                        new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                        CanBackfill: false);
+                }
+            }
+
+            if (!LooksLikeLegacyWorkspacePayload(document.RootElement))
+            {
+                return new PayloadDeserializationResult(
+                    new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                    CanBackfill: false);
+            }
         }
 
         return await TranslateLegacyPayloadAsync(note, cancellationToken);
     }
 
-    private async Task<NoteWorkspaceV2Payload> TranslateLegacyPayloadAsync(
+    private async Task<PayloadDeserializationResult> TranslateLegacyPayloadAsync(
         ClinicalNote note,
         CancellationToken cancellationToken)
     {
@@ -1313,7 +1350,7 @@ public sealed class NoteWorkspaceV2Service(
                 .Select(entry => entry!)
                 .ToList() ?? [];
 
-        return payload;
+        return new PayloadDeserializationResult(payload, CanBackfill: legacy is not null);
     }
 
     private static NoteWorkspaceV2Payload ClonePayload(NoteWorkspaceV2Payload payload)
@@ -1437,6 +1474,89 @@ public sealed class NoteWorkspaceV2Service(
         return false;
     }
 
+    private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            schemaVersion = default;
+            return false;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out schemaVersion))
+            {
+                return true;
+            }
+
+            break;
+        }
+
+        schemaVersion = default;
+        return false;
+    }
+
+    private static bool LooksLikeLegacyWorkspacePayload(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "subjective", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(property.Name, "objective", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(property.Name, "assessment", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(property.Name, "plan", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ShouldBackfillCanonicalWorkspacePayload(ClinicalNote note)
+    {
+        return note.NoteStatus == NoteStatus.Draft
+               && !note.IsFinalized
+               && !IsDryNeedlingCompatibilityPayload(note.ContentJson);
+    }
+
+    private static bool IsDryNeedlingCompatibilityPayload(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            return document.RootElement.TryGetProperty("workspaceNoteType", out var workspaceNoteTypeElement)
+                   && workspaceNoteTypeElement.ValueKind == JsonValueKind.String
+                   && string.Equals(
+                       workspaceNoteTypeElement.GetString(),
+                       "Dry Needling Note",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static BodyPart ParseBodyPart(string? value)
     {
         return Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed)
@@ -1461,6 +1581,8 @@ public sealed class NoteWorkspaceV2Service(
 
         return numbers;
     }
+
+    private sealed record PayloadDeserializationResult(NoteWorkspaceV2Payload Payload, bool CanBackfill);
 
     private sealed class LegacyWorkspacePayload
     {

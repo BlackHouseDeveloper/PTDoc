@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
@@ -127,6 +128,39 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureDraftAsync_ClearsLegacySupplementalSelectionsFromPersistedResponseJson_WhenStructuredIdsExist()
+    {
+        var patient = CreatePatient("Morgan", "Canonical");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Morgan Canonical",
+            StructuredData = new IntakeStructuredDataDto
+            {
+                ComorbidityIds = ["hypertension"],
+                AssistiveDeviceIds = ["cane"],
+                LivingSituationIds = ["lives-alone"],
+                HouseLayoutOptionIds = ["single-story-main-floor-bed-bath"]
+            },
+            SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
+            SelectedAssistiveDevices = ["Cane"],
+            SelectedLivingSituations = ["Lives alone"],
+            SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"]
+        });
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
+
+        using var responseJson = JsonDocument.Parse(storedDraft.ResponseJson);
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedComorbidities").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedAssistiveDevices").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedLivingSituations").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedHouseLayoutOptions").GetArrayLength());
+    }
+
+    [Fact]
     public async Task GetDraftByPatientIdAsync_RehydratesStructuredDataFromCanonicalJson()
     {
         var patient = CreatePatient("Taylor", "Rehydrate");
@@ -168,6 +202,45 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal("shoulder", draft.StructuredData!.BodyPartSelections[0].BodyPartId);
         Assert.Equal(["right"], draft.StructuredData.BodyPartSelections[0].Lateralities);
         Assert.Equal(["ibuprofen-advil-motrin"], draft.StructuredData.MedicationIds);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_ClearsLegacySupplementalSelections_WhenStructuredDataExists()
+    {
+        var patient = CreatePatient("Skyler", "Normalize");
+        var structuredDataJson = IntakeStructuredDataJson.Serialize(new IntakeStructuredDataDto
+        {
+            ComorbidityIds = ["hypertension"],
+            AssistiveDeviceIds = ["cane"]
+        });
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """
+                           {"selectedComorbidities":["Hypertension (High Blood Pressure)"],"selectedAssistiveDevices":["Cane"]}
+                           """,
+            StructuredDataJson = structuredDataJson,
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(draft);
+        Assert.Empty(draft!.SelectedComorbidities);
+        Assert.Empty(draft.SelectedAssistiveDevices);
+        Assert.Equal(["hypertension"], draft.StructuredData!.ComorbidityIds);
+        Assert.Equal(["cane"], draft.StructuredData.AssistiveDeviceIds);
     }
 
     [Fact]

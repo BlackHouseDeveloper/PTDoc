@@ -37,6 +37,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 ## Setup And Common Commands
 
 - SDK is pinned by [`global.json`](global.json) to .NET `8.0.417`.
+- Install .NET MAUI workloads when working on mobile/desktop targets: `dotnet workload install maui`
 - Bootstrap development secrets before running API or Web:
   - `./setup-dev-secrets.sh`
   - Windows: `./setup-dev-secrets.ps1`
@@ -44,6 +45,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Initial repo setup: `./PTDoc-Foundry.sh`
 - Create and apply the default SQLite migration: `./PTDoc-Foundry.sh --create-migration`
 - Seed dev data when `src/PTDoc.Seeder/PTDoc.Seeder.csproj` exists: `./PTDoc-Foundry.sh --seed`
+- `./PTDoc-Foundry.sh --help` shows the helper-script workflow and `./PTDoc-Foundry.sh --verbose` enables detailed output
 - Interactive launcher: `./run-ptdoc.sh`
 - Clean build, test discovery, and architecture validation: `./cleanbuild-ptdoc.sh`
 
@@ -78,8 +80,10 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Liveness check: `curl http://localhost:5170/health/live`
 - Readiness check: `curl http://localhost:5170/health/ready`
 - Authenticated DB diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db`
+- Inspect the active EF Core context wiring: `EF_PROVIDER=sqlite dotnet ef dbcontext info -p src/PTDoc.Infrastructure -s src/PTDoc.Api`
 - Detect SQLite model drift: `EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api`
 - Secret-policy tracked-file scan: `python3 .github/scripts/scan_secret_policy.py`
 - Run CI-owned SecretPolicy tests only: `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=SecretPolicy" --verbosity normal`
 - CI-owned release gate categories are `RBAC`, `Tenancy`, `OfflineSync`, `Compliance`, and `EndToEnd`; run them individually with `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=<Name>" --verbosity normal`
 - Restore pinned local EF tools before SQL Server/Postgres CI repro: `dotnet tool restore`
+- SQL Server/Postgres CI-style migration repro uses `dotnet tool run dotnet-ef ...` with `EF_PROVIDER`, `Database__ConnectionString`, and a placeholder `Jwt__SigningKey` to satisfy API startup validation

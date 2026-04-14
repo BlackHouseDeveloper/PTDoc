@@ -663,6 +663,191 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(string.Empty, seed.Payload.Assessment.AssessmentNarrative);
     }
 
+    [Fact]
+    public async Task LoadAsync_DraftLegacyNote_BackfillsCanonicalWorkspacePayload()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "Draft",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 10),
+            ContentJson = """
+                          {
+                            "subjective": {
+                              "currentPainScore": 4,
+                              "functionalLimitations": ["Difficulty walking"]
+                            },
+                            "assessment": {
+                              "assessmentNarrative": "Legacy narrative"
+                            }
+                          }
+                          """,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(4, loaded!.Payload.Subjective.CurrentPainScore);
+        Assert.Equal("Legacy narrative", loaded.Payload.Assessment.AssessmentNarrative);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        using var storedJson = JsonDocument.Parse(stored.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(4, storedJson.RootElement.GetProperty("subjective").GetProperty("currentPainScore").GetInt32());
+    }
+
+    [Fact]
+    public async Task LoadAsync_SignedLegacyNote_DoesNotBackfillCanonicalWorkspacePayload()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "Signed",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        var legacyContent = """
+                            {
+                              "subjective": {
+                                "currentPainScore": 6
+                              }
+                            }
+                            """;
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Signed,
+            SignatureHash = "signed-hash",
+            SignedUtc = new DateTime(2026, 4, 10, 12, 0, 0, DateTimeKind.Utc),
+            DateOfService = new DateTime(2026, 4, 10),
+            ContentJson = legacyContent,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(6, loaded!.Payload.Subjective.CurrentPainScore);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        Assert.Equal(legacyContent, stored.ContentJson);
+    }
+
+    [Fact]
+    public async Task LoadAsync_InvalidLegacyJson_DoesNotOverwriteOriginalContent()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "Invalid",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        const string invalidContent = """{"subjective": }""";
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 10),
+            ContentJson = invalidContent,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(NoteType.ProgressNote, loaded!.Payload.NoteType);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        Assert.Equal(invalidContent, stored.ContentJson);
+    }
+
+    [Fact]
+    public async Task LoadAsync_UnrecognizedJsonObject_DoesNotTranslateOrBackfill()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "Unknown",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        const string unrelatedContent = """{"foo":"bar"}""";
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 10),
+            ContentJson = unrelatedContent,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(NoteType.ProgressNote, loaded!.Payload.NoteType);
+        Assert.Equal(0, loaded.Payload.Subjective.CurrentPainScore);
+        Assert.Empty(loaded.Payload.Assessment.AssessmentNarrative);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        Assert.Equal(unrelatedContent, stored.ContentJson);
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();

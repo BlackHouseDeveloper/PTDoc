@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Intake
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.Auth
 @using PTDoc.UI.Components.Intake
@@ -15,6 +16,7 @@
 @using PTDoc.UI.Components.Intake.Steps
 
 @inject IIntakeService IntakeService
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -247,6 +249,7 @@
 
             ClearDraftUnavailableState();
             State = FromDraft(draft!);
+            IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
             State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
 
             _loadedPatientId = patientId;
@@ -317,11 +320,11 @@
             try
             {
                 _isSavingDraft = true;
-                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
+                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToPersistenceDraft());
                 State.PatientId = patientId;
                 _loadedPatientId = patientId;
 
-                await IntakeService.SaveDraftAsync(ToDraft(State));
+                await IntakeService.SaveDraftAsync(ToPersistenceDraft());
 
                 NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
             }
@@ -340,7 +343,7 @@
         try
         {
             _isSavingDraft = true;
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
             State.IsDirty = false;
         }
         catch (HttpRequestException ex)
@@ -443,7 +446,7 @@
 
         try
         {
-            await IntakeService.SubmitAsync(ToDraft(State));
+            await IntakeService.SubmitAsync(ToPersistenceDraft());
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
@@ -491,7 +494,7 @@
         _isSavingDraft = true;
         try
         {
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
             State.IsDirty = false;
         }
         catch (HttpRequestException ex)
@@ -648,6 +651,12 @@
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
+    }
+
+    private IntakeResponseDraft ToPersistenceDraft()
+    {
+        IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
+        return ToDraft(State);
     }
 
     private static IntakeWizardState FromDraft(IntakeResponseDraft draft)

@@ -28,8 +28,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
         Guid noteId,
         CancellationToken cancellationToken = default)
     {
-        var legacyNote = await LoadLegacyNoteAsync(patientId, noteId, cancellationToken);
-        if (legacyNote is null)
+        var response = await httpClient.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return new NoteWorkspaceLoadResult
             {
@@ -38,12 +38,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
             };
         }
 
-        if (RequiresLegacyCompatibility(legacyNote.NoteType, legacyNote.ContentJson))
-        {
-            return BuildLegacyLoadResult(legacyNote);
-        }
-
-        var response = await httpClient.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}", cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return new NoteWorkspaceLoadResult
@@ -61,6 +55,15 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient) : INoteWorksp
                 Success = false,
                 ErrorMessage = "Workspace payload was empty."
             };
+        }
+
+        if (workspace.NoteType == NoteType.Daily)
+        {
+            var legacyNote = await LoadLegacyNoteAsync(patientId, noteId, cancellationToken);
+            if (legacyNote is not null && RequiresLegacyCompatibility(legacyNote.NoteType, legacyNote.ContentJson))
+            {
+                return BuildLegacyLoadResult(legacyNote);
+            }
         }
 
         return new NoteWorkspaceLoadResult

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
@@ -166,25 +167,10 @@ public sealed class NoteWorkspaceApiServiceTests
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
         string? saveRequestBody = null;
+        var calledLegacyNotesEndpoint = false;
 
         var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
         {
-            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
-            {
-                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
-                {
-                    new NoteResponse
-                    {
-                        Id = noteId,
-                        PatientId = patientId,
-                        NoteType = NoteType.ProgressNote,
-                        ContentJson = """{"schemaVersion":2}""",
-                        DateOfService = new DateTime(2026, 4, 6, 0, 0, 0, DateTimeKind.Utc),
-                        NoteStatus = NoteStatus.Draft
-                    }
-                }, JsonOptions));
-            }
-
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
             {
                 return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
@@ -316,6 +302,11 @@ public sealed class NoteWorkspaceApiServiceTests
                 }, JsonOptions));
             }
 
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
+            {
+                calledLegacyNotesEndpoint = true;
+            }
+
             throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
         });
 
@@ -362,6 +353,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(saved.Success);
         Assert.NotNull(saveRequestBody);
+        Assert.False(calledLegacyNotesEndpoint);
 
         using var document = JsonDocument.Parse(saveRequestBody!);
         var payload = document.RootElement.GetProperty("payload");
@@ -392,6 +384,60 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal("Mobilization grade III", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("notes").GetString());
         Assert.Equal("GP", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifiers")[0].GetString());
         Assert.Equal("Commonly used CPT codes and modifiers.md", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifierSource").GetString());
+    }
+
+    [Fact]
+    public async Task LoadAsync_DryNeedlingNote_UsesLegacyCompatibilityPath()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var calledLegacyNotesEndpoint = false;
+
+        var handler = new StubHttpMessageHandler((request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
+            {
+                return Task.FromResult(StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = noteId,
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Daily,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily
+                    }
+                }, JsonOptions)));
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
+            {
+                calledLegacyNotesEndpoint = true;
+
+                return Task.FromResult(StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
+                {
+                    new NoteResponse
+                    {
+                        Id = noteId,
+                        PatientId = patientId,
+                        NoteType = NoteType.Daily,
+                        ContentJson = """{"workspaceNoteType":"Dry Needling Note","subjective":{"painLocation":"Gluteal region"}}""",
+                        DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+                        NoteStatus = NoteStatus.Draft
+                    }
+                }, JsonOptions)));
+            }
+
+            throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
+        });
+
+        var service = CreateService(handler);
+        var loaded = await service.LoadAsync(patientId, noteId);
+
+        Assert.True(loaded.Success);
+        Assert.True(calledLegacyNotesEndpoint);
+        Assert.Equal("Dry Needling Note", loaded.Payload.WorkspaceNoteType);
+        Assert.Null(loaded.Payload.StructuredPayload);
     }
 
     [Fact]

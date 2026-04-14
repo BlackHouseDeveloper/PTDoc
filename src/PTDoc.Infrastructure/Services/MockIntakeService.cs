@@ -82,7 +82,7 @@ public sealed class MockIntakeService : IIntakeService
 
     private static IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
-        return new IntakeResponseDraft
+        var clone = new IntakeResponseDraft
         {
             IntakeId = state.IntakeId,
             PatientId = state.PatientId,
@@ -123,6 +123,9 @@ public sealed class MockIntakeService : IIntakeService
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
+
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(clone);
+        return clone;
     }
 
     private static IntakeStructuredDataDto? CloneStructuredData(IntakeStructuredDataDto? structuredData)

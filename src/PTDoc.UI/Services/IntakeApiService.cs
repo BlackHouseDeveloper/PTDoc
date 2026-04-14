@@ -61,7 +61,7 @@ public sealed class IntakeApiService(
             ConsentPacket = BuildConsentPacket(seedState),
             ResponseJson = seedState is null
                 ? "{}"
-                : JsonSerializer.Serialize(seedState, SerializerOptions),
+                : SerializeDraft(seedState),
             StructuredData = seedState?.StructuredData,
             TemplateVersion = "1.0"
         };
@@ -200,7 +200,7 @@ public sealed class IntakeApiService(
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
             ConsentPacket = BuildConsentPacket(state),
-            ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
+            ResponseJson = SerializeDraft(state),
             StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
         };
@@ -278,7 +278,7 @@ public sealed class IntakeApiService(
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
             ConsentPacket = BuildConsentPacket(state),
-            ResponseJson = JsonSerializer.Serialize(state, SerializerOptions),
+            ResponseJson = SerializeDraft(state),
             StructuredData = state.StructuredData,
             TemplateVersion = "1.0"
         };
@@ -429,9 +429,15 @@ public sealed class IntakeApiService(
         }
 
         draft.StructuredData = response.StructuredData ?? draft.StructuredData;
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
         return draft;
+    }
+
+    private static string SerializeDraft(IntakeResponseDraft state)
+    {
+        return JsonSerializer.Serialize(IntakeDraftPersistence.CreatePersistenceCopy(state), SerializerOptions);
     }
 
     private static string BuildPainMapJson(IntakeResponseDraft? state)
