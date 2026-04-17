@@ -11,7 +11,6 @@ using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 
-using ComplianceCptCodeEntry = PTDoc.Application.Compliance.CptCodeEntry;
 using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry;
 
 namespace PTDoc.UI.Services;
@@ -30,8 +29,8 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         Guid noteId,
         CancellationToken cancellationToken = default)
     {
-        var legacyNote = await LoadLegacyNoteAsync(patientId, noteId, cancellationToken);
-        if (legacyNote is null)
+        var response = await httpClient.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return new NoteWorkspaceLoadResult
             {
@@ -40,12 +39,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             };
         }
 
-        if (RequiresLegacyCompatibility(legacyNote.NoteType, legacyNote.ContentJson))
-        {
-            return BuildLegacyLoadResult(legacyNote);
-        }
-
-        var response = await httpClient.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}", cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return new NoteWorkspaceLoadResult
@@ -69,8 +62,9 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         {
             Success = true,
             NoteId = workspace.NoteId,
-            WorkspaceNoteType = ToWorkspaceNoteType(workspace.NoteType),
+            WorkspaceNoteType = ResolveWorkspaceNoteType(workspace.Payload),
             DateOfService = workspace.DateOfService,
+            IsReEvaluation = workspace.IsReEvaluation,
             Status = workspace.NoteStatus,
             Payload = _payloadMapper.MapToUiPayload(workspace.Payload)
         };
@@ -173,11 +167,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         NoteWorkspaceDraft draft,
         CancellationToken cancellationToken = default)
     {
-        if (RequiresLegacyCompatibility(draft.WorkspaceNoteType))
-        {
-            return await SaveLegacyDraftAsync(draft, cancellationToken);
-        }
-
         var noteType = ToApiNoteType(draft.WorkspaceNoteType);
         var request = new NoteWorkspaceV2SaveRequest
         {
@@ -185,6 +174,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             PatientId = draft.PatientId,
             DateOfService = draft.DateOfService,
             NoteType = noteType,
+            IsReEvaluation = draft.IsReEvaluation,
             Payload = _payloadMapper.MapToV2Payload(draft.Payload, noteType),
             Override = draft.Override
         };
@@ -231,6 +221,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         {
             Success = true,
             NoteId = saved.Workspace.NoteId,
+            IsReEvaluation = saved.Workspace.IsReEvaluation,
             Status = saved.Workspace.NoteStatus,
             Errors = saved.Errors,
             Warnings = saved.Warnings,
@@ -457,194 +448,11 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
     }
 
-    private async Task<NoteResponse?> LoadLegacyNoteAsync(
-        Guid patientId,
-        Guid noteId,
-        CancellationToken cancellationToken)
-    {
-        var response = await httpClient.GetAsync($"/api/v1/patients/{patientId}/notes", cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return null;
-        }
-
-        var notes = await response.Content.ReadFromJsonAsync<List<NoteResponse>>(SerializerOptions, cancellationToken);
-        return notes?.FirstOrDefault(n => n.Id == noteId);
-    }
-
-    private async Task<NoteWorkspaceSaveResult> SaveLegacyDraftAsync(
-        NoteWorkspaceDraft draft,
-        CancellationToken cancellationToken)
-    {
-        var payloadJson = JsonSerializer.Serialize(draft.Payload, SerializerOptions);
-        var cptCodesJson = BuildLegacyCptCodesJson(draft.Payload.Plan);
-
-        HttpResponseMessage response;
-        if (draft.IsExistingNote && draft.NoteId.HasValue)
-        {
-            var updateRequest = new UpdateNoteRequest
-            {
-                ContentJson = payloadJson,
-                DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson,
-                Override = draft.Override
-            };
-
-            response = await httpClient.PutAsJsonAsync($"/api/v1/notes/{draft.NoteId.Value}", updateRequest, cancellationToken);
-        }
-        else
-        {
-            var createRequest = new CreateNoteRequest
-            {
-                PatientId = draft.PatientId,
-                NoteType = ToApiNoteType(draft.WorkspaceNoteType),
-                ContentJson = payloadJson,
-                DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson,
-                Override = draft.Override
-            };
-
-            response = await httpClient.PostAsJsonAsync("/api/v1/notes/", createRequest, cancellationToken);
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
-            var failedSave = TryDeserialize<NoteOperationResponse>(failurePayload);
-            if (failedSave is not null)
-            {
-                return new NoteWorkspaceSaveResult
-                {
-                    Success = false,
-                    ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
-                        ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
-                    Errors = failedSave.Errors,
-                    Warnings = failedSave.Warnings,
-                    RequiresOverride = failedSave.RequiresOverride,
-                    RuleType = failedSave.RuleType,
-                    IsOverridable = failedSave.IsOverridable,
-                    OverrideRequirements = failedSave.OverrideRequirements
-                };
-            }
-
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = ApiErrorReader.ReadMessage(failurePayload, response.StatusCode)
-            };
-        }
-
-        var operation = await response.Content.ReadFromJsonAsync<NoteOperationResponse>(SerializerOptions, cancellationToken);
-        if (operation?.Note is null)
-        {
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = "Save completed but note payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceSaveResult
-        {
-            Success = true,
-            NoteId = operation.Note.Id,
-            Status = operation.Note.NoteStatus,
-            Errors = operation.Errors,
-            Warnings = operation.Warnings,
-            RequiresOverride = operation.RequiresOverride,
-            RuleType = operation.RuleType,
-            IsOverridable = operation.IsOverridable,
-            OverrideRequirements = operation.OverrideRequirements,
-            ComplianceWarning = operation.ComplianceWarning,
-            Payload = ParseLegacyPayload(operation.Note.ContentJson, operation.Note.NoteType)
-        };
-    }
-
-    private static NoteWorkspaceLoadResult BuildLegacyLoadResult(NoteResponse note)
-    {
-        var payload = ParseLegacyPayload(note.ContentJson, note.NoteType);
-        var workspaceNoteType = string.IsNullOrWhiteSpace(payload.WorkspaceNoteType)
-            ? ToWorkspaceNoteType(note.NoteType)
-            : payload.WorkspaceNoteType;
-
-        return new NoteWorkspaceLoadResult
-        {
-            Success = true,
-            NoteId = note.Id,
-            WorkspaceNoteType = workspaceNoteType,
-            DateOfService = note.DateOfService,
-            Status = note.NoteStatus,
-            Payload = payload
-        };
-    }
-
-    private static string BuildLegacyCptCodesJson(PlanVm plan)
-    {
-        var cptEntries = plan.SelectedCptCodes
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new ComplianceCptCodeEntry
-            {
-                Code = code.Code,
-                Units = code.Units,
-                Minutes = code.Minutes,
-                IsTimed = false,
-                Modifiers = code.Modifiers
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                ModifierOptions = code.ModifierOptions
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                SuggestedModifiers = code.SuggestedModifiers
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
-                    ? null
-                    : code.ModifierSource.Trim()
-            })
-            .ToList();
-
-        return JsonSerializer.Serialize(cptEntries, SerializerOptions);
-    }
-
-    private static NoteWorkspacePayload ParseLegacyPayload(string contentJson, NoteType fallbackType)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson))
-        {
-            return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-        }
-
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<NoteWorkspacePayload>(contentJson, SerializerOptions);
-            if (parsed is null)
-            {
-                return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-            }
-
-            if (string.IsNullOrWhiteSpace(parsed.WorkspaceNoteType))
-            {
-                parsed.WorkspaceNoteType = ToWorkspaceNoteType(fallbackType);
-            }
-
-            return parsed;
-        }
-        catch (JsonException)
-        {
-            return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-        }
-    }
-
     private static NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
     {
         var uiPayload = new NoteWorkspacePayload
         {
-            WorkspaceNoteType = ToWorkspaceNoteType(payload.NoteType),
+            WorkspaceNoteType = ResolveWorkspaceNoteType(payload),
             StructuredPayload = ClonePayload(payload),
             Subjective = new SubjectiveVm
             {
@@ -755,12 +563,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                         IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                         IsSourceBacked = row.IsSourceBacked
                     })
-                    .ToList(),
-                TherapeuticExercises = payload.Objective.ExerciseRows
-                    .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
                     .ToList()
             },
             Assessment = new AssessmentWorkspaceVm
@@ -845,153 +647,22 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                 DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
                 FollowUpInstructions = payload.Plan.FollowUpInstructions,
                 ClinicalSummary = payload.Plan.ClinicalSummary
-            }
+            },
+            DryNeedling = payload.DryNeedling is null
+                ? new DryNeedlingVm()
+                : new DryNeedlingVm
+                {
+                    DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                    Location = payload.DryNeedling.Location,
+                    NeedlingType = payload.DryNeedling.NeedlingType,
+                    PainBefore = payload.DryNeedling.PainBefore,
+                    PainAfter = payload.DryNeedling.PainAfter,
+                    ResponseDescription = payload.DryNeedling.ResponseDescription,
+                    AdditionalNotes = payload.DryNeedling.AdditionalNotes
+                }
         };
 
         return uiPayload;
-    }
-
-    private static NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
-    {
-        var preservedPayload = ClonePayload(payload.StructuredPayload) ?? new NoteWorkspaceV2Payload();
-        preservedPayload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
-        preservedPayload.NoteType = noteType;
-        preservedPayload.Subjective ??= new WorkspaceSubjectiveV2();
-        preservedPayload.Objective ??= new WorkspaceObjectiveV2();
-        preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
-        preservedPayload.Plan ??= new WorkspacePlanV2();
-        preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
-
-        var primaryBodyPart = ParseBodyPart(
-            !string.IsNullOrWhiteSpace(payload.Objective.SelectedBodyPart)
-                ? payload.Objective.SelectedBodyPart
-                : payload.Subjective.SelectedBodyPart);
-
-        preservedPayload.Subjective.Problems = CloneSet(payload.Subjective.Problems);
-        preservedPayload.Subjective.OtherProblem = payload.Subjective.OtherProblem;
-        preservedPayload.Subjective.Locations = CloneSet(payload.Subjective.Locations);
-        preservedPayload.Subjective.OtherLocation = payload.Subjective.OtherLocation;
-        preservedPayload.Subjective.CurrentPainScore = payload.Subjective.CurrentPainScore;
-        preservedPayload.Subjective.BestPainScore = payload.Subjective.BestPainScore;
-        preservedPayload.Subjective.WorstPainScore = payload.Subjective.WorstPainScore;
-        preservedPayload.Subjective.PainFrequency = payload.Subjective.PainFrequency;
-        preservedPayload.Subjective.OnsetDate = payload.Subjective.OnsetDate;
-        preservedPayload.Subjective.OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo;
-        preservedPayload.Subjective.CauseUnknown = payload.Subjective.CauseUnknown;
-        preservedPayload.Subjective.KnownCause = payload.Subjective.KnownCause;
-        preservedPayload.Subjective.PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel);
-        preservedPayload.Subjective.FunctionalLimitations = payload.Subjective.StructuredFunctionalLimitations.Count > 0
-            ? MergeStructuredFunctionalLimitations(
-                preservedPayload.Subjective.FunctionalLimitations,
-                payload.Subjective.StructuredFunctionalLimitations,
-                primaryBodyPart)
-            : MergeFunctionalLimitations(
-                preservedPayload.Subjective.FunctionalLimitations,
-                payload.Subjective.FunctionalLimitations,
-                primaryBodyPart);
-        preservedPayload.Subjective.AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations;
-        preservedPayload.Subjective.Imaging ??= new ImagingDetailsV2();
-        preservedPayload.Subjective.Imaging.HasImaging = payload.Subjective.HasImaging;
-        preservedPayload.Subjective.AssistiveDevice ??= new AssistiveDeviceDetailsV2();
-        preservedPayload.Subjective.AssistiveDevice.UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice;
-        preservedPayload.Subjective.EmploymentStatus = payload.Subjective.EmploymentStatus;
-        preservedPayload.Subjective.LivingSituation = CloneSet(payload.Subjective.LivingSituation);
-        preservedPayload.Subjective.OtherLivingSituation = payload.Subjective.OtherLivingSituation;
-        preservedPayload.Subjective.SupportSystem = CloneSet(payload.Subjective.SupportSystem);
-        preservedPayload.Subjective.OtherSupport = payload.Subjective.OtherSupport;
-        preservedPayload.Subjective.Comorbidities = CloneSet(payload.Subjective.Comorbidities);
-        preservedPayload.Subjective.PriorTreatment ??= new PriorTreatmentDetailsV2();
-        preservedPayload.Subjective.PriorTreatment.Treatments = CloneSet(payload.Subjective.PriorTreatments);
-        preservedPayload.Subjective.PriorTreatment.OtherTreatment = payload.Subjective.OtherTreatment;
-        preservedPayload.Subjective.TakingMedications = payload.Subjective.TakingMedications;
-        preservedPayload.Subjective.Medications = payload.Subjective.TakingMedications == false
-            ? []
-            : MergeMedications(
-                preservedPayload.Subjective.Medications,
-                payload.Subjective.MedicationDetails);
-
-        preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
-        preservedPayload.Objective.Metrics = MergeObjectiveMetrics(
-            preservedPayload.Objective.Metrics,
-            payload.Objective.Metrics,
-            primaryBodyPart);
-        preservedPayload.Objective.GaitObservation ??= new GaitObservationV2();
-        preservedPayload.Objective.GaitObservation.PrimaryPattern = payload.Objective.PrimaryGaitPattern ?? string.Empty;
-        preservedPayload.Objective.GaitObservation.Deviations = CloneSet(payload.Objective.GaitDeviations);
-        preservedPayload.Objective.GaitObservation.AdditionalObservations = payload.Objective.AdditionalGaitObservations;
-        preservedPayload.Objective.ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes;
-        preservedPayload.Objective.RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        preservedPayload.Objective.OutcomeMeasures = payload.Objective.OutcomeMeasures
-            .Select(TryMapOutcomeMeasure)
-            .Where(entry => entry is not null)
-            .Select(entry => entry!)
-            .ToList();
-        preservedPayload.Objective.SpecialTests = MergeSpecialTests(
-            preservedPayload.Objective.SpecialTests,
-            payload.Objective.SpecialTests);
-        preservedPayload.Objective.PostureObservation ??= new PostureObservationV2();
-        preservedPayload.Objective.PostureObservation.Findings = CloneSet(payload.Objective.PostureFindings);
-        preservedPayload.Objective.PostureObservation.Other = payload.Objective.OtherPostureFinding;
-        preservedPayload.Objective.PostureObservation.IsNormal = preservedPayload.Objective.PostureObservation.Findings.Count == 0
-            && string.IsNullOrWhiteSpace(payload.Objective.OtherPostureFinding);
-        preservedPayload.Objective.PalpationObservation ??= new PalpationObservationV2();
-        preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);
-        preservedPayload.Objective.PalpationObservation.IsNormal = preservedPayload.Objective.PalpationObservation.TenderMuscles.Count == 0;
-        preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
-            preservedPayload.Objective.ExerciseRows,
-            payload.Objective.ExerciseRows,
-            payload.Objective.TherapeuticExercises);
-
-        preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
-        preservedPayload.Assessment.FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations;
-        preservedPayload.Assessment.DeficitsSummary = payload.Assessment.DeficitsSummary;
-        preservedPayload.Assessment.DeficitCategories = [.. payload.Assessment.DeficitCategories];
-        preservedPayload.Assessment.DiagnosisCodes = payload.Assessment.DiagnosisCodes
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new DiagnosisCodeV2
-            {
-                Code = code.Code.Trim(),
-                Description = code.Description?.Trim() ?? string.Empty
-            })
-            .ToList();
-        preservedPayload.Assessment.Goals = MergeGoals(preservedPayload.Assessment.Goals, payload.Assessment.Goals);
-        preservedPayload.Assessment.MotivationLevel = payload.Assessment.MotivationLevel;
-        preservedPayload.Assessment.MotivatingFactors = CloneSet(payload.Assessment.MotivatingFactors);
-        preservedPayload.Assessment.AppearsMotivated = DeriveAppearsMotivated(payload.Assessment.MotivationLevel);
-        preservedPayload.Assessment.PatientPersonalGoals = payload.Assessment.PatientPersonalGoals;
-        preservedPayload.Assessment.MotivationNotes = payload.Assessment.AdditionalMotivationNotes;
-        preservedPayload.Assessment.SupportSystemLevel = payload.Assessment.SupportSystemLevel;
-        preservedPayload.Assessment.AvailableResources = CloneSet(payload.Assessment.AvailableResources);
-        preservedPayload.Assessment.BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery);
-        preservedPayload.Assessment.SupportSystemDetails = payload.Assessment.SupportSystemDetails;
-        preservedPayload.Assessment.SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes;
-        preservedPayload.Assessment.OverallPrognosis = payload.Assessment.OverallPrognosis;
-
-        preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
-        preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
-        preservedPayload.Plan.TreatmentFocuses = CloneSet(payload.Plan.TreatmentFocuses);
-        preservedPayload.Plan.GeneralInterventions = MergeGeneralInterventions(
-            preservedPayload.Plan.GeneralInterventions,
-            payload.Plan.GeneralInterventions,
-            payload.Objective.ManualTechniques);
-        preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
-            preservedPayload.Plan.SelectedCptCodes,
-            payload.Plan.SelectedCptCodes);
-        preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
-        preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
-        preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
-        preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
-
-        preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
-        preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
-        preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
-        preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
-
-        return preservedPayload;
     }
 
     private static NoteWorkspaceV2Payload? ClonePayload(NoteWorkspaceV2Payload? payload)
@@ -1035,7 +706,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                 return new FunctionalLimitationEntryV2
                 {
                     BodyPart = defaultBodyPart,
-                    Category = "Legacy",
+                    Category = string.Empty,
                     Description = description
                 };
             })
@@ -1161,8 +832,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
 
     private static List<ExerciseRowV2> MergeExerciseRows(
         IReadOnlyCollection<ExerciseRowV2>? preservedEntries,
-        IEnumerable<ExerciseRowEntry> visibleRows,
-        IEnumerable<string> legacyExercises)
+        IEnumerable<ExerciseRowEntry> visibleRows)
     {
         var rows = visibleRows
             .Where(row =>
@@ -1208,13 +878,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             return preserved;
         }
 
-        return legacyExercises
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new ExerciseRowV2
-            {
-                ActualExercisePerformed = value.Trim()
-            })
-            .ToList();
+        return [];
     }
 
     private static List<ObjectiveMetricInputV2> MergeObjectiveMetrics(
@@ -1359,8 +1023,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
 
     private static List<GeneralInterventionEntryV2> MergeGeneralInterventions(
         IReadOnlyCollection<GeneralInterventionEntryV2>? preservedEntries,
-        IEnumerable<GeneralInterventionEntry> selectedEntries,
-        IEnumerable<string> legacyManualTechniques)
+        IEnumerable<GeneralInterventionEntry> selectedEntries)
     {
         var interventions = selectedEntries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
@@ -1394,14 +1057,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             return preserved;
         }
 
-        return legacyManualTechniques
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new GeneralInterventionEntryV2
-            {
-                Name = value.Trim(),
-                Category = "Manual"
-            })
-            .ToList();
+        return [];
     }
 
     private static bool? DeriveAppearsMotivated(string? motivationLevel)
@@ -1679,32 +1335,13 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             : BodyPart.Other;
     }
 
-    private static bool RequiresLegacyCompatibility(string workspaceNoteType) =>
+    private static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
         string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
 
-    private static bool RequiresLegacyCompatibility(NoteType noteType, string contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson))
-        {
-            return false;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(contentJson);
-            if (document.RootElement.TryGetProperty("workspaceNoteType", out var workspaceNoteTypeElement)
-                && workspaceNoteTypeElement.ValueKind == JsonValueKind.String)
-            {
-                return RequiresLegacyCompatibility(workspaceNoteTypeElement.GetString() ?? string.Empty);
-            }
-        }
-        catch (JsonException)
-        {
-            // Fall back to typed workspace path.
-        }
-
-        return false;
-    }
+    private static string ResolveWorkspaceNoteType(NoteWorkspaceV2Payload payload) =>
+        payload.DryNeedling is null
+            ? ToWorkspaceNoteType(payload.NoteType)
+            : "Dry Needling Note";
 
     private static NoteType ToApiNoteType(string workspaceNoteType)
     {

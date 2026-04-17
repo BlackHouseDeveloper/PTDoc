@@ -666,6 +666,7 @@ else
             PatientName = string.Empty,
             PatientDob = null,
             NoteType = ResolveInitialNoteType(),
+            IsReEvaluation = false,
             Mode = routeNoteId.HasValue ? NoteMode.Existing : NoteMode.New,
             ActiveSection = SoapSection.Subjective,
             SaveState = NoteSaveState.Unsaved,
@@ -702,13 +703,14 @@ else
             throw new HttpRequestException(result.ErrorMessage ?? "Unable to load note data.");
         }
 
-        ApplyWorkspaceState(result.NoteId, result.WorkspaceNoteType, result.DateOfService, result.Status, result.Payload);
+        ApplyWorkspaceState(result.NoteId, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload);
     }
 
     private void ApplyWorkspaceState(
         Guid noteId,
         string workspaceNoteType,
         DateTime dateOfService,
+        bool isReEvaluation,
         NoteStatus status,
         NoteWorkspacePayload? payload)
     {
@@ -716,6 +718,7 @@ else
         _note.NoteId = noteId;
         _note.Mode = NoteMode.Existing;
         _note.NoteType = string.IsNullOrWhiteSpace(workspaceNoteType) ? _note.NoteType : workspaceNoteType;
+        _note.IsReEvaluation = isReEvaluation;
         _note.Subjective = payload?.Subjective ?? new SubjectiveVm();
         _note.Objective = payload?.Objective ?? new ObjectiveVm();
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
@@ -1163,6 +1166,7 @@ else
                     saveResult.NoteId,
                     saveResult.Payload.WorkspaceNoteType,
                     _dateOfService,
+                    saveResult.IsReEvaluation,
                     saveResult.Status,
                     saveResult.Payload);
             }
@@ -1365,6 +1369,7 @@ else
             PatientId = patientId,
             WorkspaceNoteType = _note.NoteType,
             DateOfService = ResolveDateOfService(),
+            IsReEvaluation = _note.IsReEvaluation,
             IsExistingNote = _note.Mode == NoteMode.Existing && _note.NoteId.HasValue,
             Override = overrideSubmission,
             Payload = payload

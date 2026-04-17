@@ -1,5 +1,6 @@
 using PTDoc.Application.Compliance;
 using PTDoc.Application.ReferenceData;
+using System.Text.Json;
 
 namespace PTDoc.Application.DTOs;
 
@@ -9,6 +10,15 @@ public class SaveDailyNoteRequest
     public Guid? AppointmentId { get; set; }
     public DateTime DateOfService { get; set; }
     public DailyNoteContentDto Content { get; set; } = new();
+    public OverrideSubmission? Override { get; set; }
+}
+
+public class SaveDailyNoteJsonRequest
+{
+    public Guid PatientId { get; set; }
+    public Guid? AppointmentId { get; set; }
+    public DateTime DateOfService { get; set; }
+    public JsonElement Content { get; set; }
     public OverrideSubmission? Override { get; set; }
 }
 

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 
@@ -22,7 +23,7 @@ public static class DailyNoteEndpoints
         }).RequireAuthorization(AuthorizationPolicies.NoteRead)
           .WithName("GetDailyNoteById");
 
-        group.MapPost("/", async ([FromBody] SaveDailyNoteRequest request, IDailyNoteService service, CancellationToken ct) =>
+        group.MapPost("/", async ([FromBody] SaveDailyNoteJsonRequest request, IDailyNoteService service, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();
 
@@ -69,7 +70,7 @@ public static class DailyNoteEndpoints
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
           .WithName("SaveDailyNoteDraft");
 
-        group.MapPost("/generate-assessment", async ([FromBody] DailyNoteContentDto content, IDailyNoteService service, CancellationToken ct) =>
+        group.MapPost("/generate-assessment", async ([FromBody] JsonElement content, IDailyNoteService service, CancellationToken ct) =>
         {
             var narrative = await service.GenerateAssessmentNarrativeAsync(content, ct);
             return Results.Ok(new { narrative });
@@ -81,7 +82,7 @@ public static class DailyNoteEndpoints
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
             .WithName("CalculateCptTime");
 
-        group.MapPost("/check-medical-necessity", ([FromBody] DailyNoteContentDto content, IDailyNoteService service) =>
+        group.MapPost("/check-medical-necessity", ([FromBody] JsonElement content, IDailyNoteService service) =>
             Results.Ok(service.CheckMedicalNecessity(content)))
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
             .WithName("CheckMedicalNecessity");

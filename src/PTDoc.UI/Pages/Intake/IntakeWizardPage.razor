@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Intake
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.Auth
 @using PTDoc.UI.Components.Intake
@@ -15,6 +16,7 @@
 @using PTDoc.UI.Components.Intake.Steps
 
 @inject IIntakeService IntakeService
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -247,6 +249,7 @@
 
             ClearDraftUnavailableState();
             State = FromDraft(draft!);
+            IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
             State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
 
             _loadedPatientId = patientId;
@@ -317,11 +320,11 @@
             try
             {
                 _isSavingDraft = true;
-                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToDraft(State));
+                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToPersistenceDraft());
                 State.PatientId = patientId;
                 _loadedPatientId = patientId;
 
-                await IntakeService.SaveDraftAsync(ToDraft(State));
+                await IntakeService.SaveDraftAsync(ToPersistenceDraft());
 
                 NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
             }
@@ -340,7 +343,7 @@
         try
         {
             _isSavingDraft = true;
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
             State.IsDirty = false;
         }
         catch (HttpRequestException ex)
@@ -443,7 +446,7 @@
 
         try
         {
-            await IntakeService.SubmitAsync(ToDraft(State));
+            await IntakeService.SubmitAsync(ToPersistenceDraft());
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
@@ -491,7 +494,7 @@
         _isSavingDraft = true;
         try
         {
-            await IntakeService.SaveDraftAsync(ToDraft(State));
+            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
             State.IsDirty = false;
         }
         catch (HttpRequestException ex)
@@ -590,30 +593,26 @@
 
     private static IntakeResponseDraft ToDraft(IntakeWizardState state)
     {
-        var consentPacket = BuildConsentPacket(state);
-        return new IntakeResponseDraft
+        var draft = new IntakeResponseDraft
         {
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
-            ConsentPacket = consentPacket,
-            HipaaAcknowledged = consentPacket.HipaaAcknowledged == true,
-            ConsentToTreatAcknowledged = consentPacket.TreatmentConsentAccepted == true,
+            ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
+            HipaaAcknowledged = state.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
             TermsOfServiceAccepted = state.TermsOfServiceAccepted,
             AccuracyConfirmed = state.AccuracyConfirmed,
-            RevokeHipaaPrivacyNotice = IsConsentRevoked(consentPacket, "hipaaAcknowledged"),
-            RevokeTreatmentConsent = IsConsentRevoked(consentPacket, "treatmentConsentAccepted"),
-            RevokeMarketingCommunications =
-                IsConsentRevoked(consentPacket, "communicationCallConsent")
-                && IsConsentRevoked(consentPacket, "communicationTextConsent")
-                && IsConsentRevoked(consentPacket, "communicationEmailConsent"),
-            RevokePhiRelease = IsConsentRevoked(consentPacket, "phiReleaseAuthorized"),
-            AllowPhoneCalls = consentPacket.CommunicationCallConsent == true,
-            AllowTextMessages = consentPacket.CommunicationTextConsent == true,
-            AllowEmailMessages = consentPacket.CommunicationEmailConsent == true,
-            DryNeedlingEligible = consentPacket.DryNeedlingConsentAccepted == true,
-            PelvicFloorTherapyEligible = consentPacket.PelvicFloorConsentAccepted == true,
-            PhiReleaseAuthorized = consentPacket.PhiReleaseAuthorized == true,
-            BillingConsentAuthorized = consentPacket.CreditCardAuthorizationAccepted == true,
+            RevokeHipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
+            RevokeTreatmentConsent = state.RevokeTreatmentConsent,
+            RevokeMarketingCommunications = state.RevokeMarketingCommunications,
+            RevokePhiRelease = state.RevokePhiRelease,
+            AllowPhoneCalls = state.AllowPhoneCalls,
+            AllowTextMessages = state.AllowTextMessages,
+            AllowEmailMessages = state.AllowEmailMessages,
+            DryNeedlingEligible = state.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = state.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = state.PhiReleaseAuthorized,
+            BillingConsentAuthorized = state.BillingConsentAuthorized,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,
@@ -648,69 +647,81 @@
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
+
+        draft.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(draft);
+        IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
+        return draft;
+    }
+
+    private IntakeResponseDraft ToPersistenceDraft()
+    {
+        IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
+        return ToDraft(State);
     }
 
     private static IntakeWizardState FromDraft(IntakeResponseDraft draft)
     {
-        var consentPacket = BuildConsentPacket(draft);
+        var hydratedDraft = JsonSerializer.Deserialize<IntakeResponseDraft>(
+                               JsonSerializer.Serialize(draft))
+                           ?? new IntakeResponseDraft();
+        hydratedDraft.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(hydratedDraft);
+        IntakeDraftPersistence.HydrateConsentConvenienceFields(hydratedDraft);
+
         return new IntakeWizardState
         {
-            PatientId = draft.PatientId,
-            CurrentStep = Enum.IsDefined(typeof(IntakeStep), draft.CurrentStep)
-                ? (IntakeStep)draft.CurrentStep
+            PatientId = hydratedDraft.PatientId,
+            CurrentStep = Enum.IsDefined(typeof(IntakeStep), hydratedDraft.CurrentStep)
+                ? (IntakeStep)hydratedDraft.CurrentStep
                 : IntakeStep.Demographics,
-            ConsentPacket = consentPacket,
-            HipaaAcknowledged = consentPacket.HipaaAcknowledged == true,
-            ConsentToTreatAcknowledged = consentPacket.TreatmentConsentAccepted == true,
-            AccuracyConfirmed = consentPacket.FinalAttestationAccepted ?? draft.AccuracyConfirmed,
-            RevokeHipaaPrivacyNotice = IsConsentRevoked(consentPacket, "hipaaAcknowledged"),
-            RevokeTreatmentConsent = IsConsentRevoked(consentPacket, "treatmentConsentAccepted"),
-            RevokeMarketingCommunications =
-                IsConsentRevoked(consentPacket, "communicationCallConsent")
-                && IsConsentRevoked(consentPacket, "communicationTextConsent")
-                && IsConsentRevoked(consentPacket, "communicationEmailConsent"),
-            RevokePhiRelease = IsConsentRevoked(consentPacket, "phiReleaseAuthorized"),
-            AllowPhoneCalls = consentPacket.CommunicationCallConsent ?? draft.AllowPhoneCalls,
-            AllowTextMessages = consentPacket.CommunicationTextConsent ?? draft.AllowTextMessages,
-            AllowEmailMessages = consentPacket.CommunicationEmailConsent ?? draft.AllowEmailMessages,
-            DryNeedlingEligible = consentPacket.DryNeedlingConsentAccepted ?? draft.DryNeedlingEligible,
-            PelvicFloorTherapyEligible = consentPacket.PelvicFloorConsentAccepted ?? draft.PelvicFloorTherapyEligible,
-            PhiReleaseAuthorized = consentPacket.PhiReleaseAuthorized ?? draft.PhiReleaseAuthorized,
-            BillingConsentAuthorized = consentPacket.CreditCardAuthorizationAccepted ?? draft.BillingConsentAuthorized,
-            TermsOfServiceAccepted = draft.TermsOfServiceAccepted,
-            FullName = draft.FullName,
-            DateOfBirth = draft.DateOfBirth,
-            EmailAddress = draft.EmailAddress,
-            PhoneNumber = draft.PhoneNumber,
-            AddressLine1 = draft.AddressLine1,
-            AddressLine2 = draft.AddressLine2,
-            City = draft.City,
-            StateOrProvince = draft.StateOrProvince,
-            PostalCode = draft.PostalCode,
-            EmergencyContactName = draft.EmergencyContactName,
-            EmergencyContactPhone = draft.EmergencyContactPhone,
-            InsuranceCompanyName = draft.InsuranceCompanyName,
-            MemberOrPolicyNumber = draft.MemberOrPolicyNumber,
-            GroupNumber = draft.GroupNumber,
-            PayerType = draft.PayerType,
-            InsuranceCoverageType = draft.InsuranceCoverageType,
-            HasCurrentMedications = draft.HasCurrentMedications,
-            HasOtherMedicalConditions = draft.HasOtherMedicalConditions,
-            UsesAssistiveDevices = draft.UsesAssistiveDevices,
-            HasPreviousSurgeriesOrInjuries = draft.HasPreviousSurgeriesOrInjuries,
-            MedicalHistoryNotes = draft.MedicalHistoryNotes,
-            SelectedBodyRegion = draft.SelectedBodyRegion,
-            SelectedBodyRegions = DeserializeSelectedRegions(draft.SelectedBodyRegion),
-            PainSeverityScore = draft.PainSeverityScore ?? ExtractLegacyPainSeverity(draft.PainDetailDrafts),
-            PainDetailDrafts = draft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
-            StructuredData = draft.StructuredData,
-            SelectedComorbidities = draft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            SelectedAssistiveDevices = draft.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            SelectedLivingSituations = draft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            SelectedHouseLayoutOptions = draft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            RecommendedOutcomeMeasures = draft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
-            IsSubmitted = draft.IsSubmitted,
-            IsLocked = draft.IsLocked
+            ConsentPacket = hydratedDraft.ConsentPacket,
+            HipaaAcknowledged = hydratedDraft.HipaaAcknowledged,
+            ConsentToTreatAcknowledged = hydratedDraft.ConsentToTreatAcknowledged,
+            AccuracyConfirmed = hydratedDraft.AccuracyConfirmed,
+            RevokeHipaaPrivacyNotice = hydratedDraft.RevokeHipaaPrivacyNotice,
+            RevokeTreatmentConsent = hydratedDraft.RevokeTreatmentConsent,
+            RevokeMarketingCommunications = hydratedDraft.RevokeMarketingCommunications,
+            RevokePhiRelease = hydratedDraft.RevokePhiRelease,
+            AllowPhoneCalls = hydratedDraft.AllowPhoneCalls,
+            AllowTextMessages = hydratedDraft.AllowTextMessages,
+            AllowEmailMessages = hydratedDraft.AllowEmailMessages,
+            DryNeedlingEligible = hydratedDraft.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = hydratedDraft.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = hydratedDraft.PhiReleaseAuthorized,
+            BillingConsentAuthorized = hydratedDraft.BillingConsentAuthorized,
+            TermsOfServiceAccepted = hydratedDraft.TermsOfServiceAccepted,
+            FullName = hydratedDraft.FullName,
+            DateOfBirth = hydratedDraft.DateOfBirth,
+            EmailAddress = hydratedDraft.EmailAddress,
+            PhoneNumber = hydratedDraft.PhoneNumber,
+            AddressLine1 = hydratedDraft.AddressLine1,
+            AddressLine2 = hydratedDraft.AddressLine2,
+            City = hydratedDraft.City,
+            StateOrProvince = hydratedDraft.StateOrProvince,
+            PostalCode = hydratedDraft.PostalCode,
+            EmergencyContactName = hydratedDraft.EmergencyContactName,
+            EmergencyContactPhone = hydratedDraft.EmergencyContactPhone,
+            InsuranceCompanyName = hydratedDraft.InsuranceCompanyName,
+            MemberOrPolicyNumber = hydratedDraft.MemberOrPolicyNumber,
+            GroupNumber = hydratedDraft.GroupNumber,
+            PayerType = hydratedDraft.PayerType,
+            InsuranceCoverageType = hydratedDraft.InsuranceCoverageType,
+            HasCurrentMedications = hydratedDraft.HasCurrentMedications,
+            HasOtherMedicalConditions = hydratedDraft.HasOtherMedicalConditions,
+            UsesAssistiveDevices = hydratedDraft.UsesAssistiveDevices,
+            HasPreviousSurgeriesOrInjuries = hydratedDraft.HasPreviousSurgeriesOrInjuries,
+            MedicalHistoryNotes = hydratedDraft.MedicalHistoryNotes,
+            SelectedBodyRegion = hydratedDraft.SelectedBodyRegion,
+            SelectedBodyRegions = DeserializeSelectedRegions(hydratedDraft.SelectedBodyRegion),
+            PainSeverityScore = hydratedDraft.PainSeverityScore ?? ExtractLegacyPainSeverity(hydratedDraft.PainDetailDrafts),
+            PainDetailDrafts = hydratedDraft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            StructuredData = hydratedDraft.StructuredData,
+            SelectedComorbidities = hydratedDraft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedAssistiveDevices = hydratedDraft.SelectedAssistiveDevices.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedLivingSituations = hydratedDraft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            SelectedHouseLayoutOptions = hydratedDraft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RecommendedOutcomeMeasures = hydratedDraft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            IsSubmitted = hydratedDraft.IsSubmitted,
+            IsLocked = hydratedDraft.IsLocked
         };
     }
 
@@ -735,93 +746,7 @@
 
     private static IntakeConsentPacket BuildConsentPacket(IntakeWizardState state)
     {
-        var packet = CloneConsentPacket(state.ConsentPacket);
-        packet.HipaaAcknowledged ??= state.HipaaAcknowledged;
-        packet.TreatmentConsentAccepted ??= state.ConsentToTreatAcknowledged;
-        packet.PhiReleaseAuthorized ??= state.PhiReleaseAuthorized;
-        packet.CommunicationCallConsent ??= state.AllowPhoneCalls;
-        packet.CommunicationTextConsent ??= state.AllowTextMessages;
-        packet.CommunicationEmailConsent ??= state.AllowEmailMessages;
-        packet.DryNeedlingConsentAccepted ??= state.DryNeedlingEligible;
-        packet.PelvicFloorConsentAccepted ??= state.PelvicFloorTherapyEligible;
-        packet.CreditCardAuthorizationAccepted ??= state.BillingConsentAuthorized;
-        packet.FinalAttestationAccepted ??= state.AccuracyConfirmed;
-        packet.CommunicationPhoneNumber = string.IsNullOrWhiteSpace(state.PhoneNumber)
-            ? packet.CommunicationPhoneNumber
-            : state.PhoneNumber;
-        packet.CommunicationEmail = string.IsNullOrWhiteSpace(state.EmailAddress)
-            ? packet.CommunicationEmail
-            : state.EmailAddress;
-        SetRevoked(packet, "hipaaAcknowledged", state.RevokeHipaaPrivacyNotice);
-        SetRevoked(packet, "treatmentConsentAccepted", state.RevokeTreatmentConsent);
-        SetRevoked(packet, "phiReleaseAuthorized", state.RevokePhiRelease);
-        SetRevoked(packet, "communicationCallConsent", state.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationTextConsent", state.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationEmailConsent", state.RevokeMarketingCommunications);
-        return packet;
-    }
-
-    private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft draft)
-    {
-        var packet = CloneConsentPacket(draft.ConsentPacket);
-        packet.HipaaAcknowledged ??= draft.HipaaAcknowledged;
-        packet.TreatmentConsentAccepted ??= draft.ConsentToTreatAcknowledged;
-        packet.PhiReleaseAuthorized ??= draft.PhiReleaseAuthorized;
-        packet.CommunicationCallConsent ??= draft.AllowPhoneCalls;
-        packet.CommunicationTextConsent ??= draft.AllowTextMessages;
-        packet.CommunicationEmailConsent ??= draft.AllowEmailMessages;
-        packet.DryNeedlingConsentAccepted ??= draft.DryNeedlingEligible;
-        packet.PelvicFloorConsentAccepted ??= draft.PelvicFloorTherapyEligible;
-        packet.CreditCardAuthorizationAccepted ??= draft.BillingConsentAuthorized;
-        packet.FinalAttestationAccepted ??= draft.AccuracyConfirmed;
-        packet.CommunicationPhoneNumber = string.IsNullOrWhiteSpace(draft.PhoneNumber)
-            ? packet.CommunicationPhoneNumber
-            : draft.PhoneNumber;
-        packet.CommunicationEmail = string.IsNullOrWhiteSpace(draft.EmailAddress)
-            ? packet.CommunicationEmail
-            : draft.EmailAddress;
-        SetRevoked(packet, "hipaaAcknowledged", draft.RevokeHipaaPrivacyNotice);
-        SetRevoked(packet, "treatmentConsentAccepted", draft.RevokeTreatmentConsent);
-        SetRevoked(packet, "phiReleaseAuthorized", draft.RevokePhiRelease);
-        SetRevoked(packet, "communicationCallConsent", draft.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationTextConsent", draft.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
-        return packet;
-    }
-
-    private static IntakeConsentPacket CloneConsentPacket(IntakeConsentPacket? packet)
-    {
-        if (packet is null)
-        {
-            return new IntakeConsentPacket();
-        }
-
-        var json = JsonSerializer.Serialize(packet);
-        var clone = JsonSerializer.Deserialize<IntakeConsentPacket>(json) ?? new IntakeConsentPacket();
-        clone.AuthorizedContacts ??= new List<AuthorizedContact>();
-        clone.RevokedConsentKeys ??= new List<string>();
-        return clone;
-    }
-
-    private static void SetRevoked(IntakeConsentPacket packet, string key, bool revoked)
-    {
-        packet.RevokedConsentKeys ??= new List<string>();
-        if (revoked)
-        {
-            if (!packet.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
-            {
-                packet.RevokedConsentKeys.Add(key);
-            }
-
-            return;
-        }
-
-        packet.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool IsConsentRevoked(IntakeConsentPacket packet, string key)
-    {
-        return packet.RevokedConsentKeys.Any(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
+        return ToDraft(state).ConsentPacket ?? new IntakeConsentPacket();
     }
 
     private static string GetStepTitle(IntakeStep step)

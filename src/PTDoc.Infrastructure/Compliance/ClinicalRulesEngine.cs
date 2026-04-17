@@ -3,6 +3,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Data.Common;
 using System.Text.Json;
 
@@ -82,7 +83,13 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         StructuredValidationSnapshot? snapshot = null;
         try
         {
-            contentDoc = JsonDocument.Parse(note.ContentJson);
+            var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+                note.NoteType,
+                note.IsReEvaluation,
+                note.DateOfService,
+                note.ContentJson);
+
+            contentDoc = JsonDocument.Parse(normalizedContentJson);
             snapshot = BuildStructuredSnapshot(contentDoc.RootElement, goalCount, outcomeMeasureCount);
         }
         catch (JsonException)

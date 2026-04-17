@@ -82,13 +82,27 @@ public sealed class MockIntakeService : IIntakeService
 
     private static IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
-        return new IntakeResponseDraft
+        var clone = new IntakeResponseDraft
         {
             IntakeId = state.IntakeId,
             PatientId = state.PatientId,
             CurrentStep = state.CurrentStep,
+            ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
             HipaaAcknowledged = state.HipaaAcknowledged,
             ConsentToTreatAcknowledged = state.ConsentToTreatAcknowledged,
+            TermsOfServiceAccepted = state.TermsOfServiceAccepted,
+            AccuracyConfirmed = state.AccuracyConfirmed,
+            RevokeHipaaPrivacyNotice = state.RevokeHipaaPrivacyNotice,
+            RevokeTreatmentConsent = state.RevokeTreatmentConsent,
+            RevokeMarketingCommunications = state.RevokeMarketingCommunications,
+            RevokePhiRelease = state.RevokePhiRelease,
+            AllowPhoneCalls = state.AllowPhoneCalls,
+            AllowTextMessages = state.AllowTextMessages,
+            AllowEmailMessages = state.AllowEmailMessages,
+            DryNeedlingEligible = state.DryNeedlingEligible,
+            PelvicFloorTherapyEligible = state.PelvicFloorTherapyEligible,
+            PhiReleaseAuthorized = state.PhiReleaseAuthorized,
+            BillingConsentAuthorized = state.BillingConsentAuthorized,
             FullName = state.FullName,
             DateOfBirth = state.DateOfBirth,
             SexAtBirth = state.SexAtBirth,
@@ -123,6 +137,10 @@ public sealed class MockIntakeService : IIntakeService
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked
         };
+
+        IntakeDraftPersistence.HydrateConsentConvenienceFields(clone);
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(clone);
+        return clone;
     }
 
     private static IntakeStructuredDataDto? CloneStructuredData(IntakeStructuredDataDto? structuredData)

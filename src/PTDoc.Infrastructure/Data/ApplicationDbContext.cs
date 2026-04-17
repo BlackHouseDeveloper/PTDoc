@@ -47,7 +47,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncQueueItem> SyncQueueItems => Set<SyncQueueItem>();
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
-    public DbSet<Addendum> Addendums => Set<Addendum>();
     public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
     public DbSet<PatientGoal> PatientGoals => Set<PatientGoal>();
 
@@ -347,29 +346,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ResolutionNotes).HasMaxLength(1000);
         });
 
-        // Configure Addendum
-        modelBuilder.Entity<Addendum>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.ClinicalNoteId);
-            entity.HasIndex(e => e.CreatedUtc);
-            entity.HasIndex(e => e.CreatedByUserId);
-
-            entity.Property(e => e.Content).IsRequired();
-            entity.Property(e => e.SignatureHash).HasMaxLength(64);
-
-            // Relationship to ClinicalNote
-            entity.HasOne(e => e.ClinicalNote)
-                .WithMany()
-                .HasForeignKey(e => e.ClinicalNoteId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.CreatedByUser)
-                .WithMany()
-                .HasForeignKey(e => e.CreatedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
-
         // Configure ObjectiveMetric (Sprint O: TDD §5.4)
         modelBuilder.Entity<ObjectiveMetric>(entity =>
         {
@@ -626,10 +602,6 @@ public class ApplicationDbContext : DbContext
             .HasQueryFilter(r => CurrentClinicId == null
                 || (r.NoteId != null ? r.Note!.ClinicId == CurrentClinicId : r.User!.ClinicId == CurrentClinicId));
 
-        // Addendum is associated with a ClinicalNote; filter via the parent note's ClinicId to
-        // prevent cross-tenant addendum leakage.
-        modelBuilder.Entity<Addendum>()
-            .HasQueryFilter(a => CurrentClinicId == null || a.ClinicalNote!.ClinicId == CurrentClinicId);
     }
 
     /// <summary>

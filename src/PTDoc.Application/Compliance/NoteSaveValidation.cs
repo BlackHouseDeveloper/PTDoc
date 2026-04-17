@@ -159,6 +159,7 @@ public sealed class NoteSaveComplianceRequest
     public DateTime DateOfService { get; set; }
     public int? TotalTimedMinutes { get; set; }
     public List<CptCodeEntry> CptEntries { get; set; } = [];
+    public List<string> DiagnosisCodes { get; set; } = [];
     public bool AllowIncompleteTimedEntries { get; set; } = true;
 }
 

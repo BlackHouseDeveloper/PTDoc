@@ -322,6 +322,83 @@ public sealed class SignatureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SignNote_LegacyWorkspacePayloadWithDiagnosisCodes_PersistsCanonicalWorkspaceV2Content()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync("[]");
+        var note = await CreateNoteAsync(
+            patient.Id,
+            NoteType.Evaluation,
+            """
+            {
+              "subjective": {
+                "functionalLimitations": ["Unable to sit longer than 20 minutes"],
+                "currentPainScore": 6
+              },
+              "assessment": {
+                "assessmentNarrative": "Legacy workspace assessment",
+                "diagnosisCodes": [
+                  {
+                    "code": "M62.89",
+                    "description": "Other specified disorders of muscle"
+                  }
+                ],
+                "goals": [
+                  {
+                    "description": "Sit for 45 minutes without pain"
+                  }
+                ]
+              },
+              "plan": {
+                "selectedCptCodes": [
+                  {
+                    "code": "97110",
+                    "description": "Therapeutic exercise",
+                    "units": 2
+                  }
+                ]
+              }
+            }
+            """);
+
+        var result = await _signatureService.SignNoteAsync(
+            note.Id,
+            signer.Id,
+            Roles.PT,
+            consentAccepted: true,
+            intentConfirmed: true);
+
+        Assert.True(result.Success);
+        Assert.Equal(NoteStatus.Signed, result.Status);
+
+        var updatedNote = await _context.ClinicalNotes.FindAsync(note.Id);
+        Assert.NotNull(updatedNote);
+        using var content = JsonDocument.Parse(updatedNote!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, content.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "M62.89",
+            content.RootElement
+                .GetProperty("assessment")
+                .GetProperty("diagnosisCodes")[0]
+                .GetProperty("code")
+                .GetString());
+        Assert.Equal(
+            "Sit for 45 minutes without pain",
+            content.RootElement
+                .GetProperty("assessment")
+                .GetProperty("goals")[0]
+                .GetProperty("description")
+                .GetString());
+        Assert.Equal(
+            "97110",
+            content.RootElement
+                .GetProperty("plan")
+                .GetProperty("selectedCptCodes")[0]
+                .GetProperty("code")
+                .GetString());
+    }
+
+    [Fact]
     public async Task CreateAddendum_SignedNote_CreatesLinkedDraftAddendumSuccessfully()
     {
         var signer = await CreateUserAsync(Roles.PT);

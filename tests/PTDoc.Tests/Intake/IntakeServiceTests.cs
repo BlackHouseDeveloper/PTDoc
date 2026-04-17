@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
@@ -127,6 +128,74 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureDraftAsync_ClearsLegacySupplementalSelectionsFromPersistedResponseJson_WhenStructuredIdsExist()
+    {
+        var patient = CreatePatient("Morgan", "Canonical");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Morgan Canonical",
+            StructuredData = new IntakeStructuredDataDto
+            {
+                ComorbidityIds = ["hypertension"],
+                AssistiveDeviceIds = ["cane"],
+                LivingSituationIds = ["lives-alone"],
+                HouseLayoutOptionIds = ["single-story-main-floor-bed-bath"]
+            },
+            SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
+            SelectedAssistiveDevices = ["Cane"],
+            SelectedLivingSituations = ["Lives alone"],
+            SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"]
+        });
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
+
+        using var responseJson = JsonDocument.Parse(storedDraft.ResponseJson);
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedComorbidities").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedAssistiveDevices").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedLivingSituations").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedHouseLayoutOptions").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task EnsureDraftAsync_PersistsCanonicalConsentPacketInResponseJson_WhenLegacyConsentFlagsSeedDraft()
+    {
+        var patient = CreatePatient("Quinn", "Consent");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Quinn Consent",
+            PhoneNumber = "555-0123",
+            EmailAddress = "quinn@example.com",
+            HipaaAcknowledged = true,
+            ConsentToTreatAcknowledged = true,
+            AllowPhoneCalls = true,
+            AllowEmailMessages = true
+        });
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
+
+        using var responseJson = JsonDocument.Parse(storedDraft.ResponseJson);
+        var consentPacket = responseJson.RootElement.GetProperty("consentPacket");
+        Assert.True(consentPacket.GetProperty("hipaaAcknowledged").GetBoolean());
+        Assert.True(consentPacket.GetProperty("treatmentConsentAccepted").GetBoolean());
+        Assert.Equal("555-0123", consentPacket.GetProperty("communicationPhoneNumber").GetString());
+        Assert.Equal("quinn@example.com", consentPacket.GetProperty("communicationEmail").GetString());
+        Assert.False(responseJson.RootElement.TryGetProperty("hipaaAcknowledged", out _));
+        Assert.False(responseJson.RootElement.TryGetProperty("consentToTreatAcknowledged", out _));
+
+        using var consentsJson = JsonDocument.Parse(storedDraft.Consents);
+        Assert.True(consentsJson.RootElement.GetProperty("HipaaAcknowledged").GetBoolean());
+        Assert.True(consentsJson.RootElement.GetProperty("ConsentToTreat").GetBoolean());
+    }
+
+    [Fact]
     public async Task GetDraftByPatientIdAsync_RehydratesStructuredDataFromCanonicalJson()
     {
         var patient = CreatePatient("Taylor", "Rehydrate");
@@ -168,6 +237,81 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal("shoulder", draft.StructuredData!.BodyPartSelections[0].BodyPartId);
         Assert.Equal(["right"], draft.StructuredData.BodyPartSelections[0].Lateralities);
         Assert.Equal(["ibuprofen-advil-motrin"], draft.StructuredData.MedicationIds);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_ClearsLegacySupplementalSelections_WhenStructuredDataExists()
+    {
+        var patient = CreatePatient("Skyler", "Normalize");
+        var structuredDataJson = IntakeStructuredDataJson.Serialize(new IntakeStructuredDataDto
+        {
+            ComorbidityIds = ["hypertension"],
+            AssistiveDeviceIds = ["cane"]
+        });
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """
+                           {"selectedComorbidities":["Hypertension (High Blood Pressure)"],"selectedAssistiveDevices":["Cane"]}
+                           """,
+            StructuredDataJson = structuredDataJson,
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(draft);
+        Assert.Empty(draft!.SelectedComorbidities);
+        Assert.Empty(draft.SelectedAssistiveDevices);
+        Assert.Equal(["hypertension"], draft.StructuredData!.ComorbidityIds);
+        Assert.Equal(["cane"], draft.StructuredData.AssistiveDeviceIds);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_HydratesLegacyConsentFlagsFromCanonicalConsentPacket()
+    {
+        var patient = CreatePatient("Dakota", "ConsentHydrate");
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """
+                           {"consentPacket":{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"communicationCallConsent":true,"communicationPhoneNumber":"555-0142","communicationEmailConsent":true,"communicationEmail":"dakota@example.com"}}
+                           """,
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(draft);
+        Assert.True(draft!.HipaaAcknowledged);
+        Assert.True(draft.ConsentToTreatAcknowledged);
+        Assert.True(draft.AllowPhoneCalls);
+        Assert.True(draft.AllowEmailMessages);
+        Assert.NotNull(draft.ConsentPacket);
+        Assert.Equal("555-0142", draft.ConsentPacket!.CommunicationPhoneNumber);
+        Assert.Equal("dakota@example.com", draft.ConsentPacket.CommunicationEmail);
     }
 
     [Fact]

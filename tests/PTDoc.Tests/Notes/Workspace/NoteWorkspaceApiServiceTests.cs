@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
@@ -105,6 +106,61 @@ public sealed class NoteWorkspaceApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_ReEvaluation_SendsIsReEvaluationFlag()
+    {
+        var patientId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2SaveResponse
+            {
+                Workspace = new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = Guid.NewGuid(),
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 12, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Evaluation,
+                    IsReEvaluation = true,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation
+                    }
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            PatientId = patientId,
+            WorkspaceNoteType = "Evaluation Note",
+            DateOfService = new DateTime(2026, 4, 12, 0, 0, 0, DateTimeKind.Utc),
+            IsReEvaluation = true,
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Evaluation Note",
+                Subjective = new SubjectiveVm(),
+                Objective = new ObjectiveVm(),
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm()
+            }
+        });
+
+        Assert.True(result.Success);
+        Assert.True(result.IsReEvaluation);
+        Assert.NotNull(requestBody);
+
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.True(document.RootElement.GetProperty("isReEvaluation").GetBoolean());
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_DischargeNote_UsesV2WorkspaceEndpoint()
     {
         var patientId = Guid.NewGuid();
@@ -162,30 +218,84 @@ public sealed class NoteWorkspaceApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_DryNeedlingNote_UsesV2WorkspaceEndpoint()
+    {
+        var patientId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2SaveResponse
+            {
+                Workspace = new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = Guid.NewGuid(),
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 14, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Daily,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily,
+                        DryNeedling = new WorkspaceDryNeedlingV2
+                        {
+                            DateOfTreatment = new DateTime(2026, 4, 14, 0, 0, 0, DateTimeKind.Utc),
+                            Location = "Gluteal region",
+                            NeedlingType = "Deep dry needling"
+                        }
+                    }
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            PatientId = patientId,
+            WorkspaceNoteType = "Dry Needling Note",
+            DateOfService = new DateTime(2026, 4, 14, 0, 0, 0, DateTimeKind.Utc),
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Dry Needling Note",
+                DryNeedling = new DryNeedlingVm
+                {
+                    DateOfTreatment = new DateTime(2026, 4, 14, 0, 0, 0, DateTimeKind.Utc),
+                    Location = "Gluteal region",
+                    NeedlingType = "Deep dry needling",
+                    PainBefore = 7,
+                    PainAfter = 3,
+                    ResponseDescription = "Improved tolerance",
+                    AdditionalNotes = "No adverse response"
+                }
+            }
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(requestBody);
+
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.Equal((int)NoteType.Daily, document.RootElement.GetProperty("noteType").GetInt32());
+        var dryNeedling = document.RootElement.GetProperty("payload").GetProperty("dryNeedling");
+        Assert.Equal("Gluteal region", dryNeedling.GetProperty("location").GetString());
+        Assert.Equal("Deep dry needling", dryNeedling.GetProperty("needlingType").GetString());
+        Assert.Equal(7, dryNeedling.GetProperty("painBefore").GetInt32());
+        Assert.Equal(3, dryNeedling.GetProperty("painAfter").GetInt32());
+    }
+
+    [Fact]
     public async Task LoadAsync_PreservesStructuredPayloadOnSubsequentSave()
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
         string? saveRequestBody = null;
+        var calledLegacyNotesEndpoint = false;
 
         var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
         {
-            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
-            {
-                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
-                {
-                    new NoteResponse
-                    {
-                        Id = noteId,
-                        PatientId = patientId,
-                        NoteType = NoteType.ProgressNote,
-                        ContentJson = """{"schemaVersion":2}""",
-                        DateOfService = new DateTime(2026, 4, 6, 0, 0, 0, DateTimeKind.Utc),
-                        NoteStatus = NoteStatus.Draft
-                    }
-                }, JsonOptions));
-            }
-
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
             {
                 return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
@@ -325,6 +435,11 @@ public sealed class NoteWorkspaceApiServiceTests
                 }, JsonOptions));
             }
 
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
+            {
+                calledLegacyNotesEndpoint = true;
+            }
+
             throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
         });
 
@@ -383,6 +498,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(saved.Success);
         Assert.NotNull(saveRequestBody);
+        Assert.False(calledLegacyNotesEndpoint);
 
         using var document = JsonDocument.Parse(saveRequestBody!);
         var payload = document.RootElement.GetProperty("payload");
@@ -422,6 +538,132 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal("Mobilization grade III", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("notes").GetString());
         Assert.Equal("GP", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifiers")[0].GetString());
         Assert.Equal("Commonly used CPT codes and modifiers.md", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifierSource").GetString());
+    }
+
+    [Fact]
+    public async Task LoadAsync_DryNeedlingNote_UsesV2WorkspacePayload()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler((request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
+            {
+                return Task.FromResult(StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = noteId,
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Daily,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily,
+                        DryNeedling = new WorkspaceDryNeedlingV2
+                        {
+                            DateOfTreatment = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+                            Location = "Gluteal region",
+                            NeedlingType = "Deep dry needling",
+                            PainBefore = 6,
+                            PainAfter = 3,
+                            ResponseDescription = "Improved mobility",
+                            AdditionalNotes = "Tolerated well"
+                        }
+                    }
+                }, JsonOptions)));
+            }
+
+            throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
+        });
+
+        var service = CreateService(handler);
+        var loaded = await service.LoadAsync(patientId, noteId);
+
+        Assert.True(loaded.Success);
+        Assert.Equal("Dry Needling Note", loaded.Payload.WorkspaceNoteType);
+        Assert.NotNull(loaded.Payload.StructuredPayload);
+        Assert.Equal("Gluteal region", loaded.Payload.DryNeedling.Location);
+        Assert.Equal("Deep dry needling", loaded.Payload.DryNeedling.NeedlingType);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ReEvaluation_PreservesFlag()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
+            {
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = noteId,
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 11, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Evaluation,
+                    IsReEvaluation = true,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation
+                    }
+                }, JsonOptions));
+            }
+
+            throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
+        });
+
+        var service = CreateService(handler);
+        var loaded = await service.LoadAsync(patientId, noteId);
+
+        Assert.True(loaded.Success);
+        Assert.True(loaded.IsReEvaluation);
+    }
+
+    [Fact]
+    public async Task LoadAsync_StandardDailyNote_DoesNotUseLegacyCompatibilityPath()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var calledLegacyNotesEndpoint = false;
+
+        var handler = new StubHttpMessageHandler((request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v2/notes/workspace/{patientId}/{noteId}")
+            {
+                return Task.FromResult(StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = noteId,
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Daily,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily,
+                        Subjective = new WorkspaceSubjectiveV2
+                        {
+                            CurrentPainScore = 3
+                        }
+                    }
+                }, JsonOptions)));
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == $"/api/v1/patients/{patientId}/notes")
+            {
+                calledLegacyNotesEndpoint = true;
+            }
+
+            throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
+        });
+
+        var service = CreateService(handler);
+        var loaded = await service.LoadAsync(patientId, noteId);
+
+        Assert.True(loaded.Success);
+        Assert.False(calledLegacyNotesEndpoint);
+        Assert.Equal("Daily Treatment Note", loaded.Payload.WorkspaceNoteType);
+        Assert.NotNull(loaded.Payload.StructuredPayload);
+        Assert.Equal(3, loaded.Payload.Subjective.CurrentPainScore);
     }
 
     [Fact]
@@ -482,6 +724,91 @@ public sealed class NoteWorkspaceApiServiceTests
         var subjective = document.RootElement.GetProperty("payload").GetProperty("subjective");
         Assert.False(subjective.GetProperty("takingMedications").GetBoolean());
         Assert.Equal(0, subjective.GetProperty("medications").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_UsesStructuredExerciseAndInterventionCollectionsOnly()
+    {
+        var patientId = Guid.NewGuid();
+        string? saveRequestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == "/api/v2/notes/workspace/")
+            {
+                saveRequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2SaveResponse
+                {
+                    Workspace = new NoteWorkspaceV2LoadResponse
+                    {
+                        NoteId = Guid.NewGuid(),
+                        PatientId = patientId,
+                        DateOfService = new DateTime(2026, 4, 8, 0, 0, 0, DateTimeKind.Utc),
+                        NoteType = NoteType.ProgressNote,
+                        Payload = new NoteWorkspaceV2Payload
+                        {
+                            NoteType = NoteType.ProgressNote
+                        }
+                    }
+                }, JsonOptions));
+            }
+
+            throw new InvalidOperationException($"Unexpected request to {request.RequestUri}");
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            PatientId = patientId,
+            WorkspaceNoteType = "Progress Note",
+            DateOfService = new DateTime(2026, 4, 8, 0, 0, 0, DateTimeKind.Utc),
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Progress Note",
+                StructuredPayload = new NoteWorkspaceV2Payload
+                {
+                    NoteType = NoteType.ProgressNote
+                },
+                Subjective = new SubjectiveVm(),
+                Objective = new ObjectiveVm
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowEntry
+                        {
+                            SuggestedExercise = "Heel slides",
+                            ActualExercisePerformed = "Heel slides"
+                        }
+                    ]
+                },
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm
+                {
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntry
+                        {
+                            Name = "Manual therapy",
+                            Category = "Manual"
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(saveRequestBody);
+
+        using var document = JsonDocument.Parse(saveRequestBody!);
+        var payload = document.RootElement.GetProperty("payload");
+        var exerciseRows = payload.GetProperty("objective").GetProperty("exerciseRows");
+        var interventions = payload.GetProperty("plan").GetProperty("generalInterventions");
+
+        Assert.Single(exerciseRows.EnumerateArray());
+        Assert.Equal("Heel slides", exerciseRows[0].GetProperty("actualExercisePerformed").GetString());
+        Assert.Single(interventions.EnumerateArray());
+        Assert.Equal("Manual therapy", interventions[0].GetProperty("name").GetString());
     }
 
     [Fact]

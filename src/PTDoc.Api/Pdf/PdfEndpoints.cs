@@ -6,6 +6,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -136,7 +137,11 @@ public static class PdfEndpoints
             NoteStatus = note.NoteStatus,
             DateOfService = note.DateOfService,
             NoteTypeDisplayName = ToDisplayName(note.NoteType),
-            ContentJson = note.ContentJson ?? "{}",
+            ContentJson = NoteWriteService.NormalizeContentJson(
+                note.NoteType,
+                note.IsReEvaluation,
+                note.DateOfService,
+                note.ContentJson),
             CptCodesJson = note.CptCodesJson ?? "[]",
             TotalTreatmentMinutes = note.TotalTreatmentMinutes,
             PatientFirstName = note.Patient?.FirstName ?? string.Empty,

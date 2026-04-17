@@ -707,7 +707,6 @@
             });
         }
 
-        SyncLegacyExerciseList();
         return VmChanged.InvokeAsync(_vm);
     }
 
@@ -720,25 +719,13 @@
     private Task RemoveExerciseRow(ExerciseRowEntry row)
     {
         _vm.ExerciseRows.Remove(row);
-        SyncLegacyExerciseList();
         return VmChanged.InvokeAsync(_vm);
     }
 
     private Task UpdateExerciseRow(ExerciseRowEntry row, Action<ExerciseRowEntry> update)
     {
         update(row);
-        SyncLegacyExerciseList();
         return VmChanged.InvokeAsync(_vm);
-    }
-
-    private void SyncLegacyExerciseList()
-    {
-        _vm.TherapeuticExercises = _vm.ExerciseRows
-            .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
     }
 
     private Task SetAndNotify(Action<ObjectiveVm> update)

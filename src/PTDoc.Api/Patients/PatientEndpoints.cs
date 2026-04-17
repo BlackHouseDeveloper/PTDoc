@@ -5,6 +5,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Text.Json;
 
 namespace PTDoc.Api.Patients;
@@ -520,7 +521,11 @@ public static class PatientEndpoints
         NoteType = n.NoteType,
         IsReEvaluation = n.IsReEvaluation,
         NoteStatus = n.NoteStatus,
-        ContentJson = n.ContentJson,
+        ContentJson = NoteWriteService.NormalizeContentJson(
+            n.NoteType,
+            n.IsReEvaluation,
+            n.DateOfService,
+            n.ContentJson),
         DateOfService = n.DateOfService,
         SignatureHash = n.SignatureHash,
         SignedUtc = n.SignedUtc,

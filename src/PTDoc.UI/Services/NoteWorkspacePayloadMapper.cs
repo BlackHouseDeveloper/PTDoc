@@ -389,6 +389,18 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
         preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
         preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.DryNeedling = IsDryNeedlingWorkspaceType(payload.WorkspaceNoteType)
+            ? new WorkspaceDryNeedlingV2
+            {
+                DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                Location = payload.DryNeedling.Location?.Trim() ?? string.Empty,
+                NeedlingType = payload.DryNeedling.NeedlingType?.Trim() ?? string.Empty,
+                PainBefore = payload.DryNeedling.PainBefore,
+                PainAfter = payload.DryNeedling.PainAfter,
+                ResponseDescription = payload.DryNeedling.ResponseDescription?.Trim() ?? string.Empty,
+                AdditionalNotes = payload.DryNeedling.AdditionalNotes?.Trim() ?? string.Empty
+            }
+            : null;
 
         return preservedPayload;
     }
@@ -1098,6 +1110,9 @@ public sealed class NoteWorkspacePayloadMapper
             _ => "Evaluation Note"
         };
     }
+
+    private static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
+        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

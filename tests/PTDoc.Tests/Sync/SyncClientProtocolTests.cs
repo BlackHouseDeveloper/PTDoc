@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -127,7 +128,7 @@ public class SyncClientProtocolTests
             CreatedUtc = DateTime.UtcNow.AddHours(-1),
             ParentNoteId = Guid.NewGuid(),
             IsAddendum = true,
-            ContentJson = "{\"text\":\"Draft note\"}",
+            ContentJson = "{\"subjective\":\"Draft note\"}",
             LastModifiedUtc = watermark.AddMinutes(1) // after watermark
         };
         var oldNote = new ClinicalNote
@@ -135,7 +136,7 @@ public class SyncClientProtocolTests
             PatientId = patient.Id,
             NoteType = NoteType.Evaluation,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{\"text\":\"Old note\"}",
+            ContentJson = "{\"subjective\":\"Old note\"}",
             LastModifiedUtc = watermark.AddMinutes(-3) // before watermark
         };
         context.ClinicalNotes.AddRange(note, oldNote);
@@ -157,6 +158,11 @@ public class SyncClientProtocolTests
         Assert.Contains("CreatedUtc", result.Items[0].DataJson);
         Assert.Contains("ParentNoteId", result.Items[0].DataJson);
         Assert.Contains("IsAddendum", result.Items[0].DataJson);
+
+        using var itemDocument = JsonDocument.Parse(result.Items[0].DataJson);
+        using var contentDocument = JsonDocument.Parse(itemDocument.RootElement.GetProperty("ContentJson").GetString()!);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, contentDocument.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Draft note", contentDocument.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
     }
 
     [Fact]
@@ -1159,8 +1165,14 @@ public class SyncClientProtocolTests
                     LocalId = 17,
                     OperationId = Guid.NewGuid(),
                     Operation = "Create",
-                    DataJson =
-                        $$"""{"patientId":"{{patient.Id}}","noteType":"ProgressNote","dateOfService":"{{dateOfService:O}}","contentJson":"{}","cptCodesJson":"[]"}""",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        patientId = patient.Id,
+                        noteType = "ProgressNote",
+                        dateOfService,
+                        contentJson = """{"subjective":"Progress sync note"}""",
+                        cptCodesJson = "[]"
+                    }),
                     LastModifiedUtc = DateTime.UtcNow
                 }
             }
@@ -1176,6 +1188,10 @@ public class SyncClientProtocolTests
         Assert.Equal(NoteStatus.Draft, storedNote.NoteStatus);
         Assert.Equal(patient.Id, storedNote.PatientId);
         Assert.Equal(clinicId, storedNote.ClinicId);
+
+        using var document = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Progress sync note", document.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
     }
 
     [Fact]
@@ -1234,6 +1250,73 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.AcceptedCount);
         Assert.Equal(0, response.ConflictCount);
         Assert.Equal("Accepted", response.Items[0].Status);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_UpdatesUnsignedClinicalNote_WithCanonicalWorkspaceContent()
+    {
+        var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+
+        var patient = new Patient
+        {
+            FirstName = "Uma",
+            LastName = "Updater",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        var draftNote = new ClinicalNote
+        {
+            Id = noteId,
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 4, 0, 0, 0, DateTimeKind.Utc),
+            ContentJson = """{"text":"Draft"}""",
+            SignatureHash = null,
+            LastModifiedUtc = DateTime.UtcNow.AddHours(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.ClinicalNotes.Add(draftNote);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var updatedDateOfService = new DateTime(2026, 4, 5, 0, 0, 0, DateTimeKind.Utc);
+        var request = new ClientSyncPushRequest
+        {
+            Items = new List<ClientSyncPushItem>
+            {
+                new ClientSyncPushItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = noteId,
+                    LocalId = 1,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Update",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        contentJson = """{"subjective":"Updated offline daily note"}""",
+                        dateOfService = updatedDateOfService,
+                        cptCodesJson = "[]"
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal("Accepted", response.Items[0].Status);
+
+        var storedNote = await context.ClinicalNotes.SingleAsync();
+        Assert.Equal(updatedDateOfService, storedNote.DateOfService);
+
+        using var document = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal((int)NoteType.Daily, document.RootElement.GetProperty("noteType").GetInt32());
+        Assert.Equal("Updated offline daily note", document.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
     }
 
     // ── Reconnect sync scenario ───────────────────────────────────────────────

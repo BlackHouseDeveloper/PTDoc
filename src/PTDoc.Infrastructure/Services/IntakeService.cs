@@ -179,6 +179,7 @@ public sealed class IntakeService : IIntakeService
         var firstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
         var lastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
 
+        var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
         var patient = new Patient
         {
             FirstName = string.IsNullOrWhiteSpace(firstName) ? "Unknown" : firstName,
@@ -194,8 +195,8 @@ public sealed class IntakeService : IIntakeService
             EmergencyContactName = state.EmergencyContactName?.Trim(),
             EmergencyContactPhone = state.EmergencyContactPhone?.Trim(),
             PayerInfoJson = BuildPayerInfoJson(state),
-            ConsentSigned = state.HipaaAcknowledged,
-            ConsentSignedDate = state.HipaaAcknowledged ? DateTime.UtcNow : null,
+            ConsentSigned = canonicalConsent.HipaaAcknowledged == true,
+            ConsentSignedDate = canonicalConsent.HipaaAcknowledged == true ? DateTime.UtcNow : null,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -342,8 +343,9 @@ public sealed class IntakeService : IIntakeService
             patient.EmergencyContactName = state.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
             patient.EmergencyContactPhone = state.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
             patient.PayerInfoJson = BuildPayerInfoJson(state);
-            patient.ConsentSigned = state.HipaaAcknowledged;
-            if (state.HipaaAcknowledged && patient.ConsentSignedDate is null)
+            var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
+            patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
+            if (canonicalConsent.HipaaAcknowledged == true && patient.ConsentSignedDate is null)
                 patient.ConsentSignedDate = DateTime.UtcNow;
             patient.LastModifiedUtc = DateTime.UtcNow;
             patient.ModifiedByUserId = userId;
@@ -359,8 +361,22 @@ public sealed class IntakeService : IIntakeService
     {
         target.PatientId = source.PatientId;
         target.CurrentStep = source.CurrentStep;
+        target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;
         target.ConsentToTreatAcknowledged = source.ConsentToTreatAcknowledged;
+        target.TermsOfServiceAccepted = source.TermsOfServiceAccepted;
+        target.AccuracyConfirmed = source.AccuracyConfirmed;
+        target.RevokeHipaaPrivacyNotice = source.RevokeHipaaPrivacyNotice;
+        target.RevokeTreatmentConsent = source.RevokeTreatmentConsent;
+        target.RevokeMarketingCommunications = source.RevokeMarketingCommunications;
+        target.RevokePhiRelease = source.RevokePhiRelease;
+        target.AllowPhoneCalls = source.AllowPhoneCalls;
+        target.AllowTextMessages = source.AllowTextMessages;
+        target.AllowEmailMessages = source.AllowEmailMessages;
+        target.DryNeedlingEligible = source.DryNeedlingEligible;
+        target.PelvicFloorTherapyEligible = source.PelvicFloorTherapyEligible;
+        target.PhiReleaseAuthorized = source.PhiReleaseAuthorized;
+        target.BillingConsentAuthorized = source.BillingConsentAuthorized;
         target.FullName = source.FullName;
         target.DateOfBirth = source.DateOfBirth;
         target.SexAtBirth = source.SexAtBirth;
@@ -419,6 +435,9 @@ public sealed class IntakeService : IIntakeService
                     draft.StructuredData = structuredData;
                 }
 
+                IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
+                IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
+
                 return draft;
             }
         }
@@ -430,11 +449,14 @@ public sealed class IntakeService : IIntakeService
             fallback.StructuredData = fallbackStructuredData;
         }
 
+        IntakeDraftPersistence.HydrateConsentConvenienceFields(fallback);
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(fallback);
+
         return fallback;
     }
 
     private static string SerializeDraft(IntakeResponseDraft state)
-        => JsonSerializer.Serialize(state, SerializerOptions);
+        => IntakeDraftPersistence.SerializePersistenceJson(state);
 
     private static string? SerializeStructuredData(IntakeStructuredDataDto? structuredData)
         => structuredData is null ? null : IntakeStructuredDataJson.Serialize(structuredData);
@@ -445,6 +467,8 @@ public sealed class IntakeService : IIntakeService
         CopyDraftProperties(state, draft);
         draft.IntakeId = state.IntakeId;
         draft.PatientId = state.PatientId;
+        IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
+        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
         return draft;
     }
 
@@ -492,10 +516,11 @@ public sealed class IntakeService : IIntakeService
 
     private static string BuildConsentsJson(IntakeResponseDraft state)
     {
+        var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
         var consents = new
         {
-            HipaaAcknowledged = state.HipaaAcknowledged,
-            ConsentToTreat = state.ConsentToTreatAcknowledged
+            HipaaAcknowledged = canonicalConsent.HipaaAcknowledged == true,
+            ConsentToTreat = canonicalConsent.TreatmentConsentAccepted == true
         };
         return JsonSerializer.Serialize(consents);
     }

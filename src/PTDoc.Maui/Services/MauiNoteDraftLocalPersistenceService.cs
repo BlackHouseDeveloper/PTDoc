@@ -1,6 +1,7 @@
 using System.Text.Json;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
@@ -9,9 +10,11 @@ namespace PTDoc.Maui.Services;
 
 public sealed class MauiNoteDraftLocalPersistenceService(
     ILocalRepository<LocalClinicalNoteDraft> localRepository,
-    ILocalSyncOrchestrator localSyncOrchestrator) : INoteDraftLocalPersistenceService
+    ILocalSyncOrchestrator localSyncOrchestrator,
+    IIntakeReferenceDataCatalogService intakeReferenceData) : INoteDraftLocalPersistenceService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData);
 
     public bool IsEnabled => true;
 
@@ -20,12 +23,15 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         CancellationToken cancellationToken = default)
     {
         var localDraft = await ResolveLocalDraftAsync(draft, cancellationToken) ?? new LocalClinicalNoteDraft();
+        var noteType = ToApiNoteType(draft.WorkspaceNoteType);
+        var canonicalPayload = _payloadMapper.MapToV2Payload(draft.Payload, noteType);
 
         localDraft.ServerId = draft.NoteId ?? Guid.Empty;
         localDraft.PatientServerId = draft.PatientId;
-        localDraft.NoteType = ToApiNoteType(draft.WorkspaceNoteType).ToString();
+        localDraft.NoteType = noteType.ToString();
+        localDraft.IsReEvaluation = draft.IsReEvaluation;
         localDraft.DateOfService = draft.DateOfService.Date;
-        localDraft.ContentJson = JsonSerializer.Serialize(draft.Payload, SerializerOptions);
+        localDraft.ContentJson = JsonSerializer.Serialize(canonicalPayload, SerializerOptions);
         localDraft.CptCodesJson = BuildCptCodesJson(draft.Payload.Plan);
         localDraft.SignatureHash = null;
         localDraft.SignedUtc = null;
@@ -45,6 +51,7 @@ public sealed class MauiNoteDraftLocalPersistenceService(
                     localDraft.ServerId,
                     patientId = localDraft.PatientServerId,
                     localDraft.NoteType,
+                    localDraft.IsReEvaluation,
                     localDraft.DateOfService,
                     localDraft.ContentJson,
                     localDraft.CptCodesJson,
@@ -64,6 +71,7 @@ public sealed class MauiNoteDraftLocalPersistenceService(
             Success = true,
             NoteId = localDraft.ServerId,
             LocalDraftId = localDraft.LocalId,
+            IsReEvaluation = localDraft.IsReEvaluation,
             Status = NoteStatus.Draft
         };
     }
@@ -89,15 +97,6 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         return null;
     }
 
-    private static NoteType ToApiNoteType(string workspaceNoteType) =>
-        workspaceNoteType switch
-        {
-            "Evaluation Note" => NoteType.Evaluation,
-            "Progress Note" => NoteType.ProgressNote,
-            "Discharge Note" => NoteType.Discharge,
-            _ => NoteType.Daily
-        };
-
     private static string BuildCptCodesJson(PlanVm plan)
     {
         var cptEntries = plan.SelectedCptCodes
@@ -111,5 +110,18 @@ public sealed class MauiNoteDraftLocalPersistenceService(
             .ToList();
 
         return JsonSerializer.Serialize(cptEntries, SerializerOptions);
+    }
+
+    private static NoteType ToApiNoteType(string workspaceNoteType)
+    {
+        return workspaceNoteType switch
+        {
+            "Evaluation Note" => NoteType.Evaluation,
+            "Progress Note" => NoteType.ProgressNote,
+            "Discharge Note" => NoteType.Discharge,
+            "Dry Needling Note" => NoteType.Daily,
+            "Daily Treatment Note" => NoteType.Daily,
+            _ => NoteType.Evaluation
+        };
     }
 }

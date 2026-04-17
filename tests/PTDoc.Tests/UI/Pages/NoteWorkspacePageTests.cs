@@ -408,6 +408,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                 NoteId = noteId,
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 6),
+                IsReEvaluation = true,
                 Status = NoteStatus.Draft,
                 Payload = new NoteWorkspacePayload
                 {
@@ -451,6 +452,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                     {
                         Success = true,
                         NoteId = noteId,
+                        IsReEvaluation = true,
                         Status = NoteStatus.Draft
                     };
             });
@@ -488,6 +490,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal("Clinical judgment supports billing this visit despite the 8-minute warning.", savedDrafts[1].Override!.Reason);
             Assert.Equal(noteId, savedDrafts[1].NoteId);
             Assert.True(savedDrafts[1].IsExistingNote);
+            Assert.True(savedDrafts[1].IsReEvaluation);
         });
     }
 

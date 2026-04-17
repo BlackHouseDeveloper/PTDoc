@@ -195,6 +195,102 @@ public class RulesEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidateSignatureEligibilityAsync_MissingDiagnosisCodes_ReturnsHardStop()
+    {
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = await CreatePatientAsync("Commercial"),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 10),
+            LastModifiedUtc = DateTime.UtcNow,
+            ContentJson = JsonSerializer.Serialize(new
+            {
+                subjective = "Patient reports lumbar pain.",
+                objective = "ROM limited.",
+                assessment = new { },
+                plan = new { }
+            })
+        };
+
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var result = await _rulesEngine.ValidateSignatureEligibilityAsync(note.Id);
+
+        Assert.False(result.IsValid);
+        Assert.Equal(RuleSeverity.HardStop, result.Severity);
+        Assert.Contains("ICD-10 diagnosis code", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidateSignatureEligibilityAsync_BlockingClinicalViolations_ReturnsHardStop()
+    {
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = await CreatePatientAsync("Commercial"),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 11),
+            LastModifiedUtc = DateTime.UtcNow,
+            ContentJson = JsonSerializer.Serialize(new
+            {
+                subjective = new
+                {
+                    chiefComplaint = "Knee pain"
+                },
+                objective = new { },
+                assessment = new
+                {
+                    diagnosisCodes = new[]
+                    {
+                        new { code = "M25.561", description = "Pain in right knee" }
+                    }
+                },
+                plan = new { }
+            })
+        };
+
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var result = await _rulesEngine.ValidateSignatureEligibilityAsync(note.Id);
+
+        Assert.False(result.IsValid);
+        Assert.Equal(RuleSeverity.HardStop, result.Severity);
+        Assert.Contains("blocking clinical/compliance violation", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Data.ContainsKey("BlockingRuleIds"));
+        var ruleIds = Assert.IsType<string[]>(result.Data["BlockingRuleIds"]);
+        Assert.Contains("COMP_CERT", ruleIds);
+    }
+
+    [Fact]
+    public async Task ValidateSignatureEligibilityAsync_Addendum_BypassesCanonicalClinicalRequirements()
+    {
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = await CreatePatientAsync("Commercial"),
+            ParentNoteId = Guid.NewGuid(),
+            IsAddendum = true,
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 12),
+            LastModifiedUtc = DateTime.UtcNow,
+            ContentJson = JsonSerializer.Serialize("Addendum text")
+        };
+
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var result = await _rulesEngine.ValidateSignatureEligibilityAsync(note.Id);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(RuleSeverity.Info, result.Severity);
+        Assert.Equal("SIGN_ELIGIBLE", result.RuleId);
+    }
+
+    [Fact]
     public async Task ValidateImmutability_SignedNote_BlocksEdits()
     {
         var note = new ClinicalNote
