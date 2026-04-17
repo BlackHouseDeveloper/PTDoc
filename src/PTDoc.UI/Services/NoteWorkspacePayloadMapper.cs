@@ -33,8 +33,20 @@ public sealed class NoteWorkspacePayloadMapper
 
         return new NoteWorkspacePayload
         {
-            WorkspaceNoteType = ToWorkspaceNoteType(payload.NoteType),
+            WorkspaceNoteType = ResolveWorkspaceNoteType(payload),
             StructuredPayload = ClonePayload(payload),
+            DryNeedling = payload.DryNeedling is null
+                ? new DryNeedlingVm()
+                : new DryNeedlingVm
+                {
+                    DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                    Location = payload.DryNeedling.Location,
+                    NeedlingType = payload.DryNeedling.NeedlingType,
+                    PainBefore = payload.DryNeedling.PainBefore,
+                    PainAfter = payload.DryNeedling.PainAfter,
+                    ResponseDescription = payload.DryNeedling.ResponseDescription,
+                    AdditionalNotes = payload.DryNeedling.AdditionalNotes
+                },
             Subjective = new SubjectiveVm
             {
                 SelectedBodyPart = ResolveSubjectiveBodyPart(payload),
@@ -147,12 +159,6 @@ public sealed class NoteWorkspacePayloadMapper
                         IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                         IsSourceBacked = row.IsSourceBacked
                     })
-                    .ToList(),
-                TherapeuticExercises = payload.Objective.ExerciseRows
-                    .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
                     .ToList()
             },
             Assessment = new AssessmentWorkspaceVm
@@ -343,7 +349,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
             preservedPayload.Objective.ExerciseRows,
             payload.Objective.ExerciseRows,
-            payload.Objective.TherapeuticExercises);
+            []);
 
         preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
         preservedPayload.Assessment.FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations;
@@ -376,7 +382,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.GeneralInterventions = MergeGeneralInterventions(
             preservedPayload.Plan.GeneralInterventions,
             payload.Plan.GeneralInterventions,
-            payload.Objective.ManualTechniques);
+            []);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
             payload.Plan.SelectedCptCodes);
@@ -1098,6 +1104,11 @@ public sealed class NoteWorkspacePayloadMapper
             ? parsed
             : BodyPart.Other;
     }
+
+    private static string ResolveWorkspaceNoteType(NoteWorkspaceV2Payload payload) =>
+        payload.DryNeedling is null
+            ? ToWorkspaceNoteType(payload.NoteType)
+            : "Dry Needling Note";
 
     private static string ToWorkspaceNoteType(NoteType noteType)
     {

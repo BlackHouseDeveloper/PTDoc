@@ -972,6 +972,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`tests/PTDoc.Tests/UI/ProgressTracking/ProgressTrackingAggregationServiceTests.cs`** — Updated progress-tracking note parsing to detect schema version 2 workspace payloads and project outcome scores plus goal statuses from the canonical contract instead of deserializing raw `ContentJson` only as the legacy `NoteWorkspacePayload` shape. Legacy/simple payload parsing is still retained as fallback. Reason: Branch 5 should remove remaining active UI readers that bypass the canonical workspace v2 contract, especially for dashboard-level status and scoring summaries.
 - **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`** — Fixed workspace v2 detection to match `schemaVersion` case-insensitively so progress tracking recognizes both camelCase and PascalCase serialized workspace payloads before falling back to the legacy parser. Reason: real note content and fixtures can still arrive with PascalCase keys, and treating those as legacy payloads dropped canonical outcome scores and goal summaries.
 
+### Fixed - workspace subjective alignment follow-up compile regression
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`** — Removed stale references to deleted `ObjectiveVm.TherapeuticExercises` and `ObjectiveVm.ManualTechniques` members after the compatibility mapper refactor, keeping the save/load merge path aligned to the current `ExerciseRows` and `GeneralInterventions` models. Reason: the refdata intake-alignment changes must compile against the current structured workspace UI contracts.
+
+### Fixed - dry-needling workspace note-type mapping
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`** — Updated the UI payload mapper to resolve `"Dry Needling Note"` from canonical v2 payloads when `payload.DryNeedling` is present instead of always displaying daily notes as `"Daily Treatment Note"`. Reason: dry-needling workspace loads must preserve the specialized note type all the way into the mapped editor payload.
+
+### Fixed - dry-needling workspace field mapping
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`** — Added the missing `payload.DryNeedling -> NoteWorkspacePayload.DryNeedling` mapping on UI load and a focused mapper test covering that v2-to-UI round trip. Reason: dry-needling workspace loads must populate the specialized editor fields, not just the note-type label.
+
 ---
 
 ## Version History

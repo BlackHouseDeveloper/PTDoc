@@ -247,4 +247,33 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal(3, result.DryNeedling.PainAfter);
         Assert.Equal("Reduced pain after treatment", result.DryNeedling.ResponseDescription);
     }
+
+    [Fact]
+    public void MapToUiPayload_DryNeedlingWorkspace_PopulatesDryNeedlingVm()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DryNeedling = new WorkspaceDryNeedlingV2
+            {
+                DateOfTreatment = new DateTime(2026, 4, 16),
+                Location = "Gluteal region",
+                NeedlingType = "Deep dry needling",
+                PainBefore = 7,
+                PainAfter = 3,
+                ResponseDescription = "Reduced pain after treatment",
+                AdditionalNotes = "No adverse response"
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal("Dry Needling Note", result.WorkspaceNoteType);
+        Assert.Equal("Gluteal region", result.DryNeedling.Location);
+        Assert.Equal("Deep dry needling", result.DryNeedling.NeedlingType);
+        Assert.Equal(7, result.DryNeedling.PainBefore);
+        Assert.Equal(3, result.DryNeedling.PainAfter);
+        Assert.Equal("Reduced pain after treatment", result.DryNeedling.ResponseDescription);
+        Assert.Equal("No adverse response", result.DryNeedling.AdditionalNotes);
+    }
 }
