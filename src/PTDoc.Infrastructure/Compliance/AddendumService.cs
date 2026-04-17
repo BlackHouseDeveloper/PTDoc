@@ -3,6 +3,7 @@ using System.Text.Json;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Infrastructure.Compliance;
 
@@ -51,6 +52,7 @@ public sealed class AddendumService(
         }
 
         var now = DateTime.UtcNow;
+        var serializedContent = SerializeContent(content);
         var addendum = new ClinicalNote
         {
             PatientId = note.PatientId,
@@ -61,7 +63,11 @@ public sealed class AddendumService(
             IsReEvaluation = note.IsReEvaluation,
             NoteStatus = NoteStatus.Draft,
             TherapistNpi = note.TherapistNpi,
-            ContentJson = SerializeContent(content),
+            ContentJson = NoteWriteService.NormalizeContentJson(
+                note.NoteType,
+                note.IsReEvaluation,
+                note.DateOfService,
+                serializedContent),
             DateOfService = note.DateOfService,
             CptCodesJson = "[]",
             TotalTreatmentMinutes = null,

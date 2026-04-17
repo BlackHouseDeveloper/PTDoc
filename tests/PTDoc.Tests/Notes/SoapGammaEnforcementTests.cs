@@ -115,11 +115,11 @@ public class SoapGammaEnforcementTests : IDisposable
         const string aiText = "Patient presents with right shoulder pain rated 7/10.";
 
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "subjective", aiText);
+            initial, NoteType.Daily, "subjective", aiText);
 
         var doc = JsonDocument.Parse(result);
-        Assert.True(doc.RootElement.TryGetProperty("subjective", out var subjProp));
-        Assert.Equal(aiText, subjProp.GetString());
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(aiText, doc.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("patientHistorySummary").GetString());
     }
 
     [Fact]
@@ -127,11 +127,13 @@ public class SoapGammaEnforcementTests : IDisposable
     {
         const string initial = "{}";
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "Assessment", "AI assessment narrative.");
+            initial, NoteType.Daily, "Assessment", "AI assessment narrative.");
 
         var doc = JsonDocument.Parse(result);
-        Assert.True(doc.RootElement.TryGetProperty("assessment", out _),
-            "Section key must be stored lower-case regardless of input casing.");
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.True(doc.RootElement.TryGetProperty("assessment", out var assessment),
+            "Assessment must be written into the canonical workspace section.");
+        Assert.Equal("AI assessment narrative.", assessment.GetProperty("assessmentNarrative").GetString());
         Assert.False(doc.RootElement.TryGetProperty("Assessment", out _),
             "Original casing must NOT appear as a separate key.");
     }
@@ -141,17 +143,16 @@ public class SoapGammaEnforcementTests : IDisposable
     {
         const string initial = """{"subjective":"existing value"}""";
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "assessment", "AI assessment text.");
+            initial, NoteType.Daily, "assessment", "AI assessment text.");
 
         var doc = JsonDocument.Parse(result);
 
         // Existing section is preserved
-        Assert.True(doc.RootElement.TryGetProperty("subjective", out var subjProp));
-        Assert.Equal("existing value", subjProp.GetString());
+        Assert.Equal("existing value", doc.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
 
         // New section is added
         Assert.True(doc.RootElement.TryGetProperty("assessment", out var assessProp));
-        Assert.Equal("AI assessment text.", assessProp.GetString());
+        Assert.Equal("AI assessment text.", assessProp.GetProperty("assessmentNarrative").GetString());
     }
 
     [Fact]
@@ -160,11 +161,11 @@ public class SoapGammaEnforcementTests : IDisposable
         // When AI content for the same section is accepted again, it replaces the prior value.
         const string initial = """{"assessment":"old AI text"}""";
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "assessment", "revised AI text");
+            initial, NoteType.Daily, "assessment", "revised AI text");
 
         var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("assessment", out var assessProp));
-        Assert.Equal("revised AI text", assessProp.GetString());
+        Assert.Equal("revised AI text", assessProp.GetProperty("assessmentNarrative").GetString());
     }
 
     [Fact]
@@ -174,7 +175,7 @@ public class SoapGammaEnforcementTests : IDisposable
         // the merge must normalize them to lower-case and avoid creating duplicate keys.
         const string initial = """{"Assessment":"existing AI text","Subjective":"chief complaint"}""";
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "plan", "new plan text");
+            initial, NoteType.Daily, "plan", "new plan text");
 
         var doc = JsonDocument.Parse(result);
 
@@ -184,16 +185,9 @@ public class SoapGammaEnforcementTests : IDisposable
         Assert.False(doc.RootElement.TryGetProperty("Subjective", out _),
             "PascalCase key 'Subjective' must be normalized away.");
 
-        // Normalized lower-case keys must be present
-        Assert.True(doc.RootElement.TryGetProperty("assessment", out var a));
-        Assert.Equal("existing AI text", a.GetString());
-        Assert.True(doc.RootElement.TryGetProperty("subjective", out var s));
-        Assert.Equal("chief complaint", s.GetString());
-        Assert.True(doc.RootElement.TryGetProperty("plan", out var p));
-        Assert.Equal("new plan text", p.GetString());
-
-        // Total key count must be exactly 3 (no duplicates)
-        Assert.Equal(3, doc.RootElement.EnumerateObject().Count());
+        Assert.Equal("existing AI text", doc.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+        Assert.Equal("chief complaint", doc.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("new plan text", doc.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
     }
 
     [Fact]
@@ -203,15 +197,12 @@ public class SoapGammaEnforcementTests : IDisposable
         // normalized key with the merged value.
         const string initial = """{"Assessment":"old value","assessment":"also old"}""";
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "assessment", "new AI text");
+            initial, NoteType.Daily, "assessment", "new AI text");
 
         var doc = JsonDocument.Parse(result);
 
-        // Only one assessment key must remain
-        var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
-        Assert.Single(keys.Where(k => string.Equals(k, "assessment", StringComparison.OrdinalIgnoreCase)));
         Assert.True(doc.RootElement.TryGetProperty("assessment", out var a));
-        Assert.Equal("new AI text", a.GetString());
+        Assert.Equal("new AI text", a.GetProperty("assessmentNarrative").GetString());
     }
 
     [Fact]
@@ -230,7 +221,7 @@ public class SoapGammaEnforcementTests : IDisposable
         });
 
         var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
-            initial, "assessment", "new assessment narrative");
+            initial, NoteType.ProgressNote, "assessment", "new assessment narrative");
 
         var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("schemaVersion", out var schemaVersion));
@@ -238,6 +229,65 @@ public class SoapGammaEnforcementTests : IDisposable
         Assert.True(doc.RootElement.TryGetProperty("assessment", out var assessment));
         Assert.Equal("new assessment narrative", assessment.GetProperty("assessmentNarrative").GetString());
         Assert.False(doc.RootElement.TryGetProperty("Assessment", out _));
+    }
+
+    [Fact]
+    public void MergeAiContentIntoSection_LegacyGoalsPayload_PromotesToWorkspaceV2()
+    {
+        const string initial = """{"goals":["Return to running","Sleep without pain"]}""";
+
+        var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
+            initial, NoteType.ProgressNote, "plan", "Progress plan update");
+
+        var doc = JsonDocument.Parse(result);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        var goals = doc.RootElement.GetProperty("assessment").GetProperty("goals").EnumerateArray().ToList();
+        Assert.Equal(2, goals.Count);
+        Assert.Contains(goals, goal => goal.GetProperty("description").GetString() == "Return to running");
+        Assert.Equal("Progress plan update", doc.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
+    }
+
+    [Fact]
+    public void MergeAiContentIntoSection_LegacyWorkspacePayload_PromotesToWorkspaceV2AndPreservesStructuredData()
+    {
+        const string initial = """
+                               {
+                                 "assessment": {
+                                   "diagnosisCodes": [
+                                     {
+                                       "code": "M62.89",
+                                       "description": "Other specified disorders of muscle"
+                                     }
+                                   ],
+                                   "goals": [
+                                     {
+                                       "description": "Stand for 30 minutes without pain"
+                                     }
+                                   ]
+                                 },
+                                 "plan": {
+                                   "selectedCptCodes": [
+                                     {
+                                       "code": "97110",
+                                       "description": "Therapeutic exercise",
+                                       "units": 1
+                                     }
+                                   ]
+                                 }
+                               }
+                               """;
+
+        var result = PTDoc.Api.Notes.NoteEndpoints.MergeAiContentIntoSection(
+            initial, NoteType.ProgressNote, "assessment", "Updated AI assessment");
+
+        var doc = JsonDocument.Parse(result);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Updated AI assessment", doc.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+        Assert.Equal("M62.89", doc.RootElement.GetProperty("assessment").GetProperty("diagnosisCodes")[0].GetProperty("code").GetString());
+        Assert.Equal(
+            "Stand for 30 minutes without pain",
+            doc.RootElement.GetProperty("assessment").GetProperty("goals")[0].GetProperty("description").GetString());
+        Assert.Equal("97110", doc.RootElement.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("code").GetString());
     }
 
     [Fact]
@@ -378,7 +428,17 @@ public class SoapGammaEnforcementTests : IDisposable
         // Assert: most recent signed note is returned.
         Assert.NotNull(result);
         Assert.Equal(recentNote.Id, result.SourceNoteId);
-        Assert.Equal(recentNote.ContentJson, result.ContentJson);
+
+        using var document = JsonDocument.Parse(result.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal((int)NoteType.Daily, document.RootElement.GetProperty("noteType").GetInt32());
+        Assert.Equal(
+            "most recent daily note content",
+            document.RootElement
+                .GetProperty("subjective")
+                .GetProperty("narrativeContext")
+                .GetProperty("chiefComplaint")
+                .GetString());
     }
 
     [Fact]
@@ -408,6 +468,33 @@ public class SoapGammaEnforcementTests : IDisposable
         var dbNote = await _context.ClinicalNotes.FindAsync(note.Id);
         Assert.Equal(originalContentJson, dbNote!.ContentJson);
         Assert.Equal("hash-signed", dbNote.SignatureHash);
+    }
+
+    [Fact]
+    public async Task CarryForward_UnrecognizedJson_PassesThroughWithoutMutation()
+    {
+        var patientId = Guid.NewGuid();
+        const string originalContentJson = """{"minimal":"data"}""";
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow.AddDays(-1),
+            LastModifiedUtc = DateTime.UtcNow.AddDays(-1),
+            SignatureHash = "hash-signed",
+            ContentJson = originalContentJson
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var carryForwardData = await _carryForwardService.GetCarryForwardDataAsync(patientId, NoteType.Daily);
+
+        Assert.NotNull(carryForwardData);
+        Assert.Equal(originalContentJson, carryForwardData.ContentJson);
+
+        var dbNote = await _context.ClinicalNotes.FindAsync(note.Id);
+        Assert.Equal(originalContentJson, dbNote!.ContentJson);
     }
 
     [Fact]

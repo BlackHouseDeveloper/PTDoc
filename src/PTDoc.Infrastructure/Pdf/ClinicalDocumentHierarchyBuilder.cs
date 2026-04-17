@@ -24,7 +24,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         {
             NoteType.Evaluation => BuildInitialEvaluation(noteData, context),
             NoteType.ProgressNote => BuildProgressNote(noteData, context),
-            NoteType.Daily => BuildDailyNote(noteData, context),
+            NoteType.Daily => context.WorkspacePayload?.DryNeedling is not null
+                ? BuildDryNeedlingNote(noteData, context)
+                : BuildDailyNote(noteData, context),
             NoteType.Discharge => BuildDischargeSummary(noteData, context),
             _ => BuildFallbackDocument(noteData, context)
         };
@@ -57,10 +59,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Paragraph("Medical History / Comorbidities", FirstNonEmpty(
                     JoinSet(workspace?.Subjective.Comorbidities),
                     evaluation?.MedicalHistory)),
-                TodoNode(
-                    "Surgical history as structured evaluation content",
-                    "Clinical note",
-                    "Update NoteWorkspaceV2Payload evaluation export projection to include surgical-history fields"),
                 Paragraph("Diagnostic Testing / Imaging", BuildImagingSummary(workspace)),
                 Paragraph("Patient Reported Goals", FirstNonEmpty(
                     workspace?.Assessment.PatientPersonalGoals,
@@ -68,37 +66,18 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Paragraph("Previous Treatment / Reported Effectiveness", BuildPriorTreatmentSummary(workspace))),
             BuildEvaluationSection(noteData, context),
             Section("Treatment", ClinicalDocumentSourceKind.Note,
-                TableNode("Treatment Table", ClinicalDocumentSourceKind.Note,
-                    columns:
-                    [
-                        Column("name", "Name"),
-                        Column("details", "Details"),
-                        Column("performed", "Performed")
-                    ]),
-                TodoNode(
-                    "Structured performed-treatment rows for evaluation exports",
-                    "Clinical note",
-                    "Update NoteWorkspaceV2Payload export projection to expose treatment rows and performed-state details"),
-                TodoNode(
-                    "Evaluation treatment comments as a dedicated export field",
-                    "Clinical note",
-                    "Update evaluation export projection to include treatment comment text")),
+                BuildStructuredTreatmentTable(workspace),
+                ParagraphIfPresent("Treatment Comments", BuildTreatmentComments(
+                    workspace?.Plan.ClinicalSummary,
+                    workspace?.Plan.PlanOfCareNarrative,
+                    workspace?.Plan.HomeExerciseProgramNotes))),
             Section("Clinical Assessment", ClinicalDocumentSourceKind.Note,
                 Paragraph("Narrative", FirstNonEmpty(
                     workspace?.Assessment.AssessmentNarrative,
                     evaluation?.Assessment)),
                 Paragraph("Skilled PT Justification", workspace?.Assessment.SkilledPtJustification)),
             BuildDiagnosisSection(context),
-            Section("Contraindications To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Contraindications text",
-                    "Clinical note",
-                    "Update evaluation/progress export projection to include contraindications")),
-            Section("Precautions To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Precautions text",
-                    "Clinical note",
-                    "Update evaluation/progress export projection to include precautions")),
+            BuildPrecautionsSection(workspace),
             Section("Rehab Potential", ClinicalDocumentSourceKind.Note,
                 Field("Rehab Potential", FirstNonEmpty(
                     workspace?.Assessment.OverallPrognosis,
@@ -135,21 +114,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     BuildLegacyJsonValue(noteData.ContentJson, "subjective")))),
             BuildEvaluationSection(noteData, context),
             Section("Treatment", ClinicalDocumentSourceKind.Note,
-                TableNode("Treatment Table", ClinicalDocumentSourceKind.Note,
-                    columns:
-                    [
-                        Column("name", "Name"),
-                        Column("details", "Details"),
-                        Column("performed", "Performed")
-                    ]),
-                TodoNode(
-                    "Structured performed-treatment rows for progress-note exports",
-                    "Clinical note",
-                    "Update NoteWorkspaceV2Payload progress export projection to expose treatment rows and performed-state details"),
-                TodoNode(
-                    "Progress-note treatment comments as a dedicated export field",
-                    "Clinical note",
-                    "Update progress export projection to include treatment comment text")),
+                BuildStructuredTreatmentTable(workspace),
+                ParagraphIfPresent("Treatment Comments", BuildTreatmentComments(
+                    workspace?.Plan.ClinicalSummary,
+                    workspace?.Plan.PlanOfCareNarrative,
+                    workspace?.Plan.HomeExerciseProgramNotes,
+                    progress?.PlanForNextPeriod))),
             Section("Clinical Assessment", ClinicalDocumentSourceKind.Note,
                 Paragraph("Narrative", FirstNonEmpty(
                     workspace?.Assessment.AssessmentNarrative,
@@ -157,16 +127,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Paragraph("Comparison To Initial Evaluation", progress?.ComparisonToInitialEval),
                 Paragraph("Justification For Continued Care", progress?.JustificationForContinuedCare)),
             BuildDiagnosisSection(context),
-            Section("Contraindications To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Contraindications text",
-                    "Clinical note",
-                    "Update evaluation/progress export projection to include contraindications")),
-            Section("Precautions To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Precautions text",
-                    "Clinical note",
-                    "Update evaluation/progress export projection to include precautions")),
+            BuildPrecautionsSection(workspace),
             Section("Rehab Potential", ClinicalDocumentSourceKind.Note,
                 Field("Rehab Potential", workspace?.Assessment.OverallPrognosis)),
             BuildGoalsSection(context),
@@ -185,56 +146,83 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     private static ClinicalDocumentHierarchy BuildDailyNote(NoteExportDto noteData, ExportDocumentContext context)
     {
         var daily = context.DailyNoteContent;
+        var workspace = context.WorkspacePayload;
+        var rehabPotential = workspace?.Assessment.OverallPrognosis;
+        var hasGoals = workspace?.Assessment.Goals.Count > 0;
 
         return CreateDocument(
             noteData.NoteType,
             "Physical Therapy Daily Note",
             BuildHeaderSection(noteData, "Physical Therapy Daily Note"),
             Section("Subjective", ClinicalDocumentSourceKind.Note,
-                Paragraph("Functional Changes Narrative", BuildDailySubjectiveSummary(daily))),
+                Paragraph("Functional Changes Narrative", BuildDailySubjectiveSummary(daily, workspace))),
             Section("Treatment", ClinicalDocumentSourceKind.Note,
-                BuildDailyTreatmentTable(daily, context.CptCodes),
-                TodoNode(
-                    "Row-level treatment groups with row-level performed/minutes output",
-                    "Clinical note",
-                    "Update DailyNoteContentDto export projection to expose grouped treatment rows for manual therapy, exercise, education, and HEP"),
-                Paragraph("Additional Comments", daily?.AssessmentComments)),
+                BuildDailyTreatmentTable(daily, workspace, context.CptCodes),
+                Paragraph("Additional Comments", FirstNonEmpty(
+                    daily?.AssessmentComments,
+                    workspace?.Assessment.AssessmentNarrative,
+                    workspace?.Plan.ClinicalSummary))),
             Section("Assessment", ClinicalDocumentSourceKind.Note,
-                Field("Functional Goal Addressed", JoinList(daily?.FocusedActivities)),
+                Field("Functional Goal Addressed", FirstNonEmpty(
+                    JoinList(daily?.FocusedActivities),
+                    JoinSet(workspace?.Plan.TreatmentFocuses))),
                 Field("VC", BuildCueSummary(daily)),
                 Field("Assistance", BuildAssistanceSummary(daily)),
                 Field("Visual Instruction", BuildVisualInstructionSummary(daily)),
-                Field("Education", BuildEducationSummary(daily)),
+                Field("Education", BuildEducationSummary(daily, workspace)),
                 Field("Response", daily?.TreatmentResponse.HasValue == true
                     ? ((TreatmentResponse)daily.TreatmentResponse.Value).ToString()
                     : string.Empty),
                 Paragraph("Clinical Assessment Narrative", FirstNonEmpty(
                     daily?.AssessmentNarrative,
-                    daily?.ClinicalInterpretation))),
+                    daily?.ClinicalInterpretation,
+                    workspace?.Assessment.AssessmentNarrative,
+                    workspace?.Assessment.FunctionalLimitationsSummary,
+                    workspace?.Assessment.DeficitsSummary))),
             Section("Therapy Diagnosis", ClinicalDocumentSourceKind.Note,
                 BuildDiagnosisTableNode(context)),
-            Section("Contraindications To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Contraindications text",
-                    "Clinical note",
-                    "Update DailyNoteContentDto export projection to include contraindications")),
-            Section("Precautions To Therapy", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Precautions text",
-                    "Clinical note",
-                    "Update DailyNoteContentDto export projection to include precautions")),
-            Section("Rehab Potential", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Rehab potential displayed on daily note",
-                    "Clinical note history",
-                    "Add carry-forward projection from the latest applicable evaluation/progress note into the daily-note export model")),
+            BuildPrecautionsSection(workspace),
+            string.IsNullOrWhiteSpace(rehabPotential)
+                ? null
+                : Section("Rehab Potential", ClinicalDocumentSourceKind.Note,
+                    Field("Rehab Potential", rehabPotential)),
             Section("Plan (Daily Note)", ClinicalDocumentSourceKind.Note,
-                Paragraph("Plan", BuildDailyPlanSummary(daily))),
-            Section("Goals", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Goal table with goal type, description, and status",
-                    "Clinical note history",
-                    "Add goal carry-forward projection into the daily-note export model")),
+                Paragraph("Plan", BuildDailyPlanSummary(daily, workspace))),
+            hasGoals == true
+                ? BuildGoalsSection(context)
+                : null,
+            noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
+            noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
+    }
+
+    private static ClinicalDocumentHierarchy BuildDryNeedlingNote(NoteExportDto noteData, ExportDocumentContext context)
+    {
+        var workspace = context.WorkspacePayload;
+        var dryNeedling = workspace?.DryNeedling;
+
+        return CreateDocument(
+            noteData.NoteType,
+            "Physical Therapy Dry Needling Note",
+            BuildHeaderSection(noteData, "Physical Therapy Dry Needling Note"),
+            Section("Dry Needling Treatment", ClinicalDocumentSourceKind.Note,
+                Field("Date Of Treatment", FormatDate(FirstNonNull(dryNeedling?.DateOfTreatment, noteData.DateOfService))),
+                Field("Location", dryNeedling?.Location),
+                Field("Needling Type", dryNeedling?.NeedlingType),
+                Field("Pain Before", FormatPainScore(dryNeedling?.PainBefore)),
+                Field("Pain After", FormatPainScore(dryNeedling?.PainAfter)),
+                Field("Response", dryNeedling?.ResponseDescription),
+                Field("Additional Notes", dryNeedling?.AdditionalNotes)),
+            BuildDiagnosisSection(context),
+            Section("Assessment", ClinicalDocumentSourceKind.Note,
+                Paragraph("Clinical Assessment Narrative", FirstNonEmpty(
+                    workspace?.Assessment.AssessmentNarrative,
+                    workspace?.Plan.ClinicalSummary,
+                    dryNeedling?.ResponseDescription))),
+            Section("Plan", ClinicalDocumentSourceKind.Note,
+                Paragraph("Follow-Up", FirstNonEmpty(
+                    workspace?.Plan.FollowUpInstructions,
+                    workspace?.Plan.HomeExerciseProgramNotes,
+                    dryNeedling?.AdditionalNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
             noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
@@ -256,10 +244,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     workspace?.Plan.ClinicalSummary))),
             BuildDischargeEvaluationSection(noteData, context),
             Section("Assessment", ClinicalDocumentSourceKind.Note,
-                TodoNode(
-                    "Structured discharge summary lines for functional goal addressed, cues, assistance, education, and response",
-                    "Clinical note",
-                    "Update discharge export projection to expose structured discharge-assessment fields"),
                 Paragraph("Clinical Assessment Narrative", FirstNonEmpty(
                     workspace?.Plan.ClinicalSummary,
                     discharge?.ProgressSummary,
@@ -268,21 +252,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Section("Rehab Potential", ClinicalDocumentSourceKind.Note,
                 Field("Rehab Potential", workspace?.Assessment.OverallPrognosis)),
             Section("Treatment", ClinicalDocumentSourceKind.Note,
-                TableNode("Treatment Table", ClinicalDocumentSourceKind.Note,
-                    columns:
-                    [
-                        Column("name", "Name"),
-                        Column("details", "Details"),
-                        Column("performed", "Performed")
-                    ]),
-                TodoNode(
-                    "Structured performed-treatment rows for discharge exports",
-                    "Clinical note",
-                    "Update discharge export projection to expose treatment rows and performed-state details"),
-                TodoNode(
-                    "Discharge treatment comments as a dedicated export field",
-                    "Clinical note",
-                    "Update discharge export projection to include treatment comment text")),
+                BuildStructuredTreatmentTable(workspace),
+                ParagraphIfPresent("Treatment Comments", BuildTreatmentComments(
+                    workspace?.Plan.ClinicalSummary,
+                    workspace?.Plan.PlanOfCareNarrative,
+                    workspace?.Plan.HomeExerciseProgramNotes,
+                    discharge?.ProgressSummary))),
             BuildGoalsSection(context),
             Section("Discharge Plan Of Care", ClinicalDocumentSourceKind.Note,
                 Field("Reason For Discharge", FirstNonEmpty(
@@ -293,11 +268,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     discharge?.FollowUpRecommendations,
                     discharge?.HepRecommendations,
                     workspace?.Plan.FollowUpInstructions,
-                    workspace?.Plan.DischargePlanningNotes)),
-                TodoNode(
-                    "Initial evaluation date, last treatment date, total visits",
-                    "Clinical note history",
-                    "Add episode-summary projection for discharge exports")),
+                    workspace?.Plan.DischargePlanningNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
             noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
@@ -377,11 +348,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     private static ClinicalDocumentNode BuildHeaderSection(NoteExportDto noteData, string title)
     {
         return Section("Header", ClinicalDocumentSourceKind.Static,
-            Group("Facility Brand", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Clinic logo, clinic name, address, phone, fax, website",
-                    "Clinic profile",
-                    "Update note export projection to include facility metadata")),
             Group("Patient Header", ClinicalDocumentSourceKind.Patient,
                 Field("Patient Name", BuildPatientName(noteData)),
                 Field("Date Of Birth", FormatDate(noteData.PatientDateOfBirth)),
@@ -400,8 +366,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             BuildSpecialTestTable(noteData, workspace),
             BuildManualMuscleTestingTable(workspace),
             BuildRangeOfMotionTable(workspace),
-            Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes),
-            BuildObjectiveMetricTodo(workspace));
+            Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes));
     }
 
     private static ClinicalDocumentNode BuildDischargeEvaluationSection(NoteExportDto noteData, ExportDocumentContext context)
@@ -413,8 +378,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Paragraph("Posture Findings", BuildPostureSummary(workspace)),
             Paragraph("Palpation Findings", BuildPalpationSummary(workspace)),
             BuildManualMuscleTestingTable(workspace),
-            Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes),
-            BuildObjectiveMetricTodo(workspace));
+            Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes));
     }
 
     private static ClinicalDocumentNode BuildOutcomeMeasureTable(ExportDocumentContext context)
@@ -534,20 +498,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             rows: rows);
     }
 
-    private static ClinicalDocumentNode BuildObjectiveMetricTodo(NoteWorkspaceV2Payload? workspace)
-    {
-        var hasMetrics = workspace?.Objective.Metrics.Count > 0;
-        return hasMetrics is true
-            ? TodoNode(
-                "Structured laterality, movement specificity, and deficit fields for ROM/MMT rows",
-                "Clinical note",
-                "Update ObjectiveMetricInputV2 export projection to expose side-specific structured measurement fields")
-            : TodoNode(
-                "Structured ROM/MMT measurement rows",
-                "Clinical note",
-                "Update ObjectiveMetricInputV2 export projection to expose structured measurement fields for evaluation, progress, and discharge exports");
-    }
-
     private static ClinicalDocumentNode BuildDiagnosisSection(ExportDocumentContext context)
     {
         return Section("Therapy Diagnosis", ClinicalDocumentSourceKind.Note,
@@ -596,11 +546,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Paragraph("Certification Statement",
                     "I establish this plan of treatment and certify the need for services furnished under this plan of treatment while under my care.",
                     ClinicalDocumentSourceKind.Static),
-                Field("Referring Physician / NPI", BuildReferringPhysicianSummary(noteData), ClinicalDocumentSourceKind.Patient),
-                TodoNode(
-                    "Physician certification signature date / return status",
-                    "Compliance or certification record",
-                    "Update export/compliance projection to include physician-certification status")));
+                Field("Referring Physician / NPI", BuildReferringPhysicianSummary(noteData), ClinicalDocumentSourceKind.Patient)));
     }
 
     private static ClinicalDocumentNode BuildClinicianSignatureSection(NoteExportDto noteData)
@@ -637,20 +583,11 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     Column("assistantInvolved", "Assistant Involved")
                 ],
                 rows: rows),
-            TodoNode(
-                "Severity and assistant-involved values per line item",
-                "Clinical note billing line items",
-                $"Update {GetChargeActionTarget(noteData.NoteType)} to include charge-line severity and assistant-involved metadata"),
             Field("Total Timed Minutes", BuildTotalTimedMinutes(cptCodes), ClinicalDocumentSourceKind.Note),
-            Field("Total Treatment Minutes", noteData.TotalTreatmentMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, ClinicalDocumentSourceKind.Note),
-            Group("Service Facility", ClinicalDocumentSourceKind.Todo,
-                TodoNode(
-                    "Service facility display name",
-                    "Clinic profile",
-                    "Update note export projection to include service-facility metadata")));
+            Field("Total Treatment Minutes", noteData.TotalTreatmentMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, ClinicalDocumentSourceKind.Note));
     }
 
-    private static ClinicalDocumentNode BuildDailyTreatmentTable(DailyNoteContentDto? daily, IReadOnlyList<CptCodeEntry> cptCodes)
+    private static ClinicalDocumentNode BuildDailyTreatmentTable(DailyNoteContentDto? daily, NoteWorkspaceV2Payload? workspace, IReadOnlyList<CptCodeEntry> cptCodes)
     {
         var rows = new List<ClinicalDocumentTableRow>();
 
@@ -663,8 +600,17 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         {
             rows.Add(Row("Exercise Program", JoinList(daily.Exercises.Select(exercise => exercise.ExerciseName).ToList()), "Yes"));
         }
+        else if (workspace?.Objective.ExerciseRows.Count > 0)
+        {
+            rows.Add(Row("Exercise Program", JoinList(workspace.Objective.ExerciseRows.Select(BuildExerciseRowSummary).ToList()), "Yes"));
+        }
 
-        var education = BuildEducationSummary(daily);
+        if (workspace?.Plan.GeneralInterventions.Count > 0)
+        {
+            rows.Add(Row("Skilled Interventions", JoinList(workspace.Plan.GeneralInterventions.Select(entry => entry.Name).ToList()), "Yes"));
+        }
+
+        var education = BuildEducationSummary(daily, workspace);
         if (!string.IsNullOrWhiteSpace(education))
         {
             rows.Add(Row("Patient Education", education, "Yes"));
@@ -673,6 +619,10 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         if (!string.IsNullOrWhiteSpace(daily?.HepUpdates) || daily?.HepCompleted == true)
         {
             rows.Add(Row("HEP Development", FirstNonEmpty(daily?.HepUpdates, "Home exercise program reviewed"), "Yes"));
+        }
+        else if (!string.IsNullOrWhiteSpace(workspace?.Plan.HomeExerciseProgramNotes))
+        {
+            rows.Add(Row("HEP Development", workspace.Plan.HomeExerciseProgramNotes, "Yes"));
         }
 
         return TableNode("Treatment Table", ClinicalDocumentSourceKind.Note,
@@ -685,22 +635,66 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             rows: rows);
     }
 
-    private static ClinicalDocumentNode Section(string title, ClinicalDocumentSourceKind source, params ClinicalDocumentNode[] children)
+    private static ClinicalDocumentNode? BuildStructuredTreatmentTable(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return null;
+        }
+
+        var rows = new List<ClinicalDocumentTableRow>();
+
+        rows.AddRange(workspace.Objective.ExerciseRows
+            .Where(row => !string.IsNullOrWhiteSpace(FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise)))
+            .Select(row => Row(
+                FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise),
+                BuildExerciseRowDetails(row),
+                BuildExercisePerformedValue(row))));
+
+        rows.AddRange(workspace.Plan.GeneralInterventions
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => Row(
+                entry.Name,
+                BuildGeneralInterventionDetails(entry),
+                "Yes")));
+
+        return rows.Count == 0
+            ? null
+            : TableNode("Treatment Table", ClinicalDocumentSourceKind.Note,
+                columns:
+                [
+                    Column("name", "Name"),
+                    Column("details", "Details"),
+                    Column("performed", "Performed")
+                ],
+                rows: rows);
+    }
+
+    private static ClinicalDocumentNode? BuildPrecautionsSection(NoteWorkspaceV2Payload? workspace)
+    {
+        var precautions = workspace?.Plan.FollowUpInstructions;
+        return string.IsNullOrWhiteSpace(precautions)
+            ? null
+            : Section("Precautions To Therapy", ClinicalDocumentSourceKind.Note,
+                Paragraph("Precautions", precautions));
+    }
+
+    private static ClinicalDocumentNode Section(string title, ClinicalDocumentSourceKind source, params ClinicalDocumentNode?[] children)
         => new()
         {
             Title = title,
             Kind = ClinicalDocumentNodeKind.Section,
             Source = source,
-            Children = children.ToList()
+            Children = children.Where(child => child is not null).Cast<ClinicalDocumentNode>().ToList()
         };
 
-    private static ClinicalDocumentNode Group(string title, ClinicalDocumentSourceKind source, params ClinicalDocumentNode[] children)
+    private static ClinicalDocumentNode Group(string title, ClinicalDocumentSourceKind source, params ClinicalDocumentNode?[] children)
         => new()
         {
             Title = title,
             Kind = ClinicalDocumentNodeKind.Group,
             Source = source,
-            Children = children.ToList()
+            Children = children.Where(child => child is not null).Cast<ClinicalDocumentNode>().ToList()
         };
 
     private static ClinicalDocumentNode Field(string title, string? value, ClinicalDocumentSourceKind source = ClinicalDocumentSourceKind.Note)
@@ -721,6 +715,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Value = value
         };
 
+    private static ClinicalDocumentNode? ParagraphIfPresent(string title, string? value, ClinicalDocumentSourceKind source = ClinicalDocumentSourceKind.Note)
+        => string.IsNullOrWhiteSpace(value) ? null : Paragraph(title, value, source);
+
     private static ClinicalDocumentNode TableNode(
         string title,
         ClinicalDocumentSourceKind source,
@@ -737,20 +734,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Columns = columns.ToList(),
                 Rows = rows?.ToList() ?? [],
                 ColumnGroups = columnGroups?.ToList() ?? []
-            }
-        };
-
-    private static ClinicalDocumentNode TodoNode(string requiredField, string sourceNeeded, string action)
-        => new()
-        {
-            Title = "TODO: Missing Data Mapping",
-            Kind = ClinicalDocumentNodeKind.Todo,
-            Source = ClinicalDocumentSourceKind.Todo,
-            Todo = new ClinicalDocumentTodo
-            {
-                RequiredField = requiredField,
-                SourceNeeded = sourceNeeded,
-                Action = action
             }
         };
 
@@ -1095,41 +1078,49 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             _ => measureType.ToString()
         };
 
-    private static string BuildDailySubjectiveSummary(DailyNoteContentDto? daily)
+    private static string BuildDailySubjectiveSummary(DailyNoteContentDto? daily, NoteWorkspaceV2Payload? workspace)
     {
-        if (daily is null)
+        if (daily is not null)
         {
-            return string.Empty;
+            var dailyValues = new List<string>();
+            if (daily.ConditionChange.HasValue)
+            {
+                dailyValues.Add($"Condition change: {((ConditionChange)daily.ConditionChange.Value).ToString()}");
+            }
+
+            if (daily.CurrentPainScore.HasValue)
+            {
+                dailyValues.Add($"Current pain: {daily.CurrentPainScore.Value}/10");
+            }
+
+            if (daily.BestPainScore.HasValue)
+            {
+                dailyValues.Add($"Best pain: {daily.BestPainScore.Value}/10");
+            }
+
+            if (daily.WorstPainScore.HasValue)
+            {
+                dailyValues.Add($"Worst pain: {daily.WorstPainScore.Value}/10");
+            }
+
+            if (daily.LimitedActivities.Count > 0)
+            {
+                dailyValues.Add($"Limited activities: {string.Join(", ", daily.LimitedActivities.Select(activity => activity.ActivityName))}");
+            }
+
+            AddIfPresent(dailyValues, daily.ChangesSinceLastSession, "Changes");
+            AddIfPresent(dailyValues, daily.PatientAdditionalComments, "Additional comments");
+            return string.Join("; ", dailyValues);
         }
 
         var values = new List<string>();
-        if (daily.ConditionChange.HasValue)
-        {
-            values.Add($"Condition change: {((ConditionChange)daily.ConditionChange.Value).ToString()}");
-        }
-
-        if (daily.CurrentPainScore.HasValue)
-        {
-            values.Add($"Current pain: {daily.CurrentPainScore.Value}/10");
-        }
-
-        if (daily.BestPainScore.HasValue)
-        {
-            values.Add($"Best pain: {daily.BestPainScore.Value}/10");
-        }
-
-        if (daily.WorstPainScore.HasValue)
-        {
-            values.Add($"Worst pain: {daily.WorstPainScore.Value}/10");
-        }
-
-        if (daily.LimitedActivities.Count > 0)
-        {
-            values.Add($"Limited activities: {string.Join(", ", daily.LimitedActivities.Select(activity => activity.ActivityName))}");
-        }
-
-        AddIfPresent(values, daily.ChangesSinceLastSession, "Changes");
-        AddIfPresent(values, daily.PatientAdditionalComments, "Additional comments");
+        AddIfPresent(values, BuildProblemSummary(workspace), "Problem");
+        AddIfPresent(values, BuildPainSummary(workspace), "Pain");
+        AddIfPresent(values, BuildPainDescription(workspace), "Pain details");
+        AddIfPresent(values, BuildFunctionalLimitationSummary(workspace), "Functional limitations");
+        AddIfPresent(values, workspace?.Subjective.NarrativeContext.HistoryOfPresentIllness, "History");
+        AddIfPresent(values, workspace?.Subjective.NarrativeContext.DifficultyExperienced, "Difficulty");
+        AddIfPresent(values, workspace?.Subjective.NarrativeContext.PatientHistorySummary, "Additional comments");
         return string.Join("; ", values);
     }
 
@@ -1162,44 +1153,111 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             ? string.Empty
             : "Visual cueing documented";
 
-    private static string BuildEducationSummary(DailyNoteContentDto? daily)
+    private static string BuildEducationSummary(DailyNoteContentDto? daily, NoteWorkspaceV2Payload? workspace)
     {
-        if (daily is null)
+        if (daily is not null)
         {
-            return string.Empty;
+            var values = daily.EducationTopics
+                .Select(value => ((EducationTopic)value).ToString())
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(daily.EducationOther))
+            {
+                values.Add(daily.EducationOther);
+            }
+
+            return string.Join(", ", values);
         }
 
-        var values = daily.EducationTopics
-            .Select(value => ((EducationTopic)value).ToString())
-            .ToList();
-
-        if (!string.IsNullOrWhiteSpace(daily.EducationOther))
-        {
-            values.Add(daily.EducationOther);
-        }
-
-        return string.Join(", ", values);
+        return FirstNonEmpty(workspace?.Plan.HomeExerciseProgramNotes, workspace?.Plan.FollowUpInstructions);
     }
 
-    private static string BuildDailyPlanSummary(DailyNoteContentDto? daily)
+    private static string BuildDailyPlanSummary(DailyNoteContentDto? daily, NoteWorkspaceV2Payload? workspace)
     {
-        if (daily is null)
+        if (daily is not null)
         {
-            return string.Empty;
+            var dailyValues = new List<string>();
+            if (daily.PlanDirection.HasValue)
+            {
+                dailyValues.Add(((PlanDirection)daily.PlanDirection.Value).ToString());
+            }
+
+            AddIfPresent(dailyValues, daily.PlanFreeText, "Plan");
+            AddIfPresent(dailyValues, daily.NextSessionPlan, "Next session");
+            AddIfPresent(dailyValues, daily.GoalReassessmentPlan, "Goal reassessment");
+            AddIfPresent(dailyValues, daily.ProgressionReasoning, "Progression reasoning");
+            return string.Join("; ", dailyValues);
         }
 
         var values = new List<string>();
-        if (daily.PlanDirection.HasValue)
+        if (workspace is not null)
         {
-            values.Add(((PlanDirection)daily.PlanDirection.Value).ToString());
+            if (workspace.Plan.TreatmentFocuses.Count > 0)
+            {
+                values.Add($"Treatment focus: {JoinSet(workspace.Plan.TreatmentFocuses)}");
+            }
+
+            if (workspace.Plan.GeneralInterventions.Count > 0)
+            {
+                values.Add($"Interventions: {JoinList(workspace.Plan.GeneralInterventions.Select(entry => entry.Name).ToList())}");
+            }
+
+            AddIfPresent(values, workspace.Plan.HomeExerciseProgramNotes, "Home exercise program");
+            AddIfPresent(values, workspace.Plan.FollowUpInstructions, "Next session");
+            AddIfPresent(values, workspace.Plan.ClinicalSummary, "Clinical summary");
+            AddIfPresent(values, workspace.Plan.PlanOfCareNarrative, "Plan");
         }
 
-        AddIfPresent(values, daily.PlanFreeText, "Plan");
-        AddIfPresent(values, daily.NextSessionPlan, "Next session");
-        AddIfPresent(values, daily.GoalReassessmentPlan, "Goal reassessment");
-        AddIfPresent(values, daily.ProgressionReasoning, "Progression reasoning");
         return string.Join("; ", values);
     }
+
+    private static string BuildTreatmentComments(params string?[] values)
+    {
+        return string.Join("; ",
+            values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static string BuildExerciseRowDetails(ExerciseRowV2 row)
+    {
+        var values = new List<string>();
+        AddIfPresent(values, row.SetsRepsDuration, "Dosage");
+        AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
+        AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        AddIfPresent(values, row.CptCode, "CPT");
+        AddIfPresent(values, row.CptDescription, "Description");
+        return string.Join("; ", values);
+    }
+
+    private static string BuildExercisePerformedValue(ExerciseRowV2 row)
+        => row.IsCheckedSuggestedExercise
+           || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed)
+           || row.TimeMinutes.HasValue
+            ? "Yes"
+            : string.Empty;
+
+    private static string BuildGeneralInterventionDetails(GeneralInterventionEntryV2 entry)
+    {
+        var values = new List<string>();
+        AddIfPresent(values, entry.Category, "Category");
+        AddIfPresent(values, entry.Notes, "Notes");
+        return string.Join("; ", values);
+    }
+
+    private static string BuildExerciseRowSummary(ExerciseRowV2 row)
+    {
+        var values = new List<string>();
+        AddIfPresent(values, FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise), null);
+        AddIfPresent(values, row.SetsRepsDuration, "Dosage");
+        AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
+        AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        return string.Join("; ", values);
+    }
+
+    private static string FormatPainScore(int? value)
+        => value.HasValue ? $"{value.Value}/10" : string.Empty;
 
     private static string BuildReferringPhysicianSummary(NoteExportDto noteData)
     {
@@ -1237,14 +1295,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         return total == 0 ? string.Empty : total.ToString(CultureInfo.InvariantCulture);
     }
-
-    private static string GetChargeActionTarget(NoteType noteType)
-        => noteType switch
-        {
-            NoteType.Daily => "daily-note export line-item projection",
-            NoteType.Discharge => "discharge export line-item projection",
-            _ => "note export line-item projection"
-        };
 
     private static string BuildLegacyJsonValue(string contentJson, string propertyName)
     {
@@ -1346,11 +1396,14 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         public static ExportDocumentContext Create(NoteExportDto noteData)
         {
+            var workspacePayload = TryDeserialize<NoteWorkspaceV2Payload>(noteData.ContentJson, payload =>
+                payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2);
+
             return new ExportDocumentContext
             {
-                WorkspacePayload = TryDeserialize<NoteWorkspaceV2Payload>(noteData.ContentJson, payload =>
-                    payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2),
+                WorkspacePayload = workspacePayload,
                 DailyNoteContent = noteData.NoteType == NoteType.Daily
+                    && workspacePayload is null
                     ? TryDeserialize<DailyNoteContentDto>(noteData.ContentJson)
                     : null,
                 EvaluationContent = noteData.NoteType == NoteType.Evaluation

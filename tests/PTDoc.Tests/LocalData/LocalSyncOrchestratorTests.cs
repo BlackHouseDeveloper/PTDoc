@@ -4,6 +4,7 @@ using Moq;
 using Moq.Protected;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.LocalData;
@@ -418,6 +419,7 @@ public class LocalSyncOrchestratorTests
             ServerId = Guid.NewGuid(),
             PatientServerId = Guid.NewGuid(),
             NoteType = "Daily",
+            IsReEvaluation = true,
             DateOfService = DateTime.UtcNow.Date,
             CreatedUtc = createdUtc,
             ParentNoteId = parentNoteId,
@@ -478,6 +480,7 @@ public class LocalSyncOrchestratorTests
         Assert.Equal(createdUtc, DateTime.Parse(createdUtcJson!, null, System.Globalization.DateTimeStyles.RoundtripKind));
         Assert.Equal(parentNoteId.ToString(), root.GetProperty("parentNoteId").GetString());
         Assert.True(root.GetProperty("isAddendum").GetBoolean());
+        Assert.True(root.GetProperty("isReEvaluation").GetBoolean());
     }
 
     // ── PullChangesAsync ─────────────────────────────────────────────────────────
@@ -518,6 +521,7 @@ public class LocalSyncOrchestratorTests
                     {
                         PatientId = patientId,
                         NoteType = NoteType.Daily,
+                        IsReEvaluation = true,
                         DateOfService = DateTime.UtcNow.Date,
                         CreatedUtc = createdUtc,
                         ParentNoteId = parentNoteId,
@@ -539,7 +543,57 @@ public class LocalSyncOrchestratorTests
         Assert.NotNull(local);
         Assert.Equal(parentNoteId, local!.ParentNoteId);
         Assert.True(local.IsAddendum);
+        Assert.True(local.IsReEvaluation);
         Assert.Equal(createdUtc, local.CreatedUtc);
+    }
+
+    [Fact]
+    public async Task PullChangesAsync_CanonicalizesRecognizedLegacyClinicalNoteContent_WhenPullingClinicalNote()
+    {
+        var ctx = CreateInMemoryLocalContext();
+        var serverId = Guid.NewGuid();
+        var patientId = Guid.NewGuid();
+        var dateOfService = DateTime.UtcNow.Date;
+        var serverResponse = new ClientSyncPullResponse
+        {
+            SyncedAt = DateTime.UtcNow,
+            Items =
+            [
+                new ClientSyncPullItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = serverId,
+                    Operation = "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        PatientId = patientId,
+                        NoteType = NoteType.Daily,
+                        IsReEvaluation = false,
+                        DateOfService = dateOfService,
+                        ContentJson = """{"subjective":"Legacy synced chief complaint","assessment":"Legacy synced assessment"}""",
+                        CptCodesJson = "[]",
+                        LastModifiedUtc = DateTime.UtcNow
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+        var orch = new LocalSyncOrchestrator(ctx, CreateMockHttpClient(HttpStatusCode.OK, serverResponse), NullLogger<LocalSyncOrchestrator>.Instance);
+
+        var result = await orch.PullChangesAsync();
+
+        Assert.Equal(1, result.AppliedCount);
+        var local = await ctx.ClinicalNoteDrafts.FirstOrDefaultAsync(n => n.ServerId == serverId);
+        Assert.NotNull(local);
+
+        using var content = JsonDocument.Parse(local!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, content.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Legacy synced chief complaint",
+            content.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal(
+            "Legacy synced assessment",
+            content.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
     }
 
     [Fact]

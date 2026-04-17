@@ -16,6 +16,7 @@ public class SoapNoteVm
     public string? PatientDob { get; set; }
 
     public string NoteType { get; set; } = "Evaluation Note";
+    public bool IsReEvaluation { get; set; }
     public NoteMode Mode { get; set; } = NoteMode.New;
     public SoapSection ActiveSection { get; set; } = SoapSection.Subjective;
     public NoteSaveState SaveState { get; set; } = NoteSaveState.Unsaved;

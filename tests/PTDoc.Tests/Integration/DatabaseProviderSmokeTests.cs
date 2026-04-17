@@ -209,7 +209,6 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         _ = await context.Signatures.CountAsync();
         _ = await context.SyncQueueItems.CountAsync();
         _ = await context.SyncConflictArchives.CountAsync();
-        _ = await context.Addendums.CountAsync();
         _ = await context.ExternalSystemMappings.CountAsync();
     }
 

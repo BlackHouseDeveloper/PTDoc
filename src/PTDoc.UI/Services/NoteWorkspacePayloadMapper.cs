@@ -1,0 +1,805 @@
+using System.Globalization;
+using System.Text.Json;
+
+using PTDoc.Application.Notes.Workspace;
+using PTDoc.Core.Models;
+using PTDoc.UI.Components.Notes.Models;
+
+using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry;
+
+namespace PTDoc.UI.Services;
+
+public static class NoteWorkspacePayloadMapper
+{
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public static NoteType ToApiNoteType(string workspaceNoteType)
+    {
+        return workspaceNoteType switch
+        {
+            "Evaluation Note" => NoteType.Evaluation,
+            "Progress Note" => NoteType.ProgressNote,
+            "Discharge Note" => NoteType.Discharge,
+            "Dry Needling Note" => NoteType.Daily,
+            "Daily Treatment Note" => NoteType.Daily,
+            _ => NoteType.Evaluation
+        };
+    }
+
+    public static NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
+    {
+        var preservedPayload = ClonePayload(payload.StructuredPayload) ?? new NoteWorkspaceV2Payload();
+        preservedPayload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
+        preservedPayload.NoteType = noteType;
+        preservedPayload.Subjective ??= new WorkspaceSubjectiveV2();
+        preservedPayload.Objective ??= new WorkspaceObjectiveV2();
+        preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
+        preservedPayload.Plan ??= new WorkspacePlanV2();
+        preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+
+        var primaryBodyPart = ParseBodyPart(
+            !string.IsNullOrWhiteSpace(payload.Objective.SelectedBodyPart)
+                ? payload.Objective.SelectedBodyPart
+                : payload.Subjective.SelectedBodyPart);
+
+        preservedPayload.Subjective.Problems = CloneSet(payload.Subjective.Problems);
+        preservedPayload.Subjective.OtherProblem = payload.Subjective.OtherProblem;
+        preservedPayload.Subjective.Locations = CloneSet(payload.Subjective.Locations);
+        preservedPayload.Subjective.OtherLocation = payload.Subjective.OtherLocation;
+        preservedPayload.Subjective.CurrentPainScore = payload.Subjective.CurrentPainScore;
+        preservedPayload.Subjective.BestPainScore = payload.Subjective.BestPainScore;
+        preservedPayload.Subjective.WorstPainScore = payload.Subjective.WorstPainScore;
+        preservedPayload.Subjective.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.Subjective.OnsetDate = payload.Subjective.OnsetDate;
+        preservedPayload.Subjective.OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo;
+        preservedPayload.Subjective.CauseUnknown = payload.Subjective.CauseUnknown;
+        preservedPayload.Subjective.KnownCause = payload.Subjective.KnownCause;
+        preservedPayload.Subjective.PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel);
+        preservedPayload.Subjective.FunctionalLimitations = payload.Subjective.StructuredFunctionalLimitations.Count > 0
+            ? MergeStructuredFunctionalLimitations(
+                preservedPayload.Subjective.FunctionalLimitations,
+                payload.Subjective.StructuredFunctionalLimitations,
+                primaryBodyPart)
+            : MergeFunctionalLimitations(
+                preservedPayload.Subjective.FunctionalLimitations,
+                payload.Subjective.FunctionalLimitations,
+                primaryBodyPart);
+        preservedPayload.Subjective.AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations;
+        preservedPayload.Subjective.Imaging ??= new ImagingDetailsV2();
+        preservedPayload.Subjective.Imaging.HasImaging = payload.Subjective.HasImaging;
+        preservedPayload.Subjective.AssistiveDevice ??= new AssistiveDeviceDetailsV2();
+        preservedPayload.Subjective.AssistiveDevice.UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice;
+        preservedPayload.Subjective.EmploymentStatus = payload.Subjective.EmploymentStatus;
+        preservedPayload.Subjective.LivingSituation = CloneSet(payload.Subjective.LivingSituation);
+        preservedPayload.Subjective.OtherLivingSituation = payload.Subjective.OtherLivingSituation;
+        preservedPayload.Subjective.SupportSystem = CloneSet(payload.Subjective.SupportSystem);
+        preservedPayload.Subjective.OtherSupport = payload.Subjective.OtherSupport;
+        preservedPayload.Subjective.Comorbidities = CloneSet(payload.Subjective.Comorbidities);
+        preservedPayload.Subjective.PriorTreatment ??= new PriorTreatmentDetailsV2();
+        preservedPayload.Subjective.PriorTreatment.Treatments = CloneSet(payload.Subjective.PriorTreatments);
+        preservedPayload.Subjective.PriorTreatment.OtherTreatment = payload.Subjective.OtherTreatment;
+        preservedPayload.Subjective.TakingMedications = payload.Subjective.TakingMedications;
+        preservedPayload.Subjective.Medications = payload.Subjective.TakingMedications == false
+            ? []
+            : MergeMedications(
+                preservedPayload.Subjective.Medications,
+                payload.Subjective.MedicationDetails);
+
+        preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
+        preservedPayload.Objective.Metrics = MergeObjectiveMetrics(
+            preservedPayload.Objective.Metrics,
+            payload.Objective.Metrics,
+            primaryBodyPart);
+        preservedPayload.Objective.GaitObservation ??= new GaitObservationV2();
+        preservedPayload.Objective.GaitObservation.PrimaryPattern = payload.Objective.PrimaryGaitPattern ?? string.Empty;
+        preservedPayload.Objective.GaitObservation.Deviations = CloneSet(payload.Objective.GaitDeviations);
+        preservedPayload.Objective.GaitObservation.AdditionalObservations = payload.Objective.AdditionalGaitObservations;
+        preservedPayload.Objective.ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes;
+        preservedPayload.Objective.RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        preservedPayload.Objective.OutcomeMeasures = payload.Objective.OutcomeMeasures
+            .Select(TryMapOutcomeMeasure)
+            .Where(entry => entry is not null)
+            .Select(entry => entry!)
+            .ToList();
+        preservedPayload.Objective.SpecialTests = MergeSpecialTests(
+            preservedPayload.Objective.SpecialTests,
+            payload.Objective.SpecialTests);
+        preservedPayload.Objective.PostureObservation ??= new PostureObservationV2();
+        preservedPayload.Objective.PostureObservation.Findings = CloneSet(payload.Objective.PostureFindings);
+        preservedPayload.Objective.PostureObservation.Other = payload.Objective.OtherPostureFinding;
+        preservedPayload.Objective.PostureObservation.IsNormal = preservedPayload.Objective.PostureObservation.Findings.Count == 0
+            && string.IsNullOrWhiteSpace(payload.Objective.OtherPostureFinding);
+        preservedPayload.Objective.PalpationObservation ??= new PalpationObservationV2();
+        preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);
+        preservedPayload.Objective.PalpationObservation.IsNormal = preservedPayload.Objective.PalpationObservation.TenderMuscles.Count == 0;
+        preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
+            preservedPayload.Objective.ExerciseRows,
+            payload.Objective.ExerciseRows);
+
+        preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
+        preservedPayload.Assessment.FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations;
+        preservedPayload.Assessment.DeficitsSummary = payload.Assessment.DeficitsSummary;
+        preservedPayload.Assessment.DeficitCategories = [.. payload.Assessment.DeficitCategories];
+        preservedPayload.Assessment.DiagnosisCodes = payload.Assessment.DiagnosisCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code => new DiagnosisCodeV2
+            {
+                Code = code.Code.Trim(),
+                Description = code.Description?.Trim() ?? string.Empty
+            })
+            .ToList();
+        preservedPayload.Assessment.Goals = MergeGoals(preservedPayload.Assessment.Goals, payload.Assessment.Goals);
+        preservedPayload.Assessment.MotivationLevel = payload.Assessment.MotivationLevel;
+        preservedPayload.Assessment.MotivatingFactors = CloneSet(payload.Assessment.MotivatingFactors);
+        preservedPayload.Assessment.AppearsMotivated = DeriveAppearsMotivated(payload.Assessment.MotivationLevel);
+        preservedPayload.Assessment.PatientPersonalGoals = payload.Assessment.PatientPersonalGoals;
+        preservedPayload.Assessment.MotivationNotes = payload.Assessment.AdditionalMotivationNotes;
+        preservedPayload.Assessment.SupportSystemLevel = payload.Assessment.SupportSystemLevel;
+        preservedPayload.Assessment.AvailableResources = CloneSet(payload.Assessment.AvailableResources);
+        preservedPayload.Assessment.BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery);
+        preservedPayload.Assessment.SupportSystemDetails = payload.Assessment.SupportSystemDetails;
+        preservedPayload.Assessment.SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes;
+        preservedPayload.Assessment.OverallPrognosis = payload.Assessment.OverallPrognosis;
+
+        preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
+        preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
+        preservedPayload.Plan.TreatmentFocuses = CloneSet(payload.Plan.TreatmentFocuses);
+        preservedPayload.Plan.GeneralInterventions = MergeGeneralInterventions(
+            preservedPayload.Plan.GeneralInterventions,
+            payload.Plan.GeneralInterventions);
+        preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
+            preservedPayload.Plan.SelectedCptCodes,
+            payload.Plan.SelectedCptCodes);
+        preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
+        preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
+        preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
+        preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+
+        preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
+        preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
+        preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
+        preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.DryNeedling = IsDryNeedlingWorkspaceType(payload.WorkspaceNoteType)
+            ? new WorkspaceDryNeedlingV2
+            {
+                DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                Location = payload.DryNeedling.Location?.Trim() ?? string.Empty,
+                NeedlingType = payload.DryNeedling.NeedlingType?.Trim() ?? string.Empty,
+                PainBefore = payload.DryNeedling.PainBefore,
+                PainAfter = payload.DryNeedling.PainAfter,
+                ResponseDescription = payload.DryNeedling.ResponseDescription?.Trim() ?? string.Empty,
+                AdditionalNotes = payload.DryNeedling.AdditionalNotes?.Trim() ?? string.Empty
+            }
+            : null;
+
+        return preservedPayload;
+    }
+
+    private static NoteWorkspaceV2Payload? ClonePayload(NoteWorkspaceV2Payload? payload)
+    {
+        if (payload is null)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+            JsonSerializer.Serialize(payload, SerializerOptions),
+            SerializerOptions);
+    }
+
+    private static List<FunctionalLimitationEntryV2> MergeFunctionalLimitations(
+        IReadOnlyCollection<FunctionalLimitationEntryV2>? preservedEntries,
+        IEnumerable<string> selectedDescriptions,
+        BodyPart defaultBodyPart)
+    {
+        var preservedByDescription = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Description))
+            .GroupBy(entry => entry.Description.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<FunctionalLimitationEntryV2>(group.Select(CloneFunctionalLimitation)),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedDescriptions
+            .Where(description => !string.IsNullOrWhiteSpace(description))
+            .Select(description => description.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(description =>
+            {
+                if (preservedByDescription.TryGetValue(description, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Description = description;
+                    return existing;
+                }
+
+                return new FunctionalLimitationEntryV2
+                {
+                    BodyPart = defaultBodyPart,
+                    Category = string.Empty,
+                    Description = description
+                };
+            })
+            .ToList();
+    }
+
+    private static List<FunctionalLimitationEntryV2> MergeStructuredFunctionalLimitations(
+        IReadOnlyCollection<FunctionalLimitationEntryV2>? preservedEntries,
+        IEnumerable<FunctionalLimitationEditorEntry> selectedEntries,
+        BodyPart defaultBodyPart)
+    {
+        var preservedById = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Id))
+            .ToDictionary(entry => entry.Id, CloneFunctionalLimitation, StringComparer.OrdinalIgnoreCase);
+
+        return selectedEntries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Description))
+            .Select(entry =>
+            {
+                var normalizedId = string.IsNullOrWhiteSpace(entry.Id) ? Guid.NewGuid().ToString("N") : entry.Id;
+                var bodyPart = ParseBodyPart(entry.BodyPart);
+                if (bodyPart == BodyPart.Other)
+                {
+                    bodyPart = defaultBodyPart;
+                }
+
+                if (preservedById.TryGetValue(normalizedId, out var existing))
+                {
+                    existing.Id = normalizedId;
+                    existing.BodyPart = bodyPart;
+                    existing.Category = entry.Category?.Trim() ?? string.Empty;
+                    existing.Description = entry.Description.Trim();
+                    existing.IsSourceBacked = entry.IsSourceBacked;
+                    existing.MeasurePrompt = string.IsNullOrWhiteSpace(entry.MeasurePrompt) ? null : entry.MeasurePrompt.Trim();
+                    existing.QuantifiedValue = entry.QuantifiedValue;
+                    existing.QuantifiedUnit = string.IsNullOrWhiteSpace(entry.QuantifiedUnit) ? null : entry.QuantifiedUnit.Trim();
+                    existing.Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim();
+                    return existing;
+                }
+
+                return new FunctionalLimitationEntryV2
+                {
+                    Id = normalizedId,
+                    BodyPart = bodyPart,
+                    Category = entry.Category?.Trim() ?? string.Empty,
+                    Description = entry.Description.Trim(),
+                    IsSourceBacked = entry.IsSourceBacked,
+                    MeasurePrompt = string.IsNullOrWhiteSpace(entry.MeasurePrompt) ? null : entry.MeasurePrompt.Trim(),
+                    QuantifiedValue = entry.QuantifiedValue,
+                    QuantifiedUnit = string.IsNullOrWhiteSpace(entry.QuantifiedUnit) ? null : entry.QuantifiedUnit.Trim(),
+                    Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim()
+                };
+            })
+            .ToList();
+    }
+
+    private static FunctionalLimitationEntryV2 CloneFunctionalLimitation(FunctionalLimitationEntryV2 entry) => new()
+    {
+        Id = entry.Id,
+        BodyPart = entry.BodyPart,
+        Category = entry.Category,
+        Description = entry.Description,
+        IsSourceBacked = entry.IsSourceBacked,
+        MeasurePrompt = entry.MeasurePrompt,
+        QuantifiedValue = entry.QuantifiedValue,
+        QuantifiedUnit = entry.QuantifiedUnit,
+        Notes = entry.Notes
+    };
+
+    private static List<MedicationEntryV2> MergeMedications(
+        IReadOnlyCollection<MedicationEntryV2>? preservedEntries,
+        string? medicationDetails)
+    {
+        var selectedNames = SplitDelimitedValues(medicationDetails);
+        if (selectedNames.Count == 0)
+        {
+            return [];
+        }
+
+        var preservedByName = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .GroupBy(entry => entry.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<MedicationEntryV2>(group.Select(entry => new MedicationEntryV2
+                {
+                    Name = entry.Name,
+                    Dosage = entry.Dosage,
+                    Frequency = entry.Frequency
+                })),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedNames
+            .Select(name =>
+            {
+                if (preservedByName.TryGetValue(name, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Name = name;
+                    return existing;
+                }
+
+                return new MedicationEntryV2 { Name = name };
+            })
+            .ToList();
+    }
+
+    private static List<ExerciseRowV2> MergeExerciseRows(
+        IReadOnlyCollection<ExerciseRowV2>? preservedEntries,
+        IEnumerable<ExerciseRowEntry> visibleRows)
+    {
+        var rows = visibleRows
+            .Where(row =>
+                !string.IsNullOrWhiteSpace(row.SuggestedExercise)
+                || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
+            .Select(row => new ExerciseRowV2
+            {
+                SuggestedExercise = row.SuggestedExercise?.Trim() ?? string.Empty,
+                ActualExercisePerformed = row.ActualExercisePerformed?.Trim() ?? string.Empty,
+                SetsRepsDuration = string.IsNullOrWhiteSpace(row.SetsRepsDuration) ? null : row.SetsRepsDuration.Trim(),
+                ResistanceOrWeight = string.IsNullOrWhiteSpace(row.ResistanceOrWeight) ? null : row.ResistanceOrWeight.Trim(),
+                CptCode = string.IsNullOrWhiteSpace(row.CptCode) ? null : row.CptCode.Trim(),
+                CptDescription = string.IsNullOrWhiteSpace(row.CptDescription) ? null : row.CptDescription.Trim(),
+                TimeMinutes = row.TimeMinutes,
+                IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
+                IsSourceBacked = row.IsSourceBacked
+            })
+            .ToList();
+
+        if (rows.Count > 0)
+        {
+            return rows;
+        }
+
+        var preserved = (preservedEntries ?? [])
+            .Where(row => !string.IsNullOrWhiteSpace(row.SuggestedExercise) || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
+            .Select(row => new ExerciseRowV2
+            {
+                SuggestedExercise = row.SuggestedExercise,
+                ActualExercisePerformed = row.ActualExercisePerformed,
+                SetsRepsDuration = row.SetsRepsDuration,
+                ResistanceOrWeight = row.ResistanceOrWeight,
+                CptCode = row.CptCode,
+                CptDescription = row.CptDescription,
+                TimeMinutes = row.TimeMinutes,
+                IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
+                IsSourceBacked = row.IsSourceBacked
+            })
+            .ToList();
+
+        if (preserved.Count > 0)
+        {
+            return preserved;
+        }
+
+        return [];
+    }
+
+    private static List<ObjectiveMetricInputV2> MergeObjectiveMetrics(
+        IReadOnlyCollection<ObjectiveMetricInputV2>? preservedEntries,
+        IEnumerable<ObjectiveMetricRowEntry> visibleRows,
+        BodyPart defaultBodyPart)
+    {
+        var preserved = (preservedEntries ?? [])
+            .Select(entry => new ObjectiveMetricInputV2
+            {
+                Name = entry.Name,
+                BodyPart = entry.BodyPart,
+                MetricType = entry.MetricType,
+                Value = entry.Value,
+                PreviousValue = entry.PreviousValue,
+                NormValue = entry.NormValue,
+                IsWithinNormalLimits = entry.IsWithinNormalLimits
+            })
+            .ToList();
+
+        var rows = visibleRows.ToList();
+        var merged = new List<ObjectiveMetricInputV2>(rows.Count);
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var existing = index < preserved.Count ? preserved[index] : null;
+
+            var name = string.IsNullOrWhiteSpace(row.Name)
+                ? ResolveMetricName(existing, row.MetricType)
+                : row.Name.Trim();
+            var value = string.IsNullOrWhiteSpace(row.Value)
+                ? existing?.Value ?? string.Empty
+                : row.Value.Trim();
+
+            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            merged.Add(new ObjectiveMetricInputV2
+            {
+                Name = name,
+                BodyPart = existing?.BodyPart == BodyPart.Other ? defaultBodyPart : existing?.BodyPart ?? defaultBodyPart,
+                MetricType = row.MetricType != MetricType.Other ? row.MetricType : existing?.MetricType ?? MetricType.Other,
+                Value = value,
+                PreviousValue = string.IsNullOrWhiteSpace(row.PreviousValue)
+                    ? existing?.PreviousValue
+                    : row.PreviousValue.Trim(),
+                NormValue = string.IsNullOrWhiteSpace(row.NormValue)
+                    ? existing?.NormValue
+                    : row.NormValue.Trim(),
+                IsWithinNormalLimits = row.IsWithinNormalLimits
+            });
+        }
+
+        return merged.Count > 0
+            ? merged
+            : preserved;
+    }
+
+    private static List<SpecialTestResultV2> MergeSpecialTests(
+        IReadOnlyCollection<SpecialTestResultV2>? preservedEntries,
+        IEnumerable<SpecialTestEntry> visibleRows)
+    {
+        var preserved = (preservedEntries ?? [])
+            .Select(entry => new SpecialTestResultV2
+            {
+                Name = entry.Name,
+                Side = entry.Side,
+                Result = entry.Result,
+                Notes = entry.Notes
+            })
+            .ToList();
+
+        var rows = visibleRows.ToList();
+        var merged = new List<SpecialTestResultV2>(rows.Count);
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var existing = index < preserved.Count ? preserved[index] : null;
+
+            var name = string.IsNullOrWhiteSpace(row.Name)
+                ? existing?.Name ?? string.Empty
+                : row.Name.Trim();
+            var result = string.IsNullOrWhiteSpace(row.Result)
+                ? existing?.Result ?? string.Empty
+                : row.Result.Trim();
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(result))
+            {
+                continue;
+            }
+
+            merged.Add(new SpecialTestResultV2
+            {
+                Name = name,
+                Side = string.IsNullOrWhiteSpace(row.Side)
+                    ? existing?.Side
+                    : row.Side.Trim(),
+                Result = result,
+                Notes = string.IsNullOrWhiteSpace(row.Notes)
+                    ? existing?.Notes
+                    : row.Notes.Trim()
+            });
+        }
+
+        return merged.Count > 0
+            ? merged
+            : preserved;
+    }
+
+    private static string ResolveMetricName(ObjectiveMetricInputV2? existing, MetricType metricType)
+    {
+        if (!string.IsNullOrWhiteSpace(existing?.Name))
+        {
+            return existing.Name;
+        }
+
+        return metricType switch
+        {
+            MetricType.ROM => "ROM",
+            MetricType.MMT => "MMT",
+            MetricType.Girth => "Girth",
+            MetricType.Pain => "Pain",
+            MetricType.Functional => "Functional",
+            MetricType.Other when !string.IsNullOrWhiteSpace(existing?.Name) => existing.Name,
+            _ => string.Empty
+        };
+    }
+
+    private static List<GeneralInterventionEntryV2> MergeGeneralInterventions(
+        IReadOnlyCollection<GeneralInterventionEntryV2>? preservedEntries,
+        IEnumerable<GeneralInterventionEntry> selectedEntries)
+    {
+        var interventions = selectedEntries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => new GeneralInterventionEntryV2
+            {
+                Name = entry.Name.Trim(),
+                Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
+                IsSourceBacked = entry.IsSourceBacked,
+                Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim()
+            })
+            .ToList();
+
+        if (interventions.Count > 0)
+        {
+            return interventions;
+        }
+
+        var preserved = (preservedEntries ?? [])
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => new GeneralInterventionEntryV2
+            {
+                Name = entry.Name,
+                Category = entry.Category,
+                IsSourceBacked = entry.IsSourceBacked,
+                Notes = entry.Notes
+            })
+            .ToList();
+
+        if (preserved.Count > 0)
+        {
+            return preserved;
+        }
+
+        return [];
+    }
+
+    private static bool? DeriveAppearsMotivated(string? motivationLevel)
+    {
+        if (string.IsNullOrWhiteSpace(motivationLevel))
+        {
+            return null;
+        }
+
+        return motivationLevel.Trim() switch
+        {
+            "Highly motivated — eager to participate and comply" => true,
+            "Motivated — willing to participate with occasional prompting" => true,
+            "Moderately motivated — participates with consistent encouragement" => true,
+            "Low motivation — significant barriers to engagement" => false,
+            "Unmotivated — resistant or disengaged" => false,
+            _ => null
+        };
+    }
+
+    private static List<WorkspaceGoalEntryV2> MergeGoals(
+        IReadOnlyCollection<WorkspaceGoalEntryV2>? preservedEntries,
+        IEnumerable<SmartGoalEntry> visibleGoals)
+    {
+        var preservedGoals = (preservedEntries ?? []).ToList();
+        var merged = new List<WorkspaceGoalEntryV2>();
+
+        foreach (var goal in visibleGoals
+                     .Where(goal => !string.IsNullOrWhiteSpace(goal.Description) && (!goal.IsAiSuggested || goal.IsAccepted)))
+        {
+            var existing = preservedGoals.FirstOrDefault(entry =>
+                (goal.PatientGoalId.HasValue && entry.PatientGoalId == goal.PatientGoalId)
+                || string.Equals(entry.Description, goal.Description.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            merged.Add(new WorkspaceGoalEntryV2
+            {
+                PatientGoalId = goal.PatientGoalId,
+                Description = goal.Description.Trim(),
+                Category = goal.Category ?? existing?.Category,
+                Timeframe = goal.Timeframe,
+                Status = goal.Status,
+                Source = goal.IsAiSuggested ? GoalSource.SystemSuggested : GoalSource.ClinicianAuthored,
+                MatchedFunctionalLimitationId = existing?.MatchedFunctionalLimitationId
+            });
+        }
+
+        return merged;
+    }
+
+    private static List<PlannedCptCodeV2> MergePlannedCptCodes(
+        IReadOnlyCollection<PlannedCptCodeV2>? preservedEntries,
+        IEnumerable<UiCptCodeEntry> selectedCodes)
+    {
+        var preservedByCode = (preservedEntries ?? [])
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .GroupBy(code => code.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<PlannedCptCodeV2>(group.Select(code => new PlannedCptCodeV2
+                {
+                    Code = code.Code,
+                    Description = code.Description,
+                    Units = code.Units,
+                    Minutes = code.Minutes,
+                    Modifiers = [.. code.Modifiers],
+                    ModifierOptions = [.. code.ModifierOptions],
+                    SuggestedModifiers = [.. code.SuggestedModifiers],
+                    ModifierSource = code.ModifierSource
+                })),
+                StringComparer.OrdinalIgnoreCase);
+
+        return selectedCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+            .Select(code =>
+            {
+                var normalizedCode = code.Code.Trim();
+                if (preservedByCode.TryGetValue(normalizedCode, out var matches) && matches.Count > 0)
+                {
+                    var existing = matches.Dequeue();
+                    existing.Code = normalizedCode;
+                    existing.Description = string.IsNullOrWhiteSpace(code.Description)
+                        ? existing.Description
+                        : code.Description.Trim();
+                    existing.Units = Math.Max(1, code.Units);
+                    existing.Minutes = code.Minutes;
+                    existing.Modifiers = code.Modifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    existing.ModifierOptions = code.ModifierOptions.Count > 0
+                        ? code.ModifierOptions
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                        : existing.ModifierOptions
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    existing.SuggestedModifiers = code.SuggestedModifiers.Count > 0
+                        ? code.SuggestedModifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                        : existing.SuggestedModifiers
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(value => value.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    existing.ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                        ? existing.ModifierSource
+                        : code.ModifierSource.Trim();
+                    return existing;
+                }
+
+                return new PlannedCptCodeV2
+                {
+                    Code = normalizedCode,
+                    Description = code.Description?.Trim() ?? string.Empty,
+                    Units = Math.Max(1, code.Units),
+                    Minutes = code.Minutes,
+                    Modifiers = code.Modifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierOptions = code.ModifierOptions
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    SuggestedModifiers = code.SuggestedModifiers
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
+                        ? null
+                        : code.ModifierSource.Trim()
+                };
+            })
+            .ToList();
+    }
+
+    private static List<string> SplitDelimitedValues(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return value
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static OutcomeMeasureEntryV2? TryMapOutcomeMeasure(OutcomeMeasureEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Name) || string.IsNullOrWhiteSpace(entry.Score))
+        {
+            return null;
+        }
+
+        if (!TryParseOutcomeMeasureType(entry.Name, out var measureType))
+        {
+            return null;
+        }
+
+        if (!double.TryParse(entry.Score, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var parsedScore)
+            && !double.TryParse(entry.Score, out parsedScore))
+        {
+            return null;
+        }
+
+        return new OutcomeMeasureEntryV2
+        {
+            MeasureType = measureType,
+            Score = parsedScore,
+            RecordedAtUtc = entry.Date ?? DateTime.UtcNow
+        };
+    }
+
+    private static bool TryParseOutcomeMeasureType(string value, out OutcomeMeasureType measureType)
+    {
+        var normalized = value.Trim();
+        return normalized.Equals("ODI", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("Oswestry", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.OswestryDisabilityIndex, out measureType)
+            : normalized.Equals("DASH", StringComparison.OrdinalIgnoreCase)
+              || normalized.Contains("QuickDASH", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.DASH, out measureType)
+            : normalized.Equals("LEFS", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.LEFS, out measureType)
+            : normalized.Equals("NDI", StringComparison.OrdinalIgnoreCase)
+              || normalized.Contains("Neck Disability", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.NeckDisabilityIndex, out measureType)
+            : normalized.Equals("PSFS", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.PSFS, out measureType)
+            : normalized.Equals("VAS", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.VAS, out measureType)
+            : normalized.Equals("NPRS", StringComparison.OrdinalIgnoreCase)
+            ? ReturnMapped(OutcomeMeasureType.NPRS, out measureType)
+            : ReturnUnmapped(out measureType);
+    }
+
+    private static bool ReturnMapped(OutcomeMeasureType mapped, out OutcomeMeasureType measureType)
+    {
+        measureType = mapped;
+        return true;
+    }
+
+    private static bool ReturnUnmapped(out OutcomeMeasureType measureType)
+    {
+        measureType = default;
+        return false;
+    }
+
+    private static List<int> ParseNumericRange(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return value
+            .Split(['x', '/', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => int.TryParse(token, out var parsed) ? parsed : 0)
+            .Where(parsed => parsed > 0)
+            .Distinct()
+            .OrderBy(parsed => parsed)
+            .ToList();
+    }
+
+    private static HashSet<string> CloneSet(IEnumerable<string> values) =>
+        values.Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static BodyPart ParseBodyPart(string? value)
+    {
+        return Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : BodyPart.Other;
+    }
+
+    private static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
+        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
+}

@@ -551,6 +551,61 @@ public class ClinicalRulesEngineTests : IDisposable
         Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_OBJECTIVE");
     }
 
+    [Fact]
+    public async Task RunClinicalValidation_LegacyWorkspaceEvaluationPayload_ReusesCanonicalNormalization()
+    {
+        var note = AddNote(
+            NoteType.Evaluation,
+            """
+            {
+              "subjective": {
+                "functionalLimitations": ["Unable to turn head fully while driving"],
+                "currentPainScore": 6
+              },
+              "objective": {
+                "clinicalObservationNotes": "Guarded cervical rotation"
+              },
+              "assessment": {
+                "goals": [
+                  {
+                    "description": "Rotate head >= 60 degrees without pain"
+                  }
+                ]
+              },
+              "plan": {
+                "selectedCptCodes": [
+                  {
+                    "code": "97110",
+                    "description": "Therapeutic exercise",
+                    "units": 2
+                  }
+                ],
+                "treatmentFrequency": "2x/week",
+                "treatmentDuration": "6 weeks"
+              }
+            }
+            """);
+
+        _context.ObjectiveMetrics.Add(new ObjectiveMetric
+        {
+            Id = Guid.NewGuid(),
+            NoteId = note.Id,
+            BodyPart = BodyPart.Cervical,
+            MetricType = MetricType.ROM,
+            Value = "55 degrees"
+        });
+        await _context.SaveChangesAsync();
+
+        var violations = await _engine.RunClinicalValidationAsync(note.Id);
+
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "SOAP_SUBJECTIVE");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_GOALS");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_PLAN");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "COMP_CERT");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "COMP_FUNCTIONAL");
+        Assert.DoesNotContain(violations, violation => violation.RuleId == "DOC_OBJECTIVE");
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private ClinicalNote AddNote(NoteType noteType, string contentJson,

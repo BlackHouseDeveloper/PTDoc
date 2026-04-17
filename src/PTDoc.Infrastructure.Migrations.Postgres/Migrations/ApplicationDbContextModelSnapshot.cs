@@ -22,49 +22,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ClinicalNoteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("LastModifiedUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ModifiedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("SignatureHash")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("SyncState")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClinicalNoteId");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("CreatedUtc");
-
-                    b.ToTable("Addendums");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1374,25 +1331,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("UserNotificationPreferences");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.Addendum", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.ClinicalNote", "ClinicalNote")
-                        .WithMany()
-                        .HasForeignKey("ClinicalNoteId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ClinicalNote");
-
-                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>

@@ -5,6 +5,8 @@ using Moq;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Notes.Content;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -132,6 +134,94 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Contains(request.PatientId.ToString(), error);
     }
 
+    [Fact]
+    public async Task SaveDraftAsync_JsonRequest_WithWorkspaceV2Content_PersistsCanonicalNote()
+    {
+        var patient = await CreatePatientAsync();
+        var request = new SaveDailyNoteJsonRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 18),
+            Content = JsonSerializer.SerializeToElement(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    CurrentPainScore = 4,
+                    FunctionalLimitations =
+                    [
+                        new FunctionalLimitationEntryV2
+                        {
+                            Description = "Walking more than 10 minutes"
+                        }
+                    ]
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Patient tolerated treatment well."
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    TreatmentFocuses = ["gait training"]
+                }
+            })
+        };
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(response);
+        Assert.Equal(4, response!.Content.CurrentPainScore);
+        Assert.Contains(response.Content.LimitedActivities, activity => activity.ActivityName == "Walking more than 10 minutes");
+        Assert.Contains("gait training", response.Content.FocusedActivities);
+
+        var stored = await _db.ClinicalNotes.SingleAsync(note => note.Id == response.NoteId);
+        using var storedJson = JsonDocument.Parse(stored.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_JsonRequest_WithLegacyWorkspaceContent_NormalizesThroughSharedCanonicalizer()
+    {
+        var patient = await CreatePatientAsync();
+        var request = new SaveDailyNoteJsonRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 19),
+            Content = JsonSerializer.SerializeToElement(new
+            {
+                subjective = new
+                {
+                    currentPainScore = 6,
+                    functionalLimitations = new[] { "Standing longer than 15 minutes" }
+                },
+                assessment = new
+                {
+                    assessmentNarrative = "Legacy workspace daily assessment"
+                },
+                plan = new
+                {
+                    treatmentFocuses = new[] { "balance training" }
+                }
+            })
+        };
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(response);
+        Assert.Equal(6, response!.Content.CurrentPainScore);
+        Assert.Contains(response.Content.LimitedActivities, activity => activity.ActivityName == "Standing longer than 15 minutes");
+        Assert.Equal("Legacy workspace daily assessment", response.Content.AssessmentNarrative);
+
+        var stored = await _db.ClinicalNotes.SingleAsync(note => note.Id == response.NoteId);
+        using var storedJson = JsonDocument.Parse(stored.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Standing longer than 15 minutes",
+            storedJson.RootElement.GetProperty("subjective").GetProperty("functionalLimitations")[0].GetProperty("description").GetString());
+    }
+
     // ── 2. SaveDraftAsync — creates note with ClinicId set ────────────────────
 
     [Fact]
@@ -180,6 +270,56 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Equal(first!.NoteId, second!.NoteId);
         var count = _db.ClinicalNotes.Count(n => n.PatientId == patient.Id && n.NoteType == NoteType.Daily);
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_PersistsCanonicalWorkspaceV2Content()
+    {
+        var patient = await CreatePatientAsync();
+        var request = BuildRequest(patient.Id, new DateTime(2026, 4, 6));
+        request.Content.FunctionalLimitations = "Difficulty standing longer than 15 minutes";
+        request.Content.Exercises =
+        [
+            new ExerciseEntryDto
+            {
+                ExerciseName = "Sit to stands",
+                Notes = "2 x 10"
+            }
+        ];
+        request.Content.CptCodes =
+        [
+            new CptCodeEntryDto
+            {
+                Code = "97110",
+                Description = "Therapeutic exercise",
+                Units = 1,
+                Minutes = 16
+            }
+        ];
+
+        var (response, error) = await _service.SaveDraftAsync(request);
+
+        Assert.Null(error);
+        Assert.NotNull(response);
+
+        var stored = await _db.ClinicalNotes.FindAsync(response!.NoteId);
+        Assert.NotNull(stored);
+
+        using var storedJson = JsonDocument.Parse(stored!.ContentJson);
+        Assert.True(storedJson.RootElement.TryGetProperty("schemaVersion", out var schemaVersion));
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, schemaVersion.GetInt32());
+        Assert.True(storedJson.RootElement.TryGetProperty("subjective", out var subjective));
+        Assert.Equal("Difficulty standing longer than 15 minutes", subjective.GetProperty("additionalFunctionalLimitations").GetString());
+        Assert.True(storedJson.RootElement.TryGetProperty("objective", out var objective));
+        Assert.True(objective.TryGetProperty("exerciseRows", out var exerciseRows));
+        Assert.Single(exerciseRows.EnumerateArray());
+        Assert.True(storedJson.RootElement.TryGetProperty("plan", out var plan));
+        Assert.True(plan.TryGetProperty("selectedCptCodes", out var cptCodes));
+        Assert.Single(cptCodes.EnumerateArray());
+
+        Assert.Equal("Difficulty standing longer than 15 minutes", response.Content.FunctionalLimitations);
+        Assert.Contains(response.Content.Exercises, item => item.ExerciseName == "Sit to stands");
+        Assert.Contains(response.Content.CptCodes, item => item.Code == "97110");
     }
 
     [Fact]
@@ -509,6 +649,73 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Contains(result.MissingElements, m => m.Contains("Clinical reasoning"));
     }
 
+    [Fact]
+    public void CheckMedicalNecessity_WorkspaceV2Payload_UsesCanonicalMappedFields()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                CurrentPainScore = 3,
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        Description = "Stairs"
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "ROM",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        Value = "110"
+                    }
+                ]
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                AssessmentNarrative = "Patient tolerated treatment well."
+            },
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFocuses = ["gait training"],
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97110",
+                        Units = 1,
+                        Minutes = 15
+                    }
+                ],
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Name = "Strength"
+                    }
+                ],
+                FollowUpInstructions = "Continue plan next visit."
+            }
+        };
+
+        var result = _service.CheckMedicalNecessity(JsonSerializer.SerializeToElement(payload));
+
+        Assert.False(result.Passes);
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Functional deficits", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Clinical reasoning", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Goal connection", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.Warnings, m => m.Contains("No CPT codes", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.MissingElements, m => m.Contains("Skilled cueing", StringComparison.OrdinalIgnoreCase));
+    }
+
     // ── 9. GenerateAssessmentNarrativeAsync — AI-first, template fallback ──────
 
     [Fact]
@@ -528,6 +735,51 @@ public class DailyNoteServiceTests : IDisposable
         var result = await _service.GenerateAssessmentNarrativeAsync(content);
 
         Assert.Equal(aiNarrative, result);
+    }
+
+    [Fact]
+    public async Task GenerateAssessmentNarrativeAsync_WorkspaceV2Payload_UsesCanonicalTreatmentFocuses()
+    {
+        AssessmentGenerationRequest? capturedRequest = null;
+        _aiMock.Setup(x => x.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AssessmentGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new AssessmentGenerationResult
+            {
+                GeneratedText = "AI-generated assessment narrative.",
+                Confidence = 0.9,
+                Success = true,
+                SourceInputs = new AssessmentGenerationRequest
+                {
+                    NoteId = Guid.Empty,
+                    ChiefComplaint = "gait training",
+                    IsNoteSigned = false
+                }
+            });
+
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFocuses = ["gait training"]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                ClinicalObservationNotes = "Observed improved step symmetry."
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                FunctionalLimitationsSummary = "Difficulty with prolonged walking."
+            }
+        };
+
+        var result = await _service.GenerateAssessmentNarrativeAsync(JsonSerializer.SerializeToElement(payload));
+
+        Assert.Equal("AI-generated assessment narrative.", result);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("gait training", capturedRequest!.ChiefComplaint);
+        Assert.Equal("Observed improved step symmetry.", capturedRequest.ExaminationFindings);
+        Assert.Equal("Difficulty with prolonged walking.", capturedRequest.FunctionalLimitations);
     }
 
     private async Task SeedSignedEvaluationAsync(Guid patientId, DateTime dateOfService)
@@ -630,6 +882,193 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Equal(patient.Id, result.PatientId);
         Assert.Empty(result.Activities);
         Assert.Null(result.EvalNoteId);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WorkspaceV2DailyNote_MapsCanonicalContent()
+    {
+        var patient = await CreatePatientAsync();
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 4),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    CurrentPainScore = 5,
+                    FunctionalLimitations =
+                    [
+                        new FunctionalLimitationEntryV2
+                        {
+                            Description = "Walking more than 10 minutes"
+                        }
+                    ]
+                },
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            ActualExercisePerformed = "Clamshells",
+                            SetsRepsDuration = "2 x 12"
+                        }
+                    ],
+                    ClinicalObservationNotes = "Guarded gait pattern"
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Responding well to treatment"
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    TreatmentFocuses = ["Gait training"],
+                    FollowUpInstructions = "Progress walking tolerance",
+                    HomeExerciseProgramNotes = "Continue clamshells at home"
+                }
+            })
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetByIdAsync(note.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(5, result!.Content.CurrentPainScore);
+        Assert.Contains(result.Content.LimitedActivities, activity => activity.ActivityName == "Walking more than 10 minutes");
+        Assert.Contains("Gait training", result.Content.FocusedActivities);
+        Assert.Contains(result.Content.Exercises, exercise => exercise.ExerciseName == "Clamshells");
+        Assert.Equal("Progress walking tolerance", result.Content.NextSessionPlan);
+        Assert.Equal("Responding well to treatment", result.Content.AssessmentNarrative);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_LegacyWorkspaceDailyNote_MapsCanonicalContent()
+    {
+        var patient = await CreatePatientAsync();
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 5),
+            ContentJson = """
+                          {
+                            "subjective": {
+                              "currentPainScore": 7,
+                              "functionalLimitations": ["Walking more than 5 minutes"]
+                            },
+                            "objective": {
+                              "clinicalObservationNotes": "Antalgic gait"
+                            },
+                            "assessment": {
+                              "assessmentNarrative": "Legacy workspace daily assessment"
+                            },
+                            "plan": {
+                              "followUpInstructions": "Continue gait progression"
+                            }
+                          }
+                          """
+        };
+        _db.ClinicalNotes.Add(note);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetByIdAsync(note.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(7, result!.Content.CurrentPainScore);
+        Assert.Contains(result.Content.LimitedActivities, activity => activity.ActivityName == "Walking more than 5 minutes");
+        Assert.Equal("Antalgic gait", result.Content.ClinicalObservations);
+        Assert.Equal("Legacy workspace daily assessment", result.Content.AssessmentNarrative);
+        Assert.Equal("Continue gait progression", result.Content.NextSessionPlan);
+    }
+
+    [Fact]
+    public async Task GetEvalCarryForwardAsync_WorkspaceV2Evaluation_ReadsCanonicalActivitiesAndPlan()
+    {
+        var patient = await CreatePatientAsync();
+        var evalNote = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 1),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    FunctionalLimitations =
+                    [
+                        new FunctionalLimitationEntryV2
+                        {
+                            Description = "Unable to lift overhead"
+                        }
+                    ]
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    DiagnosisCodes =
+                    [
+                        new DiagnosisCodeV2
+                        {
+                            Code = "M25.511",
+                            Description = "Pain in right shoulder"
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    PlanOfCareNarrative = "Treat 2x/week for 6 weeks"
+                }
+            })
+        };
+        _db.ClinicalNotes.Add(evalNote);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetEvalCarryForwardAsync(patient.Id);
+
+        Assert.Equal(evalNote.Id, result.EvalNoteId);
+        Assert.Contains("Unable to lift overhead", result.Activities);
+        Assert.Equal("M25.511 - Pain in right shoulder", result.PrimaryDiagnosis);
+        Assert.Equal("Treat 2x/week for 6 weeks", result.PlanOfCare);
+    }
+
+    [Fact]
+    public async Task GetEvalCarryForwardAsync_LegacyEvaluationContent_CanonicalizesBeforeProjection()
+    {
+        var patient = await CreatePatientAsync();
+        var evalNote = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 2),
+            ContentJson = JsonSerializer.Serialize(new EvaluationContent
+            {
+                FunctionalLimitations = "Unable to carry groceries",
+                Assessment = "Shoulder pain impacting ADLs",
+                PlanOfCare = new PlanOfCareContent
+                {
+                    FrequencyDuration = "2x/week for 6 weeks",
+                    SkilledInterventions = "Therapeutic exercise",
+                    ShortTermGoals = ["Reach overhead without pain"]
+                }
+            })
+        };
+        _db.ClinicalNotes.Add(evalNote);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetEvalCarryForwardAsync(patient.Id);
+
+        Assert.Equal(evalNote.Id, result.EvalNoteId);
+        Assert.Contains("Unable to carry groceries", result.Activities);
+        Assert.Contains("2x/week for 6 weeks", result.PlanOfCare);
+        Assert.Contains("Therapeutic exercise", result.PlanOfCare);
     }
 
     // ── 12. NoteTaxonomySelections join-table persistence ────────────────────

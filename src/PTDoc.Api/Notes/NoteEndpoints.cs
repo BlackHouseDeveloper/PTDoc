@@ -8,6 +8,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Text.Json;
 
 namespace PTDoc.Api.Notes;
@@ -204,18 +205,11 @@ public static class NoteEndpoints
             .ThenBy(n => n.LastModifiedUtc)
             .ToListAsync(cancellationToken);
 
-        var legacyAddendumRows = await db.Addendums
-            .AsNoTracking()
-            .Where(a => a.ClinicalNoteId == note.Id)
-            .OrderBy(a => a.CreatedUtc)
-            .ToListAsync(cancellationToken);
-
         return Results.Ok(new NoteDetailResponse
         {
             Note = ToResponse(note),
             Addendums = linkedAddendumNotes
                 .Select(MapLinkedAddendum)
-                .Concat(legacyAddendumRows.Select(MapLegacyAddendum))
                 .OrderBy(a => a.CreatedUtc)
                 .ThenBy(a => a.LastModifiedUtc)
                 .ToList()
@@ -695,7 +689,13 @@ public static class NoteEndpoints
         }
 
         // Merge the accepted AI content into the target SOAP section of ContentJson.
-        note.ContentJson = MergeAiContentIntoSection(note.ContentJson, request.Section, request.GeneratedText);
+        note.ContentJson = MergeAiContentIntoSection(
+            note.ContentJson,
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            request.Section,
+            request.GeneratedText);
 
         var userId = identityContext.GetCurrentUserId();
         note.LastModifiedUtc = DateTime.UtcNow;
@@ -795,14 +795,38 @@ public static class NoteEndpoints
 
     /// <summary>
     /// Merges AI-generated text into the specified section of the note's ContentJson.
-    /// Creates the section key if it does not exist; replaces it if it does.
-    /// The section key is always stored as lower-case for consistency.
+    /// Prefers the canonical workspace-v2 payload when the stored note is already v2 or
+    /// can be promoted from a recognized legacy SOAP-section object. For unrecognized JSON,
+    /// falls back to the older lower-case section-key merge behavior.
     /// Sprint UC-Gamma: called only from <see cref="AcceptAiSuggestion"/>
     /// after the clinician explicitly accepts the generated content.
     /// </summary>
-    internal static string MergeAiContentIntoSection(string contentJson, string section, string generatedText)
+    internal static string MergeAiContentIntoSection(
+        string contentJson,
+        NoteType noteType,
+        string section,
+        string generatedText)
+        => MergeAiContentIntoSection(
+            contentJson,
+            noteType,
+            isReEvaluation: false,
+            dateOfService: default,
+            section,
+            generatedText);
+
+    /// <summary>
+    /// Merges AI-generated text into the specified section of the note's ContentJson,
+    /// using the note's actual metadata when available for canonical promotion.
+    /// </summary>
+    internal static string MergeAiContentIntoSection(
+        string contentJson,
+        NoteType noteType,
+        bool isReEvaluation,
+        DateTime dateOfService,
+        string section,
+        string generatedText)
     {
-        if (TryMergeIntoWorkspaceV2(contentJson, section, generatedText, out var workspaceJson))
+        if (TryMergeIntoWorkspaceV2(contentJson, noteType, isReEvaluation, dateOfService, section, generatedText, out var workspaceJson))
         {
             return workspaceJson;
         }
@@ -838,47 +862,16 @@ public static class NoteEndpoints
 
     private static bool TryMergeIntoWorkspaceV2(
         string contentJson,
+        NoteType noteType,
+        bool isReEvaluation,
+        DateTime dateOfService,
         string section,
         string generatedText,
         out string mergedJson)
     {
         mergedJson = string.Empty;
 
-        if (string.IsNullOrWhiteSpace(contentJson))
-        {
-            return false;
-        }
-
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(contentJson);
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-
-        using (document)
-        {
-            if (!TryReadSchemaVersion(document.RootElement, out var schemaVersion)
-                || schemaVersion != WorkspaceSchemaVersions.EvalReevalProgressV2)
-            {
-                return false;
-            }
-        }
-
-        NoteWorkspaceV2Payload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, WorkspaceContentSerializerOptions);
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-
-        if (payload is null)
+        if (!TryLoadWorkspacePayload(contentJson, noteType, isReEvaluation, dateOfService, out var payload))
         {
             return false;
         }
@@ -923,8 +916,218 @@ public static class NoteEndpoints
                 return false;
         }
 
+        payload.NoteType = noteType;
         mergedJson = JsonSerializer.Serialize(payload, WorkspaceContentSerializerOptions);
         return true;
+    }
+
+    private static bool TryLoadWorkspacePayload(
+        string contentJson,
+        NoteType noteType,
+        bool isReEvaluation,
+        DateTime dateOfService,
+        out NoteWorkspaceV2Payload payload)
+    {
+        if (TryDeserializeWorkspacePayload(contentJson, out payload))
+        {
+            payload.NoteType = noteType;
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(contentJson))
+        {
+            var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+                noteType,
+                isReEvaluation,
+                dateOfService,
+                contentJson);
+
+            if (!string.Equals(normalizedContentJson, contentJson, StringComparison.Ordinal) &&
+                TryDeserializeWorkspacePayload(normalizedContentJson, out payload))
+            {
+                payload.NoteType = noteType;
+                return true;
+            }
+        }
+
+        return TryPromoteLegacySoapPayload(contentJson, noteType, out payload);
+    }
+
+    private static bool TryDeserializeWorkspacePayload(
+        string contentJson,
+        out NoteWorkspaceV2Payload payload)
+    {
+        payload = new NoteWorkspaceV2Payload();
+
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return false;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(contentJson);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        using (document)
+        {
+            if (!TryReadSchemaVersion(document.RootElement, out var schemaVersion)
+                || schemaVersion != WorkspaceSchemaVersions.EvalReevalProgressV2)
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, WorkspaceContentSerializerOptions)
+                ?? new NoteWorkspaceV2Payload();
+            return true;
+        }
+        catch (JsonException)
+        {
+            payload = new NoteWorkspaceV2Payload();
+            return false;
+        }
+    }
+
+    private static bool TryPromoteLegacySoapPayload(
+        string contentJson,
+        NoteType noteType,
+        out NoteWorkspaceV2Payload payload)
+    {
+        payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = noteType
+        };
+
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return true;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(contentJson);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            var hasProperties = document.RootElement.EnumerateObject().Any();
+            var migrated = !hasProperties;
+
+            if (TryReadStringProperty(document.RootElement, "subjective", out var subjective))
+            {
+                payload.Subjective.NarrativeContext.ChiefComplaint = subjective;
+                migrated = true;
+            }
+
+            if (TryReadStringProperty(document.RootElement, "objective", out var objective))
+            {
+                payload.Objective.ClinicalObservationNotes = objective;
+                migrated = true;
+            }
+
+            if (TryReadStringProperty(document.RootElement, "assessment", out var assessment))
+            {
+                payload.Assessment.AssessmentNarrative = assessment;
+                migrated = true;
+            }
+
+            if (TryReadStringProperty(document.RootElement, "plan", out var plan))
+            {
+                payload.Plan.ClinicalSummary = plan;
+                migrated = true;
+            }
+
+            if (TryReadStringProperty(document.RootElement, "billing", out var billing))
+            {
+                payload.Plan.FollowUpInstructions = billing;
+                migrated = true;
+            }
+
+            var goals = ReadLegacyGoalLines(document.RootElement);
+            if (goals.Count > 0)
+            {
+                payload.Assessment.GoalSuggestions = goals
+                    .Select(goal => new WorkspaceGoalSuggestionV2
+                    {
+                        Description = goal
+                    })
+                    .ToList();
+                migrated = true;
+            }
+
+            return migrated;
+        }
+    }
+
+    private static bool TryReadStringProperty(JsonElement root, string propertyName, out string value)
+    {
+        value = string.Empty;
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) ||
+                property.Value.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var candidate = property.Value.GetString();
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                value = candidate;
+            }
+        }
+
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static IReadOnlyList<string> ReadLegacyGoalLines(JsonElement root)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "goals", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return property.Value.ValueKind switch
+            {
+                JsonValueKind.String => ParseGoalSuggestions(property.Value.GetString() ?? string.Empty),
+                JsonValueKind.Array => property.Value.EnumerateArray()
+                    .Select(item => item.ValueKind switch
+                    {
+                        JsonValueKind.String => item.GetString(),
+                        JsonValueKind.Object when item.TryGetProperty("description", out var description)
+                            && description.ValueKind == JsonValueKind.String => description.GetString(),
+                        _ => null
+                    })
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                _ => []
+            };
+        }
+
+        return [];
     }
 
     private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)
@@ -994,7 +1197,11 @@ public static class NoteEndpoints
         NoteType = n.NoteType,
         IsReEvaluation = n.IsReEvaluation,
         NoteStatus = n.NoteStatus,
-        ContentJson = n.ContentJson,
+        ContentJson = NoteWriteService.NormalizeContentJson(
+            n.NoteType,
+            n.IsReEvaluation,
+            n.DateOfService,
+            n.ContentJson),
         DateOfService = n.DateOfService,
         CreatedUtc = n.CreatedUtc,
         SignatureHash = n.SignatureHash,
@@ -1019,35 +1226,50 @@ public static class NoteEndpoints
         }).ToList()
     };
 
-    private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note) => new()
+    private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note)
     {
-        Id = note.Id,
-        ParentNoteId = note.ParentNoteId,
-        IsLegacy = false,
-        IsSigned = note.IsFinalized,
-        CreatedUtc = note.CreatedUtc,
-        LastModifiedUtc = note.LastModifiedUtc,
-        Content = note.ContentJson,
-        ContentFormat = "json",
-        SignatureHash = note.SignatureHash,
-        SignedUtc = note.SignedUtc,
-        SignedByUserId = note.SignedByUserId,
-        NoteType = note.NoteType
-    };
+        var content = ProjectAddendumContent(note);
 
-    private static NoteAddendumResponse MapLegacyAddendum(Addendum addendum) => new()
+        return new NoteAddendumResponse
+        {
+            Id = note.Id,
+            ParentNoteId = note.ParentNoteId,
+            IsLegacy = false,
+            IsSigned = note.IsFinalized,
+            CreatedUtc = note.CreatedUtc,
+            LastModifiedUtc = note.LastModifiedUtc,
+            Content = content.Content,
+            ContentFormat = content.ContentFormat,
+            SignatureHash = note.SignatureHash,
+            SignedUtc = note.SignedUtc,
+            SignedByUserId = note.SignedByUserId,
+            NoteType = note.NoteType
+        };
+    }
+
+    private static (string Content, string ContentFormat) ProjectAddendumContent(ClinicalNote note)
     {
-        Id = addendum.Id,
-        ParentNoteId = addendum.ClinicalNoteId,
-        IsLegacy = true,
-        IsSigned = !string.IsNullOrWhiteSpace(addendum.SignatureHash),
-        CreatedUtc = addendum.CreatedUtc,
-        LastModifiedUtc = addendum.CreatedUtc,
-        Content = addendum.Content,
-        ContentFormat = "text",
-        SignatureHash = addendum.SignatureHash,
-        NoteType = null
-    };
+        var normalizedContent = NoteWriteService.NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson);
+
+        try
+        {
+            using var document = JsonDocument.Parse(normalizedContent);
+            if (document.RootElement.ValueKind == JsonValueKind.String)
+            {
+                return (document.RootElement.GetString() ?? string.Empty, "text");
+            }
+        }
+        catch (JsonException)
+        {
+            return (normalizedContent, "text");
+        }
+
+        return (normalizedContent, "json");
+    }
 
     /// <summary>
     /// Sprint UC3: PTA domain guard — determines whether a PTA user is blocked from creating

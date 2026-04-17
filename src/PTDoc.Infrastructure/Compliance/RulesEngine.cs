@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
@@ -14,6 +15,7 @@ public class RulesEngine : IRulesEngine
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _auditService;
+    private readonly IClinicalRulesEngine _clinicalRulesEngine;
 
     // Rule constants based on Medicare specification
     private const int ProgressNoteWarningVisitThreshold = 8;
@@ -21,10 +23,14 @@ public class RulesEngine : IRulesEngine
     private const int ProgressNoteVisitThreshold = 10;
     private const int ProgressNoteDayThreshold = 30;
 
-    public RulesEngine(ApplicationDbContext context, IAuditService auditService)
+    public RulesEngine(
+        ApplicationDbContext context,
+        IAuditService auditService,
+        IClinicalRulesEngine? clinicalRulesEngine = null)
     {
         _context = context;
         _auditService = auditService;
+        _clinicalRulesEngine = clinicalRulesEngine ?? new ClinicalRulesEngine(context);
     }
 
     /// <summary>
@@ -228,7 +234,51 @@ public class RulesEngine : IRulesEngine
             return RuleResult.Error("SIGN_ELIGIBLE", "Note is already signed");
         }
 
-        // Could add content validation here (e.g., required fields populated)
+        if (note.IsAddendum)
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("SIGN_ELIGIBLE", true), ct);
+            return RuleResult.Success("SIGN_ELIGIBLE", "Addendum is eligible for signing");
+        }
+
+        var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson);
+
+        if (!HasDiagnosisCodes(normalizedContentJson))
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("SIGN_ELIGIBLE", false), ct);
+            return RuleResult.HardStop(
+                "SIGN_ELIGIBLE",
+                "At least one ICD-10 diagnosis code is required before signing.");
+        }
+
+        var blockingViolations = (await _clinicalRulesEngine.RunClinicalValidationAsync(note.Id, ct))
+            .Where(violation => violation.Blocking)
+            .ToList();
+
+        if (blockingViolations.Count > 0)
+        {
+            await _auditService.LogRuleEvaluationAsync(
+                AuditEvent.RuleEvaluation("SIGN_ELIGIBLE", false), ct);
+            return RuleResult.HardStop(
+                "SIGN_ELIGIBLE",
+                $"Note has {blockingViolations.Count} blocking clinical/compliance violation(s).",
+                new Dictionary<string, object>
+                {
+                    ["BlockingRuleIds"] = blockingViolations
+                        .Select(violation => violation.RuleId)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    ["BlockingMessages"] = blockingViolations
+                        .Select(violation => violation.Message)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray()
+                });
+        }
 
         await _auditService.LogRuleEvaluationAsync(
             AuditEvent.RuleEvaluation("SIGN_ELIGIBLE", true), ct);
@@ -384,6 +434,50 @@ public class RulesEngine : IRulesEngine
         }
 
         return null;
+    }
+
+    private static bool HasDiagnosisCodes(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            if (!TryGetPropertyCaseInsensitive(document.RootElement, "assessment", out var assessment)
+                || assessment.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            return TryGetPropertyCaseInsensitive(assessment, "diagnosisCodes", out var diagnosisCodes)
+                && diagnosisCodes.ValueKind == JsonValueKind.Array
+                && diagnosisCodes.GetArrayLength() > 0;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetPropertyCaseInsensitive(
+        JsonElement element,
+        string propertyName,
+        out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 }
 

@@ -9,6 +9,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -1272,7 +1273,7 @@ public class SyncEngine : ISyncEngine
                         n.PatientId,
                         n.NoteType,
                         n.DateOfService,
-                        n.ContentJson,
+                        ContentJson = CanonicalizeClinicalNoteContentJson(n),
                         n.SignatureHash,
                         n.SignedUtc,
                         n.SignedByUserId,
@@ -1497,7 +1498,7 @@ public class SyncEngine : ISyncEngine
                     note.PatientId,
                     note.NoteType,
                     note.NoteStatus,
-                    note.ContentJson,
+                    ContentJson = CanonicalizeClinicalNoteContentJson(note),
                     note.CptCodesJson,
                     note.DateOfService,
                     note.SignatureHash,
@@ -1536,6 +1537,13 @@ public class SyncEngine : ISyncEngine
 
         return new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId };
     }
+
+    private static string CanonicalizeClinicalNoteContentJson(ClinicalNote note)
+        => NoteWriteService.NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson);
 
     private static ConflictType? DetectConflict(ClientSyncPushItem item, ServerSyncSnapshot snapshot)
     {
@@ -2098,18 +2106,32 @@ public class SyncEngine : ISyncEngine
                 var isAddendum = TryGetBool(root, "isAddendum")
                 ?? TryGetBool(root, "IsAddendum")
                 ?? false;
+                var isReEvaluation = TryGetBool(root, "isReEvaluation")
+                ?? TryGetBool(root, "IsReEvaluation")
+                ?? false;
+                var dateOfService = TryGetDateTime(root, "dateOfService")
+                    ?? TryGetDateTime(root, "DateOfService")
+                    ?? DateTime.UtcNow;
+                var contentJson = TryGetString(root, "contentJson")
+                    ?? TryGetString(root, "ContentJson")
+                    ?? "{}";
                 var note = new ClinicalNote
                 {
                     Id = serverId,
                     PatientId = patientId,
                     ClinicId = clinicId,
                     NoteType = noteType,
+                    IsReEvaluation = isReEvaluation,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
-                    ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? "{}",
+                    ContentJson = NoteWriteService.NormalizeContentJson(
+                        noteType,
+                        isReEvaluation,
+                        dateOfService,
+                        contentJson),
                     CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
-                    DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? DateTime.UtcNow,
+                    DateOfService = dateOfService,
                     // SignatureHash, SignedUtc, SignedByUserId intentionally NOT set from client push
                     LastModifiedUtc = item.LastModifiedUtc,
                     ModifiedByUserId = actingUserId,
@@ -2122,12 +2144,27 @@ public class SyncEngine : ISyncEngine
                 // Only update unsigned (draft) notes (double-checked; already blocked by CheckEntitySpecificConflictAsync)
                 if (!existing.IsFinalized)
                 {
+                    var updatedIsReEvaluation = TryGetBool(root, "isReEvaluation")
+                        ?? TryGetBool(root, "IsReEvaluation")
+                        ?? existing.IsReEvaluation;
+                    var updatedDateOfService = TryGetDateTime(root, "dateOfService")
+                        ?? TryGetDateTime(root, "DateOfService")
+                        ?? existing.DateOfService;
+                    var updatedContentJson = TryGetString(root, "contentJson")
+                        ?? TryGetString(root, "ContentJson")
+                        ?? existing.ContentJson;
+
                     existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
                     existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
                     existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
-                    existing.ContentJson = TryGetString(root, "contentJson") ?? TryGetString(root, "ContentJson") ?? existing.ContentJson;
+                    existing.IsReEvaluation = updatedIsReEvaluation;
+                    existing.ContentJson = NoteWriteService.NormalizeContentJson(
+                        existing.NoteType,
+                        updatedIsReEvaluation,
+                        updatedDateOfService,
+                        updatedContentJson);
                     existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
-                    existing.DateOfService = TryGetDateTime(root, "dateOfService") ?? TryGetDateTime(root, "DateOfService") ?? existing.DateOfService;
+                    existing.DateOfService = updatedDateOfService;
                     existing.LastModifiedUtc = item.LastModifiedUtc;
                     existing.ModifiedByUserId = actingUserId;
                     existing.SyncState = SyncState.Synced;
@@ -2153,7 +2190,7 @@ public class SyncEngine : ISyncEngine
     {
         if (root.TryGetProperty(propertyName, out var el))
         {
-            if (el.ValueKind == JsonValueKind.String && DateTime.TryParse(el.GetString(), out var dt))
+            if (el.ValueKind == JsonValueKind.String && el.TryGetDateTime(out var dt))
                 return dt;
         }
         return null;

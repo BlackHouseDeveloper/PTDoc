@@ -156,6 +156,12 @@ public sealed class IntakeApiServiceTests
         Assert.True(consentPacket.GetProperty("treatmentConsentAccepted").GetBoolean());
         Assert.Equal("555-0100", consentPacket.GetProperty("communicationPhoneNumber").GetString());
         Assert.Equal("patient@example.com", consentPacket.GetProperty("communicationEmail").GetString());
+
+        using var responseJson = JsonDocument.Parse(document.RootElement.GetProperty("responseJson").GetString() ?? "{}");
+        Assert.True(responseJson.RootElement.GetProperty("consentPacket").GetProperty("hipaaAcknowledged").GetBoolean());
+        Assert.True(responseJson.RootElement.GetProperty("consentPacket").GetProperty("treatmentConsentAccepted").GetBoolean());
+        Assert.False(responseJson.RootElement.TryGetProperty("hipaaAcknowledged", out _));
+        Assert.False(responseJson.RootElement.TryGetProperty("consentToTreatAcknowledged", out _));
     }
 
     [Fact]

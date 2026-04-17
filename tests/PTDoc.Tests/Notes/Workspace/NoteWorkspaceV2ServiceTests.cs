@@ -3,6 +3,7 @@ using System.Text.Json;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -86,6 +87,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             PatientId = patient.Id,
             DateOfService = new DateTime(2026, 3, 30),
             NoteType = NoteType.Evaluation,
+            IsReEvaluation = true,
             Payload = new NoteWorkspaceV2Payload
             {
                 NoteType = NoteType.Evaluation,
@@ -181,7 +183,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("97110", persistedNote.CptCodesJson);
         Assert.Contains("\"GP\"", persistedNote.CptCodesJson);
         Assert.Contains("\"schemaVersion\":2", persistedNote.ContentJson);
+        Assert.True(persistedNote.IsReEvaluation);
         Assert.False(string.IsNullOrWhiteSpace(workspace.Payload.Plan.PlanOfCareNarrative));
+        Assert.True(reloaded.IsReEvaluation);
 
         var currentMetric = Assert.Single(reloaded!.Payload.Objective.Metrics);
         Assert.Equal("40 degrees", currentMetric.PreviousValue);
@@ -713,6 +717,123 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         using var storedJson = JsonDocument.Parse(stored.ContentJson);
         Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(4, storedJson.RootElement.GetProperty("subjective").GetProperty("currentPainScore").GetInt32());
+    }
+
+    [Fact]
+    public async Task LoadAsync_DraftLegacyTypedEvaluationContent_BackfillsCanonicalWorkspacePayload()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "TypedEval",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 12),
+            ContentJson = JsonSerializer.Serialize(new EvaluationContent
+            {
+                SubjectiveComplaints = "Right shoulder pain after tennis",
+                FunctionalLimitations = "Unable to lift overhead",
+                Assessment = "Presentation consistent with shoulder impingement",
+                PlanOfCare = new PlanOfCareContent
+                {
+                    FrequencyDuration = "2x/week for 6 weeks",
+                    SkilledInterventions = "Therapeutic exercise",
+                    ShortTermGoals = ["Reach overhead without pain"]
+                }
+            }),
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("Right shoulder pain after tennis", loaded!.Payload.Subjective.NarrativeContext.ChiefComplaint);
+        Assert.Equal("Presentation consistent with shoulder impingement", loaded.Payload.Assessment.AssessmentNarrative);
+        Assert.Contains("2x/week for 6 weeks", loaded.Payload.Plan.PlanOfCareNarrative);
+        Assert.Contains(loaded.Payload.Assessment.Goals, goal => goal.Description == "Reach overhead without pain");
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        using var storedJson = JsonDocument.Parse(stored.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Right shoulder pain after tennis",
+            storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+    }
+
+    [Fact]
+    public async Task LoadAsync_DraftLegacyDryNeedlingNote_BackfillsCanonicalWorkspacePayload()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Legacy",
+            LastName = "DryNeedling",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        var legacyContent = """
+                            {
+                              "workspaceNoteType": "Dry Needling Note",
+                              "dryNeedling": {
+                                "dateOfTreatment": "2026-04-11T00:00:00Z",
+                                "location": "Upper trapezius",
+                                "needlingType": "Deep dry needling",
+                                "painBefore": 6,
+                                "painAfter": 2,
+                                "responseDescription": "Improved cervical rotation",
+                                "additionalNotes": "No adverse response"
+                              }
+                            }
+                            """;
+
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 11),
+            ContentJson = legacyContent,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.NotNull(loaded!.Payload.DryNeedling);
+        Assert.Equal("Upper trapezius", loaded.Payload.DryNeedling!.Location);
+        Assert.Equal("Deep dry needling", loaded.Payload.DryNeedling.NeedlingType);
+        Assert.Equal(6, loaded.Payload.DryNeedling.PainBefore);
+        Assert.Equal(2, loaded.Payload.DryNeedling.PainAfter);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstAsync(existing => existing.Id == note.Id);
+        using var storedJson = JsonDocument.Parse(stored.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Upper trapezius", storedJson.RootElement.GetProperty("dryNeedling").GetProperty("location").GetString());
     }
 
     [Fact]

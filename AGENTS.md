@@ -64,6 +64,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `SKIP_API`: if set, `run-ptdoc.sh` will not auto-start the API.
 - `SKIP_SECRET_SETUP`: if set, `run-ptdoc.sh` will not auto-run `setup-dev-secrets.sh` when API startup fails because signing keys are missing.
 - `PTDOC_SERIAL_BUILD=1`: makes `cleanbuild-ptdoc.sh` use serialized builds (`-m:1` and `BuildInParallel=false`).
+- `PTDOC_DEVELOPER_MODE=true`: enables developer diagnostics surfaces; `run-ptdoc.sh` inherits it for MAUI launches and inline MAUI runs can set it directly.
 - `PTDoc_API_BASE_URL`: overrides the MAUI client base URL.
 - `DB_PROVIDER`: selects the database-provider smoke-test target (`sqlite`, `sqlserver`, or `postgres`) in `tests/PTDoc.Tests`.
 - `CI_DB_MIGRATIONS_ALREADY_APPLIED=true`: tells the provider smoke tests not to apply runtime migrations again after the SQL Server or PostgreSQL CI-style EF CLI migration step.
@@ -84,6 +85,9 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Detect SQLite model drift: `EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api`
 - Secret-policy tracked-file scan: `python3 .github/scripts/scan_secret_policy.py`
 - Run CI-owned SecretPolicy tests only: `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=SecretPolicy" --verbosity normal`
+- Run CI-owned CoreCi tests only: `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=CoreCi" --verbosity normal`
+- Run CI-owned DatabaseProvider smoke tests only: `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=DatabaseProvider" --verbosity normal`
+- Run CI-owned Observability tests only: `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=Observability" --verbosity normal`
 - CI-owned release gate categories are `RBAC`, `Tenancy`, `OfflineSync`, `Compliance`, and `EndToEnd`; run them individually with `dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=<Name>" --verbosity normal`
 - Restore pinned local EF tools before SQL Server/Postgres CI repro: `dotnet tool restore`
 - SQL Server/Postgres CI-style migration repro uses `dotnet tool run dotnet-ef ...` with `EF_PROVIDER`, `Database__ConnectionString`, and a placeholder `Jwt__SigningKey` to satisfy API startup validation

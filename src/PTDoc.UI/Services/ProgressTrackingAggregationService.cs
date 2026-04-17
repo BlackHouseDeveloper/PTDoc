@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components;
-using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Components.ProgressTracking.Models;
 
 namespace PTDoc.UI.Services;
@@ -105,7 +105,7 @@ public sealed class ProgressTrackingAggregationService(
                 continue;
             }
 
-            var payload = ParsePayload(note.ContentJson, note.NoteType);
+            var payload = ParsePayload(note.ContentJson);
             if (TryGetProgressScore(payload, out var score))
             {
                 points.Add((note.DateOfService, score));
@@ -135,7 +135,7 @@ public sealed class ProgressTrackingAggregationService(
             : null;
         var payload = latestNoteResponse is null
             ? null
-            : ParsePayload(latestNoteResponse.ContentJson, latestNoteResponse.NoteType);
+            : ParsePayload(latestNoteResponse.ContentJson);
 
         var goals = ExtractGoals(payload).ToList();
         var goalStatuses = ExtractGoalStatuses(payload);
@@ -361,9 +361,9 @@ public sealed class ProgressTrackingAggregationService(
         return "rehab";
     }
 
-    private static IEnumerable<string> ExtractGoals(NoteWorkspacePayload? payload)
+    private static IEnumerable<string> ExtractGoals(ParsedProgressTrackingPayload? payload)
     {
-        return payload?.Assessment.Goals
+        return payload?.Goals
             .Where(goal => !string.IsNullOrWhiteSpace(goal.Description))
             .OrderByDescending(goal => goal.Status == GoalStatus.Met)
             .ThenByDescending(goal => goal.Status == GoalStatus.Active)
@@ -373,9 +373,9 @@ public sealed class ProgressTrackingAggregationService(
             ?? Array.Empty<string>();
     }
 
-    private static (int MetGoals, int ActiveGoals, int ArchivedGoals, int TotalGoals) ExtractGoalStatuses(NoteWorkspacePayload? payload)
+    private static (int MetGoals, int ActiveGoals, int ArchivedGoals, int TotalGoals) ExtractGoalStatuses(ParsedProgressTrackingPayload? payload)
     {
-        if (payload?.Assessment.Goals is not { Count: > 0 } goals)
+        if (payload?.Goals is not { Count: > 0 } goals)
         {
             return (0, 0, 0, 0);
         }
@@ -387,7 +387,7 @@ public sealed class ProgressTrackingAggregationService(
     }
 
     private static int ResolveCurrentScore(
-        NoteWorkspacePayload? payload,
+        ParsedProgressTrackingPayload? payload,
         int totalGoals,
         int metGoals,
         out bool hasScore)
@@ -408,29 +408,29 @@ public sealed class ProgressTrackingAggregationService(
         return 0;
     }
 
-    private static bool TryGetLatestOutcomeMeasureScore(NoteWorkspacePayload? payload, out int score)
+    private static bool TryGetLatestOutcomeMeasureScore(ParsedProgressTrackingPayload? payload, out int score)
     {
         score = 0;
 
-        if (payload?.Objective.OutcomeMeasures is not { Count: > 0 } measures)
+        if (payload?.OutcomeMeasures is not { Count: > 0 } measures)
         {
             return false;
         }
 
         var latestMeasure = measures
-            .OrderByDescending(measure => measure.Date ?? DateTime.MinValue)
-            .FirstOrDefault(measure => TryParseScore(measure.Score, out _));
+            .OrderByDescending(measure => measure.RecordedAtUtc ?? DateTime.MinValue)
+            .FirstOrDefault();
 
-        if (latestMeasure is null || !TryParseScore(latestMeasure.Score, out var parsedScore))
+        if (latestMeasure is null)
         {
             return false;
         }
 
-        score = Math.Clamp((int)Math.Round(parsedScore, MidpointRounding.AwayFromZero), 0, 100);
+        score = Math.Clamp((int)Math.Round(latestMeasure.Score, MidpointRounding.AwayFromZero), 0, 100);
         return true;
     }
 
-    private static bool TryGetProgressScore(NoteWorkspacePayload? payload, out int score)
+    private static bool TryGetProgressScore(ParsedProgressTrackingPayload? payload, out int score)
     {
         score = 0;
         return TryGetLatestOutcomeMeasureScore(payload, out score);
@@ -475,7 +475,7 @@ public sealed class ProgressTrackingAggregationService(
         };
     }
 
-    private static NoteWorkspacePayload? ParsePayload(string? contentJson, NoteType fallbackType)
+    private static ParsedProgressTrackingPayload? ParsePayload(string? contentJson)
     {
         if (string.IsNullOrWhiteSpace(contentJson))
         {
@@ -484,20 +484,33 @@ public sealed class ProgressTrackingAggregationService(
 
         try
         {
-            var payload = JsonSerializer.Deserialize<NoteWorkspacePayload>(contentJson, SerializerOptions);
-            if (payload is not null && string.IsNullOrWhiteSpace(payload.WorkspaceNoteType))
+            using var document = JsonDocument.Parse(contentJson);
+            if (LooksLikeWorkspaceV2Payload(document.RootElement))
             {
-                payload.WorkspaceNoteType = fallbackType switch
+                var v2Payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, SerializerOptions);
+                if (v2Payload is not null)
                 {
-                    NoteType.Evaluation => "Evaluation Note",
-                    NoteType.ProgressNote => "Progress Note",
-                    NoteType.Discharge => "Discharge Note",
-                    NoteType.Daily => "Daily Treatment Note",
-                    _ => "Evaluation Note"
-                };
+                    return new ParsedProgressTrackingPayload
+                    {
+                        OutcomeMeasures = v2Payload.Objective.OutcomeMeasures
+                            .Select(entry => new ParsedOutcomeMeasure
+                            {
+                                Score = entry.Score,
+                                RecordedAtUtc = entry.RecordedAtUtc
+                            })
+                            .ToList(),
+                        Goals = v2Payload.Assessment.Goals
+                            .Select(goal => new ParsedGoal
+                            {
+                                Description = goal.Description,
+                                Status = goal.Status
+                            })
+                            .ToList()
+                    };
+                }
             }
 
-            return payload;
+            return ParseLegacyPayload(document.RootElement);
         }
         catch (JsonException)
         {
@@ -507,13 +520,164 @@ public sealed class ProgressTrackingAggregationService(
 
     private static string FormatNoteType(NoteType noteType)
     {
+        return ToWorkspaceNoteType(noteType);
+    }
+
+    private static bool LooksLikeWorkspaceV2Payload(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return property.Value.ValueKind == JsonValueKind.Number
+                   && property.Value.TryGetInt32(out var schemaVersion)
+                   && schemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2;
+        }
+
+        return false;
+    }
+
+    private static ParsedProgressTrackingPayload ParseLegacyPayload(JsonElement root)
+    {
+        var outcomeMeasures = new List<ParsedOutcomeMeasure>();
+        if (TryGetPropertyIgnoreCase(root, "objective", out var objective)
+            && objective.ValueKind == JsonValueKind.Object
+            && TryGetPropertyIgnoreCase(objective, "outcomeMeasures", out var measuresElement)
+            && measuresElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var measure in measuresElement.EnumerateArray())
+            {
+                if (measure.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var scoreText = TryGetPropertyIgnoreCase(measure, "score", out var scoreElement) && scoreElement.ValueKind == JsonValueKind.String
+                    ? scoreElement.GetString()
+                    : null;
+                if (!TryParseScore(scoreText, out var parsedScore))
+                {
+                    continue;
+                }
+
+                DateTime? recordedAtUtc = null;
+                if (TryGetPropertyIgnoreCase(measure, "date", out var dateElement) && dateElement.ValueKind == JsonValueKind.String)
+                {
+                    recordedAtUtc = dateElement.TryGetDateTime(out var parsedDate)
+                        ? parsedDate
+                        : null;
+                }
+
+                outcomeMeasures.Add(new ParsedOutcomeMeasure
+                {
+                    Score = parsedScore,
+                    RecordedAtUtc = recordedAtUtc
+                });
+            }
+        }
+
+        var goals = new List<ParsedGoal>();
+        if (TryGetPropertyIgnoreCase(root, "assessment", out var assessment)
+            && assessment.ValueKind == JsonValueKind.Object
+            && TryGetPropertyIgnoreCase(assessment, "goals", out var goalsElement)
+            && goalsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var goal in goalsElement.EnumerateArray())
+            {
+                if (goal.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var description = TryGetPropertyIgnoreCase(goal, "description", out var descriptionElement) && descriptionElement.ValueKind == JsonValueKind.String
+                    ? descriptionElement.GetString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(description))
+                {
+                    continue;
+                }
+
+                var status = GoalStatus.Active;
+                if (TryGetPropertyIgnoreCase(goal, "status", out var statusElement))
+                {
+                    if (statusElement.ValueKind == JsonValueKind.Number && statusElement.TryGetInt32(out var numericStatus))
+                    {
+                        status = Enum.IsDefined(typeof(GoalStatus), numericStatus)
+                            ? (GoalStatus)numericStatus
+                            : GoalStatus.Active;
+                    }
+                    else if (statusElement.ValueKind == JsonValueKind.String
+                             && Enum.TryParse<GoalStatus>(statusElement.GetString(), ignoreCase: true, out var parsedStatus))
+                    {
+                        status = parsedStatus;
+                    }
+                }
+
+                goals.Add(new ParsedGoal
+                {
+                    Description = description,
+                    Status = status
+                });
+            }
+        }
+
+        return new ParsedProgressTrackingPayload
+        {
+            OutcomeMeasures = outcomeMeasures,
+            Goals = goals
+        };
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private sealed class ParsedProgressTrackingPayload
+    {
+        public IReadOnlyList<ParsedOutcomeMeasure> OutcomeMeasures { get; init; } = [];
+        public IReadOnlyList<ParsedGoal> Goals { get; init; } = [];
+    }
+
+    private sealed class ParsedOutcomeMeasure
+    {
+        public double Score { get; init; }
+        public DateTime? RecordedAtUtc { get; init; }
+    }
+
+    private sealed class ParsedGoal
+    {
+        public string Description { get; init; } = string.Empty;
+        public GoalStatus Status { get; init; }
+    }
+
+    private static string ToWorkspaceNoteType(NoteType noteType)
+    {
         return noteType switch
         {
             NoteType.Evaluation => "Evaluation Note",
             NoteType.ProgressNote => "Progress Note",
             NoteType.Discharge => "Discharge Note",
             NoteType.Daily => "Daily Treatment Note",
-            _ => noteType.ToString()
+            _ => "Evaluation Note"
         };
     }
 

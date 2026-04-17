@@ -4,6 +4,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
+using System.Text.Json;
 using Xunit;
 
 namespace PTDoc.Tests.Tenancy;
@@ -618,10 +619,10 @@ public class TenantIsolationTests
         Assert.Equal(userA.Id, overrides[0].UserId);
     }
 
-    // ─── Addendum isolation (Sprint II) ──────────────────────────────────────
+    // ─── Linked addendum isolation (Branch 5) ────────────────────────────────
 
     [Fact]
-    public async Task Addendum_Query_Returns_Only_Current_Clinic_Addendums()
+    public async Task ClinicalNoteAddendum_Query_Returns_Only_Current_Clinic_Addendums()
     {
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
@@ -637,21 +638,49 @@ public class TenantIsolationTests
         var user = new User { Username = "u", PinHash = "h", FirstName = "U", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         seedCtx.Users.Add(user);
 
-        seedCtx.Addendums.AddRange(
-            new Addendum { ClinicalNoteId = noteA.Id, Content = "Addendum for A", CreatedByUserId = user.Id },
-            new Addendum { ClinicalNoteId = noteB.Id, Content = "Addendum for B", CreatedByUserId = user.Id }
+        seedCtx.ClinicalNotes.AddRange(
+            new ClinicalNote
+            {
+                PatientId = patientA.Id,
+                ClinicId = ClinicA,
+                ParentNoteId = noteA.Id,
+                IsAddendum = true,
+                NoteType = NoteType.Daily,
+                NoteStatus = NoteStatus.Draft,
+                DateOfService = noteA.DateOfService,
+                ContentJson = JsonSerializer.Serialize("Addendum for A"),
+                CptCodesJson = "[]",
+                CreatedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow,
+                ModifiedByUserId = user.Id
+            },
+            new ClinicalNote
+            {
+                PatientId = patientB.Id,
+                ClinicId = ClinicB,
+                ParentNoteId = noteB.Id,
+                IsAddendum = true,
+                NoteType = NoteType.Daily,
+                NoteStatus = NoteStatus.Draft,
+                DateOfService = noteB.DateOfService,
+                ContentJson = JsonSerializer.Serialize("Addendum for B"),
+                CptCodesJson = "[]",
+                CreatedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow,
+                ModifiedByUserId = user.Id
+            }
         );
         await seedCtx.SaveChangesAsync();
 
         await using var ctxA = CreateTenantContext(ClinicA, dbName);
-        var addendums = await ctxA.Addendums.ToListAsync();
+        var addendums = await ctxA.ClinicalNotes.Where(note => note.IsAddendum).ToListAsync();
 
         Assert.Single(addendums);
-        Assert.Equal(noteA.Id, addendums[0].ClinicalNoteId);
+        Assert.Equal(noteA.Id, addendums[0].ParentNoteId);
     }
 
     [Fact]
-    public async Task Addendum_SystemContext_Returns_All_Addendums()
+    public async Task ClinicalNoteAddendum_SystemContext_Returns_All_Addendums()
     {
         var dbName = Guid.NewGuid().ToString();
         await using var seedCtx = CreateSystemContext(dbName);
@@ -666,14 +695,42 @@ public class TenantIsolationTests
         var user = new User { Username = "u", PinHash = "h", FirstName = "U", LastName = "U", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow, ClinicId = ClinicA };
         seedCtx.Users.Add(user);
 
-        seedCtx.Addendums.AddRange(
-            new Addendum { ClinicalNoteId = noteA.Id, Content = "Addendum for A", CreatedByUserId = user.Id },
-            new Addendum { ClinicalNoteId = noteB.Id, Content = "Addendum for B", CreatedByUserId = user.Id }
+        seedCtx.ClinicalNotes.AddRange(
+            new ClinicalNote
+            {
+                PatientId = patientA.Id,
+                ClinicId = ClinicA,
+                ParentNoteId = noteA.Id,
+                IsAddendum = true,
+                NoteType = NoteType.Daily,
+                NoteStatus = NoteStatus.Draft,
+                DateOfService = noteA.DateOfService,
+                ContentJson = JsonSerializer.Serialize("Addendum for A"),
+                CptCodesJson = "[]",
+                CreatedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow,
+                ModifiedByUserId = user.Id
+            },
+            new ClinicalNote
+            {
+                PatientId = patientA.Id,
+                ClinicId = ClinicB,
+                ParentNoteId = noteB.Id,
+                IsAddendum = true,
+                NoteType = NoteType.Daily,
+                NoteStatus = NoteStatus.Draft,
+                DateOfService = noteB.DateOfService,
+                ContentJson = JsonSerializer.Serialize("Addendum for B"),
+                CptCodesJson = "[]",
+                CreatedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow,
+                ModifiedByUserId = user.Id
+            }
         );
         await seedCtx.SaveChangesAsync();
 
         await using var sysCtx = CreateSystemContext(dbName);
-        var addendums = await sysCtx.Addendums.ToListAsync();
+        var addendums = await sysCtx.ClinicalNotes.Where(note => note.IsAddendum).ToListAsync();
 
         Assert.Equal(2, addendums.Count);
     }

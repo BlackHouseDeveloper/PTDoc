@@ -34,6 +34,7 @@ public sealed class NoteWorkspaceDraft
     public Guid PatientId { get; init; }
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
+    public bool IsReEvaluation { get; init; }
     public bool IsExistingNote { get; init; }
     public OverrideSubmission? Override { get; init; }
     public NoteWorkspacePayload Payload { get; init; } = new();
@@ -46,6 +47,7 @@ public sealed class NoteWorkspaceLoadResult
     public Guid NoteId { get; init; }
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
+    public bool IsReEvaluation { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
     public bool IsSubmitted => Status != NoteStatus.Draft;
     public NoteWorkspacePayload Payload { get; init; } = new();
@@ -76,6 +78,7 @@ public sealed class NoteWorkspaceSaveResult
     public string? ErrorMessage { get; init; }
     public Guid NoteId { get; init; }
     public int? LocalDraftId { get; init; }
+    public bool IsReEvaluation { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
     public bool IsSubmitted => Status != NoteStatus.Draft;
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
