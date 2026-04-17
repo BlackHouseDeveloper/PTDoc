@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Note save validation null-safety
+
+#### CPT modifier normalization now tolerates null client arrays
+- **`src/PTDoc.Infrastructure/Compliance/NoteSaveValidationService.cs`** — Hardened `ValidateAsync(...)` to ignore null CPT entry objects and treat null `Modifiers`, `ModifierOptions`, and `SuggestedModifiers` arrays as empty during normalization. Reason: clients can still send explicit JSON `null` values for collection properties even when the request contract defaults them, and note-save validation should reject bad data through normal rule handling instead of throwing.
+
 ### Changed - Progress tracking payload null-safety
 
 #### Workspace-v2 progress tracking parsing now tolerates null objective and assessment blocks

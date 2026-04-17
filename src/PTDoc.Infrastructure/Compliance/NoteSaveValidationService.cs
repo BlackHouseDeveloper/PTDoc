@@ -27,23 +27,24 @@ public sealed class NoteSaveValidationService(
         }
 
         var normalizedEntries = (request.CptEntries ?? [])
+            .OfType<CptCodeEntry>()
             .Select(entry => new CptCodeEntry
             {
                 Code = entry.Code?.Trim() ?? string.Empty,
                 Units = entry.Units,
                 Minutes = entry.Minutes,
                 IsTimed = entry.IsTimed,
-                Modifiers = entry.Modifiers
+                Modifiers = (entry.Modifiers ?? [])
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList(),
-                ModifierOptions = entry.ModifierOptions
+                ModifierOptions = (entry.ModifierOptions ?? [])
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList(),
-                SuggestedModifiers = entry.SuggestedModifiers
+                SuggestedModifiers = (entry.SuggestedModifiers ?? [])
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
