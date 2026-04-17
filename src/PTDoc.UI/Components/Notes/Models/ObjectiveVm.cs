@@ -31,10 +31,6 @@ public class ObjectiveVm
     public string? ClinicalObservationNotes { get; set; }
 
     public List<ExerciseRowEntry> ExerciseRows { get; set; } = new();
-
-    // Legacy UI lists kept for compatibility while Branch 4 moves to structured rows.
-    public List<string> TherapeuticExercises { get; set; } = new();
-    public List<string> ManualTechniques { get; set; } = new();
 }
 
 public sealed class ObjectiveMetricRowEntry

@@ -89,6 +89,20 @@
                @bind="_assistiveSearch"
                @bind:event="oninput" />
 
+        @if (SelectedAssistiveDeviceItems.Count > 0)
+        {
+            <div class="intake-card__chip-list">
+                @foreach (var option in SelectedAssistiveDeviceItems)
+                {
+                    <button type="button"
+                            class="intake-card__chip intake-card__chip--selected"
+                            @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.AssistiveDevice)">
+                        @option.Label
+                    </button>
+                }
+            </div>
+        }
+
         <div class="intake-card__option-grid">
             @foreach (var option in FilteredAssistiveDevices)
             {
@@ -160,6 +174,11 @@
         .OrderBy(item => item.DisplayOrder)
         .ToList();
 
+    private IReadOnlyList<IntakeCatalogOptionDto> SelectedAssistiveDeviceItems => AssistiveDeviceCatalog
+        .Where(item => SelectedAssistiveDeviceIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+        .OrderBy(item => item.DisplayOrder)
+        .ToList();
+
     private IReadOnlyList<IntakeMedicationItemDto> FilteredMedications => MedicationCatalog
         .Where(item => string.IsNullOrWhiteSpace(_medicationSearch)
             || item.DisplayLabel.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase)
@@ -208,7 +227,8 @@
             target.Add(optionId);
         }
 
-        SyncLegacySupplementalSelections();
+        IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
+        SyncDerivedState();
 
         await NotifyStateChangedAsync();
     }
@@ -225,7 +245,8 @@
             StructuredData.HouseLayoutOptionIds.Add(optionId);
         }
 
-        SyncLegacySupplementalSelections();
+        IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
+        SyncDerivedState();
         await NotifyStateChangedAsync();
     }
 
@@ -253,27 +274,16 @@
 
     protected override void OnParametersSet()
     {
+        IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
         _ = StructuredData;
-        SyncLegacySupplementalSelections();
-        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
+        SyncDerivedState();
     }
 
-    private void SyncLegacySupplementalSelections()
+    private void SyncDerivedState()
     {
-        State.SelectedComorbidities = StructuredData.ComorbidityIds
-            .Select(id => IntakeReferenceData.GetComorbidity(id)?.Label ?? id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        State.SelectedAssistiveDevices = StructuredData.AssistiveDeviceIds
-            .Select(id => IntakeReferenceData.GetAssistiveDevice(id)?.Label ?? id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        State.SelectedLivingSituations = StructuredData.LivingSituationIds
-            .Select(id => IntakeReferenceData.GetLivingSituation(id)?.Label ?? id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        State.SelectedHouseLayoutOptions = StructuredData.HouseLayoutOptionIds
-            .Select(id => IntakeReferenceData.GetHouseLayoutOption(id)?.Label ?? id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        State.HasOtherMedicalConditions = StructuredData.ComorbidityIds.Count > 0;
-        State.UsesAssistiveDevices = StructuredData.AssistiveDeviceIds.Count > 0;
+        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
+        State.HasOtherMedicalConditions = StructuredData.ComorbidityIds.Count > 0 || State.SelectedComorbidities.Count > 0;
+        State.UsesAssistiveDevices = StructuredData.AssistiveDeviceIds.Count > 0 || State.SelectedAssistiveDevices.Count > 0;
     }
 
     private enum SelectionKind

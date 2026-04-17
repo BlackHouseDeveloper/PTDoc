@@ -49,8 +49,9 @@ public sealed class CarryForwardData
     public DateTime SourceNoteDateOfService { get; init; }
 
     /// <summary>
-    /// ContentJson from the source note, returned for informational carry-forward only.
-    /// The source note is SIGNED and immutable; this field is a read-only copy.
+    /// Canonical informational copy of the source note content, returned for carry-forward only.
+    /// Recognized legacy note payloads may be normalized into workspace v2, but the signed
+    /// source note itself is never mutated.
     /// </summary>
     public string ContentJson { get; init; } = "{}";
 }

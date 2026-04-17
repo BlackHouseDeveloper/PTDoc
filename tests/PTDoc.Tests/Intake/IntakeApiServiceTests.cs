@@ -156,6 +156,12 @@ public sealed class IntakeApiServiceTests
         Assert.True(consentPacket.GetProperty("treatmentConsentAccepted").GetBoolean());
         Assert.Equal("555-0100", consentPacket.GetProperty("communicationPhoneNumber").GetString());
         Assert.Equal("patient@example.com", consentPacket.GetProperty("communicationEmail").GetString());
+
+        using var responseJson = JsonDocument.Parse(document.RootElement.GetProperty("responseJson").GetString() ?? "{}");
+        Assert.True(responseJson.RootElement.GetProperty("consentPacket").GetProperty("hipaaAcknowledged").GetBoolean());
+        Assert.True(responseJson.RootElement.GetProperty("consentPacket").GetProperty("treatmentConsentAccepted").GetBoolean());
+        Assert.False(responseJson.RootElement.TryGetProperty("hipaaAcknowledged", out _));
+        Assert.False(responseJson.RootElement.TryGetProperty("consentToTreatAcknowledged", out _));
     }
 
     [Fact]
@@ -275,6 +281,74 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_ClearsLegacySupplementalSelectionsFromResponseJson_WhenStructuredIdsExist()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+                {
+                    Id = intakeId,
+                    PatientId = patientId,
+                    PainMapData = "{}",
+                    Consents = "{}",
+                    ResponseJson = "{}",
+                    Locked = false,
+                    TemplateVersion = "1.0",
+                    LastModifiedUtc = DateTime.UtcNow
+                }, JsonOptions));
+            }
+
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        await service.SaveDraftAsync(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            StructuredData = new IntakeStructuredDataDto
+            {
+                ComorbidityIds = ["hypertension"],
+                AssistiveDeviceIds = ["cane"],
+                LivingSituationIds = ["lives-alone"],
+                HouseLayoutOptionIds = ["single-story-main-floor-bed-bath"]
+            },
+            SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
+            SelectedAssistiveDevices = ["Cane"],
+            SelectedLivingSituations = ["Lives alone"],
+            SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"]
+        });
+
+        Assert.NotNull(requestBody);
+        using var requestDocument = JsonDocument.Parse(requestBody!);
+        using var responseJson = JsonDocument.Parse(requestDocument.RootElement.GetProperty("responseJson").GetString() ?? "{}");
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedComorbidities").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedAssistiveDevices").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedLivingSituations").GetArrayLength());
+        Assert.Equal(0, responseJson.RootElement.GetProperty("selectedHouseLayoutOptions").GetArrayLength());
+    }
+
+    [Fact]
     public async Task GetDraftByPatientIdAsync_HydratesStructuredDataFromResponse()
     {
         var patientId = Guid.NewGuid();
@@ -312,6 +386,51 @@ public sealed class IntakeApiServiceTests
         Assert.NotNull(draft);
         Assert.Equal("2026-03-30", draft!.StructuredData?.SchemaVersion);
         Assert.Equal("zestril-lisinopril", Assert.Single(draft.StructuredData!.MedicationIds));
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_ClearsLegacySupplementalSelections_WhenStructuredDataExists()
+    {
+        var patientId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal($"/api/v1/intake/patient/{patientId}/draft", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = """
+                               {"selectedComorbidities":["Hypertension (High Blood Pressure)"],"selectedAssistiveDevices":["Cane"]}
+                               """,
+                StructuredData = new IntakeStructuredDataDto
+                {
+                    SchemaVersion = "2026-03-30",
+                    ComorbidityIds = ["hypertension"],
+                    AssistiveDeviceIds = ["cane"]
+                },
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(null),
+            CreateNavigationManager("https://localhost/intake"));
+
+        var draft = await service.GetDraftByPatientIdAsync(patientId);
+
+        Assert.NotNull(draft);
+        Assert.Empty(draft!.SelectedComorbidities);
+        Assert.Empty(draft.SelectedAssistiveDevices);
+        Assert.Equal(["hypertension"], draft.StructuredData!.ComorbidityIds);
+        Assert.Equal(["cane"], draft.StructuredData.AssistiveDeviceIds);
     }
 
     private static NavigationManager CreateNavigationManager(string uri)

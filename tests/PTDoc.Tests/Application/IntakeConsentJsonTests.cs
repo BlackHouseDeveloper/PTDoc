@@ -75,6 +75,37 @@ public sealed class IntakeConsentJsonTests
     }
 
     [Fact]
+    public void Validate_SubmissionWithoutTreatmentConsent_ReturnsError()
+    {
+        var packet = new IntakeConsentPacket
+        {
+            HipaaAcknowledged = true,
+            TreatmentConsentAccepted = false
+        };
+
+        var result = IntakeConsentJson.Validate(packet, requireHipaaAcknowledgement: true);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("treatmentConsentAccepted", result.Errors.Keys);
+    }
+
+    [Fact]
+    public void Validate_SubmissionWithRevokedRequiredConsent_ReturnsError()
+    {
+        var packet = new IntakeConsentPacket
+        {
+            HipaaAcknowledged = true,
+            TreatmentConsentAccepted = true,
+            RevokedConsentKeys = ["treatmentConsentAccepted"]
+        };
+
+        var result = IntakeConsentJson.Validate(packet, requireHipaaAcknowledgement: true);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("treatmentConsentAccepted", result.Errors.Keys);
+    }
+
+    [Fact]
     public void CreateAuditSummary_ExcludesPhiFields()
     {
         var packet = new IntakeConsentPacket

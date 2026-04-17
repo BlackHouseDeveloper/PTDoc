@@ -1,9 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -270,6 +273,156 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PDF_Export_DailyWorkspaceV2_UsesCanonicalStructuredContent()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Daily Note",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    NarrativeContext = new SubjectNarrativeContextV2
+                    {
+                        ChiefComplaint = "Pain with walking"
+                    },
+                    CurrentPainScore = 4,
+                    WorstPainScore = 7,
+                    FunctionalLimitations =
+                    [
+                        new FunctionalLimitationEntryV2
+                        {
+                            Description = "Walking longer than 10 minutes"
+                        }
+                    ]
+                },
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            ActualExercisePerformed = "Bridges",
+                            SetsRepsDuration = "2 x 10"
+                        }
+                    ]
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Improving activity tolerance",
+                    OverallPrognosis = "Good",
+                    DiagnosisCodes =
+                    [
+                        new DiagnosisCodeV2
+                        {
+                            Code = "R10.2",
+                            Description = "Pelvic and perineal pain"
+                        }
+                    ],
+                    Goals =
+                    [
+                        new WorkspaceGoalEntryV2
+                        {
+                            Description = "Walk 30 minutes without increased pain",
+                            Timeframe = GoalTimeframe.ShortTerm,
+                            Status = GoalStatus.Active
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    TreatmentFocuses = ["Gait training"],
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntryV2
+                        {
+                            Name = "Manual therapy"
+                        }
+                    ],
+                    HomeExerciseProgramNotes = "Continue bridges at home",
+                    FollowUpInstructions = "Progress as tolerated"
+                }
+            }),
+            CptCodesJson = """[{"code":"97140","units":1,"minutes":10}]""",
+            PatientFirstName = "Daily",
+            PatientLastName = "Patient",
+            PatientMedicalRecordNumber = "MRN-300",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("Pain with walking", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Walking longer than 10 minutes", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Bridges", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Gait training", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Walk 30 minutes without increased pain", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Good", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PDF_Export_DryNeedlingWorkspaceV2_UsesCanonicalStructuredContent()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Daily Note",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                DryNeedling = new WorkspaceDryNeedlingV2
+                {
+                    DateOfTreatment = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+                    Location = "Gluteal region",
+                    NeedlingType = "Deep dry needling",
+                    PainBefore = 6,
+                    PainAfter = 3,
+                    ResponseDescription = "Reduced gluteal pain after treatment",
+                    AdditionalNotes = "Tolerated procedure well"
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    DiagnosisCodes =
+                    [
+                        new DiagnosisCodeV2
+                        {
+                            Code = "M79.18",
+                            Description = "Myalgia, other site"
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    FollowUpInstructions = "Monitor soreness for 24 hours"
+                }
+            }),
+            PatientFirstName = "Dry",
+            PatientLastName = "Needling",
+            PatientMedicalRecordNumber = "MRN-301",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("Physical Therapy Dry Needling Note", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Gluteal region", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Deep dry needling", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("6/10", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3/10", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Monitor soreness for 24 hours", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PDF_Export_With_No_Patient_Data_Still_Works()
     {
         // Arrange: Note with minimal data (no patient loaded)
@@ -301,7 +454,9 @@ public class PdfIntegrationTests : IAsyncDisposable
         using var stream = new MemoryStream(pdfBytes);
         using var document = PdfDocument.Open(stream);
 
-        return string.Join(Environment.NewLine, document.GetPages().Select(page => page.Text));
+        var rawText = string.Join(Environment.NewLine, document.GetPages().Select(page => page.Text));
+        var withoutNulls = rawText.Replace("\0", string.Empty, StringComparison.Ordinal);
+        return Regex.Replace(withoutNulls, @"\s+", " ").Trim();
     }
 
     public async ValueTask DisposeAsync()

@@ -15,11 +15,23 @@ public sealed class NoteWorkspaceV2Payload
     public int SchemaVersion { get; set; } = WorkspaceSchemaVersions.EvalReevalProgressV2;
     public NoteType NoteType { get; set; }
     public WorkspaceSeedContextV2 SeedContext { get; set; } = new();
+    public WorkspaceDryNeedlingV2? DryNeedling { get; set; }
     public WorkspaceSubjectiveV2 Subjective { get; set; } = new();
     public WorkspaceObjectiveV2 Objective { get; set; } = new();
     public WorkspaceAssessmentV2 Assessment { get; set; } = new();
     public WorkspacePlanV2 Plan { get; set; } = new();
     public WorkspaceProgressNoteQuestionnaireV2 ProgressQuestionnaire { get; set; } = new();
+}
+
+public sealed class WorkspaceDryNeedlingV2
+{
+    public DateTime? DateOfTreatment { get; set; }
+    public string Location { get; set; } = string.Empty;
+    public string NeedlingType { get; set; } = string.Empty;
+    public int? PainBefore { get; set; }
+    public int? PainAfter { get; set; }
+    public string ResponseDescription { get; set; } = string.Empty;
+    public string AdditionalNotes { get; set; } = string.Empty;
 }
 
 public enum WorkspaceSeedKind
@@ -319,6 +331,7 @@ public sealed class NoteWorkspaceV2SaveRequest
     public Guid PatientId { get; set; }
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
+    public bool IsReEvaluation { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
     public OverrideSubmission? Override { get; set; }
 }
@@ -329,6 +342,7 @@ public sealed class NoteWorkspaceV2LoadResponse
     public Guid PatientId { get; set; }
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
+    public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();

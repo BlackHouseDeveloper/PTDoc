@@ -20,12 +20,15 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         CancellationToken cancellationToken = default)
     {
         var localDraft = await ResolveLocalDraftAsync(draft, cancellationToken) ?? new LocalClinicalNoteDraft();
+        var noteType = NoteWorkspacePayloadMapper.ToApiNoteType(draft.WorkspaceNoteType);
+        var canonicalPayload = NoteWorkspacePayloadMapper.MapToV2Payload(draft.Payload, noteType);
 
         localDraft.ServerId = draft.NoteId ?? Guid.Empty;
         localDraft.PatientServerId = draft.PatientId;
-        localDraft.NoteType = ToApiNoteType(draft.WorkspaceNoteType).ToString();
+        localDraft.NoteType = noteType.ToString();
+        localDraft.IsReEvaluation = draft.IsReEvaluation;
         localDraft.DateOfService = draft.DateOfService.Date;
-        localDraft.ContentJson = JsonSerializer.Serialize(draft.Payload, SerializerOptions);
+        localDraft.ContentJson = JsonSerializer.Serialize(canonicalPayload, SerializerOptions);
         localDraft.CptCodesJson = BuildCptCodesJson(draft.Payload.Plan);
         localDraft.SignatureHash = null;
         localDraft.SignedUtc = null;
@@ -45,6 +48,7 @@ public sealed class MauiNoteDraftLocalPersistenceService(
                     localDraft.ServerId,
                     patientId = localDraft.PatientServerId,
                     localDraft.NoteType,
+                    localDraft.IsReEvaluation,
                     localDraft.DateOfService,
                     localDraft.ContentJson,
                     localDraft.CptCodesJson,
@@ -64,6 +68,7 @@ public sealed class MauiNoteDraftLocalPersistenceService(
             Success = true,
             NoteId = localDraft.ServerId,
             LocalDraftId = localDraft.LocalId,
+            IsReEvaluation = localDraft.IsReEvaluation,
             Status = NoteStatus.Draft
         };
     }
@@ -88,15 +93,6 @@ public sealed class MauiNoteDraftLocalPersistenceService(
 
         return null;
     }
-
-    private static NoteType ToApiNoteType(string workspaceNoteType) =>
-        workspaceNoteType switch
-        {
-            "Evaluation Note" => NoteType.Evaluation,
-            "Progress Note" => NoteType.ProgressNote,
-            "Discharge Note" => NoteType.Discharge,
-            _ => NoteType.Daily
-        };
 
     private static string BuildCptCodesJson(PlanVm plan)
     {

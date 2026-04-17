@@ -201,7 +201,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         {
             PatientId = patientId,
             PainMapData = "{\"regions\":[\"knee\"]}",
-            Consents = "{\"hipaaAcknowledged\":true}",
+            Consents = "{\"hipaaAcknowledged\":true,\"treatmentConsentAccepted\":true}",
             ResponseJson = "{}"
         });
         using var createResponse = await fdClient.PostAsync("/api/v1/intake", createBody);
@@ -370,7 +370,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             Content = JsonContent(new UpdateIntakeRequest
             {
                 PainMapData = """{"regions":["lumbar"]}""",
-                Consents = """{"hipaaAcknowledged":true,"termsOfServiceAccepted":true}""",
+                Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}""",
                 ResponseJson = """{"fullName":"Patient Updated Through Invite"}""",
                 TemplateVersion = "1.1"
             })
@@ -423,6 +423,50 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var note = doc!.RootElement.GetProperty("note");
         Assert.NotEqual(Guid.Empty, note.GetProperty("id").GetGuid());
         Assert.Equal(patientId, note.GetProperty("patientId").GetGuid());
+    }
+
+    [Fact]
+    public async Task PT_Creates_DailyNote_WithLegacySoapJson_PersistsCanonicalWorkspaceV2Content()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var response = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            ContentJson = """
+                          {
+                            "subjective": "Patient reports improvement",
+                            "assessment": "Responding well to treatment",
+                            "plan": "Continue current plan of care"
+                          }
+                          """,
+            CptCodesJson = "[]"
+        }));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var payload = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = payload.Note!.Id;
+        using var responseJson = JsonDocument.Parse(payload.Note.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, responseJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Patient reports improvement", responseJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("Responding well to treatment", responseJson.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+        Assert.Equal("Continue current plan of care", responseJson.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Patient reports improvement", storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("Responding well to treatment", storedJson.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+        Assert.Equal("Continue current plan of care", storedJson.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
     }
 
     [Fact]
@@ -567,6 +611,314 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PT_Updates_DailyNote_WithLegacySoapJson_PersistsCanonicalWorkspaceV2Content()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 16, 0, 0, 0, DateTimeKind.Utc),
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var created = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = created.Note!.Id;
+
+        using var updateResponse = await client.PutAsync(
+            $"/api/v1/notes/{noteId}",
+            JsonContent(new UpdateNoteRequest
+            {
+                ContentJson = """
+                              {
+                                "subjective": "Symptoms improving since last visit",
+                                "objective": "Gait is less antalgic",
+                                "plan": "Advance exercise challenge next session"
+                              }
+                              """
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+
+        var envelope = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await updateResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        using var responseJson = JsonDocument.Parse(envelope.Note!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, responseJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Symptoms improving since last visit", responseJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("Gait is less antalgic", responseJson.RootElement.GetProperty("objective").GetProperty("clinicalObservationNotes").GetString());
+        Assert.Equal("Advance exercise challenge next session", responseJson.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Symptoms improving since last visit", storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("Gait is less antalgic", storedJson.RootElement.GetProperty("objective").GetProperty("clinicalObservationNotes").GetString());
+        Assert.Equal("Advance exercise challenge next session", storedJson.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Update_Without_ContentJson_Backfills_Recognized_Legacy_Note_To_WorkspaceV2()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+        var updatedDateOfService = new DateTime(2026, 4, 18, 0, 0, 0, DateTimeKind.Utc);
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """{"subjective":"Legacy update without content body"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var updateResponse = await client.PutAsync(
+            $"/api/v1/notes/{noteId}",
+            JsonContent(new UpdateNoteRequest
+            {
+                DateOfService = updatedDateOfService
+            }));
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+
+        var envelope = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await updateResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        using var responseJson = JsonDocument.Parse(envelope.Note!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, responseJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy update without content body", responseJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await verifyDb.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+        Assert.Equal(updatedDateOfService, storedNote.DateOfService);
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy update without content body", storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Generic_Note_Reads_Return_CanonicalWorkspaceV2Content_For_Legacy_Stored_Notes()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+        var addendumId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = new DateTime(2026, 4, 16, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """{"subjective":"Legacy read path complaint"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = addendumId,
+                PatientId = patientId,
+                ParentNoteId = noteId,
+                IsAddendum = true,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = new DateTime(2026, 4, 16, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """{"assessment":"Legacy linked addendum finding"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var detailResponse = await client.GetAsync($"/api/v1/notes/{noteId}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var detail = JsonSerializer.Deserialize<NoteDetailResponse>(
+            await detailResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        using var detailContent = JsonDocument.Parse(detail.Note!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, detailContent.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy read path complaint", detailContent.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        var detailAddendum = Assert.Single(detail.Addendums);
+        Assert.Equal(addendumId, detailAddendum.Id);
+        using var detailAddendumContent = JsonDocument.Parse(detailAddendum.Content);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, detailAddendumContent.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Legacy linked addendum finding",
+            detailAddendumContent.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+
+        using var batchResponse = await client.PostAsync(
+            "/api/v1/notes/batch-read",
+            JsonContent(new BatchNoteReadRequest { NoteIds = [noteId] }));
+        Assert.Equal(HttpStatusCode.OK, batchResponse.StatusCode);
+        var batch = JsonSerializer.Deserialize<IReadOnlyList<NoteDetailResponse>>(
+            await batchResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        var batchDetail = Assert.Single(batch);
+        using var batchContent = JsonDocument.Parse(batchDetail.Note!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, batchContent.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy read path complaint", batchContent.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Generic_Note_Reads_Return_CanonicalWorkspaceV2DryNeedlingContent_For_Legacy_Stored_Notes()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """
+                              {
+                                "workspaceNoteType": "Dry Needling Note",
+                                "dryNeedling": {
+                                  "dateOfTreatment": "2026-04-17T00:00:00Z",
+                                  "location": "Upper trapezius",
+                                  "needlingType": "Deep dry needling",
+                                  "painBefore": 6,
+                                  "painAfter": 2,
+                                  "responseDescription": "Improved cervical rotation",
+                                  "additionalNotes": "No adverse response"
+                                }
+                              }
+                              """,
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var detailResponse = await client.GetAsync($"/api/v1/notes/{noteId}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var detail = JsonSerializer.Deserialize<NoteDetailResponse>(
+            await detailResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        using var detailContent = JsonDocument.Parse(detail.Note!.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, detailContent.RootElement.GetProperty("schemaVersion").GetInt32());
+        var dryNeedling = detailContent.RootElement.GetProperty("dryNeedling");
+        Assert.Equal("Upper trapezius", dryNeedling.GetProperty("location").GetString());
+        Assert.Equal("Deep dry needling", dryNeedling.GetProperty("needlingType").GetString());
+        Assert.Equal(6, dryNeedling.GetProperty("painBefore").GetInt32());
+        Assert.Equal(2, dryNeedling.GetProperty("painAfter").GetInt32());
+        Assert.Equal("Improved cervical rotation", dryNeedling.GetProperty("responseDescription").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Note_Detail_Returns_Linked_Text_Addendum_As_Text_Content()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+        var addendumId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """{"assessment":"Primary note"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Signed,
+                SignatureHash = "signed-note-hash"
+            });
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = addendumId,
+                PatientId = patientId,
+                ParentNoteId = noteId,
+                IsAddendum = true,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = JsonSerializer.Serialize("Plain text addendum"),
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var detailResponse = await client.GetAsync($"/api/v1/notes/{noteId}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+
+        var detail = JsonSerializer.Deserialize<NoteDetailResponse>(
+            await detailResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        var addendum = Assert.Single(detail.Addendums);
+        Assert.False(addendum.IsLegacy);
+        Assert.Equal("text", addendum.ContentFormat);
+        Assert.Equal("Plain text addendum", addendum.Content);
+    }
+
+    [Fact]
+    public async Task PT_Patient_Note_List_Returns_CanonicalWorkspaceV2Content_For_Legacy_Stored_Notes()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """{"subjective":"Legacy patient note list complaint"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync($"/api/v1/patients/{patientId}/notes");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var notes = JsonSerializer.Deserialize<IReadOnlyList<NoteResponse>>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+
+        var note = Assert.Single(notes, entry => entry.Id == noteId);
+        using var content = JsonDocument.Parse(note.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, content.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy patient note list complaint", content.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+    }
+
+    [Fact]
     public async Task PT_Posts_HardStopOverride_Returns422AndLogsAudit()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
@@ -671,6 +1023,187 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var verifyAliasDoc = JsonSerializer.Deserialize<JsonDocument>(await verifyAliasResp.Content.ReadAsStringAsync(), JsonOpts);
         Assert.True(verifyAliasDoc!.RootElement.GetProperty("isValid").GetBoolean());
         Assert.Equal("Verified", verifyAliasDoc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Creates_Structured_Addendum_And_Stored_Content_Is_CanonicalWorkspaceV2()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResp = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+
+        var createDoc = JsonSerializer.Deserialize<JsonDocument>(
+            await createResp.Content.ReadAsStringAsync(),
+            JsonOpts);
+        var noteId = createDoc!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var signResp = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
+        Assert.Equal(HttpStatusCode.OK, signResp.StatusCode);
+
+        using var addendumResp = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/addendum",
+            JsonContent(new
+            {
+                content = new
+                {
+                    assessment = "Legacy structured addendum finding"
+                }
+            }));
+        Assert.Equal(HttpStatusCode.OK, addendumResp.StatusCode);
+
+        var addendumDoc = JsonSerializer.Deserialize<JsonDocument>(
+            await addendumResp.Content.ReadAsStringAsync(),
+            JsonOpts);
+        var addendumId = addendumDoc!.RootElement.GetProperty("addendumId").GetGuid();
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var addendum = await db.ClinicalNotes.SingleAsync(note => note.Id == addendumId);
+        using var storedJson = JsonDocument.Parse(addendum.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Legacy structured addendum finding",
+            storedJson.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Daily_Helper_MedicalNecessity_Accepts_CanonicalWorkspaceV2_Payload()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                CurrentPainScore = 3,
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        Description = "Stairs"
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "ROM",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        Value = "110"
+                    }
+                ]
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                AssessmentNarrative = "Patient tolerated treatment well."
+            },
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFocuses = ["gait training"],
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97110",
+                        Units = 1,
+                        Minutes = 15
+                    }
+                ],
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Name = "Strength"
+                    }
+                ],
+                FollowUpInstructions = "Continue plan next visit."
+            }
+        };
+
+        using var response = await client.PostAsync(
+            "/api/v1/daily-notes/check-medical-necessity",
+            JsonContent(payload));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var result = JsonSerializer.Deserialize<MedicalNecessityCheckResult>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.False(result.Passes);
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Functional deficits", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Clinical reasoning", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.MissingElements, m => m.Contains("Goal connection", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.Warnings, m => m.Contains("No CPT codes", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.MissingElements, m => m.Contains("Skilled cueing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task PT_DailyNote_SaveEndpoint_Accepts_CanonicalWorkspaceV2_Content()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var response = await client.PostAsync(
+            "/api/v1/daily-notes/",
+            JsonContent(new
+            {
+                patientId,
+                dateOfService = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+                content = new NoteWorkspaceV2Payload
+                {
+                    NoteType = NoteType.Daily,
+                    Subjective = new WorkspaceSubjectiveV2
+                    {
+                        CurrentPainScore = 4,
+                        FunctionalLimitations =
+                        [
+                            new FunctionalLimitationEntryV2
+                            {
+                                Description = "Walking more than 10 minutes"
+                            }
+                        ]
+                    },
+                    Assessment = new WorkspaceAssessmentV2
+                    {
+                        AssessmentNarrative = "Patient tolerated treatment well."
+                    },
+                    Plan = new WorkspacePlanV2
+                    {
+                        TreatmentFocuses = ["gait training"]
+                    }
+                }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var saveResponse = JsonSerializer.Deserialize<DailyNoteSaveResponse>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.True(saveResponse.IsValid);
+        Assert.NotNull(saveResponse.DailyNote);
+        Assert.Equal(4, saveResponse.DailyNote!.Content.CurrentPainScore);
+        Assert.Contains(saveResponse.DailyNote.Content.LimitedActivities, activity => activity.ActivityName == "Walking more than 10 minutes");
+        Assert.Contains("gait training", saveResponse.DailyNote.Content.FocusedActivities);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == saveResponse.DailyNote.NoteId);
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
     }
 
     [Fact]
@@ -896,6 +1429,57 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PT_Export_Pdf_Normalizes_Recognized_Legacy_Note_Content_Before_Rendering()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+        _factory.ResetPdfExportCapture();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow,
+                ContentJson = """{"subjective":"Legacy export chief complaint","assessment":"Legacy export assessment"}""",
+                NoteStatus = NoteStatus.Signed,
+                SignatureHash = "signed-hash",
+                SignedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal(noteId, _factory.LastPdfExportNoteId);
+        Assert.False(string.IsNullOrWhiteSpace(_factory.LastPdfExportContentJson));
+
+        using var exportedJson = JsonDocument.Parse(_factory.LastPdfExportContentJson!);
+        Assert.Equal(
+            WorkspaceSchemaVersions.EvalReevalProgressV2,
+            exportedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Legacy export chief complaint",
+            exportedJson.RootElement
+                .GetProperty("subjective")
+                .GetProperty("narrativeContext")
+                .GetProperty("chiefComplaint")
+                .GetString());
+        Assert.Equal(
+            "Legacy export assessment",
+            exportedJson.RootElement
+                .GetProperty("assessment")
+                .GetProperty("assessmentNarrative")
+                .GetString());
+    }
+
+    [Fact]
     public async Task PT_Can_Accept_Ai_Suggestion_Into_V2_Workspace_Note()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
@@ -942,6 +1526,129 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
         Assert.True(storedJson.RootElement.TryGetProperty("assessment", out var assessment));
         Assert.Equal("Accepted assessment narrative", assessment.GetProperty("assessmentNarrative").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Can_Accept_Ai_Suggestion_Into_LegacySoapNote_And_Backfill_To_WorkspaceV2()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow,
+                ContentJson = """{"subjective":"Legacy chief complaint"}""",
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var acceptBody = JsonContent(new AiSuggestionAcceptanceRequest
+        {
+            Section = "assessment",
+            GeneratedText = "Accepted assessment narrative",
+            GenerationType = "Assessment"
+        });
+        using var acceptResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/accept-ai-suggestion",
+            acceptBody);
+
+        Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await verifyDb.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("Legacy chief complaint", storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
+        Assert.Equal("Accepted assessment narrative", storedJson.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Can_Accept_Ai_Suggestion_Into_LegacyWorkspaceNote_And_Backfill_To_WorkspaceV2()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.ProgressNote,
+                DateOfService = new DateTime(2026, 4, 17, 0, 0, 0, DateTimeKind.Utc),
+                ContentJson = """
+                              {
+                                "assessment": {
+                                  "diagnosisCodes": [
+                                    {
+                                      "code": "M62.89",
+                                      "description": "Other specified disorders of muscle"
+                                    }
+                                  ],
+                                  "goals": [
+                                    {
+                                      "description": "Return to lifting overhead"
+                                    }
+                                  ]
+                                },
+                                "plan": {
+                                  "selectedCptCodes": [
+                                    {
+                                      "code": "97110",
+                                      "description": "Therapeutic exercise",
+                                      "units": 1
+                                    }
+                                  ]
+                                }
+                              }
+                              """,
+                LastModifiedUtc = DateTime.UtcNow,
+                NoteStatus = NoteStatus.Draft
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var acceptBody = JsonContent(new AiSuggestionAcceptanceRequest
+        {
+            Section = "assessment",
+            GeneratedText = "Accepted AI progress assessment",
+            GenerationType = "Assessment"
+        });
+        using var acceptResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/accept-ai-suggestion",
+            acceptBody);
+
+        Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedNote = await verifyDb.ClinicalNotes.SingleAsync(note => note.Id == noteId);
+        using var storedJson = JsonDocument.Parse(storedNote.ContentJson);
+        Assert.Equal(WorkspaceSchemaVersions.EvalReevalProgressV2, storedJson.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "Accepted AI progress assessment",
+            storedJson.RootElement.GetProperty("assessment").GetProperty("assessmentNarrative").GetString());
+        Assert.Equal(
+            "M62.89",
+            storedJson.RootElement.GetProperty("assessment").GetProperty("diagnosisCodes")[0].GetProperty("code").GetString());
+        Assert.Equal(
+            "Return to lifting overhead",
+            storedJson.RootElement.GetProperty("assessment").GetProperty("goals")[0].GetProperty("description").GetString());
+        Assert.Equal(
+            "97110",
+            storedJson.RootElement.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("code").GetString());
     }
 
     [Fact]
@@ -1070,7 +1777,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         {
             PatientId = patientId,
             PainMapData = """{"regions":["knee"]}""",
-            Consents = """{"hipaaAcknowledged":true}""",
+            Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true}""",
             ResponseJson = """{"status":"draft"}"""
         }));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -1128,6 +1835,14 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     private const string TestEnv = "Testing";
 
     private SqliteConnection? _sharedConnection;
+    public Guid? LastPdfExportNoteId { get; private set; }
+    public string? LastPdfExportContentJson { get; private set; }
+
+    public void ResetPdfExportCapture()
+    {
+        LastPdfExportNoteId = null;
+        LastPdfExportContentJson = null;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -1203,6 +1918,8 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 .Setup(renderer => renderer.ExportNoteToPdfAsync(It.IsAny<NoteExportDto>()))
                 .ReturnsAsync((NoteExportDto note) =>
                 {
+                    LastPdfExportNoteId = note.NoteId;
+                    LastPdfExportContentJson = note.ContentJson;
                     var content = Encoding.UTF8.GetBytes($"%PDF-1.4 test export {note.NoteId:D}");
                     return new PdfExportResult
                     {

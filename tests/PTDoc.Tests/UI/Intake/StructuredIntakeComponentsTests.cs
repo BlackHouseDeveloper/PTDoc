@@ -47,6 +47,32 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void MedicalHistoryCard_CanonicalizesLegacySupplementalSelectionsIntoStructuredIds()
+    {
+        var state = new IntakeWizardState
+        {
+            SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
+            SelectedAssistiveDevices = ["Cane"],
+            SelectedLivingSituations = ["Lives alone"],
+            SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"]
+        };
+
+        var cut = RenderComponent<MedicalHistoryCard>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.Equal(["hypertension"], state.StructuredData!.ComorbidityIds);
+        Assert.Equal(["cane"], state.StructuredData.AssistiveDeviceIds);
+        Assert.Equal(["lives-alone"], state.StructuredData.LivingSituationIds);
+        Assert.Equal(["single-story-main-floor-bed-bath"], state.StructuredData.HouseLayoutOptionIds);
+        Assert.Empty(state.SelectedComorbidities);
+        Assert.Empty(state.SelectedAssistiveDevices);
+        Assert.Empty(state.SelectedLivingSituations);
+        Assert.Empty(state.SelectedHouseLayoutOptions);
+        Assert.Contains("Hypertension (High Blood Pressure)", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Cane", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PainDetailsStep_RendersStructuredBodyPartRecommendations()
     {
         var state = new IntakeWizardState

@@ -4,6 +4,7 @@ using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Services;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -530,6 +531,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                         note.ServerId,
                         patientId = note.PatientServerId,
                         note.NoteType,
+                        note.IsReEvaluation,
                         note.CreatedUtc,
                         note.ParentNoteId,
                         note.IsAddendum,
@@ -1074,16 +1076,24 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
         if (local is null)
         {
+            var noteType = ParseNoteType(root);
+            var isReEvaluation = GetBoolCaseInsensitive(root, "IsReEvaluation") ?? false;
+            var dateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc;
             var newNote = new LocalClinicalNoteDraft
             {
                 ServerId = item.ServerId,
                 PatientServerId = GetGuid(root, "patientId") ?? GetGuid(root, "PatientId") ?? Guid.Empty,
                 NoteType = GetNoteTypeString(root),
-                DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? item.LastModifiedUtc,
+                IsReEvaluation = isReEvaluation,
+                DateOfService = dateOfService,
                 CreatedUtc = serverCreatedUtc,
                 ParentNoteId = serverParentNoteId,
                 IsAddendum = serverIsAddendum,
-                ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? "{}",
+                ContentJson = NoteWriteService.NormalizeContentJson(
+                    noteType,
+                    isReEvaluation,
+                    dateOfService,
+                    GetStringCaseInsensitive(root, "ContentJson") ?? "{}"),
                 CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? "[]",
                 SignatureHash = serverSignatureHash,
                 SignedUtc = GetDateTimeCaseInsensitive(root, "SignedUtc"),
@@ -1124,7 +1134,12 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         local.CreatedUtc = serverCreatedUtc;
         local.ParentNoteId = serverParentNoteId;
         local.IsAddendum = serverIsAddendum;
-        local.ContentJson = GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson;
+        local.IsReEvaluation = GetBoolCaseInsensitive(root, "IsReEvaluation") ?? local.IsReEvaluation;
+        local.ContentJson = NoteWriteService.NormalizeContentJson(
+            ParseNoteType(root, local.NoteType),
+            local.IsReEvaluation,
+            GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService,
+            GetStringCaseInsensitive(root, "ContentJson") ?? local.ContentJson);
         local.CptCodesJson = GetStringCaseInsensitive(root, "CptCodesJson") ?? local.CptCodesJson;
         local.DateOfService = GetDateTimeCaseInsensitive(root, "DateOfService") ?? local.DateOfService;
         // Server signature state is authoritative — assign directly (including null to clear a stale local value)
@@ -1233,5 +1248,18 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 return el.GetString() ?? string.Empty;
         }
         return string.Empty;
+    }
+
+    private static Core.Models.NoteType ParseNoteType(JsonElement root, string? fallback = null)
+    {
+        var raw = GetNoteTypeString(root);
+        if (Enum.TryParse<Core.Models.NoteType>(raw, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return Enum.TryParse<Core.Models.NoteType>(fallback, ignoreCase: true, out parsed)
+            ? parsed
+            : Core.Models.NoteType.Daily;
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Infrastructure.Compliance;
 
@@ -64,7 +65,11 @@ public class CarryForwardService : ICarryForwardService
             SourceNoteId = sourceNote.Id,
             SourceNoteType = sourceNote.NoteType,
             SourceNoteDateOfService = sourceNote.DateOfService,
-            ContentJson = sourceNote.ContentJson
+            ContentJson = NoteWriteService.NormalizeContentJson(
+                sourceNote.NoteType,
+                sourceNote.IsReEvaluation,
+                sourceNote.DateOfService,
+                sourceNote.ContentJson)
         };
     }
 

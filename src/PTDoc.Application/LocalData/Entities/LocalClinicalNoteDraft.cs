@@ -23,6 +23,9 @@ public class LocalClinicalNoteDraft : ILocalEntity
     /// <summary>Type of clinical note (e.g. "Evaluation", "Daily", "ProgressNote", "Discharge").</summary>
     public string NoteType { get; set; } = string.Empty;
 
+    /// <summary>True when an evaluation note represents a re-evaluation workflow.</summary>
+    public bool IsReEvaluation { get; set; }
+
     /// <summary>Date of service for this note (date only, stored as UTC midnight).</summary>
     public DateTime DateOfService { get; set; }
 
@@ -35,7 +38,7 @@ public class LocalClinicalNoteDraft : ILocalEntity
     /// <summary>True when this local note is a linked addendum rather than a primary note.</summary>
     public bool IsAddendum { get; set; }
 
-    /// <summary>SOAP content as a JSON blob (keys: subjective, objective, assessment, plan, goals, billing).</summary>
+    /// <summary>Canonical note workspace content as a JSON blob.</summary>
     public string ContentJson { get; set; } = "{}";
 
     /// <summary>CPT codes as a JSON array. Empty array when no codes have been added.</summary>

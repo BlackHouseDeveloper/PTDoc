@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Compliance;
@@ -468,6 +469,12 @@ public class SignatureService : ISignatureService
         {
             return null;
         }
+
+        note.ContentJson = NoteWriteService.NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson);
 
         var violations = await _clinicalRulesEngine.RunClinicalValidationAsync(note.Id, ct);
         var blockingViolations = violations.Where(v => v.Blocking).ToList();

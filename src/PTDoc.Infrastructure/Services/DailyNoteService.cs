@@ -4,6 +4,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.AI;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -134,7 +135,7 @@ public class DailyNoteService : IDailyNoteService
                 n.SignedUtc == null,
                 ct);
 
-        var contentJson = JsonSerializer.Serialize(request.Content, _json);
+        var contentJson = SerializeStoredDailyContent(request.Content, request.DateOfService);
         var cptEntries = (request.Content.CptCodes ?? [])
             .Where(code => !string.IsNullOrWhiteSpace(code.Code))
             .Select(code => new CptCodeEntry
@@ -265,7 +266,9 @@ public class DailyNoteService : IDailyNoteService
             isNew ? SyncOperation.Create : SyncOperation.Update,
             ct);
 
-        var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
+        var dto = DeserializeStoredDailyContent(note.ContentJson, note.DateOfService);
+        var taxonomySelectionsByNoteId = await LoadTreatmentTaxonomySelectionsByNoteIdAsync([note.Id], ct);
+        ApplyTreatmentTaxonomySelections(dto, taxonomySelectionsByNoteId, note.Id);
         saveResponse.DailyNote = new DailyNoteResponse
         {
             NoteId = note.Id,
@@ -289,12 +292,24 @@ public class DailyNoteService : IDailyNoteService
         return saveResponse;
     }
 
+    public Task<DailyNoteSaveResponse> SaveDraftAsync(SaveDailyNoteJsonRequest request, CancellationToken ct = default)
+        => SaveDraftAsync(new SaveDailyNoteRequest
+        {
+            PatientId = request.PatientId,
+            AppointmentId = request.AppointmentId,
+            DateOfService = request.DateOfService,
+            Content = DeserializeRequestDailyContent(request.Content, request.DateOfService),
+            Override = request.Override
+        }, ct);
+
     public async Task<DailyNoteResponse?> GetByIdAsync(Guid noteId, CancellationToken ct = default)
     {
         var note = await _db.ClinicalNotes
             .FirstOrDefaultAsync(n => n.Id == noteId && n.NoteType == NoteType.Daily && !n.IsAddendum, ct);
         if (note == null) return null;
-        var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(note.ContentJson, _json) ?? new();
+        var dto = DeserializeStoredDailyContent(note.ContentJson, note.DateOfService);
+        var taxonomySelectionsByNoteId = await LoadTreatmentTaxonomySelectionsByNoteIdAsync([note.Id], ct);
+        ApplyTreatmentTaxonomySelections(dto, taxonomySelectionsByNoteId, note.Id);
         return new DailyNoteResponse
         {
             NoteId = note.Id,
@@ -314,10 +329,12 @@ public class DailyNoteService : IDailyNoteService
             .OrderByDescending(n => n.DateOfService)
             .Take(limit)
             .ToListAsync(ct);
+        var taxonomySelectionsByNoteId = await LoadTreatmentTaxonomySelectionsByNoteIdAsync(notes.Select(note => note.Id), ct);
 
         return notes.Select(n =>
         {
-            var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(n.ContentJson, _json) ?? new();
+            var dto = DeserializeStoredDailyContent(n.ContentJson, n.DateOfService);
+            ApplyTreatmentTaxonomySelections(dto, taxonomySelectionsByNoteId, n.Id);
             return new DailyNoteResponse
             {
                 NoteId = n.Id,
@@ -357,10 +374,12 @@ public class DailyNoteService : IDailyNoteService
             .OrderByDescending(n => n.DateOfService)
             .Take(limit)
             .ToListAsync(ct);
+        var taxonomySelectionsByNoteId = await LoadTreatmentTaxonomySelectionsByNoteIdAsync(notes.Select(note => note.Id), ct);
 
         return notes.Select(n =>
         {
-            var dto = JsonSerializer.Deserialize<DailyNoteContentDto>(n.ContentJson, _json) ?? new();
+            var dto = DeserializeStoredDailyContent(n.ContentJson, n.DateOfService);
+            ApplyTreatmentTaxonomySelections(dto, taxonomySelectionsByNoteId, n.Id);
             return new DailyNoteResponse
             {
                 NoteId = n.Id,
@@ -389,26 +408,58 @@ public class DailyNoteService : IDailyNoteService
 
         try
         {
-            using var doc = JsonDocument.Parse(evalNote.ContentJson);
-            var root = doc.RootElement;
-            // Check multiple candidate property names to support evaluation notes from
-            // different schema versions or formats that may use different field names.
-            foreach (var propName in new[] { "functionalActivities", "activities", "limitedActivities", "problemActivities" })
+            var canonicalContentJson = NoteWriteService.NormalizeContentJson(
+                evalNote.NoteType,
+                evalNote.IsReEvaluation,
+                evalNote.DateOfService,
+                evalNote.ContentJson);
+
+            if (TryDeserializeWorkspacePayload(canonicalContentJson, out var workspacePayload) &&
+                workspacePayload is not null)
             {
-                if (root.TryGetProperty(propName, out var actProp) && actProp.ValueKind == JsonValueKind.Array)
+                activities = workspacePayload.Subjective.FunctionalLimitations
+                    .Select(item => item.Description)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (activities.Count == 0 && !string.IsNullOrWhiteSpace(workspacePayload.Subjective.AdditionalFunctionalLimitations))
                 {
-                    foreach (var item in actProp.EnumerateArray())
-                    {
-                        if (item.ValueKind == JsonValueKind.String)
-                            activities.Add(item.GetString() ?? string.Empty);
-                        else if (item.TryGetProperty("activityName", out var nameProp))
-                            activities.Add(nameProp.GetString() ?? string.Empty);
-                    }
-                    if (activities.Count > 0) break;
+                    activities.Add(workspacePayload.Subjective.AdditionalFunctionalLimitations);
                 }
+
+                primaryDiagnosis = workspacePayload.Assessment.DiagnosisCodes
+                    .Select(code => FormatDiagnosis(code.Code, code.Description))
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+                planOfCare = FirstNonEmpty(
+                    workspacePayload.Plan.PlanOfCareNarrative,
+                    workspacePayload.Plan.ClinicalSummary,
+                    workspacePayload.Plan.FollowUpInstructions);
             }
-            if (root.TryGetProperty("primaryDiagnosis", out var dxProp)) primaryDiagnosis = dxProp.GetString();
-            if (root.TryGetProperty("planOfCare", out var pocProp)) planOfCare = pocProp.GetString();
+            else
+            {
+                using var doc = JsonDocument.Parse(evalNote.ContentJson);
+                var root = doc.RootElement;
+                // Check multiple candidate property names to support evaluation notes from
+                // different schema versions or formats that may use different field names.
+                foreach (var propName in new[] { "functionalActivities", "activities", "limitedActivities", "problemActivities" })
+                {
+                    if (root.TryGetProperty(propName, out var actProp) && actProp.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in actProp.EnumerateArray())
+                        {
+                            if (item.ValueKind == JsonValueKind.String)
+                                activities.Add(item.GetString() ?? string.Empty);
+                            else if (item.TryGetProperty("activityName", out var nameProp))
+                                activities.Add(nameProp.GetString() ?? string.Empty);
+                        }
+                        if (activities.Count > 0) break;
+                    }
+                }
+                if (root.TryGetProperty("primaryDiagnosis", out var dxProp)) primaryDiagnosis = dxProp.GetString();
+                if (root.TryGetProperty("planOfCare", out var pocProp)) planOfCare = pocProp.GetString();
+            }
         }
         catch (JsonException)
         {
@@ -459,6 +510,9 @@ public class DailyNoteService : IDailyNoteService
 
         return BuildAssessmentNarrativeFromTemplate(content);
     }
+
+    public Task<string> GenerateAssessmentNarrativeAsync(JsonElement content, CancellationToken ct = default)
+        => GenerateAssessmentNarrativeAsync(DeserializeRequestDailyContent(content, DateTime.UtcNow.Date), ct);
 
     private static string BuildAssessmentNarrativeFromTemplate(DailyNoteContentDto content)
     {
@@ -581,6 +635,9 @@ public class DailyNoteService : IDailyNoteService
         return new MedicalNecessityCheckResult { Passes = missing.Count == 0, MissingElements = missing, Warnings = warnings };
     }
 
+    public MedicalNecessityCheckResult CheckMedicalNecessity(JsonElement content)
+        => CheckMedicalNecessity(DeserializeRequestDailyContent(content, DateTime.UtcNow.Date));
+
     private static int? ResolveTotalTreatmentMinutes(IReadOnlyCollection<CptCodeEntry> entries)
     {
         var totalMinutes = entries
@@ -601,4 +658,443 @@ public class DailyNoteService : IDailyNoteService
             AuditEvent.EditBlockedSignedNote(noteId, _identityContext.TryGetCurrentUserId(), source),
             ct);
     }
+
+    private static DailyNoteContentDto DeserializeStoredDailyContent(string? contentJson, DateTime dateOfService)
+    {
+        var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+            NoteType.Daily,
+            isReEvaluation: false,
+            dateOfService,
+            contentJson);
+
+        if (TryDeserializeWorkspacePayload(normalizedContentJson, out var workspacePayload) &&
+            workspacePayload is not null)
+        {
+            return MapWorkspaceDailyContent(workspacePayload);
+        }
+
+        return string.IsNullOrWhiteSpace(normalizedContentJson)
+            ? new DailyNoteContentDto()
+            : JsonSerializer.Deserialize<DailyNoteContentDto>(normalizedContentJson, _json) ?? new DailyNoteContentDto();
+    }
+
+    private static DailyNoteContentDto DeserializeRequestDailyContent(JsonElement content, DateTime dateOfService)
+    {
+        if (content.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return new DailyNoteContentDto();
+        }
+
+        var rawContent = NoteWriteService.NormalizeContentJson(
+            NoteType.Daily,
+            isReEvaluation: false,
+            dateOfService,
+            content.GetRawText());
+
+        if (TryDeserializeWorkspacePayload(rawContent, out var workspacePayload) &&
+            workspacePayload is not null)
+        {
+            return MapWorkspaceDailyContent(workspacePayload);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<DailyNoteContentDto>(rawContent, _json) ?? new DailyNoteContentDto();
+        }
+        catch (JsonException)
+        {
+            return new DailyNoteContentDto();
+        }
+    }
+
+    private static string SerializeStoredDailyContent(DailyNoteContentDto content, DateTime dateOfService)
+        => JsonSerializer.Serialize(MapDailyRequestContentToWorkspacePayload(content, dateOfService), _json);
+
+    private async Task<Dictionary<Guid, List<TreatmentTaxonomySelectionDto>>> LoadTreatmentTaxonomySelectionsByNoteIdAsync(
+        IEnumerable<Guid> noteIds,
+        CancellationToken ct)
+    {
+        var ids = noteIds
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var selections = await _db.NoteTaxonomySelections
+            .AsNoTracking()
+            .Where(selection => ids.Contains(selection.ClinicalNoteId))
+            .OrderBy(selection => selection.CategoryTitle)
+            .ThenBy(selection => selection.ItemLabel)
+            .ToListAsync(ct);
+
+        return selections
+            .GroupBy(selection => selection.ClinicalNoteId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(selection => new TreatmentTaxonomySelectionDto
+                {
+                    CategoryId = selection.CategoryId,
+                    CategoryTitle = selection.CategoryTitle,
+                    CategoryKind = (TreatmentTaxonomyCategoryKind)selection.CategoryKind,
+                    ItemId = selection.ItemId,
+                    ItemLabel = selection.ItemLabel
+                }).ToList());
+    }
+
+    private static void ApplyTreatmentTaxonomySelections(
+        DailyNoteContentDto content,
+        IReadOnlyDictionary<Guid, List<TreatmentTaxonomySelectionDto>> taxonomySelectionsByNoteId,
+        Guid noteId)
+    {
+        if (!taxonomySelectionsByNoteId.TryGetValue(noteId, out var selections) ||
+            selections.Count == 0)
+        {
+            return;
+        }
+
+        content.TreatmentTaxonomySelections = selections
+            .Select(selection => new TreatmentTaxonomySelectionDto
+            {
+                CategoryId = selection.CategoryId,
+                CategoryTitle = selection.CategoryTitle,
+                CategoryKind = selection.CategoryKind,
+                ItemId = selection.ItemId,
+                ItemLabel = selection.ItemLabel
+            })
+            .ToList();
+    }
+
+    private static bool TryDeserializeWorkspacePayload(string? contentJson, out NoteWorkspaceV2Payload? payload)
+    {
+        payload = null;
+
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            if (!TryReadSchemaVersion(document.RootElement, out var schemaVersion) ||
+                schemaVersion != WorkspaceSchemaVersions.EvalReevalProgressV2)
+            {
+                return false;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        try
+        {
+            payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, _json);
+            return payload is not null;
+        }
+        catch (JsonException)
+        {
+            payload = null;
+            return false;
+        }
+    }
+
+    private static DailyNoteContentDto MapWorkspaceDailyContent(NoteWorkspaceV2Payload payload)
+    {
+        var currentPain = payload.Subjective.CurrentPainScore > 0
+            ? payload.Subjective.CurrentPainScore
+            : payload.DryNeedling?.PainBefore;
+
+        var clinicalObservations = FirstNonEmpty(
+            payload.Objective.ClinicalObservationNotes,
+            payload.DryNeedling?.AdditionalNotes);
+
+        return new DailyNoteContentDto
+        {
+            CurrentPainScore = currentPain,
+            BestPainScore = payload.Subjective.BestPainScore > 0 ? payload.Subjective.BestPainScore : null,
+            WorstPainScore = payload.Subjective.WorstPainScore > 0 ? payload.Subjective.WorstPainScore : null,
+            LimitedActivities = payload.Subjective.FunctionalLimitations
+                .Select(item => new ActivityEntryDto
+                {
+                    ActivityName = item.Description,
+                    Quantification = item.QuantifiedValue.HasValue
+                        ? item.QuantifiedValue.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : null
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.ActivityName))
+                .ToList(),
+            FunctionalLimitations = FirstNonEmpty(
+                payload.Assessment.FunctionalLimitationsSummary,
+                payload.Subjective.AdditionalFunctionalLimitations),
+            BodyParts = payload.Objective.PrimaryBodyPart == BodyPart.Other
+                ? []
+                : [payload.Objective.PrimaryBodyPart.ToString()],
+            ObjectiveMeasures = payload.Objective.Metrics
+                .Select(MapObjectiveMetric)
+                .Where(item => item is not null)
+                .Cast<ObjectiveMeasureEntryDto>()
+                .ToList(),
+            ClinicalObservations = clinicalObservations,
+            FocusedActivities = payload.Plan.TreatmentFocuses.OrderBy(value => value).ToList(),
+            CptCodes = payload.Plan.SelectedCptCodes
+                .Select(code => new CptCodeEntryDto
+                {
+                    Code = code.Code,
+                    Description = code.Description,
+                    Units = code.Units,
+                    Minutes = code.Minutes
+                })
+                .ToList(),
+            AssessmentComments = FirstNonEmpty(
+                payload.Assessment.FunctionalLimitationsSummary,
+                payload.Assessment.DeficitsSummary),
+            AssessmentNarrative = FirstNonEmpty(
+                payload.Assessment.AssessmentNarrative,
+                payload.DryNeedling?.ResponseDescription),
+            ClinicalInterpretation = payload.Plan.ClinicalSummary,
+            PlanFreeText = FirstNonEmpty(
+                payload.Plan.PlanOfCareNarrative,
+                payload.Plan.ClinicalSummary),
+            TreatmentTargets = payload.Plan.GeneralInterventions
+                .Select(MapGeneralInterventionTarget)
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .Distinct()
+                .ToList(),
+            Exercises = payload.Objective.ExerciseRows
+                .Select(row => new ExerciseEntryDto
+                {
+                    ExerciseName = FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise) ?? string.Empty,
+                    Notes = row.SetsRepsDuration
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.ExerciseName))
+                .ToList(),
+            HepUpdates = payload.Plan.HomeExerciseProgramNotes,
+            NextSessionPlan = payload.Plan.FollowUpInstructions
+        };
+    }
+
+    private static NoteWorkspaceV2Payload MapDailyRequestContentToWorkspacePayload(DailyNoteContentDto content, DateTime dateOfService)
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                CurrentPainScore = content.CurrentPainScore ?? 0,
+                BestPainScore = content.BestPainScore ?? 0,
+                WorstPainScore = content.WorstPainScore ?? 0,
+                FunctionalLimitations = content.LimitedActivities
+                    .Where(item => !string.IsNullOrWhiteSpace(item.ActivityName))
+                    .Select(item => new FunctionalLimitationEntryV2
+                    {
+                        Description = item.ActivityName,
+                        QuantifiedUnit = item.Quantification
+                    })
+                    .ToList(),
+                AdditionalFunctionalLimitations = content.FunctionalLimitations,
+                NarrativeContext = new SubjectNarrativeContextV2
+                {
+                    PatientHistorySummary = FirstNonEmpty(content.PatientAdditionalComments, content.ChangesSinceLastSession)
+                }
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = ParseBodyPart(content.BodyParts),
+                Metrics = content.ObjectiveMeasures
+                    .Select(MapObjectiveMetric)
+                    .Where(item => item is not null)
+                    .Cast<ObjectiveMetricInputV2>()
+                    .ToList(),
+                ExerciseRows = content.Exercises
+                    .Where(item => !string.IsNullOrWhiteSpace(item.ExerciseName))
+                    .Select(item => new ExerciseRowV2
+                    {
+                        ActualExercisePerformed = item.ExerciseName,
+                        SetsRepsDuration = item.Notes
+                    })
+                    .ToList(),
+                ClinicalObservationNotes = content.ClinicalObservations
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                AssessmentNarrative = FirstNonEmpty(
+                    content.AssessmentNarrative,
+                    content.ClinicalInterpretation,
+                    content.AssessmentComments) ?? string.Empty,
+                FunctionalLimitationsSummary = content.FunctionalLimitations ?? string.Empty
+            },
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFocuses = content.FocusedActivities
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase),
+                GeneralInterventions = content.TreatmentTargets
+                    .Select(MapGeneralIntervention)
+                    .Where(entry => entry is not null)
+                    .Cast<GeneralInterventionEntryV2>()
+                    .ToList(),
+                SelectedCptCodes = content.CptCodes
+                    .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+                    .Select(code => new PlannedCptCodeV2
+                    {
+                        Code = code.Code.Trim(),
+                        Description = code.Description ?? string.Empty,
+                        Units = Math.Max(0, code.Units),
+                        Minutes = code.Minutes
+                    })
+                    .ToList(),
+                PlanOfCareNarrative = content.PlanFreeText,
+                HomeExerciseProgramNotes = content.HepUpdates,
+                FollowUpInstructions = content.NextSessionPlan,
+                ClinicalSummary = content.ClinicalInterpretation
+            }
+        };
+
+        payload.Plan.ComputedPlanOfCare.StartDate = dateOfService.Date;
+        return payload;
+    }
+
+    private static ObjectiveMeasureEntryDto? MapObjectiveMetric(ObjectiveMetricInputV2 metric)
+    {
+        if (string.IsNullOrWhiteSpace(metric.Value))
+        {
+            return null;
+        }
+
+        return new ObjectiveMeasureEntryDto
+        {
+            MeasureType = metric.MetricType switch
+            {
+                MetricType.MMT => (int)ObjectiveMeasureType.MMT,
+                MetricType.ROM => (int)ObjectiveMeasureType.ROM,
+                MetricType.Girth => (int)ObjectiveMeasureType.Girth,
+                _ => (int)ObjectiveMeasureType.Other
+            },
+            BodyPart = metric.BodyPart.ToString(),
+            Specificity = string.IsNullOrWhiteSpace(metric.Name) ? null : metric.Name,
+            Value = metric.Value,
+            BaselineValue = metric.PreviousValue,
+            Notes = metric.NormValue
+        };
+    }
+
+    private static ObjectiveMetricInputV2? MapObjectiveMetric(ObjectiveMeasureEntryDto metric)
+    {
+        if (string.IsNullOrWhiteSpace(metric.Value))
+        {
+            return null;
+        }
+
+        return new ObjectiveMetricInputV2
+        {
+            Name = metric.Specificity ?? string.Empty,
+            BodyPart = ParseBodyPart(metric.BodyPart),
+            MetricType = metric.MeasureType switch
+            {
+                (int)ObjectiveMeasureType.MMT => MetricType.MMT,
+                (int)ObjectiveMeasureType.ROM => MetricType.ROM,
+                (int)ObjectiveMeasureType.Girth => MetricType.Girth,
+                _ => MetricType.Other
+            },
+            Value = metric.Value,
+            PreviousValue = metric.BaselineValue,
+            NormValue = metric.Notes
+        };
+    }
+
+    private static BodyPart ParseBodyPart(IEnumerable<string>? bodyParts)
+    {
+        if (bodyParts is null)
+        {
+            return BodyPart.Other;
+        }
+
+        foreach (var bodyPart in bodyParts)
+        {
+            var parsed = ParseBodyPart(bodyPart);
+            if (parsed != BodyPart.Other)
+            {
+                return parsed;
+            }
+        }
+
+        return BodyPart.Other;
+    }
+
+    private static BodyPart ParseBodyPart(string? bodyPart)
+        => Enum.TryParse<BodyPart>(bodyPart, ignoreCase: true, out var parsed)
+            ? parsed
+            : BodyPart.Other;
+
+    private static GeneralInterventionEntryV2? MapGeneralIntervention(int treatmentTarget)
+    {
+        if (!Enum.IsDefined(typeof(TreatmentTarget), treatmentTarget))
+        {
+            return null;
+        }
+
+        return new GeneralInterventionEntryV2
+        {
+            Name = ((TreatmentTarget)treatmentTarget).ToString()
+        };
+    }
+
+    private static int? MapGeneralInterventionTarget(GeneralInterventionEntryV2 entry)
+    {
+        if (Enum.TryParse<TreatmentTarget>(entry.Name, ignoreCase: true, out var parsed))
+        {
+            return (int)parsed;
+        }
+
+        return null;
+    }
+
+    private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            schemaVersion = default;
+            return false;
+        }
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out schemaVersion))
+            {
+                return true;
+            }
+
+            break;
+        }
+
+        schemaVersion = default;
+        return false;
+    }
+
+    private static string? FormatDiagnosis(string? code, string? description)
+    {
+        var trimmedCode = string.IsNullOrWhiteSpace(code) ? null : code.Trim();
+        var trimmedDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+
+        return (trimmedCode, trimmedDescription) switch
+        {
+            ({ Length: > 0 }, { Length: > 0 }) => $"{trimmedCode} - {trimmedDescription}",
+            ({ Length: > 0 }, null) => trimmedCode,
+            (null, { Length: > 0 }) => trimmedDescription,
+            _ => null
+        };
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }

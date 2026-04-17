@@ -10,6 +10,7 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Infrastructure.Notes.Workspace;
 
@@ -261,7 +262,11 @@ public sealed class NoteWorkspaceV2Service(
             ExistingNoteId = note?.Id,
             NoteType = request.NoteType,
             DateOfService = request.DateOfService,
-            CptEntries = cptEntries
+            CptEntries = cptEntries,
+            DiagnosisCodes = payload.Assessment.DiagnosisCodes
+                .Where(code => !string.IsNullOrWhiteSpace(code.Code))
+                .Select(code => code.Code.Trim())
+                .ToList()
         }, cancellationToken);
 
         var saveResponse = new NoteWorkspaceV2SaveResponse();
@@ -306,6 +311,7 @@ public sealed class NoteWorkspaceV2Service(
 
         note.PatientId = request.PatientId;
         note.NoteType = request.NoteType;
+        note.IsReEvaluation = request.IsReEvaluation;
         note.DateOfService = request.DateOfService.Date;
         note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
         note.CptCodesJson = JsonSerializer.Serialize(cptEntries, SerializerOptions);
@@ -876,7 +882,8 @@ public sealed class NoteWorkspaceV2Service(
         ClinicalNote note,
         CancellationToken cancellationToken)
     {
-        var payload = await DeserializePayloadAsync(note, cancellationToken);
+        var deserialization = await DeserializePayloadAsync(note, cancellationToken);
+        var payload = deserialization.Payload;
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
         payload.Objective.Metrics = note.ObjectiveMetrics
@@ -897,17 +904,20 @@ public sealed class NoteWorkspaceV2Service(
             .OrderBy(result => result.DateRecorded)
             .ToListAsync(cancellationToken);
 
-        payload.Objective.OutcomeMeasures = persistedOutcomeResults
-            .Select(result => new OutcomeMeasureEntryV2
-            {
-                MeasureType = result.MeasureType,
-                Score = result.Score,
-                RecordedAtUtc = result.DateRecorded,
-                MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(result.MeasureType).MinimumClinicallyImportantDifference
-            })
-            .ToList();
+        if (persistedOutcomeResults.Count > 0)
+        {
+            payload.Objective.OutcomeMeasures = persistedOutcomeResults
+                .Select(result => new OutcomeMeasureEntryV2
+                {
+                    MeasureType = result.MeasureType,
+                    Score = result.Score,
+                    RecordedAtUtc = result.DateRecorded,
+                    MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(result.MeasureType).MinimumClinicallyImportantDifference
+                })
+                .ToList();
+        }
 
-        payload.Assessment.Goals = await db.PatientGoals
+        var persistedGoals = await db.PatientGoals
             .Where(goal => goal.PatientId == note.PatientId)
             .OrderBy(goal => goal.Status)
             .ThenBy(goal => goal.CreatedUtc)
@@ -922,6 +932,11 @@ public sealed class NoteWorkspaceV2Service(
                 MatchedFunctionalLimitationId = goal.MatchedFunctionalLimitationId
             })
             .ToListAsync(cancellationToken);
+
+        if (persistedGoals.Count > 0)
+        {
+            payload.Assessment.Goals = persistedGoals;
+        }
 
         var patient = await db.Patients.FirstAsync(p => p.Id == note.PatientId, cancellationToken);
         payload.Assessment.GoalSuggestions = goalManagementService
@@ -953,12 +968,19 @@ public sealed class NoteWorkspaceV2Service(
             payload.Plan.PlanOfCareNarrative = BuildPlanOfCareNarrative(payload.Plan);
         }
 
+        if (deserialization.CanBackfill && ShouldBackfillCanonicalWorkspacePayload(note))
+        {
+            note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         return new NoteWorkspaceV2LoadResponse
         {
             NoteId = note.Id,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
+            IsReEvaluation = note.IsReEvaluation,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };
@@ -1118,198 +1140,80 @@ public sealed class NoteWorkspaceV2Service(
         }
     }
 
-    private async Task<NoteWorkspaceV2Payload> DeserializePayloadAsync(
+    private Task<PayloadDeserializationResult> DeserializePayloadAsync(
         ClinicalNote note,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(note.ContentJson))
         {
-            return new NoteWorkspaceV2Payload { NoteType = note.NoteType };
+            return Task.FromResult(new PayloadDeserializationResult(
+                new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                CanBackfill: false));
         }
 
+        JsonDocument document;
         try
         {
-            var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions);
-            if (payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2)
-            {
-                payload.NoteType = note.NoteType;
-                return payload;
-            }
+            document = JsonDocument.Parse(note.ContentJson);
         }
         catch (JsonException)
         {
-            // Fall back to legacy translation below.
+            return Task.FromResult(new PayloadDeserializationResult(
+                new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                CanBackfill: false));
         }
 
-        return await TranslateLegacyPayloadAsync(note, cancellationToken);
-    }
-
-    private async Task<NoteWorkspaceV2Payload> TranslateLegacyPayloadAsync(
-        ClinicalNote note,
-        CancellationToken cancellationToken)
-    {
-        LegacyWorkspacePayload? legacy;
-        try
+        using (document)
         {
-            legacy = JsonSerializer.Deserialize<LegacyWorkspacePayload>(note.ContentJson, SerializerOptions);
-        }
-        catch (JsonException)
-        {
-            legacy = null;
-        }
-
-        var payload = new NoteWorkspaceV2Payload
-        {
-            NoteType = note.NoteType,
-            Subjective = legacy is null ? new WorkspaceSubjectiveV2() : new WorkspaceSubjectiveV2
+            if (TryReadSchemaVersion(document.RootElement, out var schemaVersion)
+                && schemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2)
             {
-                Problems = legacy.Subjective?.Problems ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                OtherProblem = legacy.Subjective?.OtherProblem,
-                Locations = legacy.Subjective?.Locations ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                OtherLocation = legacy.Subjective?.OtherLocation,
-                CurrentPainScore = legacy.Subjective?.CurrentPainScore ?? 0,
-                BestPainScore = legacy.Subjective?.BestPainScore ?? 0,
-                WorstPainScore = legacy.Subjective?.WorstPainScore ?? 0,
-                PainFrequency = legacy.Subjective?.PainFrequency ?? string.Empty,
-                OnsetDate = legacy.Subjective?.OnsetDate,
-                OnsetOverAYearAgo = legacy.Subjective?.OnsetOverAYearAgo ?? false,
-                CauseUnknown = legacy.Subjective?.CauseUnknown ?? false,
-                KnownCause = legacy.Subjective?.KnownCause,
-                PriorFunctionalLevel = legacy.Subjective?.PriorFunctionalLevel ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                FunctionalLimitations = legacy.Subjective?.FunctionalLimitations
-                    .Select(item => new FunctionalLimitationEntryV2
-                    {
-                        BodyPart = note.NoteType == NoteType.Evaluation ? BodyPart.Other : note.ObjectiveMetrics.FirstOrDefault()?.BodyPart ?? BodyPart.Other,
-                        Category = "Legacy",
-                        Description = item
-                    })
-                    .ToList() ?? [],
-                AdditionalFunctionalLimitations = legacy.Subjective?.AdditionalFunctionalLimitations,
-                Imaging = new ImagingDetailsV2 { HasImaging = legacy.Subjective?.HasImaging },
-                AssistiveDevice = new AssistiveDeviceDetailsV2 { UsesAssistiveDevice = legacy.Subjective?.UsesAssistiveDevice },
-                EmploymentStatus = legacy.Subjective?.EmploymentStatus ?? string.Empty,
-                LivingSituation = legacy.Subjective?.LivingSituation ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                OtherLivingSituation = legacy.Subjective?.OtherLivingSituation,
-                SupportSystem = legacy.Subjective?.SupportSystem ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                OtherSupport = legacy.Subjective?.OtherSupport,
-                Comorbidities = legacy.Subjective?.Comorbidities ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                PriorTreatment = new PriorTreatmentDetailsV2
+                try
                 {
-                    Treatments = legacy.Subjective?.PriorTreatments ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    OtherTreatment = legacy.Subjective?.OtherTreatment
-                },
-                TakingMedications = legacy.Subjective?.TakingMedications,
-                Medications = string.IsNullOrWhiteSpace(legacy.Subjective?.MedicationDetails)
-                    ? []
-                    : [new MedicationEntryV2 { Name = legacy.Subjective.MedicationDetails }]
-            },
-            Objective = new WorkspaceObjectiveV2
-            {
-                PrimaryBodyPart = ParseBodyPart(legacy?.Objective?.SelectedBodyPart),
-                GaitObservation = new GaitObservationV2
+                    var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions);
+                    if (payload is not null)
+                    {
+                        payload.NoteType = note.NoteType;
+                        return Task.FromResult(new PayloadDeserializationResult(payload, CanBackfill: false));
+                    }
+                }
+                catch (JsonException)
                 {
-                    PrimaryPattern = legacy?.Objective?.PrimaryGaitPattern ?? string.Empty,
-                    Deviations = legacy?.Objective?.GaitDeviations ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    AdditionalObservations = legacy?.Objective?.AdditionalGaitObservations
-                },
-                ClinicalObservationNotes = legacy?.Objective?.ClinicalObservationNotes
-            },
-            Assessment = new WorkspaceAssessmentV2
-            {
-                AssessmentNarrative = legacy?.Assessment?.AssessmentNarrative ?? string.Empty,
-                FunctionalLimitationsSummary = legacy?.Assessment?.FunctionalLimitations ?? string.Empty,
-                DeficitsSummary = legacy?.Assessment?.DeficitsSummary ?? string.Empty,
-                DeficitCategories = legacy?.Assessment?.DeficitCategories ?? [],
-                DiagnosisCodes = legacy?.Assessment?.DiagnosisCodes?
-                    .Select(code => new DiagnosisCodeV2 { Code = code.Code, Description = code.Description })
-                    .ToList() ?? [],
-                Goals = legacy?.Assessment?.Goals?
-                    .Select(goal => new WorkspaceGoalEntryV2
-                    {
-                        Description = goal.Description,
-                        Category = goal.Category,
-                        Source = goal.IsAiSuggested ? GoalSource.SystemSuggested : GoalSource.ClinicianAuthored,
-                        Status = GoalStatus.Active
-                    })
-                    .ToList() ?? [],
-                MotivationLevel = legacy?.Assessment?.MotivationLevel,
-                MotivatingFactors = legacy?.Assessment?.MotivatingFactors ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                PatientPersonalGoals = legacy?.Assessment?.PatientPersonalGoals,
-                SupportSystemLevel = legacy?.Assessment?.SupportSystemLevel,
-                AvailableResources = legacy?.Assessment?.AvailableResources ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                BarriersToRecovery = legacy?.Assessment?.BarriersToRecovery ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                SupportSystemDetails = legacy?.Assessment?.SupportSystemDetails,
-                SupportAdditionalNotes = legacy?.Assessment?.SupportAdditionalNotes,
-                OverallPrognosis = legacy?.Assessment?.OverallPrognosis,
-                MotivationNotes = legacy?.Assessment?.AdditionalMotivationNotes
-            },
-            Plan = new WorkspacePlanV2
-            {
-                TreatmentFrequencyDaysPerWeek = ParseNumericRange(legacy?.Plan?.TreatmentFrequency),
-                TreatmentDurationWeeks = ParseNumericRange(legacy?.Plan?.TreatmentDuration),
-                SelectedCptCodes = legacy?.Plan?.SelectedCptCodes?
-                    .Select(code => new PlannedCptCodeV2
-                    {
-                        Code = code.Code,
-                        Description = code.Description,
-                        Units = code.Units,
-                        Minutes = code.Minutes,
-                        Modifiers = code.Modifiers
-                            .Where(value => !string.IsNullOrWhiteSpace(value))
-                            .Select(value => value.Trim())
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList(),
-                        ModifierOptions = code.ModifierOptions
-                            .Where(value => !string.IsNullOrWhiteSpace(value))
-                            .Select(value => value.Trim())
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList(),
-                        SuggestedModifiers = code.SuggestedModifiers
-                            .Where(value => !string.IsNullOrWhiteSpace(value))
-                            .Select(value => value.Trim())
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList(),
-                        ModifierSource = code.ModifierSource
-                    })
-                    .ToList() ?? [],
-                HomeExerciseProgramNotes = legacy?.Plan?.HomeExerciseProgramNotes,
-                DischargePlanningNotes = legacy?.Plan?.DischargePlanningNotes,
-                FollowUpInstructions = legacy?.Plan?.FollowUpInstructions,
-                ClinicalSummary = legacy?.Plan?.ClinicalSummary
-            },
-            ProgressQuestionnaire = new WorkspaceProgressNoteQuestionnaireV2
-            {
-                CurrentPainLevel = legacy?.Subjective?.CurrentPainScore ?? 0,
-                BestPainLevel = legacy?.Subjective?.BestPainScore ?? 0,
-                WorstPainLevel = legacy?.Subjective?.WorstPainScore ?? 0,
-                PainFrequency = legacy?.Subjective?.PainFrequency ?? string.Empty
+                    return Task.FromResult(new PayloadDeserializationResult(
+                        new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                        CanBackfill: false));
+                }
             }
-        };
 
-        var persistedOutcomeResults = await db.OutcomeMeasureResults
-            .Where(result => result.NoteId == note.Id)
-            .OrderBy(result => result.DateRecorded)
-            .ToListAsync(cancellationToken);
+            var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+                note.NoteType,
+                note.IsReEvaluation,
+                note.DateOfService,
+                note.ContentJson);
 
-        var persistedOutcomeMeasures = persistedOutcomeResults
-            .Select(result => new OutcomeMeasureEntryV2
+            if (!string.Equals(normalizedContentJson, note.ContentJson, StringComparison.Ordinal))
             {
-                MeasureType = result.MeasureType,
-                Score = result.Score,
-                RecordedAtUtc = result.DateRecorded,
-                MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(result.MeasureType).MinimumClinicallyImportantDifference
-            })
-            .ToList();
+                try
+                {
+                    var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(normalizedContentJson, SerializerOptions);
+                    if (payload is not null)
+                    {
+                        payload.NoteType = note.NoteType;
+                        return Task.FromResult(new PayloadDeserializationResult(payload, CanBackfill: true));
+                    }
+                }
+                catch (JsonException)
+                {
+                    return Task.FromResult(new PayloadDeserializationResult(
+                        new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+                        CanBackfill: false));
+                }
+            }
+        }
 
-        payload.Objective.OutcomeMeasures = persistedOutcomeMeasures.Count > 0
-            ? persistedOutcomeMeasures
-            : legacy?.Objective?.OutcomeMeasures?
-                .Select(entry => TryMapLegacyOutcomeMeasure(entry))
-                .Where(entry => entry is not null)
-                .Select(entry => entry!)
-                .ToList() ?? [];
-
-        return payload;
+        return Task.FromResult(new PayloadDeserializationResult(
+            new NoteWorkspaceV2Payload { NoteType = note.NoteType },
+            CanBackfill: false));
     }
 
     private static NoteWorkspaceV2Payload ClonePayload(NoteWorkspaceV2Payload payload)
@@ -1433,136 +1337,40 @@ public sealed class NoteWorkspaceV2Service(
         return false;
     }
 
-    private static BodyPart ParseBodyPart(string? value)
+    private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)
     {
-        return Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed)
-            ? parsed
-            : BodyPart.Other;
-    }
-
-    private static List<int> ParseNumericRange(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
+        if (root.ValueKind != JsonValueKind.Object)
         {
-            return [];
+            schemaVersion = default;
+            return false;
         }
 
-        var numbers = value
-            .Split(new[] { 'x', '/', '-', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(token => int.TryParse(token, out var parsed) ? parsed : 0)
-            .Where(parsed => parsed > 0)
-            .Distinct()
-            .OrderBy(parsed => parsed)
-            .ToList();
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
 
-        return numbers;
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out schemaVersion))
+            {
+                return true;
+            }
+
+            break;
+        }
+
+        schemaVersion = default;
+        return false;
     }
 
-    private sealed class LegacyWorkspacePayload
+    private static bool ShouldBackfillCanonicalWorkspacePayload(ClinicalNote note)
     {
-        public string? WorkspaceNoteType { get; set; }
-        public LegacySubjective? Subjective { get; set; }
-        public LegacyObjective? Objective { get; set; }
-        public LegacyAssessment? Assessment { get; set; }
-        public LegacyPlan? Plan { get; set; }
+        return note.NoteStatus == NoteStatus.Draft
+               && !note.IsFinalized;
     }
 
-    private sealed class LegacySubjective
-    {
-        public HashSet<string> Problems { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? OtherProblem { get; set; }
-        public HashSet<string> Locations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? OtherLocation { get; set; }
-        public int CurrentPainScore { get; set; }
-        public int BestPainScore { get; set; }
-        public int WorstPainScore { get; set; }
-        public string PainFrequency { get; set; } = string.Empty;
-        public DateTime? OnsetDate { get; set; }
-        public bool OnsetOverAYearAgo { get; set; }
-        public bool CauseUnknown { get; set; }
-        public string? KnownCause { get; set; }
-        public HashSet<string> PriorFunctionalLevel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> FunctionalLimitations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? AdditionalFunctionalLimitations { get; set; }
-        public bool? HasImaging { get; set; }
-        public bool? UsesAssistiveDevice { get; set; }
-        public string EmploymentStatus { get; set; } = string.Empty;
-        public HashSet<string> LivingSituation { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? OtherLivingSituation { get; set; }
-        public HashSet<string> SupportSystem { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? OtherSupport { get; set; }
-        public HashSet<string> Comorbidities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> PriorTreatments { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? OtherTreatment { get; set; }
-        public bool? TakingMedications { get; set; }
-        public string? MedicationDetails { get; set; }
-    }
-
-    private sealed class LegacyObjective
-    {
-        public string? SelectedBodyPart { get; set; }
-        public string? PrimaryGaitPattern { get; set; }
-        public HashSet<string> GaitDeviations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? AdditionalGaitObservations { get; set; }
-        public string? ClinicalObservationNotes { get; set; }
-        public List<LegacyOutcomeMeasureEntry> OutcomeMeasures { get; set; } = new();
-    }
-
-    private sealed class LegacyAssessment
-    {
-        public string AssessmentNarrative { get; set; } = string.Empty;
-        public string FunctionalLimitations { get; set; } = string.Empty;
-        public string DeficitsSummary { get; set; } = string.Empty;
-        public List<string> DeficitCategories { get; set; } = new();
-        public List<LegacyDiagnosisCode> DiagnosisCodes { get; set; } = new();
-        public List<LegacyGoal> Goals { get; set; } = new();
-        public string? MotivationLevel { get; set; }
-        public HashSet<string> MotivatingFactors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? PatientPersonalGoals { get; set; }
-        public string? AdditionalMotivationNotes { get; set; }
-        public string? SupportSystemLevel { get; set; }
-        public HashSet<string> AvailableResources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> BarriersToRecovery { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? SupportSystemDetails { get; set; }
-        public string? SupportAdditionalNotes { get; set; }
-        public string? OverallPrognosis { get; set; }
-    }
-
-    private sealed class LegacyDiagnosisCode
-    {
-        public string Code { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-    }
-
-    private sealed class LegacyGoal
-    {
-        public string Description { get; set; } = string.Empty;
-        public string? Category { get; set; }
-        public bool IsAiSuggested { get; set; }
-    }
-
-    private sealed class LegacyPlan
-    {
-        public string? TreatmentFrequency { get; set; }
-        public string? TreatmentDuration { get; set; }
-        public List<LegacyCptCode> SelectedCptCodes { get; set; } = new();
-        public string? HomeExerciseProgramNotes { get; set; }
-        public string? DischargePlanningNotes { get; set; }
-        public string? FollowUpInstructions { get; set; }
-        public string? ClinicalSummary { get; set; }
-    }
-
-    private sealed class LegacyCptCode
-    {
-        public string Code { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public int Units { get; set; } = 1;
-        public int? Minutes { get; set; }
-        public List<string> Modifiers { get; set; } = [];
-        public List<string> ModifierOptions { get; set; } = [];
-        public List<string> SuggestedModifiers { get; set; } = [];
-        public string? ModifierSource { get; set; }
-    }
+    private sealed record PayloadDeserializationResult(NoteWorkspaceV2Payload Payload, bool CanBackfill);
 
     private sealed class LegacyOutcomeMeasureEntry
     {
