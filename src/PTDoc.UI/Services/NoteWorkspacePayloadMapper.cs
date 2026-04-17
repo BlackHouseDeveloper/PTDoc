@@ -1,648 +1,37 @@
 using System.Globalization;
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
-
-using PTDoc.Application.Compliance;
-using PTDoc.Application.DTOs;
-using PTDoc.Application.Pdf;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 
-using ComplianceCptCodeEntry = PTDoc.Application.Compliance.CptCodeEntry;
 using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry;
 
 namespace PTDoc.UI.Services;
 
-public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeReferenceDataCatalogService intakeReferenceData) : INoteWorkspaceService
+public sealed class NoteWorkspacePayloadMapper
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
-    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData);
 
-    public async Task<NoteWorkspaceLoadResult> LoadAsync(
-        Guid patientId,
-        Guid noteId,
-        CancellationToken cancellationToken = default)
+    private readonly WorkspaceSubjectiveCatalogNormalizer _subjectiveCatalogNormalizer;
+
+    public NoteWorkspacePayloadMapper(IIntakeReferenceDataCatalogService intakeReferenceData)
     {
-        var legacyNote = await LoadLegacyNoteAsync(patientId, noteId, cancellationToken);
-        if (legacyNote is null)
-        {
-            return new NoteWorkspaceLoadResult
-            {
-                Success = false,
-                ErrorMessage = "Note was not found for this patient."
-            };
-        }
-
-        if (RequiresLegacyCompatibility(legacyNote.NoteType, legacyNote.ContentJson))
-        {
-            return BuildLegacyLoadResult(legacyNote);
-        }
-
-        var response = await httpClient.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}", cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspaceLoadResult
-            {
-                Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-            };
-        }
-
-        var workspace = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2LoadResponse>(SerializerOptions, cancellationToken);
-        if (workspace is null)
-        {
-            return new NoteWorkspaceLoadResult
-            {
-                Success = false,
-                ErrorMessage = "Workspace payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceLoadResult
-        {
-            Success = true,
-            NoteId = workspace.NoteId,
-            WorkspaceNoteType = ToWorkspaceNoteType(workspace.NoteType),
-            DateOfService = workspace.DateOfService,
-            Status = workspace.NoteStatus,
-            Payload = _payloadMapper.MapToUiPayload(workspace.Payload)
-        };
+        _subjectiveCatalogNormalizer = new WorkspaceSubjectiveCatalogNormalizer(intakeReferenceData);
     }
 
-    public async Task<NoteWorkspaceEvaluationSeedResult> GetEvaluationSeedAsync(
-        Guid patientId,
-        CancellationToken cancellationToken = default)
+    public NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
     {
-        using var response = await httpClient.GetAsync(
-            $"/api/v2/notes/workspace/{patientId}/evaluation-seed",
-            cancellationToken);
+        var assistiveDeviceSelections = _subjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(payload.Subjective.AssistiveDevice);
+        var houseLayoutSelections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(payload.Subjective.OtherLivingSituation);
+        var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
 
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return new NoteWorkspaceEvaluationSeedResult
-            {
-                Success = true,
-                HasSeed = false
-            };
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspaceEvaluationSeedResult
-            {
-                Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-            };
-        }
-
-        var seed = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>(SerializerOptions, cancellationToken);
-        if (seed is null)
-        {
-            return new NoteWorkspaceEvaluationSeedResult
-            {
-                Success = false,
-                ErrorMessage = "Evaluation seed payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceEvaluationSeedResult
-        {
-            Success = true,
-            HasSeed = true,
-            FromLockedSubmittedIntake = seed.FromLockedSubmittedIntake,
-            Payload = _payloadMapper.MapToUiPayload(seed.Payload)
-        };
-    }
-
-    public async Task<NoteWorkspaceCarryForwardSeedResult> GetCarryForwardSeedAsync(
-        Guid patientId,
-        string workspaceNoteType,
-        CancellationToken cancellationToken = default)
-    {
-        var noteType = ToApiNoteType(workspaceNoteType);
-        using var response = await httpClient.GetAsync(
-            $"/api/v2/notes/workspace/{patientId}/carry-forward?noteType={Uri.EscapeDataString(noteType.ToString())}",
-            cancellationToken);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return new NoteWorkspaceCarryForwardSeedResult
-            {
-                Success = true,
-                HasSeed = false
-            };
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspaceCarryForwardSeedResult
-            {
-                Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-            };
-        }
-
-        var seed = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2CarryForwardResponse>(SerializerOptions, cancellationToken);
-        if (seed is null)
-        {
-            return new NoteWorkspaceCarryForwardSeedResult
-            {
-                Success = false,
-                ErrorMessage = "Carry-forward seed payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceCarryForwardSeedResult
-        {
-            Success = true,
-            HasSeed = true,
-            SourceNoteType = ToWorkspaceNoteType(seed.SourceNoteType),
-            SourceNoteDateOfService = seed.SourceNoteDateOfService,
-            Payload = _payloadMapper.MapToUiPayload(seed.Payload)
-        };
-    }
-
-    public async Task<NoteWorkspaceSaveResult> SaveDraftAsync(
-        NoteWorkspaceDraft draft,
-        CancellationToken cancellationToken = default)
-    {
-        if (RequiresLegacyCompatibility(draft.WorkspaceNoteType))
-        {
-            return await SaveLegacyDraftAsync(draft, cancellationToken);
-        }
-
-        var noteType = ToApiNoteType(draft.WorkspaceNoteType);
-        var request = new NoteWorkspaceV2SaveRequest
-        {
-            NoteId = draft.IsExistingNote ? draft.NoteId : null,
-            PatientId = draft.PatientId,
-            DateOfService = draft.DateOfService,
-            NoteType = noteType,
-            Payload = _payloadMapper.MapToV2Payload(draft.Payload, noteType),
-            Override = draft.Override
-        };
-
-        var response = await httpClient.PostAsJsonAsync("/api/v2/notes/workspace/", request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
-            var failedSave = TryDeserialize<NoteWorkspaceV2SaveResponse>(failurePayload);
-            if (failedSave is not null)
-            {
-                return new NoteWorkspaceSaveResult
-                {
-                    Success = false,
-                    ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
-                        ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
-                    Errors = failedSave.Errors,
-                    Warnings = failedSave.Warnings,
-                    RequiresOverride = failedSave.RequiresOverride,
-                    RuleType = failedSave.RuleType,
-                    IsOverridable = failedSave.IsOverridable,
-                    OverrideRequirements = failedSave.OverrideRequirements
-                };
-            }
-
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = ApiErrorReader.ReadMessage(failurePayload, response.StatusCode)
-            };
-        }
-
-        var saved = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>(SerializerOptions, cancellationToken);
-        if (saved?.Workspace is null)
-        {
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = "Save completed but workspace payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceSaveResult
-        {
-            Success = true,
-            NoteId = saved.Workspace.NoteId,
-            Status = saved.Workspace.NoteStatus,
-            Errors = saved.Errors,
-            Warnings = saved.Warnings,
-            RequiresOverride = saved.RequiresOverride,
-            RuleType = saved.RuleType,
-            IsOverridable = saved.IsOverridable,
-            OverrideRequirements = saved.OverrideRequirements,
-            Payload = _payloadMapper.MapToUiPayload(saved.Workspace.Payload)
-        };
-    }
-
-    public async Task<NoteWorkspaceSubmitResult> SubmitAsync(
-        Guid noteId,
-        bool consentAccepted,
-        bool intentConfirmed,
-        CancellationToken cancellationToken = default)
-    {
-        var request = JsonContent.Create(new SubmitNoteRequest
-        {
-            ConsentAccepted = consentAccepted,
-            IntentConfirmed = intentConfirmed
-        });
-
-        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/sign", request, cancellationToken);
-        if (response.IsSuccessStatusCode)
-        {
-            var payload = await response.Content.ReadFromJsonAsync<SubmitNoteResponse>(SerializerOptions, cancellationToken);
-            var status = NoteStatus.Signed;
-            if (!string.IsNullOrWhiteSpace(payload?.Status) &&
-                Enum.TryParse<NoteStatus>(payload.Status, ignoreCase: true, out var parsedStatus))
-            {
-                status = parsedStatus;
-            }
-            else if (payload?.RequiresCoSign == true)
-            {
-                status = NoteStatus.PendingCoSign;
-            }
-
-            return new NoteWorkspaceSubmitResult
-            {
-                Success = true,
-                RequiresCoSign = payload?.RequiresCoSign ?? false,
-                Status = status
-            };
-        }
-
-        var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
-        var failedSubmit = TryDeserialize<SubmitNoteErrorResponse>(failurePayload);
-        return new NoteWorkspaceSubmitResult
-        {
-            Success = false,
-            ErrorMessage = ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
-            ValidationFailures = (IReadOnlyList<RuleEvaluationResult>?)failedSubmit?.ValidationFailures ?? Array.Empty<RuleEvaluationResult>()
-        };
-    }
-
-    public async Task<NoteWorkspaceAiAcceptanceResult> AcceptAiSuggestionAsync(
-        Guid noteId,
-        string section,
-        string generatedText,
-        string generationType,
-        CancellationToken cancellationToken = default)
-    {
-        if (noteId == Guid.Empty)
-        {
-            return new NoteWorkspaceAiAcceptanceResult
-            {
-                Success = false,
-                ErrorMessage = "Save the note before accepting AI-generated content."
-            };
-        }
-
-        var response = await httpClient.PostAsJsonAsync(
-            $"/api/v1/notes/{noteId}/accept-ai-suggestion",
-            new AiSuggestionAcceptanceRequest
-            {
-                Section = section,
-                GeneratedText = generatedText,
-                GenerationType = generationType
-            },
-            cancellationToken);
-
-        if (response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspaceAiAcceptanceResult { Success = true };
-        }
-
-        return new NoteWorkspaceAiAcceptanceResult
-        {
-            Success = false,
-            ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-        };
-    }
-
-    public async Task<NoteWorkspacePdfExportResult> ExportPdfAsync(
-        Guid noteId,
-        CancellationToken cancellationToken = default)
-    {
-        var response = await httpClient.PostAsync($"/api/v1/notes/{noteId}/export/pdf", content: null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspacePdfExportResult
-            {
-                Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-            };
-        }
-
-        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
-            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
-            ?? $"note-{noteId:N}.pdf";
-
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/pdf";
-
-        return new NoteWorkspacePdfExportResult
-        {
-            Success = true,
-            FileName = fileName,
-            ContentType = contentType,
-            Content = await response.Content.ReadAsByteArrayAsync(cancellationToken)
-        };
-    }
-
-    public async Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(
-        Guid noteId,
-        CancellationToken cancellationToken = default)
-    {
-        using var response = await httpClient.GetAsync($"/api/v1/notes/{noteId}/export/hierarchy", cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return new NoteWorkspaceDocumentHierarchyResult
-            {
-                Success = false,
-                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
-            };
-        }
-
-        var hierarchy = await response.Content.ReadFromJsonAsync<ClinicalDocumentHierarchy>(SerializerOptions, cancellationToken);
-        if (hierarchy is null)
-        {
-            return new NoteWorkspaceDocumentHierarchyResult
-            {
-                Success = false,
-                ErrorMessage = "Preview hierarchy payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceDocumentHierarchyResult
-        {
-            Success = true,
-            Hierarchy = hierarchy
-        };
-    }
-
-    public async Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(
-        string? query,
-        int take = 20,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return Array.Empty<CodeLookupEntry>();
-        }
-
-        using var response = await httpClient.GetAsync(
-            $"/api/v2/notes/workspace/lookup/icd10?q={Uri.EscapeDataString(query.Trim())}&take={Math.Clamp(take, 1, 100)}",
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException(
-                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to search ICD-10 codes.",
-                inner: null,
-                response.StatusCode);
-        }
-
-        var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
-        return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
-    }
-
-    public async Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(
-        BodyPart bodyPart,
-        CancellationToken cancellationToken = default)
-    {
-        using var response = await httpClient.GetAsync(
-            $"/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}",
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException(
-                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load the body-region catalog.",
-                inner: null,
-                response.StatusCode);
-        }
-
-        return await response.Content.ReadFromJsonAsync<BodyRegionCatalog>(SerializerOptions, cancellationToken)
-            ?? new BodyRegionCatalog { BodyPart = bodyPart };
-    }
-
-    public async Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(
-        string? query,
-        int take = 20,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return Array.Empty<CodeLookupEntry>();
-        }
-
-        using var response = await httpClient.GetAsync(
-            $"/api/v2/notes/workspace/lookup/cpt?q={Uri.EscapeDataString(query.Trim())}&take={Math.Clamp(take, 1, 100)}",
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException(
-                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to search CPT codes.",
-                inner: null,
-                response.StatusCode);
-        }
-
-        var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
-        return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
-    }
-
-    private async Task<NoteResponse?> LoadLegacyNoteAsync(
-        Guid patientId,
-        Guid noteId,
-        CancellationToken cancellationToken)
-    {
-        var response = await httpClient.GetAsync($"/api/v1/patients/{patientId}/notes", cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return null;
-        }
-
-        var notes = await response.Content.ReadFromJsonAsync<List<NoteResponse>>(SerializerOptions, cancellationToken);
-        return notes?.FirstOrDefault(n => n.Id == noteId);
-    }
-
-    private async Task<NoteWorkspaceSaveResult> SaveLegacyDraftAsync(
-        NoteWorkspaceDraft draft,
-        CancellationToken cancellationToken)
-    {
-        var payloadJson = JsonSerializer.Serialize(draft.Payload, SerializerOptions);
-        var cptCodesJson = BuildLegacyCptCodesJson(draft.Payload.Plan);
-
-        HttpResponseMessage response;
-        if (draft.IsExistingNote && draft.NoteId.HasValue)
-        {
-            var updateRequest = new UpdateNoteRequest
-            {
-                ContentJson = payloadJson,
-                DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson,
-                Override = draft.Override
-            };
-
-            response = await httpClient.PutAsJsonAsync($"/api/v1/notes/{draft.NoteId.Value}", updateRequest, cancellationToken);
-        }
-        else
-        {
-            var createRequest = new CreateNoteRequest
-            {
-                PatientId = draft.PatientId,
-                NoteType = ToApiNoteType(draft.WorkspaceNoteType),
-                ContentJson = payloadJson,
-                DateOfService = draft.DateOfService,
-                CptCodesJson = cptCodesJson,
-                Override = draft.Override
-            };
-
-            response = await httpClient.PostAsJsonAsync("/api/v1/notes/", createRequest, cancellationToken);
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var failurePayload = await response.Content.ReadAsStringAsync(cancellationToken);
-            var failedSave = TryDeserialize<NoteOperationResponse>(failurePayload);
-            if (failedSave is not null)
-            {
-                return new NoteWorkspaceSaveResult
-                {
-                    Success = false,
-                    ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
-                        ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
-                    Errors = failedSave.Errors,
-                    Warnings = failedSave.Warnings,
-                    RequiresOverride = failedSave.RequiresOverride,
-                    RuleType = failedSave.RuleType,
-                    IsOverridable = failedSave.IsOverridable,
-                    OverrideRequirements = failedSave.OverrideRequirements
-                };
-            }
-
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = ApiErrorReader.ReadMessage(failurePayload, response.StatusCode)
-            };
-        }
-
-        var operation = await response.Content.ReadFromJsonAsync<NoteOperationResponse>(SerializerOptions, cancellationToken);
-        if (operation?.Note is null)
-        {
-            return new NoteWorkspaceSaveResult
-            {
-                Success = false,
-                ErrorMessage = "Save completed but note payload was empty."
-            };
-        }
-
-        return new NoteWorkspaceSaveResult
-        {
-            Success = true,
-            NoteId = operation.Note.Id,
-            Status = operation.Note.NoteStatus,
-            Errors = operation.Errors,
-            Warnings = operation.Warnings,
-            RequiresOverride = operation.RequiresOverride,
-            RuleType = operation.RuleType,
-            IsOverridable = operation.IsOverridable,
-            OverrideRequirements = operation.OverrideRequirements,
-            ComplianceWarning = operation.ComplianceWarning,
-            Payload = ParseLegacyPayload(operation.Note.ContentJson, operation.Note.NoteType)
-        };
-    }
-
-    private static NoteWorkspaceLoadResult BuildLegacyLoadResult(NoteResponse note)
-    {
-        var payload = ParseLegacyPayload(note.ContentJson, note.NoteType);
-        var workspaceNoteType = string.IsNullOrWhiteSpace(payload.WorkspaceNoteType)
-            ? ToWorkspaceNoteType(note.NoteType)
-            : payload.WorkspaceNoteType;
-
-        return new NoteWorkspaceLoadResult
-        {
-            Success = true,
-            NoteId = note.Id,
-            WorkspaceNoteType = workspaceNoteType,
-            DateOfService = note.DateOfService,
-            Status = note.NoteStatus,
-            Payload = payload
-        };
-    }
-
-    private static string BuildLegacyCptCodesJson(PlanVm plan)
-    {
-        var cptEntries = plan.SelectedCptCodes
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code))
-            .Select(code => new ComplianceCptCodeEntry
-            {
-                Code = code.Code,
-                Units = code.Units,
-                Minutes = code.Minutes,
-                IsTimed = false,
-                Modifiers = code.Modifiers
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                ModifierOptions = code.ModifierOptions
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                SuggestedModifiers = code.SuggestedModifiers
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
-                    ? null
-                    : code.ModifierSource.Trim()
-            })
-            .ToList();
-
-        return JsonSerializer.Serialize(cptEntries, SerializerOptions);
-    }
-
-    private static NoteWorkspacePayload ParseLegacyPayload(string contentJson, NoteType fallbackType)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson))
-        {
-            return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-        }
-
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<NoteWorkspacePayload>(contentJson, SerializerOptions);
-            if (parsed is null)
-            {
-                return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-            }
-
-            if (string.IsNullOrWhiteSpace(parsed.WorkspaceNoteType))
-            {
-                parsed.WorkspaceNoteType = ToWorkspaceNoteType(fallbackType);
-            }
-
-            return parsed;
-        }
-        catch (JsonException)
-        {
-            return new NoteWorkspacePayload { WorkspaceNoteType = ToWorkspaceNoteType(fallbackType) };
-        }
-    }
-
-    private static NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
-    {
-        var uiPayload = new NoteWorkspacePayload
+        return new NoteWorkspacePayload
         {
             WorkspaceNoteType = ToWorkspaceNoteType(payload.NoteType),
             StructuredPayload = ClonePayload(payload),
@@ -682,20 +71,23 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                     .ToHashSet(StringComparer.OrdinalIgnoreCase),
                 AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations,
                 HasImaging = payload.Subjective.Imaging.HasImaging,
-                UsesAssistiveDevice = payload.Subjective.AssistiveDevice.UsesAssistiveDevice,
+                UsesAssistiveDevice = payload.Subjective.AssistiveDevice.UsesAssistiveDevice
+                    ?? (assistiveDeviceSelections.HasSelections ? true : null),
+                SelectedAssistiveDeviceLabels = CloneSet(assistiveDeviceSelections.SelectedLabels),
+                OtherAssistiveDevice = assistiveDeviceSelections.OtherText,
                 EmploymentStatus = payload.Subjective.EmploymentStatus,
-                LivingSituation = CloneSet(payload.Subjective.LivingSituation),
-                OtherLivingSituation = payload.Subjective.OtherLivingSituation,
+                LivingSituation = _subjectiveCatalogNormalizer.NormalizeLivingSituationLabels(payload.Subjective.LivingSituation),
+                SelectedHouseLayoutLabels = CloneSet(houseLayoutSelections.SelectedLabels),
+                OtherLivingSituation = houseLayoutSelections.OtherText,
                 SupportSystem = CloneSet(payload.Subjective.SupportSystem),
                 OtherSupport = payload.Subjective.OtherSupport,
-                Comorbidities = CloneSet(payload.Subjective.Comorbidities),
+                Comorbidities = _subjectiveCatalogNormalizer.NormalizeComorbidityLabels(payload.Subjective.Comorbidities),
                 PriorTreatments = CloneSet(payload.Subjective.PriorTreatment.Treatments),
                 OtherTreatment = payload.Subjective.PriorTreatment.OtherTreatment,
                 TakingMedications = payload.Subjective.TakingMedications
-                    ?? (payload.Subjective.Medications.Count > 0 ? true : null),
-                MedicationDetails = payload.Subjective.Medications.Count == 0
-                    ? null
-                    : string.Join(", ", payload.Subjective.Medications.Select(med => med.Name).Where(name => !string.IsNullOrWhiteSpace(name)))
+                    ?? (medicationSelections.HasSelections ? true : null),
+                SelectedMedicationLabels = CloneSet(medicationSelections.SelectedLabels),
+                MedicationDetails = medicationSelections.OtherText
             },
             Objective = new ObjectiveVm
             {
@@ -847,11 +239,9 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                 ClinicalSummary = payload.Plan.ClinicalSummary
             }
         };
-
-        return uiPayload;
     }
 
-    private static NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
+    public NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
     {
         var preservedPayload = ClonePayload(payload.StructuredPayload) ?? new NoteWorkspaceV2Payload();
         preservedPayload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
@@ -894,12 +284,20 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         preservedPayload.Subjective.Imaging.HasImaging = payload.Subjective.HasImaging;
         preservedPayload.Subjective.AssistiveDevice ??= new AssistiveDeviceDetailsV2();
         preservedPayload.Subjective.AssistiveDevice.UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice;
+        preservedPayload.Subjective.AssistiveDevice.Devices = payload.Subjective.UsesAssistiveDevice == true
+            ? _subjectiveCatalogNormalizer.NormalizeAssistiveDeviceLabels(payload.Subjective.SelectedAssistiveDeviceLabels)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        preservedPayload.Subjective.AssistiveDevice.OtherDevice = payload.Subjective.UsesAssistiveDevice == true
+            ? TrimToNull(payload.Subjective.OtherAssistiveDevice)
+            : null;
         preservedPayload.Subjective.EmploymentStatus = payload.Subjective.EmploymentStatus;
-        preservedPayload.Subjective.LivingSituation = CloneSet(payload.Subjective.LivingSituation);
-        preservedPayload.Subjective.OtherLivingSituation = payload.Subjective.OtherLivingSituation;
+        preservedPayload.Subjective.LivingSituation = _subjectiveCatalogNormalizer.NormalizeLivingSituationLabels(payload.Subjective.LivingSituation);
+        preservedPayload.Subjective.OtherLivingSituation = _subjectiveCatalogNormalizer.ComposeHouseLayoutSelections(
+            payload.Subjective.SelectedHouseLayoutLabels,
+            payload.Subjective.OtherLivingSituation);
         preservedPayload.Subjective.SupportSystem = CloneSet(payload.Subjective.SupportSystem);
         preservedPayload.Subjective.OtherSupport = payload.Subjective.OtherSupport;
-        preservedPayload.Subjective.Comorbidities = CloneSet(payload.Subjective.Comorbidities);
+        preservedPayload.Subjective.Comorbidities = _subjectiveCatalogNormalizer.NormalizeComorbidityLabels(payload.Subjective.Comorbidities);
         preservedPayload.Subjective.PriorTreatment ??= new PriorTreatmentDetailsV2();
         preservedPayload.Subjective.PriorTreatment.Treatments = CloneSet(payload.Subjective.PriorTreatments);
         preservedPayload.Subjective.PriorTreatment.OtherTreatment = payload.Subjective.OtherTreatment;
@@ -908,6 +306,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             ? []
             : MergeMedications(
                 preservedPayload.Subjective.Medications,
+                payload.Subjective.SelectedMedicationLabels,
                 payload.Subjective.MedicationDetails);
 
         preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
@@ -1121,19 +520,31 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         Notes = entry.Notes
     };
 
-    private static List<MedicationEntryV2> MergeMedications(
+    private List<MedicationEntryV2> MergeMedications(
         IReadOnlyCollection<MedicationEntryV2>? preservedEntries,
+        IEnumerable<string> selectedMedicationLabels,
         string? medicationDetails)
     {
-        var selectedNames = SplitDelimitedValues(medicationDetails);
-        if (selectedNames.Count == 0)
+        var selectedNames = _subjectiveCatalogNormalizer.NormalizeMedicationSelectionLabels(selectedMedicationLabels);
+        var manualNames = SplitDelimitedValues(medicationDetails)
+            .Select(value => _subjectiveCatalogNormalizer.TryNormalizeMedicationLabel(value, out var canonical) ? canonical : value)
+            .ToList();
+        var targetNames = selectedNames
+            .Concat(manualNames)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (targetNames.Count == 0)
         {
             return [];
         }
 
         var preservedByName = (preservedEntries ?? [])
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .GroupBy(entry => entry.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                entry => _subjectiveCatalogNormalizer.TryNormalizeMedicationLabel(entry.Name, out var canonical) ? canonical : entry.Name.Trim(),
+                StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => new Queue<MedicationEntryV2>(group.Select(entry => new MedicationEntryV2
@@ -1144,7 +555,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
                 })),
                 StringComparer.OrdinalIgnoreCase);
 
-        return selectedNames
+        return targetNames
             .Select(name =>
             {
                 if (preservedByName.TryGetValue(name, out var matches) && matches.Count > 0)
@@ -1664,9 +1075,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             .ToList();
     }
 
-    private static string JoinOptionalLines(params string?[] values) =>
-        string.Join(Environment.NewLine, values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
-
     private static HashSet<string> CloneSet(IEnumerable<string> values) =>
         values.Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
@@ -1679,116 +1087,18 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
             : BodyPart.Other;
     }
 
-    private static bool RequiresLegacyCompatibility(string workspaceNoteType) =>
-        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
-
-    private static bool RequiresLegacyCompatibility(NoteType noteType, string contentJson)
-    {
-        if (string.IsNullOrWhiteSpace(contentJson))
-        {
-            return false;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(contentJson);
-            if (document.RootElement.TryGetProperty("workspaceNoteType", out var workspaceNoteTypeElement)
-                && workspaceNoteTypeElement.ValueKind == JsonValueKind.String)
-            {
-                return RequiresLegacyCompatibility(workspaceNoteTypeElement.GetString() ?? string.Empty);
-            }
-        }
-        catch (JsonException)
-        {
-            // Fall back to typed workspace path.
-        }
-
-        return false;
-    }
-
-    private static NoteType ToApiNoteType(string workspaceNoteType)
-    {
-        return workspaceNoteType switch
-        {
-            "Evaluation Note" => NoteType.Evaluation,
-            "Progress Note" => NoteType.ProgressNote,
-            "Discharge Note" => NoteType.Discharge,
-            "Dry Needling Note" => NoteType.Daily,
-            "Daily Treatment Note" => NoteType.Daily,
-            _ => NoteType.Evaluation
-        };
-    }
-
     private static string ToWorkspaceNoteType(NoteType noteType)
     {
         return noteType switch
         {
             NoteType.Evaluation => "Evaluation Note",
             NoteType.ProgressNote => "Progress Note",
-            NoteType.Discharge => "Discharge Note",
             NoteType.Daily => "Daily Treatment Note",
+            NoteType.Discharge => "Discharge Note",
             _ => "Evaluation Note"
         };
     }
 
-    private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        return await ApiErrorReader.ReadMessageAsync(response, cancellationToken);
-    }
-
-    private static T? TryDeserialize<T>(string? payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload))
-        {
-            return default;
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(payload, SerializerOptions);
-        }
-        catch (JsonException)
-        {
-            return default;
-        }
-    }
-
-    private static string? BuildValidationMessage(IEnumerable<string>? errors, IEnumerable<string>? warnings)
-    {
-        var errorMessages = (errors ?? [])
-            .Where(message => !string.IsNullOrWhiteSpace(message))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (errorMessages.Count > 0)
-        {
-            return string.Join(" ", errorMessages);
-        }
-
-        var warningMessages = (warnings ?? [])
-            .Where(message => !string.IsNullOrWhiteSpace(message))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return warningMessages.Count > 0 ? string.Join(" ", warningMessages) : null;
-    }
-
-    private sealed class SubmitNoteResponse
-    {
-        public bool Success { get; set; }
-        public bool RequiresCoSign { get; set; }
-        public string? Status { get; set; }
-    }
-
-    private sealed class SubmitNoteErrorResponse
-    {
-        public string? Error { get; set; }
-        public List<RuleEvaluationResult>? ValidationFailures { get; set; }
-    }
-
-    private sealed class SubmitNoteRequest
-    {
-        public bool ConsentAccepted { get; set; }
-        public bool IntentConfirmed { get; set; }
-    }
+    private static string? TrimToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

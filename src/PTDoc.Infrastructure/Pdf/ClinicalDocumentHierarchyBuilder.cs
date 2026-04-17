@@ -6,6 +6,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 
 namespace PTDoc.Infrastructure.Pdf;
@@ -16,6 +17,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     {
         PropertyNameCaseInsensitive = true
     };
+    private readonly WorkspaceSubjectiveCatalogNormalizer _subjectiveCatalogNormalizer;
+
+    public ClinicalDocumentHierarchyBuilder(IIntakeReferenceDataCatalogService intakeReferenceData)
+    {
+        _subjectiveCatalogNormalizer = new WorkspaceSubjectiveCatalogNormalizer(intakeReferenceData);
+    }
 
     public ClinicalDocumentHierarchy Build(NoteExportDto noteData)
     {
@@ -31,7 +38,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         return SanitizeHierarchy(hierarchy);
     }
 
-    private static ClinicalDocumentHierarchy BuildInitialEvaluation(NoteExportDto noteData, ExportDocumentContext context)
+    private ClinicalDocumentHierarchy BuildInitialEvaluation(NoteExportDto noteData, ExportDocumentContext context)
     {
         var evaluation = context.EvaluationContent;
         var workspace = context.WorkspacePayload;
@@ -54,9 +61,13 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     evaluation?.FunctionalLimitations)),
                 Paragraph("Pain Rating", BuildPainSummary(workspace)),
                 Paragraph("Pain Description", BuildPainDescription(workspace)),
+                Paragraph("Assistive Devices", BuildAssistiveDeviceSummary(workspace)),
+                Paragraph("Living Situation", BuildLivingSituationSummary(workspace)),
+                Paragraph("Home Layout", BuildHomeLayoutSummary(workspace)),
                 Paragraph("Medical History / Comorbidities", FirstNonEmpty(
-                    JoinSet(workspace?.Subjective.Comorbidities),
+                    BuildComorbiditySummary(workspace),
                     evaluation?.MedicalHistory)),
+                Paragraph("Current Medications", BuildMedicationSummary(workspace)),
                 TodoNode(
                     "Surgical history as structured evaluation content",
                     "Clinical note",
@@ -844,6 +855,85 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         if (!string.IsNullOrWhiteSpace(workspace.Subjective.OtherLocation))
         {
             values.Add($"Other location: {workspace.Subjective.OtherLocation}");
+        }
+
+        return string.Join("; ", values);
+    }
+
+    private string BuildAssistiveDeviceSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return string.Empty;
+        }
+
+        var selections = _subjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(workspace.Subjective.AssistiveDevice);
+        var values = new List<string>();
+        if (workspace.Subjective.AssistiveDevice.UsesAssistiveDevice == true && !selections.HasSelections)
+        {
+            values.Add("Assistive device in use");
+        }
+
+        values.AddRange(selections.SelectedLabels.OrderBy(value => value, StringComparer.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(selections.OtherText))
+        {
+            values.Add(selections.OtherText.Trim());
+        }
+
+        return string.Join("; ", values);
+    }
+
+    private string BuildLivingSituationSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        return workspace is null
+            ? string.Empty
+            : JoinSet(_subjectiveCatalogNormalizer.NormalizeLivingSituationLabels(workspace.Subjective.LivingSituation));
+    }
+
+    private string BuildHomeLayoutSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return string.Empty;
+        }
+
+        var selections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(workspace.Subjective.OtherLivingSituation);
+        var values = selections.SelectedLabels
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(selections.OtherText))
+        {
+            values.Add(selections.OtherText.Trim());
+        }
+
+        return string.Join("; ", values);
+    }
+
+    private string BuildComorbiditySummary(NoteWorkspaceV2Payload? workspace)
+    {
+        return workspace is null
+            ? string.Empty
+            : JoinSet(_subjectiveCatalogNormalizer.NormalizeComorbidityLabels(workspace.Subjective.Comorbidities));
+    }
+
+    private string BuildMedicationSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return string.Empty;
+        }
+
+        var selections = _subjectiveCatalogNormalizer.ParseMedicationSelections(workspace.Subjective.Medications);
+        var values = new List<string>();
+        if (workspace.Subjective.TakingMedications == true && !selections.HasSelections)
+        {
+            values.Add("Taking medications");
+        }
+
+        values.AddRange(_subjectiveCatalogNormalizer.NormalizeMedicationSelectionLabels(selections.SelectedLabels));
+        if (!string.IsNullOrWhiteSpace(selections.OtherText))
+        {
+            values.Add(selections.OtherText.Trim());
         }
 
         return string.Join("; ", values);

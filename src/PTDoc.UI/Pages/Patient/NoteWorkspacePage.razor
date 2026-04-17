@@ -12,6 +12,7 @@
 @using PTDoc.Application.AI
 @using PTDoc.Application.Compliance
 @using PTDoc.Application.Notes.Workspace
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes
@@ -26,6 +27,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject INoteWorkspaceService NoteWorkspaceService
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject IPatientService PatientService
 @inject IAiClinicalGenerationService AiService
 @inject DraftAutosaveService DraftAutosaveService
@@ -460,6 +462,7 @@ else
     private readonly SemaphoreSlim _persistGate = new(1, 1);
 
     private SoapNoteVm _note = new();
+    private WorkspaceSubjectiveCatalogNormalizer? _subjectiveCatalogNormalizer;
     private DryNeedlingVm _dryNeedling = new();
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
     private Guid _currentNoteId;
@@ -497,6 +500,8 @@ else
     private bool IsDischargeNote => string.Equals(_note.NoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDryNeedlingNote => string.Equals(_note.NoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
     private bool IsReviewSection => _note.ActiveSection == SoapSection.Review;
+    private WorkspaceSubjectiveCatalogNormalizer SubjectiveCatalogNormalizer =>
+        _subjectiveCatalogNormalizer ??= new WorkspaceSubjectiveCatalogNormalizer(IntakeReferenceData);
 
     private bool IsPtUser => _user.IsInRole(Roles.PT);
     private bool IsPtaUser => _user.IsInRole(Roles.PTA);
@@ -1820,6 +1825,11 @@ else
 
         var chips = new List<string>();
         var subjective = payload.Subjective;
+        var normalizedAssistiveDevices = SubjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(subjective.AssistiveDevice);
+        var normalizedLivingSituations = SubjectiveCatalogNormalizer.NormalizeLivingSituationLabels(subjective.LivingSituation);
+        var normalizedHouseLayout = SubjectiveCatalogNormalizer.ParseHouseLayoutSelections(subjective.OtherLivingSituation);
+        var normalizedComorbidities = SubjectiveCatalogNormalizer.NormalizeComorbidityLabels(subjective.Comorbidities);
+        var normalizedMedications = SubjectiveCatalogNormalizer.ParseMedicationSelections(subjective.Medications);
 
         if (subjective.CurrentPainScore > 0 || subjective.Problems.Contains("Pain"))
         {
@@ -1837,35 +1847,45 @@ else
 
         if (subjective.AssistiveDevice.UsesAssistiveDevice == true)
         {
-            if (subjective.AssistiveDevice.Devices.Count == 0)
+            if (!normalizedAssistiveDevices.HasSelections)
             {
                 chips.Add("Assistive device in use");
             }
-            else
+
+            chips.AddRange(normalizedAssistiveDevices.SelectedLabels
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .Select(value => $"Assistive device: {value}"));
+
+            if (!string.IsNullOrWhiteSpace(normalizedAssistiveDevices.OtherText))
             {
-                chips.AddRange(subjective.AssistiveDevice.Devices
-                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                    .Select(value => $"Assistive device: {value}"));
+                chips.Add($"Assistive device: {normalizedAssistiveDevices.OtherText.Trim()}");
             }
         }
 
-        chips.AddRange(subjective.LivingSituation
+        chips.AddRange(normalizedLivingSituations
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
             .Select(value => $"Living: {value}"));
 
-        if (!string.IsNullOrWhiteSpace(subjective.OtherLivingSituation))
+        chips.AddRange(normalizedHouseLayout.SelectedLabels
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(value => $"Home layout: {value}"));
+
+        if (!string.IsNullOrWhiteSpace(normalizedHouseLayout.OtherText))
         {
-            chips.Add($"Home setup: {subjective.OtherLivingSituation.Trim()}");
+            chips.Add($"Other living/home: {normalizedHouseLayout.OtherText.Trim()}");
         }
 
-        chips.AddRange(subjective.Comorbidities
+        chips.AddRange(normalizedComorbidities
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
             .Select(value => $"Comorbidity: {value}"));
 
-        chips.AddRange(subjective.Medications
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(entry => $"Medication: {entry.Name.Trim()}"));
+        chips.AddRange(SubjectiveCatalogNormalizer.NormalizeMedicationSelectionLabels(normalizedMedications.SelectedLabels)
+            .Select(value => $"Medication: {value}"));
+
+        if (!string.IsNullOrWhiteSpace(normalizedMedications.OtherText))
+        {
+            chips.Add($"Medication: {normalizedMedications.OtherText.Trim()}");
+        }
 
         return chips;
     }

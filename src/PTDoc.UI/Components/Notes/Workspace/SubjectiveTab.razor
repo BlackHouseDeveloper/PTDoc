@@ -1,10 +1,12 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
 @using PTDoc.Application.Notes.Workspace
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
 @using PTDoc.UI.Services
 
 @inject INoteWorkspaceService NoteWorkspaceService
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject ILogger<SubjectiveTab> Logger
 
 <section class="subjective-tab" data-testid="subjective-tab" role="tabpanel" aria-label="Subjective section">
@@ -272,15 +274,64 @@
                 <input type="radio" name="assistive-device" value="true"
                        checked="@(_vm.UsesAssistiveDevice == true)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetAndNotify(v => v.UsesAssistiveDevice = true)" /> Yes
+                       @onchange="_ => SetAssistiveDeviceUsageAsync(true)" /> Yes
             </label>
             <label class="subjective-tab__radio-item">
                 <input type="radio" name="assistive-device" value="false"
                        checked="@(_vm.UsesAssistiveDevice == false)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetAndNotify(v => v.UsesAssistiveDevice = false)" /> No
+                       @onchange="_ => SetAssistiveDeviceUsageAsync(false)" /> No
             </label>
         </div>
+        @if (_vm.UsesAssistiveDevice == true)
+        {
+            <label class="subjective-tab__field-label" for="assistive-device-search">Assistive device search</label>
+            <input id="assistive-device-search"
+                   class="subjective-tab__text-input subjective-tab__search-input"
+                   type="search"
+                   placeholder="Search assistive devices"
+                   disabled="@IsReadOnly"
+                   data-testid="subjective-assistive-device-search"
+                   @bind="_assistiveDeviceSearch"
+                   @bind:event="oninput" />
+
+            @if (_vm.SelectedAssistiveDeviceLabels.Count > 0)
+            {
+                <div class="subjective-tab__chip-list">
+                    @foreach (var option in SelectedAssistiveDeviceOptions)
+                    {
+                        <button type="button"
+                                class="subjective-tab__chip subjective-tab__chip--selected"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleAssistiveDeviceAsync(option.Label)">
+                            @option.Label
+                        </button>
+                    }
+                </div>
+            }
+
+            <div class="subjective-tab__chip-grid">
+                @foreach (var option in FilteredAssistiveDeviceOptions)
+                {
+                    var isSelected = _vm.SelectedAssistiveDeviceLabels.Contains(option.Label);
+                    <button type="button"
+                            class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                            disabled="@IsReadOnly"
+                            @onclick="() => ToggleAssistiveDeviceAsync(option.Label)">
+                        @option.Label
+                    </button>
+                }
+            </div>
+
+            <label class="subjective-tab__field-label" for="assistive-device-other">Other assistive device (optional)</label>
+            <input id="assistive-device-other"
+                   type="text"
+                   class="subjective-tab__text-input"
+                   placeholder="Add a device not in the catalog"
+                   value="@_vm.OtherAssistiveDevice"
+                   disabled="@IsReadOnly"
+                   @onchange="e => SetAndNotify(v => v.OtherAssistiveDevice = e.Value?.ToString())" />
+        }
     </div>
 
     <div class="subjective-tab__question">
@@ -299,27 +350,58 @@
 
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">10. What is your living situation? (Check all that apply)</p>
-        <div class="subjective-tab__checkbox-grid">
-            @foreach (var item in _livingSituations)
+        <div class="subjective-tab__chip-grid" data-testid="subjective-living-situation-options">
+            @foreach (var option in LivingSituationCatalog)
             {
-                <label class="subjective-tab__checkbox-item">
-                    <input type="checkbox"
-                           name="living-situation"
-                           checked="@_vm.LivingSituation.Contains(item)"
-                           disabled="@IsReadOnly"
-                           @onchange="e => ToggleSet(_vm.LivingSituation, item, (bool)e.Value!)" />
-                    @item
-                </label>
+                var isSelected = _vm.LivingSituation.Contains(option.Label);
+                <button type="button"
+                        class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        disabled="@IsReadOnly"
+                        @onclick="() => ToggleCatalogSelectionAsync(_vm.LivingSituation, option.Label)">
+                    @option.Label
+                </button>
             }
         </div>
-        <div class="subjective-tab__other-row">
-            <label class="subjective-tab__other-label" for="q10-other">Other:</label>
-            <input id="q10-other" type="text" class="subjective-tab__text-input"
-                   placeholder="Specify other living situation"
-                   value="@_vm.OtherLivingSituation"
-                   disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherLivingSituation = e.Value?.ToString())" />
+
+        @if (LegacyLivingSituationSelections.Count > 0)
+        {
+            <div>
+                <p class="subjective-tab__field-label">Legacy living situation values</p>
+                <div class="subjective-tab__chip-list">
+                    @foreach (var value in LegacyLivingSituationSelections)
+                    {
+                        <button type="button"
+                                class="subjective-tab__chip subjective-tab__chip--selected"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleCatalogSelectionAsync(_vm.LivingSituation, value)">
+                            @value
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="subjective-tab__question">
+        <p class="subjective-tab__question-label">10a. What is your home layout?</p>
+        <div class="subjective-tab__chip-grid" data-testid="subjective-home-layout-options">
+            @foreach (var option in HouseLayoutCatalog)
+            {
+                var isSelected = _vm.SelectedHouseLayoutLabels.Contains(option.Label);
+                <button type="button"
+                        class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        disabled="@IsReadOnly"
+                        @onclick="() => SelectHouseLayoutAsync(option.Label)">
+                    @option.Label
+                </button>
+            }
         </div>
+        <label class="subjective-tab__field-label" for="q10-other">Other living situation / home layout details</label>
+        <input id="q10-other" type="text" class="subjective-tab__text-input"
+               placeholder="Add details not covered by the catalog"
+               value="@_vm.OtherLivingSituation"
+               disabled="@IsReadOnly"
+               @onchange="e => SetAndNotify(v => v.OtherLivingSituation = e.Value?.ToString())" />
     </div>
 
     <div class="subjective-tab__question">
@@ -347,19 +429,36 @@
 
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">12. Do you have any other health conditions (comorbidities)? (Check all that apply)</p>
-        <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
-            @foreach (var item in _comorbidities)
+        <div class="subjective-tab__chip-grid" data-testid="subjective-comorbidity-options">
+            @foreach (var option in ComorbidityCatalog)
             {
-                <label class="subjective-tab__checkbox-item">
-                    <input type="checkbox"
-                           name="comorbidities"
-                           checked="@_vm.Comorbidities.Contains(item)"
-                           disabled="@IsReadOnly"
-                           @onchange="e => ToggleSet(_vm.Comorbidities, item, (bool)e.Value!)" />
-                    @item
-                </label>
+                var isSelected = _vm.Comorbidities.Contains(option.Label);
+                <button type="button"
+                        class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        disabled="@IsReadOnly"
+                        @onclick="() => ToggleCatalogSelectionAsync(_vm.Comorbidities, option.Label)">
+                    @option.Label
+                </button>
             }
         </div>
+
+        @if (LegacyComorbiditySelections.Count > 0)
+        {
+            <div>
+                <p class="subjective-tab__field-label">Legacy comorbidity values</p>
+                <div class="subjective-tab__chip-list">
+                    @foreach (var value in LegacyComorbiditySelections)
+                    {
+                        <button type="button"
+                                class="subjective-tab__chip subjective-tab__chip--selected"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleCatalogSelectionAsync(_vm.Comorbidities, value)">
+                            @value
+                        </button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
     <div class="subjective-tab__question">
@@ -392,22 +491,61 @@
                 <input type="radio" name="medications" value="false"
                        checked="@(_vm.TakingMedications == false)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetTakingMedications(false)" /> No
+                       @onchange="_ => SetTakingMedicationsAsync(false)" /> No
             </label>
             <label class="subjective-tab__radio-item">
                 <input type="radio" name="medications" value="true"
                        checked="@(_vm.TakingMedications == true)"
                        disabled="@IsReadOnly"
-                       @onchange="_ => SetTakingMedications(true)" /> Yes
+                       @onchange="_ => SetTakingMedicationsAsync(true)" /> Yes
             </label>
         </div>
         @if (_vm.TakingMedications == true)
         {
+            <label class="subjective-tab__field-label" for="medication-search">Medication search</label>
+            <input id="medication-search"
+                   class="subjective-tab__text-input subjective-tab__search-input"
+                   type="search"
+                   placeholder="Search brand or generic medication"
+                   disabled="@IsReadOnly"
+                   data-testid="subjective-medication-search"
+                   @bind="_medicationSearch"
+                   @bind:event="oninput" />
+
+            @if (_vm.SelectedMedicationLabels.Count > 0)
+            {
+                <div class="subjective-tab__chip-list">
+                    @foreach (var medication in SelectedMedicationOptions)
+                    {
+                        <button type="button"
+                                class="subjective-tab__chip subjective-tab__chip--selected"
+                                disabled="@IsReadOnly"
+                                @onclick="() => ToggleMedicationAsync(medication.DisplayLabel)">
+                            @medication.DisplayLabel
+                        </button>
+                    }
+                </div>
+            }
+
+            <div class="subjective-tab__chip-grid">
+                @foreach (var medication in FilteredMedicationOptions)
+                {
+                    var isSelected = _vm.SelectedMedicationLabels.Contains(medication.DisplayLabel);
+                    <button type="button"
+                            class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                            disabled="@IsReadOnly"
+                            @onclick="() => ToggleMedicationAsync(medication.DisplayLabel)">
+                        @medication.DisplayLabel
+                    </button>
+                }
+            </div>
+
+            <label class="subjective-tab__field-label" for="medication-details">Other medications (optional)</label>
             <textarea id="medication-details"
                       name="medication-details"
                       class="subjective-tab__textarea"
                       rows="2"
-                      placeholder="List current medications..."
+                      placeholder="Add medications not covered by the catalog..."
                       disabled="@IsReadOnly"
                       value="@_vm.MedicationDetails"
                       @onchange="e => SetAndNotify(v => v.MedicationDetails = e.Value?.ToString())"></textarea>
@@ -421,10 +559,40 @@
     private bool _isLoadingCatalog;
     private string? _catalogError;
     private string? _loadedCatalogBodyPart;
+    private string _assistiveDeviceSearch = string.Empty;
+    private string _medicationSearch = string.Empty;
 
     [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+
+    private IReadOnlyList<IntakeCatalogOptionDto> LivingSituationCatalog => IntakeReferenceData.GetLivingSituations();
+    private IReadOnlyList<IntakeCatalogOptionDto> HouseLayoutCatalog => IntakeReferenceData.GetHouseLayoutOptions();
+    private IReadOnlyList<IntakeCatalogOptionDto> ComorbidityCatalog => IntakeReferenceData.GetComorbidities();
+    private IReadOnlyList<IntakeCatalogOptionDto> AssistiveDeviceCatalog => IntakeReferenceData.GetAssistiveDevices();
+    private IReadOnlyList<IntakeMedicationItemDto> MedicationCatalog => IntakeReferenceData.GetMedications();
+    private IReadOnlyList<string> LegacyLivingSituationSelections => GetLegacySelections(_vm.LivingSituation, LivingSituationCatalog.Select(option => option.Label));
+    private IReadOnlyList<string> LegacyComorbiditySelections => GetLegacySelections(_vm.Comorbidities, ComorbidityCatalog.Select(option => option.Label));
+    private IReadOnlyList<IntakeCatalogOptionDto> SelectedAssistiveDeviceOptions => AssistiveDeviceCatalog
+        .Where(option => _vm.SelectedAssistiveDeviceLabels.Contains(option.Label))
+        .OrderBy(option => option.DisplayOrder)
+        .ToList();
+    private IReadOnlyList<IntakeCatalogOptionDto> FilteredAssistiveDeviceOptions => AssistiveDeviceCatalog
+        .Where(option => string.IsNullOrWhiteSpace(_assistiveDeviceSearch)
+            || option.Label.Contains(_assistiveDeviceSearch, StringComparison.OrdinalIgnoreCase))
+        .Take(string.IsNullOrWhiteSpace(_assistiveDeviceSearch) ? 12 : 20)
+        .ToList();
+    private IReadOnlyList<IntakeMedicationItemDto> SelectedMedicationOptions => MedicationCatalog
+        .Where(item => _vm.SelectedMedicationLabels.Contains(item.DisplayLabel))
+        .OrderBy(item => item.DisplayOrder)
+        .ToList();
+    private IReadOnlyList<IntakeMedicationItemDto> FilteredMedicationOptions => MedicationCatalog
+        .Where(item => string.IsNullOrWhiteSpace(_medicationSearch)
+            || item.DisplayLabel.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase)
+            || item.BrandName.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase)
+            || item.GenericName.Contains(_medicationSearch, StringComparison.OrdinalIgnoreCase))
+        .Take(string.IsNullOrWhiteSpace(_medicationSearch) ? 8 : 12)
+        .ToList();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -471,22 +639,9 @@
         "Retired", "Student", "Homemaker"
     ];
 
-    private static readonly string[] _livingSituations =
-    [
-        "Lives alone", "Lives with family", "Lives with roommate/caregiver",
-        "Home has stairs", "Bedroom on second floor", "Bathroom on second floor"
-    ];
-
     private static readonly string[] _supportOptions =
     [
         "Yes – Family", "Yes – Friends", "Yes – Paid caregiver", "No"
-    ];
-
-    private static readonly string[] _comorbidities =
-    [
-        "Diabetes", "Hypertension", "Heart Disease", "COPD/Asthma",
-        "Osteoporosis", "Arthritis", "Cancer History", "Depression/Anxiety",
-        "Obesity", "Chronic Pain", "Neurological Disorder", "None"
     ];
 
     private static readonly string[] _priorTreatments =
@@ -614,21 +769,78 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
+    private Task ToggleCatalogSelectionAsync(HashSet<string> set, string item)
+    {
+        if (set.Contains(item))
+        {
+            set.Remove(item);
+        }
+        else
+        {
+            set.Add(item);
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task ToggleAssistiveDeviceAsync(string label) => ToggleCatalogSelectionAsync(_vm.SelectedAssistiveDeviceLabels, label);
+
+    private Task ToggleMedicationAsync(string label) => ToggleCatalogSelectionAsync(_vm.SelectedMedicationLabels, label);
+
+    private Task SelectHouseLayoutAsync(string label)
+    {
+        if (_vm.SelectedHouseLayoutLabels.Contains(label))
+        {
+            _vm.SelectedHouseLayoutLabels.Clear();
+        }
+        else
+        {
+            _vm.SelectedHouseLayoutLabels.Clear();
+            _vm.SelectedHouseLayoutLabels.Add(label);
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
     private Task SetAndNotify(Action<SubjectiveVm> update)
     {
         update(_vm);
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private Task SetTakingMedications(bool value)
+    private Task SetAssistiveDeviceUsageAsync(bool value)
+    {
+        _vm.UsesAssistiveDevice = value;
+        if (!value)
+        {
+            _vm.SelectedAssistiveDeviceLabels.Clear();
+            _vm.OtherAssistiveDevice = null;
+            _assistiveDeviceSearch = string.Empty;
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task SetTakingMedicationsAsync(bool value)
     {
         _vm.TakingMedications = value;
         if (!value)
         {
+            _vm.SelectedMedicationLabels.Clear();
             _vm.MedicationDetails = null;
+            _medicationSearch = string.Empty;
         }
 
         return VmChanged.InvokeAsync(_vm);
+    }
+
+    private static IReadOnlyList<string> GetLegacySelections(HashSet<string> selectedValues, IEnumerable<string> catalogValues)
+    {
+        var catalog = catalogValues.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return selectedValues
+            .Where(value => !catalog.Contains(value))
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static int ParseInt(object? value) =>

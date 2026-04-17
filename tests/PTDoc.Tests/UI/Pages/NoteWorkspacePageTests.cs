@@ -7,8 +7,10 @@ using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
 using Xunit;
@@ -18,6 +20,11 @@ namespace PTDoc.Tests.UI.Pages;
 [Trait("Category", "CoreCi")]
 public sealed class NoteWorkspacePageTests : TestContext
 {
+    public NoteWorkspacePageTests()
+    {
+        Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+    }
+
     [Fact]
     public void NewNotePage_AutoStartsEvaluation_WhenApplicableIntakeSeedExists()
     {
@@ -60,7 +67,15 @@ public sealed class NoteWorkspacePageTests : TestContext
                             Problems = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pain" },
                             Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left knee" },
                             CurrentPainScore = 7,
-                            Medications = [new MedicationEntryV2 { Name = "Ibuprofen" }]
+                            AssistiveDevice = new AssistiveDeviceDetailsV2
+                            {
+                                UsesAssistiveDevice = true,
+                                Devices = ["cane"]
+                            },
+                            LivingSituation = ["lives-alone"],
+                            OtherLivingSituation = "single-story-main-floor-bed-bath; Basement laundry",
+                            Comorbidities = ["hypertension"],
+                            Medications = [new MedicationEntryV2 { Name = "zestril-lisinopril" }]
                         },
                         Objective = new WorkspaceObjectiveV2
                         {
@@ -99,7 +114,12 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal("7", cut.Find("#q3-current").GetAttribute("value"));
             Assert.Contains("Submitted intake", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
             Assert.Contains("Editable draft", cut.Find("[data-testid='note-workspace-seed-state']").TextContent, StringComparison.Ordinal);
-            Assert.Contains("Medication: Ibuprofen", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Assistive device: Cane", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Living: Lives alone", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Home layout: Single-Story Home: Bedroom and bathroom on main floor", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Other living/home: Basement laundry", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Comorbidity: Hypertension (High Blood Pressure)", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Medication: Zestril / Lisinopril", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Outcome measure: LEFS", cut.Markup, StringComparison.Ordinal);
         });
 
