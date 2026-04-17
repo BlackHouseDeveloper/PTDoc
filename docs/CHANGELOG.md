@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Progress tracking payload null-safety
+
+#### Workspace-v2 progress tracking parsing now tolerates null objective and assessment blocks
+- **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`** — Hardened the workspace-v2 `ParsePayload(...)` path to treat missing `objective`/`assessment` sections, null `OutcomeMeasures`/`Goals` collections, and null collection entries as empty when building progress-tracking aggregates. Reason: stored JSON can legally contain explicit `null` values even when the C# workspace contracts default those properties, and progress tracking should degrade gracefully instead of throwing during patient aggregation.
+
 ### Changed - Branch 5 closeout slices
 
 #### Workspace load, addendum storage, and PDF export now use the final canonical-only Branch 5 paths

@@ -490,22 +490,28 @@ public sealed class ProgressTrackingAggregationService(
                 var v2Payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, SerializerOptions);
                 if (v2Payload is not null)
                 {
+                    var outcomeMeasures = v2Payload.Objective?.OutcomeMeasures?
+                        .OfType<OutcomeMeasureEntryV2>()
+                        .Select(entry => new ParsedOutcomeMeasure
+                        {
+                            Score = entry.Score,
+                            RecordedAtUtc = entry.RecordedAtUtc
+                        })
+                        .ToList() ?? [];
+
+                    var goals = v2Payload.Assessment?.Goals?
+                        .OfType<WorkspaceGoalEntryV2>()
+                        .Select(goal => new ParsedGoal
+                        {
+                            Description = goal.Description,
+                            Status = goal.Status
+                        })
+                        .ToList() ?? [];
+
                     return new ParsedProgressTrackingPayload
                     {
-                        OutcomeMeasures = v2Payload.Objective.OutcomeMeasures
-                            .Select(entry => new ParsedOutcomeMeasure
-                            {
-                                Score = entry.Score,
-                                RecordedAtUtc = entry.RecordedAtUtc
-                            })
-                            .ToList(),
-                        Goals = v2Payload.Assessment.Goals
-                            .Select(goal => new ParsedGoal
-                            {
-                                Description = goal.Description,
-                                Status = goal.Status
-                            })
-                            .ToList()
+                        OutcomeMeasures = outcomeMeasures,
+                        Goals = goals
                     };
                 }
             }
