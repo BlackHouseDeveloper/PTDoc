@@ -30,6 +30,7 @@ public sealed class NoteWorkspacePayloadMapper
         var assistiveDeviceSelections = _subjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(payload.Subjective.AssistiveDevice);
         var houseLayoutSelections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(payload.Subjective.OtherLivingSituation);
         var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
+        var selectedBodyPart = ResolveEffectiveSelectedBodyPart(payload);
 
         return new NoteWorkspacePayload
         {
@@ -49,7 +50,7 @@ public sealed class NoteWorkspacePayloadMapper
                 },
             Subjective = new SubjectiveVm
             {
-                SelectedBodyPart = ResolveSubjectiveBodyPart(payload),
+                SelectedBodyPart = selectedBodyPart,
                 Problems = CloneSet(payload.Subjective.Problems),
                 OtherProblem = payload.Subjective.OtherProblem,
                 Locations = CloneSet(payload.Subjective.Locations),
@@ -103,9 +104,7 @@ public sealed class NoteWorkspacePayloadMapper
             },
             Objective = new ObjectiveVm
             {
-                SelectedBodyPart = payload.Objective.PrimaryBodyPart == BodyPart.Other
-                    ? null
-                    : payload.Objective.PrimaryBodyPart.ToString(),
+                SelectedBodyPart = selectedBodyPart,
                 Metrics = payload.Objective.Metrics
                     .Select(metric => new ObjectiveMetricRowEntry
                     {
@@ -459,20 +458,28 @@ public sealed class NoteWorkspacePayloadMapper
             .ToList();
     }
 
-    private static string? ResolveSubjectiveBodyPart(NoteWorkspaceV2Payload payload)
+    private static string? ResolveEffectiveSelectedBodyPart(NoteWorkspaceV2Payload payload)
     {
+        if (payload.Objective.PrimaryBodyPart != BodyPart.Other)
+        {
+            return payload.Objective.PrimaryBodyPart.ToString();
+        }
+
         var structuredBodyPart = payload.Subjective.FunctionalLimitations
             .Select(entry => entry.BodyPart)
             .FirstOrDefault(bodyPart => bodyPart != BodyPart.Other);
-
         if (structuredBodyPart != BodyPart.Other)
         {
             return structuredBodyPart.ToString();
         }
 
-        return payload.Objective.PrimaryBodyPart == BodyPart.Other
+        var metricBodyPart = payload.Objective.Metrics
+            .Select(metric => metric.BodyPart)
+            .FirstOrDefault(bodyPart => bodyPart != BodyPart.Other);
+
+        return metricBodyPart == BodyPart.Other
             ? null
-            : payload.Objective.PrimaryBodyPart.ToString();
+            : metricBodyPart.ToString();
     }
 
     private static List<FunctionalLimitationEntryV2> MergeStructuredFunctionalLimitations(

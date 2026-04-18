@@ -138,6 +138,8 @@ public sealed class PlanTabTests : TestContext
         {
             Assert.Contains("Mobility", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Manual therapy", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("plan-treatment-focuses", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("plan-general-intervention-options", cut.Markup, StringComparison.Ordinal);
         });
 
         cut.FindAll("button").First(button => button.TextContent.Contains("Mobility", StringComparison.Ordinal)).Click();
@@ -149,6 +151,7 @@ public sealed class PlanTabTests : TestContext
             Assert.Single(vm.GeneralInterventions);
             Assert.Equal("Manual therapy", vm.GeneralInterventions[0].Name);
             Assert.True(vm.GeneralInterventions[0].IsSourceBacked);
+            Assert.Contains("Manual therapy", cut.Find("[data-testid='plan-general-interventions']").TextContent, StringComparison.Ordinal);
         });
 
         workspaceService.VerifyAll();

@@ -7,9 +7,11 @@ using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
@@ -560,6 +562,92 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.True(savedDrafts[1].IsExistingNote);
             Assert.True(savedDrafts[1].IsReEvaluation);
         });
+    }
+
+    [Fact]
+    public void ExistingProgressNote_LoadSyncsSelectedBodyPartSoObjectiveCatalogLoads()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Progress Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.ProgressNote
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        SelectedBodyPart = BodyPart.Knee.ToString(),
+                        CurrentPainScore = 4
+                    },
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm()
+                }
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee,
+                NormalRangeOfMotionOptions = ["Knee flexion 0-135"],
+                SpecialTestsOptions = ["McMurray"],
+                TenderMuscleOptions = ["Quadriceps"],
+                ExerciseOptions = ["Heel slides"],
+                MmtGradeOptions = ["4/5", "5/5"]
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-next']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Knee", cut.Find("[data-testid='objective-body-part-select']").GetAttribute("value"));
+            Assert.Contains("Knee flexion 0-135", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("McMurray", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Select a body part to load source-backed ROM options.", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private sealed class TestAuthenticationStateProvider(string role) : AuthenticationStateProvider
