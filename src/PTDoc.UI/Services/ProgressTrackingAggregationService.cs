@@ -526,7 +526,7 @@ public sealed class ProgressTrackingAggregationService(
 
     private static string FormatNoteType(NoteType noteType)
     {
-        return ToWorkspaceNoteType(noteType);
+        return WorkspaceNoteTypeMapper.ToWorkspaceNoteType(noteType);
     }
 
     private static bool LooksLikeWorkspaceV2Payload(JsonElement root)
@@ -673,18 +673,6 @@ public sealed class ProgressTrackingAggregationService(
     {
         public string Description { get; init; } = string.Empty;
         public GoalStatus Status { get; init; }
-    }
-
-    private static string ToWorkspaceNoteType(NoteType noteType)
-    {
-        return noteType switch
-        {
-            NoteType.Evaluation => "Evaluation Note",
-            NoteType.ProgressNote => "Progress Note",
-            NoteType.Discharge => "Discharge Note",
-            NoteType.Daily => "Daily Treatment Note",
-            _ => "Evaluation Note"
-        };
     }
 
     private static IReadOnlyList<PatientActivityGroup> BuildActivityGroups(

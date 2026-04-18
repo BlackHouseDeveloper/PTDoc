@@ -45,12 +45,15 @@ public class SubjectiveVm
 
     // Q8: Assistive device
     public bool? UsesAssistiveDevice { get; set; }
+    public HashSet<string> SelectedAssistiveDeviceLabels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? OtherAssistiveDevice { get; set; }
 
     // Q9: Employment status
     public string EmploymentStatus { get; set; } = string.Empty;
 
     // Q10: Living situation
     public HashSet<string> LivingSituation { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SelectedHouseLayoutLabels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? OtherLivingSituation { get; set; }
 
     // Q11: Support system
@@ -66,6 +69,7 @@ public class SubjectiveVm
 
     // Q14: Medications
     public bool? TakingMedications { get; set; }
+    public HashSet<string> SelectedMedicationLabels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? MedicationDetails { get; set; }
 }
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - workspace subjective intake catalog merge parity
+
+#### Preserve subjective catalog normalization across workspace save/load/export after mainline merge
+- **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`**, **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`** — Resolved merge overlap between dry-needling/workspace-v2 mainline updates and subjective catalog normalization by preserving intake-catalog label mapping for subjective fields, keeping `IsReEvaluation` on v2 save requests, retaining medication export summaries, and extending merged regression tests for catalog normalization and dry-needling canonical payload mapping.
+
 ### Changed - Note save validation null-safety
 
 #### CPT modifier normalization now tolerates null client arrays
@@ -966,6 +971,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Read workspace note summaries from schema v2 content
 - **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`tests/PTDoc.Tests/UI/ProgressTracking/ProgressTrackingAggregationServiceTests.cs`** — Updated progress-tracking note parsing to detect schema version 2 workspace payloads and project outcome scores plus goal statuses from the canonical contract instead of deserializing raw `ContentJson` only as the legacy `NoteWorkspacePayload` shape. Legacy/simple payload parsing is still retained as fallback. Reason: Branch 5 should remove remaining active UI readers that bypass the canonical workspace v2 contract, especially for dashboard-level status and scoring summaries.
 - **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`** — Fixed workspace v2 detection to match `schemaVersion` case-insensitively so progress tracking recognizes both camelCase and PascalCase serialized workspace payloads before falling back to the legacy parser. Reason: real note content and fixtures can still arrive with PascalCase keys, and treating those as legacy payloads dropped canonical outcome scores and goal summaries.
+
+### Fixed - workspace subjective alignment follow-up compile regression
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`** — Removed stale references to deleted `ObjectiveVm.TherapeuticExercises` and `ObjectiveVm.ManualTechniques` members after the compatibility mapper refactor, keeping the save/load merge path aligned to the current `ExerciseRows` and `GeneralInterventions` models. Reason: the refdata intake-alignment changes must compile against the current structured workspace UI contracts.
+
+### Fixed - dry-needling workspace note-type mapping
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`** — Updated the UI payload mapper to resolve `"Dry Needling Note"` from canonical v2 payloads when `payload.DryNeedling` is present instead of always displaying daily notes as `"Daily Treatment Note"`. Reason: dry-needling workspace loads must preserve the specialized note type all the way into the mapped editor payload.
+
+### Fixed - dry-needling workspace field mapping
+
+- **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`** — Added the missing `payload.DryNeedling -> NoteWorkspacePayload.DryNeedling` mapping on UI load and a focused mapper test covering that v2-to-UI round trip. Reason: dry-needling workspace loads must populate the specialized editor fields, not just the note-type label.
+
+### Fixed - note workspace review follow-up cleanup
+
+- **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`** — Removed the obsolete in-service workspace mapper/import leftovers now that the active load/save path is fully centralized through `NoteWorkspacePayloadMapper`. Reason: keeping a second unused mapping surface in the same service would drift and obscure which path actually owns workspace translation.
+- **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added `aria-pressed` to the catalog-backed subjective chip buttons for assistive devices, living situation, home layout, comorbidities, and medications. Reason: these controls behave like toggle buttons, and assistive tech needs the selected state announced explicitly.
+
+### Fixed - shared workspace note-type mapping
+
+- **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`**, **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/WorkspaceNoteTypeMapperTests.cs`** — Centralized workspace note-type label conversion in `WorkspaceNoteTypeMapper` and updated the UI, progress-tracking, and MAUI draft persistence paths to reuse it instead of carrying separate switch statements. Reason: the final PR review called out drift risk between the API and MAUI note-type mappings, and the same duplication also existed in other active workspace readers.
+- **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`** — Added the missing `PTDoc.Application.Notes.Workspace` import after switching MAUI draft persistence to the shared `WorkspaceNoteTypeMapper`. Reason: the initial centralization pass left the MAUI compile target without the namespace that exposes the shared mapper.
+
+### Fixed - medication seed chip fallback
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Added a review-chip fallback of `Taking medications` when seeded subjective data says the patient is taking medications but there are no structured medication selections to render yet. Reason: the intake-alignment review surfaces should preserve that affirmative medication state the same way assistive-device chips already preserve boolean-only seed data.
 
 ---
 

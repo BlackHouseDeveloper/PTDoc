@@ -416,6 +416,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.True(seed.Payload.SeedContext.FromLockedSubmittedIntake);
         Assert.Equal(6, seed.Payload.Subjective.CurrentPainScore);
         Assert.Contains("Lives alone", seed.Payload.Subjective.LivingSituation);
+        Assert.Equal(
+            "Single-Story Home: Bedroom and bathroom on main floor",
+            seed.Payload.Subjective.OtherLivingSituation);
         Assert.Contains("Hypertension (High Blood Pressure)", seed.Payload.Subjective.Comorbidities);
         Assert.Contains("Cane", seed.Payload.Subjective.AssistiveDevice.Devices);
         Assert.True(seed.Payload.Subjective.TakingMedications);

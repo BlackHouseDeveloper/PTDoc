@@ -7,8 +7,10 @@ using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
 using Xunit;
@@ -18,6 +20,11 @@ namespace PTDoc.Tests.UI.Pages;
 [Trait("Category", "CoreCi")]
 public sealed class NoteWorkspacePageTests : TestContext
 {
+    public NoteWorkspacePageTests()
+    {
+        Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+    }
+
     [Fact]
     public void NewNotePage_AutoStartsEvaluation_WhenApplicableIntakeSeedExists()
     {
@@ -60,7 +67,15 @@ public sealed class NoteWorkspacePageTests : TestContext
                             Problems = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pain" },
                             Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left knee" },
                             CurrentPainScore = 7,
-                            Medications = [new MedicationEntryV2 { Name = "Ibuprofen" }]
+                            AssistiveDevice = new AssistiveDeviceDetailsV2
+                            {
+                                UsesAssistiveDevice = true,
+                                Devices = ["cane"]
+                            },
+                            LivingSituation = ["lives-alone"],
+                            OtherLivingSituation = "single-story-main-floor-bed-bath; Basement laundry",
+                            Comorbidities = ["hypertension"],
+                            Medications = [new MedicationEntryV2 { Name = "zestril-lisinopril" }]
                         },
                         Objective = new WorkspaceObjectiveV2
                         {
@@ -99,7 +114,12 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal("7", cut.Find("#q3-current").GetAttribute("value"));
             Assert.Contains("Submitted intake", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
             Assert.Contains("Editable draft", cut.Find("[data-testid='note-workspace-seed-state']").TextContent, StringComparison.Ordinal);
-            Assert.Contains("Medication: Ibuprofen", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Assistive device: Cane", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Living: Lives alone", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Home layout: Single-Story Home: Bedroom and bathroom on main floor", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Other living/home: Basement laundry", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Comorbidity: Hypertension (High Blood Pressure)", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Medication: Zestril / Lisinopril", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Outcome measure: LEFS", cut.Markup, StringComparison.Ordinal);
         });
 
@@ -207,6 +227,74 @@ public sealed class NoteWorkspacePageTests : TestContext
 
         noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()), Times.Once);
         noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void NewNotePage_ShowsMedicationFallbackChip_WhenSeedOnlyFlagsTakingMedications()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Jordan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = true,
+                FromLockedSubmittedIntake = true,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation,
+                        SeedContext = new WorkspaceSeedContextV2
+                        {
+                            Kind = WorkspaceSeedKind.IntakePrefill,
+                            SourceIntakeId = Guid.NewGuid(),
+                            FromLockedSubmittedIntake = true,
+                            SourceReferenceDateUtc = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc)
+                        },
+                        Subjective = new WorkspaceSubjectiveV2
+                        {
+                            TakingMedications = true
+                        }
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        TakingMedications = true
+                    },
+                    Objective = new ObjectiveVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Taking medications", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

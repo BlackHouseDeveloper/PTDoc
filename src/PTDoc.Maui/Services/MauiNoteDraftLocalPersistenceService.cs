@@ -1,6 +1,8 @@
 using System.Text.Json;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
+using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
@@ -9,9 +11,11 @@ namespace PTDoc.Maui.Services;
 
 public sealed class MauiNoteDraftLocalPersistenceService(
     ILocalRepository<LocalClinicalNoteDraft> localRepository,
-    ILocalSyncOrchestrator localSyncOrchestrator) : INoteDraftLocalPersistenceService
+    ILocalSyncOrchestrator localSyncOrchestrator,
+    IIntakeReferenceDataCatalogService intakeReferenceData) : INoteDraftLocalPersistenceService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData);
 
     public bool IsEnabled => true;
 
@@ -20,8 +24,8 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         CancellationToken cancellationToken = default)
     {
         var localDraft = await ResolveLocalDraftAsync(draft, cancellationToken) ?? new LocalClinicalNoteDraft();
-        var noteType = NoteWorkspacePayloadMapper.ToApiNoteType(draft.WorkspaceNoteType);
-        var canonicalPayload = NoteWorkspacePayloadMapper.MapToV2Payload(draft.Payload, noteType);
+        var noteType = WorkspaceNoteTypeMapper.ToApiNoteType(draft.WorkspaceNoteType);
+        var canonicalPayload = _payloadMapper.MapToV2Payload(draft.Payload, noteType);
 
         localDraft.ServerId = draft.NoteId ?? Guid.Empty;
         localDraft.PatientServerId = draft.PatientId;

@@ -9,6 +9,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Tests.Integrations;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
@@ -316,6 +317,14 @@ public sealed class NoteWorkspaceApiServiceTests
                         Subjective = new WorkspaceSubjectiveV2
                         {
                             TakingMedications = true,
+                            AssistiveDevice = new AssistiveDeviceDetailsV2
+                            {
+                                UsesAssistiveDevice = true,
+                                Devices = ["cane"]
+                            },
+                            LivingSituation = ["lives-alone"],
+                            OtherLivingSituation = "single-story-main-floor-bed-bath; Basement laundry",
+                            Comorbidities = ["hypertension"],
                             FunctionalLimitations =
                             [
                                 new FunctionalLimitationEntryV2
@@ -332,7 +341,7 @@ public sealed class NoteWorkspaceApiServiceTests
                             [
                                 new MedicationEntryV2
                                 {
-                                    Name = "Lisinopril",
+                                    Name = "zestril-lisinopril",
                                     Dosage = "10 mg",
                                     Frequency = "daily"
                                 }
@@ -440,6 +449,13 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.True(loaded.Success);
         Assert.NotNull(loaded.Payload.StructuredPayload);
         Assert.True(loaded.Payload.Subjective.TakingMedications);
+        Assert.True(loaded.Payload.Subjective.UsesAssistiveDevice);
+        Assert.Contains("Cane", loaded.Payload.Subjective.SelectedAssistiveDeviceLabels);
+        Assert.Contains("Lives alone", loaded.Payload.Subjective.LivingSituation);
+        Assert.Contains("Single-Story Home: Bedroom and bathroom on main floor", loaded.Payload.Subjective.SelectedHouseLayoutLabels);
+        Assert.Equal("Basement laundry", loaded.Payload.Subjective.OtherLivingSituation);
+        Assert.Contains("Hypertension (High Blood Pressure)", loaded.Payload.Subjective.Comorbidities);
+        Assert.Contains("Zestril / Lisinopril", loaded.Payload.Subjective.SelectedMedicationLabels);
         Assert.Single(loaded.Payload.Subjective.StructuredFunctionalLimitations);
         Assert.Equal(BodyPart.Knee.ToString(), loaded.Payload.Subjective.StructuredFunctionalLimitations[0].BodyPart);
         Assert.Single(loaded.Payload.Objective.SpecialTests);
@@ -449,7 +465,12 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal("Needs transportation backup for late visits.", loaded.Payload.Assessment.SupportAdditionalNotes);
 
         loaded.Payload.Subjective.StructuredFunctionalLimitations[0].Notes = "Needs railing on stairs";
-        loaded.Payload.Subjective.MedicationDetails = "Lisinopril";
+        loaded.Payload.Subjective.OtherAssistiveDevice = "Custom hand rail";
+        loaded.Payload.Subjective.SelectedMedicationLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Zestril / Lisinopril"
+        };
+        loaded.Payload.Subjective.MedicationDetails = "Fish oil";
         loaded.Payload.Objective.SelectedBodyPart = BodyPart.Knee.ToString();
         loaded.Payload.Objective.Metrics[0].Value = "115";
         loaded.Payload.Objective.SpecialTests[0].Notes = "Medial joint line pain";
@@ -484,12 +505,21 @@ public sealed class NoteWorkspaceApiServiceTests
         var objective = payload.GetProperty("objective");
         var specialTests = objective.GetProperty("specialTests");
         var metrics = objective.GetProperty("metrics");
+        var subjective = payload.GetProperty("subjective");
 
         Assert.Equal((int)WorkspaceSeedKind.SignedCarryForward, payload.GetProperty("seedContext").GetProperty("kind").GetInt32());
         Assert.Equal("Mobility", payload.GetProperty("plan").GetProperty("treatmentFocuses")[0].GetString());
-        Assert.Equal("10 mg", payload.GetProperty("subjective").GetProperty("medications")[0].GetProperty("dosage").GetString());
-        Assert.Equal("Mobility", payload.GetProperty("subjective").GetProperty("functionalLimitations")[0].GetProperty("category").GetString());
-        Assert.Equal("Needs railing on stairs", payload.GetProperty("subjective").GetProperty("functionalLimitations")[0].GetProperty("notes").GetString());
+        Assert.Equal("10 mg", subjective.GetProperty("medications")[0].GetProperty("dosage").GetString());
+        Assert.Equal("Mobility", subjective.GetProperty("functionalLimitations")[0].GetProperty("category").GetString());
+        Assert.Equal("Needs railing on stairs", subjective.GetProperty("functionalLimitations")[0].GetProperty("notes").GetString());
+        Assert.Equal("Cane", subjective.GetProperty("assistiveDevice").GetProperty("devices")[0].GetString());
+        Assert.Equal("Custom hand rail", subjective.GetProperty("assistiveDevice").GetProperty("otherDevice").GetString());
+        Assert.Equal("Hypertension (High Blood Pressure)", subjective.GetProperty("comorbidities")[0].GetString());
+        Assert.Equal(
+            "Single-Story Home: Bedroom and bathroom on main floor; Basement laundry",
+            subjective.GetProperty("otherLivingSituation").GetString());
+        Assert.Contains(subjective.GetProperty("medications").EnumerateArray(), element =>
+            string.Equals(element.GetProperty("name").GetString(), "Fish oil", StringComparison.Ordinal));
         Assert.True(specialTests.GetArrayLength() > 0, $"Expected objective.specialTests to contain at least one entry. Payload: {saveRequestBody}");
         Assert.True(metrics.GetArrayLength() > 0, $"Expected objective.metrics to contain at least one entry. Payload: {saveRequestBody}");
         Assert.Equal("McMurray", specialTests[0].GetProperty("name").GetString());
@@ -1171,6 +1201,6 @@ public sealed class NoteWorkspaceApiServiceTests
             BaseAddress = new Uri("http://localhost")
         };
 
-        return new NoteWorkspaceApiService(client);
+        return new NoteWorkspaceApiService(client, new IntakeReferenceDataCatalogService());
     }
 }
