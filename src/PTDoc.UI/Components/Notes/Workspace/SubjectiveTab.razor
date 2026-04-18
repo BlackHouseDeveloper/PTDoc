@@ -302,6 +302,7 @@
                     {
                         <button type="button"
                                 class="subjective-tab__chip subjective-tab__chip--selected"
+                                aria-pressed="true"
                                 disabled="@IsReadOnly"
                                 @onclick="() => ToggleAssistiveDeviceAsync(option.Label)">
                             @option.Label
@@ -316,6 +317,7 @@
                     var isSelected = _vm.SelectedAssistiveDeviceLabels.Contains(option.Label);
                     <button type="button"
                             class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                            aria-pressed="@(isSelected ? "true" : "false")"
                             disabled="@IsReadOnly"
                             @onclick="() => ToggleAssistiveDeviceAsync(option.Label)">
                         @option.Label
@@ -356,6 +358,7 @@
                 var isSelected = _vm.LivingSituation.Contains(option.Label);
                 <button type="button"
                         class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         disabled="@IsReadOnly"
                         @onclick="() => ToggleCatalogSelectionAsync(_vm.LivingSituation, option.Label)">
                     @option.Label
@@ -372,6 +375,7 @@
                     {
                         <button type="button"
                                 class="subjective-tab__chip subjective-tab__chip--selected"
+                                aria-pressed="true"
                                 disabled="@IsReadOnly"
                                 @onclick="() => ToggleCatalogSelectionAsync(_vm.LivingSituation, value)">
                             @value
@@ -390,6 +394,7 @@
                 var isSelected = _vm.SelectedHouseLayoutLabels.Contains(option.Label);
                 <button type="button"
                         class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         disabled="@IsReadOnly"
                         @onclick="() => SelectHouseLayoutAsync(option.Label)">
                     @option.Label
@@ -435,6 +440,7 @@
                 var isSelected = _vm.Comorbidities.Contains(option.Label);
                 <button type="button"
                         class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         disabled="@IsReadOnly"
                         @onclick="() => ToggleCatalogSelectionAsync(_vm.Comorbidities, option.Label)">
                     @option.Label
@@ -451,6 +457,7 @@
                     {
                         <button type="button"
                                 class="subjective-tab__chip subjective-tab__chip--selected"
+                                aria-pressed="true"
                                 disabled="@IsReadOnly"
                                 @onclick="() => ToggleCatalogSelectionAsync(_vm.Comorbidities, value)">
                             @value
@@ -519,6 +526,7 @@
                     {
                         <button type="button"
                                 class="subjective-tab__chip subjective-tab__chip--selected"
+                                aria-pressed="true"
                                 disabled="@IsReadOnly"
                                 @onclick="() => ToggleMedicationAsync(medication.DisplayLabel)">
                             @medication.DisplayLabel
@@ -533,6 +541,7 @@
                     var isSelected = _vm.SelectedMedicationLabels.Contains(medication.DisplayLabel);
                     <button type="button"
                             class="subjective-tab__chip @(isSelected ? "subjective-tab__chip--selected" : "")"
+                            aria-pressed="@(isSelected ? "true" : "false")"
                             disabled="@IsReadOnly"
                             @onclick="() => ToggleMedicationAsync(medication.DisplayLabel)">
                         @medication.DisplayLabel

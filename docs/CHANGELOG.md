@@ -984,6 +984,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`** — Added the missing `payload.DryNeedling -> NoteWorkspacePayload.DryNeedling` mapping on UI load and a focused mapper test covering that v2-to-UI round trip. Reason: dry-needling workspace loads must populate the specialized editor fields, not just the note-type label.
 
+### Fixed - note workspace review follow-up cleanup
+
+- **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`** — Removed the obsolete in-service workspace mapper/import leftovers now that the active load/save path is fully centralized through `NoteWorkspacePayloadMapper`. Reason: keeping a second unused mapping surface in the same service would drift and obscure which path actually owns workspace translation.
+- **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added `aria-pressed` to the catalog-backed subjective chip buttons for assistive devices, living situation, home layout, comorbidities, and medications. Reason: these controls behave like toggle buttons, and assistive tech needs the selected state announced explicitly.
+
 ---
 
 ## Version History
