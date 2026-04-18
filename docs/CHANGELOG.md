@@ -994,6 +994,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`**, **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/WorkspaceNoteTypeMapperTests.cs`** — Centralized workspace note-type label conversion in `WorkspaceNoteTypeMapper` and updated the UI, progress-tracking, and MAUI draft persistence paths to reuse it instead of carrying separate switch statements. Reason: the final PR review called out drift risk between the API and MAUI note-type mappings, and the same duplication also existed in other active workspace readers.
 - **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`** — Added the missing `PTDoc.Application.Notes.Workspace` import after switching MAUI draft persistence to the shared `WorkspaceNoteTypeMapper`. Reason: the initial centralization pass left the MAUI compile target without the namespace that exposes the shared mapper.
 
+### Fixed - medication seed chip fallback
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Added a review-chip fallback of `Taking medications` when seeded subjective data says the patient is taking medications but there are no structured medication selections to render yet. Reason: the intake-alignment review surfaces should preserve that affirmative medication state the same way assistive-device chips already preserve boolean-only seed data.
+
 ---
 
 ## Version History

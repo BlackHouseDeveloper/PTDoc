@@ -1884,6 +1884,11 @@ else
             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
             .Select(value => $"Comorbidity: {value}"));
 
+        if (subjective.TakingMedications == true && !normalizedMedications.HasSelections)
+        {
+            chips.Add("Taking medications");
+        }
+
         chips.AddRange(SubjectiveCatalogNormalizer.NormalizeMedicationSelectionLabels(normalizedMedications.SelectedLabels)
             .Select(value => $"Medication: {value}"));
 

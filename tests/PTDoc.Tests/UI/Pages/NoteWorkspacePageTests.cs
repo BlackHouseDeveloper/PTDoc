@@ -230,6 +230,74 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public void NewNotePage_ShowsMedicationFallbackChip_WhenSeedOnlyFlagsTakingMedications()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Jordan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = true,
+                FromLockedSubmittedIntake = true,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation,
+                        SeedContext = new WorkspaceSeedContextV2
+                        {
+                            Kind = WorkspaceSeedKind.IntakePrefill,
+                            SourceIntakeId = Guid.NewGuid(),
+                            FromLockedSubmittedIntake = true,
+                            SourceReferenceDateUtc = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc)
+                        },
+                        Subjective = new WorkspaceSubjectiveV2
+                        {
+                            TakingMedications = true
+                        }
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        TakingMedications = true
+                    },
+                    Objective = new ObjectiveVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Taking medications", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void NewNotePage_AppliesSignedCarryForward_ForPtaDefaultDailyNote()
     {
         var patientId = Guid.NewGuid();
