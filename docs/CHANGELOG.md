@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Workspace body-region catalog asset canonicalization
+
+#### Note-workspace clinical body-region catalogs now load from a single embedded Application asset
+- **`src/PTDoc.Application/ReferenceData/WorkspaceReferenceCatalogAsset.cs`**, **`src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json`**, **`src/PTDoc.Application/PTDoc.Application.csproj`**, **`src/PTDoc.Infrastructure/Notes/Workspace/WorkspaceReferenceCatalogAssetMapper.cs`**, **`src/PTDoc.Infrastructure/Notes/Workspace/WorkspaceReferenceCatalogService.cs`**, **`src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj`**, **`tests/PTDoc.Tests/Notes/Workspace/WorkspaceReferenceCatalogAssetMapperTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/WorkspaceReferenceCatalogServiceTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceApiServiceTests.cs`** — Replaced the manual body-region clinical catalog transcription in `WorkspaceReferenceCatalogService` with a single embedded `WorkspaceReferenceCatalog.json` asset owned by `PTDoc.Application`, added a pure mapper/validator seam for asset fan-out and duplicate/invalid-body-part failures, preserved the existing `BodyRegionCatalog` API/UI contract, moved shared treatment interventions and joint mobility/MMT grades into the asset, resolved UE handling to use `docs/clinicrefdata/limitations by body part.md` for functional limitations while leaving UE goal templates explicitly unavailable, and extended service plus API-client tests to cover provenance, shared clone behavior, and pelvic-floor outcome registry fallback. Reason: Branch 2 makes the asset the source of truth for workspace clinical catalogs without changing the public catalog contract or reintroducing fake UE provenance.
+
 ### Fixed - workspace subjective intake catalog merge parity
 
 #### Preserve subjective catalog normalization across workspace save/load/export after mainline merge

@@ -15,6 +15,7 @@
     <EmbeddedResource Include="Data\Icd10Codes.json" />
     <EmbeddedResource Include="Data\IntakeSupplementalReferenceData.json" />
     <EmbeddedResource Include="Data\WorkspaceLookupReferenceData.json" />
+    <EmbeddedResource Include="Data\WorkspaceReferenceCatalog.json" />
     <EmbeddedResource Include="Data\OutcomeMeasureReferenceData.json" />
   </ItemGroup>
 
