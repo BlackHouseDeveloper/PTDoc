@@ -33,7 +33,7 @@ public sealed class NoteWorkspacePayloadMapper
 
         return new NoteWorkspacePayload
         {
-            WorkspaceNoteType = ResolveWorkspaceNoteType(payload),
+            WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(payload),
             StructuredPayload = ClonePayload(payload),
             DryNeedling = payload.DryNeedling is null
                 ? new DryNeedlingVm()
@@ -395,7 +395,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
         preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
         preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
-        preservedPayload.DryNeedling = IsDryNeedlingWorkspaceType(payload.WorkspaceNoteType)
+        preservedPayload.DryNeedling = WorkspaceNoteTypeMapper.IsDryNeedlingWorkspaceType(payload.WorkspaceNoteType)
             ? new WorkspaceDryNeedlingV2
             {
                 DateOfTreatment = payload.DryNeedling.DateOfTreatment,
@@ -1104,26 +1104,6 @@ public sealed class NoteWorkspacePayloadMapper
             ? parsed
             : BodyPart.Other;
     }
-
-    private static string ResolveWorkspaceNoteType(NoteWorkspaceV2Payload payload) =>
-        payload.DryNeedling is null
-            ? ToWorkspaceNoteType(payload.NoteType)
-            : "Dry Needling Note";
-
-    private static string ToWorkspaceNoteType(NoteType noteType)
-    {
-        return noteType switch
-        {
-            NoteType.Evaluation => "Evaluation Note",
-            NoteType.ProgressNote => "Progress Note",
-            NoteType.Daily => "Daily Treatment Note",
-            NoteType.Discharge => "Discharge Note",
-            _ => "Evaluation Note"
-        };
-    }
-
-    private static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
-        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

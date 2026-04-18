@@ -1,6 +1,7 @@
 using System.Text.Json;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
@@ -23,7 +24,7 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         CancellationToken cancellationToken = default)
     {
         var localDraft = await ResolveLocalDraftAsync(draft, cancellationToken) ?? new LocalClinicalNoteDraft();
-        var noteType = ToApiNoteType(draft.WorkspaceNoteType);
+        var noteType = WorkspaceNoteTypeMapper.ToApiNoteType(draft.WorkspaceNoteType);
         var canonicalPayload = _payloadMapper.MapToV2Payload(draft.Payload, noteType);
 
         localDraft.ServerId = draft.NoteId ?? Guid.Empty;
@@ -110,18 +111,5 @@ public sealed class MauiNoteDraftLocalPersistenceService(
             .ToList();
 
         return JsonSerializer.Serialize(cptEntries, SerializerOptions);
-    }
-
-    private static NoteType ToApiNoteType(string workspaceNoteType)
-    {
-        return workspaceNoteType switch
-        {
-            "Evaluation Note" => NoteType.Evaluation,
-            "Progress Note" => NoteType.ProgressNote,
-            "Discharge Note" => NoteType.Discharge,
-            "Dry Needling Note" => NoteType.Daily,
-            "Daily Treatment Note" => NoteType.Daily,
-            _ => NoteType.Evaluation
-        };
     }
 }

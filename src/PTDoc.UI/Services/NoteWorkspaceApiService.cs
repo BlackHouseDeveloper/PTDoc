@@ -59,7 +59,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         {
             Success = true,
             NoteId = workspace.NoteId,
-            WorkspaceNoteType = ResolveWorkspaceNoteType(workspace.Payload),
+            WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(workspace.Payload),
             DateOfService = workspace.DateOfService,
             IsReEvaluation = workspace.IsReEvaluation,
             Status = workspace.NoteStatus,
@@ -117,7 +117,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         string workspaceNoteType,
         CancellationToken cancellationToken = default)
     {
-        var noteType = ToApiNoteType(workspaceNoteType);
+        var noteType = WorkspaceNoteTypeMapper.ToApiNoteType(workspaceNoteType);
         using var response = await httpClient.GetAsync(
             $"/api/v2/notes/workspace/{patientId}/carry-forward?noteType={Uri.EscapeDataString(noteType.ToString())}",
             cancellationToken);
@@ -154,7 +154,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         {
             Success = true,
             HasSeed = true,
-            SourceNoteType = ToWorkspaceNoteType(seed.SourceNoteType),
+            SourceNoteType = WorkspaceNoteTypeMapper.ToWorkspaceNoteType(seed.SourceNoteType),
             SourceNoteDateOfService = seed.SourceNoteDateOfService,
             Payload = _payloadMapper.MapToUiPayload(seed.Payload)
         };
@@ -164,7 +164,7 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
         NoteWorkspaceDraft draft,
         CancellationToken cancellationToken = default)
     {
-        var noteType = ToApiNoteType(draft.WorkspaceNoteType);
+        var noteType = WorkspaceNoteTypeMapper.ToApiNoteType(draft.WorkspaceNoteType);
         var request = new NoteWorkspaceV2SaveRequest
         {
             NoteId = draft.IsExistingNote ? draft.NoteId : null,
@@ -443,39 +443,6 @@ public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeRefere
 
         var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
         return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
-    }
-
-    private static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
-        string.Equals(workspaceNoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
-
-    private static string ResolveWorkspaceNoteType(NoteWorkspaceV2Payload payload) =>
-        payload.DryNeedling is null
-            ? ToWorkspaceNoteType(payload.NoteType)
-            : "Dry Needling Note";
-
-    private static NoteType ToApiNoteType(string workspaceNoteType)
-    {
-        return workspaceNoteType switch
-        {
-            "Evaluation Note" => NoteType.Evaluation,
-            "Progress Note" => NoteType.ProgressNote,
-            "Discharge Note" => NoteType.Discharge,
-            "Dry Needling Note" => NoteType.Daily,
-            "Daily Treatment Note" => NoteType.Daily,
-            _ => NoteType.Evaluation
-        };
-    }
-
-    private static string ToWorkspaceNoteType(NoteType noteType)
-    {
-        return noteType switch
-        {
-            NoteType.Evaluation => "Evaluation Note",
-            NoteType.ProgressNote => "Progress Note",
-            NoteType.Discharge => "Discharge Note",
-            NoteType.Daily => "Daily Treatment Note",
-            _ => "Evaluation Note"
-        };
     }
 
     private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)

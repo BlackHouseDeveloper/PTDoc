@@ -10,6 +10,48 @@ public static class WorkspaceSchemaVersions
     public const int EvalReevalProgressV2 = 2;
 }
 
+public static class WorkspaceNoteTypeMapper
+{
+    public const string EvaluationNote = "Evaluation Note";
+    public const string ProgressNote = "Progress Note";
+    public const string DischargeNote = "Discharge Note";
+    public const string DryNeedlingNote = "Dry Needling Note";
+    public const string DailyTreatmentNote = "Daily Treatment Note";
+
+    public static string ResolveWorkspaceNoteType(NoteWorkspaceV2Payload payload) =>
+        payload.DryNeedling is null
+            ? ToWorkspaceNoteType(payload.NoteType)
+            : DryNeedlingNote;
+
+    public static NoteType ToApiNoteType(string workspaceNoteType)
+    {
+        return workspaceNoteType switch
+        {
+            EvaluationNote => NoteType.Evaluation,
+            ProgressNote => NoteType.ProgressNote,
+            DischargeNote => NoteType.Discharge,
+            DryNeedlingNote => NoteType.Daily,
+            DailyTreatmentNote => NoteType.Daily,
+            _ => NoteType.Evaluation
+        };
+    }
+
+    public static string ToWorkspaceNoteType(NoteType noteType)
+    {
+        return noteType switch
+        {
+            NoteType.Evaluation => EvaluationNote,
+            NoteType.ProgressNote => ProgressNote,
+            NoteType.Discharge => DischargeNote,
+            NoteType.Daily => DailyTreatmentNote,
+            _ => EvaluationNote
+        };
+    }
+
+    public static bool IsDryNeedlingWorkspaceType(string workspaceNoteType) =>
+        string.Equals(workspaceNoteType, DryNeedlingNote, StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed class NoteWorkspaceV2Payload
 {
     public int SchemaVersion { get; set; } = WorkspaceSchemaVersions.EvalReevalProgressV2;

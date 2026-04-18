@@ -989,6 +989,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`** — Removed the obsolete in-service workspace mapper/import leftovers now that the active load/save path is fully centralized through `NoteWorkspacePayloadMapper`. Reason: keeping a second unused mapping surface in the same service would drift and obscure which path actually owns workspace translation.
 - **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added `aria-pressed` to the catalog-backed subjective chip buttons for assistive devices, living situation, home layout, comorbidities, and medications. Reason: these controls behave like toggle buttons, and assistive tech needs the selected state announced explicitly.
 
+### Fixed - shared workspace note-type mapping
+
+- **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`**, **`src/PTDoc.UI/Services/NoteWorkspaceApiService.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.UI/Services/ProgressTrackingAggregationService.cs`**, **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/WorkspaceNoteTypeMapperTests.cs`** — Centralized workspace note-type label conversion in `WorkspaceNoteTypeMapper` and updated the UI, progress-tracking, and MAUI draft persistence paths to reuse it instead of carrying separate switch statements. Reason: the final PR review called out drift risk between the API and MAUI note-type mappings, and the same duplication also existed in other active workspace readers.
+- **`src/PTDoc.Maui/Services/MauiNoteDraftLocalPersistenceService.cs`** — Added the missing `PTDoc.Application.Notes.Workspace` import after switching MAUI draft persistence to the shared `WorkspaceNoteTypeMapper`. Reason: the initial centralization pass left the MAUI compile target without the namespace that exposes the shared mapper.
+
 ---
 
 ## Version History
