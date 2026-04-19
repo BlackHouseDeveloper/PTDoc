@@ -392,6 +392,9 @@ public class ClinicalGenerationServiceTests
         Assert.NotNull(capturedRequest);
         Assert.DoesNotContain("IGNORE", capturedRequest!.Diagnosis, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SYSTEM:", capturedRequest.FunctionalLimitations, StringComparison.OrdinalIgnoreCase);
+        // Verify meaningful clinical content is preserved after stripping injection tokens
+        Assert.Contains("Lumbar strain", capturedRequest.Diagnosis, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Limited mobility", capturedRequest.FunctionalLimitations, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Intake;
@@ -65,10 +66,10 @@ public static class MauiProgram
 
 		// Register HTTP-backed AI generation for the shared UI workspace.
 		// Uses the authenticated ApiClient so generated requests carry the bearer token.
-		builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService>(sp =>
+		builder.Services.AddScoped<IAiClinicalGenerationService>(sp =>
 		{
 			var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient");
-			return new PTDoc.UI.Services.HttpAiClinicalGenerationService(httpClient);
+			return new HttpAiClinicalGenerationService(httpClient);
 		});
 
 		// ----------------------------------------------------------------
