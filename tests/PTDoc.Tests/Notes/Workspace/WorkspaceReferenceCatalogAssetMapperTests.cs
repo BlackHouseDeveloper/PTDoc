@@ -43,11 +43,11 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
     public void Map_NumericBodyPart_Throws()
     {
         var asset = CreateCompleteAsset();
-        asset.Templates[0].AppliesToBodyParts = ["12"];
+        asset.Templates[0].AppliesToBodyParts = ["99"];
 
         var ex = Assert.Throws<InvalidOperationException>(() => WorkspaceReferenceCatalogAssetMapper.Map(asset));
 
-        Assert.Contains("invalid body part '12'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("invalid body part '99'", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

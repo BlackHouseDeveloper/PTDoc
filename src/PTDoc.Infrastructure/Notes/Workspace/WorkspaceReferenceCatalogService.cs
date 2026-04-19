@@ -33,6 +33,11 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
 
     public BodyRegionCatalog GetBodyRegionCatalog(BodyPart bodyPart)
     {
+        if (!Enum.IsDefined(typeof(BodyPart), bodyPart))
+        {
+            throw new ArgumentOutOfRangeException(nameof(bodyPart), bodyPart, $"Unknown body part '{bodyPart}'.");
+        }
+
         if (Catalogs.Value.TryGetValue(bodyPart, out var catalog))
         {
             return CloneCatalog(catalog, bodyPart);
@@ -72,7 +77,7 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
                 Code = searchable.Entry.Code,
                 Description = searchable.Entry.Description,
                 Source = searchable.Entry.Source,
-                Provenance = CloneProvenance(searchable.Entry.Provenance),
+                Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(searchable.Entry.Provenance),
                 IsCompleteLibrary = searchable.Entry.IsCompleteLibrary,
                 ModifierOptions = [.. searchable.Entry.ModifierOptions],
                 SuggestedModifiers = [.. searchable.Entry.SuggestedModifiers],
@@ -98,7 +103,7 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
                     Code = entry.Code,
                     Description = entry.Description,
                     Source = documentPath,
-                    Provenance = CloneProvenance(provenance),
+                    Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(provenance),
                     IsCompleteLibrary = entry.IsCompleteLibrary,
                     ModifierOptions = entry.ModifierOptions.Count > 0
                         ? [.. entry.ModifierOptions]
@@ -148,21 +153,6 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
             .ToList();
     }
 
-    private static ReferenceDataProvenance? CloneProvenance(ReferenceDataProvenance? provenance)
-        => provenance is null
-            ? null
-            : new ReferenceDataProvenance
-            {
-                DocumentPath = provenance.DocumentPath,
-                Version = provenance.Version,
-                Notes = provenance.Notes
-            };
-
-    private static CatalogAvailability CloneAvailability(CatalogAvailability availability) =>
-        availability.IsAvailable
-            ? CatalogAvailability.Available(availability.Notes, CloneProvenance(availability.Provenance))
-            : CatalogAvailability.Missing(availability.Notes, CloneProvenance(availability.Provenance));
-
     private sealed class SearchableCodeLookupEntry
     {
         public CodeLookupEntry Entry { get; init; } = new();
@@ -172,18 +162,18 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()
     {
         BodyPart = bodyPart,
-        FunctionalLimitations = CloneAvailability(source.FunctionalLimitations),
-        GoalTemplates = CloneAvailability(source.GoalTemplates),
-        AssistiveDevices = CloneAvailability(source.AssistiveDevices),
-        Comorbidities = CloneAvailability(source.Comorbidities),
-        SpecialTests = CloneAvailability(source.SpecialTests),
-        OutcomeMeasures = CloneAvailability(source.OutcomeMeasures),
-        NormalRangeOfMotion = CloneAvailability(source.NormalRangeOfMotion),
-        TenderMuscles = CloneAvailability(source.TenderMuscles),
-        Exercises = CloneAvailability(source.Exercises),
-        TreatmentFocuses = CloneAvailability(source.TreatmentFocuses),
-        TreatmentInterventions = CloneAvailability(source.TreatmentInterventions),
-        JointMobilityAndMmt = CloneAvailability(source.JointMobilityAndMmt),
+        FunctionalLimitations = WorkspaceCatalogCloneHelpers.CloneAvailability(source.FunctionalLimitations),
+        GoalTemplates = WorkspaceCatalogCloneHelpers.CloneAvailability(source.GoalTemplates),
+        AssistiveDevices = WorkspaceCatalogCloneHelpers.CloneAvailability(source.AssistiveDevices),
+        Comorbidities = WorkspaceCatalogCloneHelpers.CloneAvailability(source.Comorbidities),
+        SpecialTests = WorkspaceCatalogCloneHelpers.CloneAvailability(source.SpecialTests),
+        OutcomeMeasures = WorkspaceCatalogCloneHelpers.CloneAvailability(source.OutcomeMeasures),
+        NormalRangeOfMotion = WorkspaceCatalogCloneHelpers.CloneAvailability(source.NormalRangeOfMotion),
+        TenderMuscles = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TenderMuscles),
+        Exercises = WorkspaceCatalogCloneHelpers.CloneAvailability(source.Exercises),
+        TreatmentFocuses = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TreatmentFocuses),
+        TreatmentInterventions = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TreatmentInterventions),
+        JointMobilityAndMmt = WorkspaceCatalogCloneHelpers.CloneAvailability(source.JointMobilityAndMmt),
         FunctionalLimitationCategories = source.FunctionalLimitationCategories
             .Select(category => Category(category.Name, category.Items.ToArray()))
             .ToList(),

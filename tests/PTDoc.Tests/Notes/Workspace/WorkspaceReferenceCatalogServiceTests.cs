@@ -189,4 +189,13 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, secondShoulder.FunctionalLimitations.Provenance?.DocumentPath);
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, elbow.FunctionalLimitations.Provenance?.DocumentPath);
     }
+
+    [Fact]
+    public void GetBodyRegionCatalog_UndefinedBodyPart_ThrowsArgumentOutOfRange()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => _catalogs.GetBodyRegionCatalog((BodyPart)12));
+
+        Assert.Equal("bodyPart", ex.ParamName);
+        Assert.Contains("Unknown body part '12'", ex.Message, StringComparison.Ordinal);
+    }
 }

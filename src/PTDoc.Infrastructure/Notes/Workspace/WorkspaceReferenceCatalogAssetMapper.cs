@@ -62,14 +62,13 @@ internal static class WorkspaceReferenceCatalogAssetMapper
         {
             var trimmedBodyPart = rawBodyPart?.Trim();
             if (string.IsNullOrWhiteSpace(trimmedBodyPart) ||
-                !Enum.TryParse<BodyPart>(trimmedBodyPart, ignoreCase: true, out var bodyPart) ||
-                !Enum.IsDefined(typeof(BodyPart), bodyPart))
+                !Enum.GetNames<BodyPart>().Any(name => string.Equals(name, trimmedBodyPart, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidOperationException(
                     $"Workspace reference catalog template '{template.TemplateId}' contains invalid body part '{rawBodyPart}'.");
             }
 
-            parsed.Add(bodyPart);
+            parsed.Add(Enum.Parse<BodyPart>(trimmedBodyPart, ignoreCase: true));
         }
 
         return parsed;
@@ -107,7 +106,7 @@ internal static class WorkspaceReferenceCatalogAssetMapper
     private static CatalogAvailability MapAvailability(WorkspaceCatalogSectionAsset? section)
     {
         var notes = section?.Notes ?? string.Empty;
-        var provenance = CloneProvenance(section?.Provenance);
+        var provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(section?.Provenance);
 
         return section?.IsAvailable == true
             ? CatalogAvailability.Available(notes, provenance)
@@ -117,7 +116,7 @@ internal static class WorkspaceReferenceCatalogAssetMapper
     private static CatalogAvailability MapAvailability(WorkspaceJointMobilityAndMmtAsset? section)
     {
         var notes = section?.Notes ?? string.Empty;
-        var provenance = CloneProvenance(section?.Provenance);
+        var provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(section?.Provenance);
 
         return section?.IsAvailable == true
             ? CatalogAvailability.Available(notes, provenance)
@@ -136,36 +135,21 @@ internal static class WorkspaceReferenceCatalogAssetMapper
     private static List<string> MapOptions(IEnumerable<string>? options) =>
         (options ?? Array.Empty<string>()).ToList();
 
-    private static ReferenceDataProvenance? CloneProvenance(ReferenceDataProvenance? provenance)
-        => provenance is null
-            ? null
-            : new ReferenceDataProvenance
-            {
-                DocumentPath = provenance.DocumentPath,
-                Version = provenance.Version,
-                Notes = provenance.Notes
-            };
-
-    private static CatalogAvailability CloneAvailability(CatalogAvailability availability) =>
-        availability.IsAvailable
-            ? CatalogAvailability.Available(availability.Notes, CloneProvenance(availability.Provenance))
-            : CatalogAvailability.Missing(availability.Notes, CloneProvenance(availability.Provenance));
-
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()
     {
         BodyPart = bodyPart,
-        FunctionalLimitations = CloneAvailability(source.FunctionalLimitations),
-        GoalTemplates = CloneAvailability(source.GoalTemplates),
-        AssistiveDevices = CloneAvailability(source.AssistiveDevices),
-        Comorbidities = CloneAvailability(source.Comorbidities),
-        SpecialTests = CloneAvailability(source.SpecialTests),
-        OutcomeMeasures = CloneAvailability(source.OutcomeMeasures),
-        NormalRangeOfMotion = CloneAvailability(source.NormalRangeOfMotion),
-        TenderMuscles = CloneAvailability(source.TenderMuscles),
-        Exercises = CloneAvailability(source.Exercises),
-        TreatmentFocuses = CloneAvailability(source.TreatmentFocuses),
-        TreatmentInterventions = CloneAvailability(source.TreatmentInterventions),
-        JointMobilityAndMmt = CloneAvailability(source.JointMobilityAndMmt),
+        FunctionalLimitations = WorkspaceCatalogCloneHelpers.CloneAvailability(source.FunctionalLimitations),
+        GoalTemplates = WorkspaceCatalogCloneHelpers.CloneAvailability(source.GoalTemplates),
+        AssistiveDevices = WorkspaceCatalogCloneHelpers.CloneAvailability(source.AssistiveDevices),
+        Comorbidities = WorkspaceCatalogCloneHelpers.CloneAvailability(source.Comorbidities),
+        SpecialTests = WorkspaceCatalogCloneHelpers.CloneAvailability(source.SpecialTests),
+        OutcomeMeasures = WorkspaceCatalogCloneHelpers.CloneAvailability(source.OutcomeMeasures),
+        NormalRangeOfMotion = WorkspaceCatalogCloneHelpers.CloneAvailability(source.NormalRangeOfMotion),
+        TenderMuscles = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TenderMuscles),
+        Exercises = WorkspaceCatalogCloneHelpers.CloneAvailability(source.Exercises),
+        TreatmentFocuses = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TreatmentFocuses),
+        TreatmentInterventions = WorkspaceCatalogCloneHelpers.CloneAvailability(source.TreatmentInterventions),
+        JointMobilityAndMmt = WorkspaceCatalogCloneHelpers.CloneAvailability(source.JointMobilityAndMmt),
         FunctionalLimitationCategories = source.FunctionalLimitationCategories
             .Select(category => new CatalogCategory
             {
