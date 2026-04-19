@@ -176,4 +176,17 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         Assert.Contains("No validated upper-extremity goal source loaded", catalog.GoalTemplates.Notes, StringComparison.Ordinal);
         Assert.Empty(catalog.GoalTemplateCategories);
     }
+
+    [Fact]
+    public void GetBodyRegionCatalog_ReturnsClonedAvailabilityAndProvenancePerRequest()
+    {
+        var firstShoulder = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);
+        firstShoulder.FunctionalLimitations.Provenance!.DocumentPath = "mutated";
+
+        var secondShoulder = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);
+        var elbow = _catalogs.GetBodyRegionCatalog(BodyPart.Elbow);
+
+        Assert.Equal(UpperExtremityFunctionalLimitationsSource, secondShoulder.FunctionalLimitations.Provenance?.DocumentPath);
+        Assert.Equal(UpperExtremityFunctionalLimitationsSource, elbow.FunctionalLimitations.Provenance?.DocumentPath);
+    }
 }

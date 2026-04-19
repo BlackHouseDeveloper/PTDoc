@@ -60,7 +60,10 @@ internal static class WorkspaceReferenceCatalogAssetMapper
         var parsed = new List<BodyPart>(template.AppliesToBodyParts.Count);
         foreach (var rawBodyPart in template.AppliesToBodyParts)
         {
-            if (!Enum.TryParse<BodyPart>(rawBodyPart, ignoreCase: true, out var bodyPart))
+            var trimmedBodyPart = rawBodyPart?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedBodyPart) ||
+                !Enum.TryParse<BodyPart>(trimmedBodyPart, ignoreCase: true, out var bodyPart) ||
+                !Enum.IsDefined(typeof(BodyPart), bodyPart))
             {
                 throw new InvalidOperationException(
                     $"Workspace reference catalog template '{template.TemplateId}' contains invalid body part '{rawBodyPart}'.");
@@ -143,21 +146,26 @@ internal static class WorkspaceReferenceCatalogAssetMapper
                 Notes = provenance.Notes
             };
 
+    private static CatalogAvailability CloneAvailability(CatalogAvailability availability) =>
+        availability.IsAvailable
+            ? CatalogAvailability.Available(availability.Notes, CloneProvenance(availability.Provenance))
+            : CatalogAvailability.Missing(availability.Notes, CloneProvenance(availability.Provenance));
+
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()
     {
         BodyPart = bodyPart,
-        FunctionalLimitations = source.FunctionalLimitations,
-        GoalTemplates = source.GoalTemplates,
-        AssistiveDevices = source.AssistiveDevices,
-        Comorbidities = source.Comorbidities,
-        SpecialTests = source.SpecialTests,
-        OutcomeMeasures = source.OutcomeMeasures,
-        NormalRangeOfMotion = source.NormalRangeOfMotion,
-        TenderMuscles = source.TenderMuscles,
-        Exercises = source.Exercises,
-        TreatmentFocuses = source.TreatmentFocuses,
-        TreatmentInterventions = source.TreatmentInterventions,
-        JointMobilityAndMmt = source.JointMobilityAndMmt,
+        FunctionalLimitations = CloneAvailability(source.FunctionalLimitations),
+        GoalTemplates = CloneAvailability(source.GoalTemplates),
+        AssistiveDevices = CloneAvailability(source.AssistiveDevices),
+        Comorbidities = CloneAvailability(source.Comorbidities),
+        SpecialTests = CloneAvailability(source.SpecialTests),
+        OutcomeMeasures = CloneAvailability(source.OutcomeMeasures),
+        NormalRangeOfMotion = CloneAvailability(source.NormalRangeOfMotion),
+        TenderMuscles = CloneAvailability(source.TenderMuscles),
+        Exercises = CloneAvailability(source.Exercises),
+        TreatmentFocuses = CloneAvailability(source.TreatmentFocuses),
+        TreatmentInterventions = CloneAvailability(source.TreatmentInterventions),
+        JointMobilityAndMmt = CloneAvailability(source.JointMobilityAndMmt),
         FunctionalLimitationCategories = source.FunctionalLimitationCategories
             .Select(category => new CatalogCategory
             {

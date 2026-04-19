@@ -40,6 +40,17 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
     }
 
     [Fact]
+    public void Map_NumericBodyPart_Throws()
+    {
+        var asset = CreateCompleteAsset();
+        asset.Templates[0].AppliesToBodyParts = ["12"];
+
+        var ex = Assert.Throws<InvalidOperationException>(() => WorkspaceReferenceCatalogAssetMapper.Map(asset));
+
+        Assert.Contains("invalid body part '12'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Map_DuplicateBodyPartAcrossTemplates_Throws()
     {
         var asset = CreateCompleteAsset();
@@ -90,6 +101,25 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
         Assert.False(pelvicFloor.OutcomeMeasures.IsAvailable);
         Assert.Null(pelvicFloor.OutcomeMeasures.Provenance);
         Assert.Empty(pelvicFloor.OutcomeMeasureOptions);
+    }
+
+    [Fact]
+    public void Map_FanOutClonesAvailabilityAndProvenancePerBodyPart()
+    {
+        var asset = CreateCompleteAsset();
+        asset.Templates[0].FunctionalLimitations.Provenance = new ReferenceDataProvenance
+        {
+            DocumentPath = "functional.md",
+            Version = "test"
+        };
+
+        var mapped = WorkspaceReferenceCatalogAssetMapper.Map(asset);
+
+        var shoulder = mapped[BodyPart.Shoulder];
+        var elbow = mapped[BodyPart.Elbow];
+
+        Assert.NotSame(shoulder.FunctionalLimitations, elbow.FunctionalLimitations);
+        Assert.NotSame(shoulder.FunctionalLimitations.Provenance, elbow.FunctionalLimitations.Provenance);
     }
 
     private static WorkspaceReferenceCatalogAsset CreateCompleteAsset() => new()

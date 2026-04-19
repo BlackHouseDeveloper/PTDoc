@@ -158,6 +158,11 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
                 Notes = provenance.Notes
             };
 
+    private static CatalogAvailability CloneAvailability(CatalogAvailability availability) =>
+        availability.IsAvailable
+            ? CatalogAvailability.Available(availability.Notes, CloneProvenance(availability.Provenance))
+            : CatalogAvailability.Missing(availability.Notes, CloneProvenance(availability.Provenance));
+
     private sealed class SearchableCodeLookupEntry
     {
         public CodeLookupEntry Entry { get; init; } = new();
@@ -167,18 +172,18 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()
     {
         BodyPart = bodyPart,
-        FunctionalLimitations = source.FunctionalLimitations,
-        GoalTemplates = source.GoalTemplates,
-        AssistiveDevices = source.AssistiveDevices,
-        Comorbidities = source.Comorbidities,
-        SpecialTests = source.SpecialTests,
-        OutcomeMeasures = source.OutcomeMeasures,
-        NormalRangeOfMotion = source.NormalRangeOfMotion,
-        TenderMuscles = source.TenderMuscles,
-        Exercises = source.Exercises,
-        TreatmentFocuses = source.TreatmentFocuses,
-        TreatmentInterventions = source.TreatmentInterventions,
-        JointMobilityAndMmt = source.JointMobilityAndMmt,
+        FunctionalLimitations = CloneAvailability(source.FunctionalLimitations),
+        GoalTemplates = CloneAvailability(source.GoalTemplates),
+        AssistiveDevices = CloneAvailability(source.AssistiveDevices),
+        Comorbidities = CloneAvailability(source.Comorbidities),
+        SpecialTests = CloneAvailability(source.SpecialTests),
+        OutcomeMeasures = CloneAvailability(source.OutcomeMeasures),
+        NormalRangeOfMotion = CloneAvailability(source.NormalRangeOfMotion),
+        TenderMuscles = CloneAvailability(source.TenderMuscles),
+        Exercises = CloneAvailability(source.Exercises),
+        TreatmentFocuses = CloneAvailability(source.TreatmentFocuses),
+        TreatmentInterventions = CloneAvailability(source.TreatmentInterventions),
+        JointMobilityAndMmt = CloneAvailability(source.JointMobilityAndMmt),
         FunctionalLimitationCategories = source.FunctionalLimitationCategories
             .Select(category => Category(category.Name, category.Items.ToArray()))
             .ToList(),

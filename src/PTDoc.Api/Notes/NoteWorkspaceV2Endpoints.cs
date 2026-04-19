@@ -171,6 +171,11 @@ public static class NoteWorkspaceV2Endpoints
         BodyPart bodyPart,
         IWorkspaceReferenceCatalogService catalogs)
     {
+        if (!Enum.IsDefined(typeof(BodyPart), bodyPart))
+        {
+            return Results.BadRequest(new { error = $"Unknown body part '{bodyPart}'." });
+        }
+
         return Results.Ok(catalogs.GetBodyRegionCatalog(bodyPart));
     }
 
