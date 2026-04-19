@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 
 namespace PTDoc.Tests.Integration;
 
