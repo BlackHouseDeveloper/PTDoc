@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Tests.Integrations;
@@ -954,6 +955,49 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.Equal(BodyPart.Knee, catalog.BodyPart);
         Assert.Equal("Mobility", Assert.Single(catalog.FunctionalLimitationCategories).Name);
+    }
+
+    [Fact]
+    public async Task GetBodyRegionCatalogAsync_PreservesAvailabilityAndProvenanceFields()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/catalogs/body-regions/Shoulder", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Shoulder,
+                FunctionalLimitations = CatalogAvailability.Available(
+                    "docs/clinicrefdata/limitations by body part.md",
+                    new ReferenceDataProvenance
+                    {
+                        DocumentPath = "docs/clinicrefdata/limitations by body part.md",
+                        Version = "2026-04-18",
+                        Notes = "Branch 2 upper-extremity functional limitations from the current temporary validated source."
+                    }),
+                GoalTemplates = CatalogAvailability.Missing(
+                    "No validated upper-extremity goal source loaded; goal templates remain unavailable until a validated source exists."),
+                FunctionalLimitationCategories =
+                [
+                    new CatalogCategory
+                    {
+                        Name = "ADLs",
+                        Items = ["Unable to brush teeth or hair with affected arm"]
+                    }
+                ]
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+        var catalog = await service.GetBodyRegionCatalogAsync(BodyPart.Shoulder);
+
+        Assert.Equal(BodyPart.Shoulder, catalog.BodyPart);
+        Assert.True(catalog.FunctionalLimitations.IsAvailable);
+        Assert.Equal("docs/clinicrefdata/limitations by body part.md", catalog.FunctionalLimitations.Provenance?.DocumentPath);
+        Assert.False(catalog.GoalTemplates.IsAvailable);
+        Assert.Null(catalog.GoalTemplates.Provenance);
+        Assert.Equal("ADLs", Assert.Single(catalog.FunctionalLimitationCategories).Name);
     }
 
     [Fact]
