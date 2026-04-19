@@ -142,12 +142,22 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
             {
                 IsAvailable = true,
                 Notes = "shared.md",
+                Provenance = new ReferenceDataProvenance
+                {
+                    DocumentPath = "shared.md",
+                    Version = "test"
+                },
                 Options = ["Manual therapy"]
             },
             JointMobilityAndMmt = new WorkspaceJointMobilityAndMmtAsset
             {
                 IsAvailable = true,
                 Notes = "grades.md",
+                Provenance = new ReferenceDataProvenance
+                {
+                    DocumentPath = "grades.md",
+                    Version = "test"
+                },
                 MmtGrades = ["4 - Good"],
                 JointMobilityGrades = ["3 - Normal mobility"]
             }
