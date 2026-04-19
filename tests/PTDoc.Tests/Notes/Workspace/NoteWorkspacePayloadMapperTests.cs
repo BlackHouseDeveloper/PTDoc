@@ -133,6 +133,117 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_WhenPrimaryBodyPartIsOther_UsesSubjectiveStructuredBodyPartForBothTabs()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        BodyPart = BodyPart.Knee,
+                        Category = "Mobility",
+                        Description = "Difficulty with stairs"
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Other
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(BodyPart.Knee.ToString(), result.Subjective.SelectedBodyPart);
+        Assert.Equal(BodyPart.Knee.ToString(), result.Objective.SelectedBodyPart);
+    }
+
+    [Fact]
+    public void MapToUiPayload_WhenPrimaryBodyPartConflictsWithSubjectiveBodyPart_PrefersPrimaryForBothTabs()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        BodyPart = BodyPart.Knee,
+                        Category = "Mobility",
+                        Description = "Difficulty with stairs"
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Shoulder
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(BodyPart.Shoulder.ToString(), result.Subjective.SelectedBodyPart);
+        Assert.Equal(BodyPart.Shoulder.ToString(), result.Objective.SelectedBodyPart);
+    }
+
+    [Fact]
+    public void MapToUiPayload_WhenPrimaryAndSubjectiveBodyPartAreMissing_UsesObjectiveMetricBodyPartForBothTabs()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Other,
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "ROM",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        Value = "110"
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(BodyPart.Knee.ToString(), result.Subjective.SelectedBodyPart);
+        Assert.Equal(BodyPart.Knee.ToString(), result.Objective.SelectedBodyPart);
+    }
+
+    [Fact]
+    public void MapToUiPayload_WhenAllBodyPartSignalsAreMissing_LeavesBothTabsUnselected()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                FunctionalLimitations = []
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Other,
+                Metrics = []
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(result.Subjective.SelectedBodyPart);
+        Assert.Null(result.Objective.SelectedBodyPart);
+    }
+
+    [Fact]
     public void MapToV2Payload_BuildsCanonicalWorkspacePayload_FromUiDraftState()
     {
         var payload = new NoteWorkspacePayload

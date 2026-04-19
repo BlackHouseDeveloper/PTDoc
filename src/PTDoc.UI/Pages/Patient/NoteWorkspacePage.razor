@@ -721,6 +721,7 @@ else
         _note.IsReEvaluation = isReEvaluation;
         _note.Subjective = payload?.Subjective ?? new SubjectiveVm();
         _note.Objective = payload?.Objective ?? new ObjectiveVm();
+        SyncSelectedBodyPart(GetSelectedBodyPart());
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload?.Plan ?? new PlanVm();
         _note.StructuredWorkspacePayload = payload?.StructuredPayload;
