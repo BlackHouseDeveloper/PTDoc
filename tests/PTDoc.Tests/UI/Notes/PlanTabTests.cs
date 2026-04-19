@@ -138,8 +138,8 @@ public sealed class PlanTabTests : TestContext
         {
             Assert.Contains("Mobility", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Manual therapy", cut.Markup, StringComparison.Ordinal);
-            Assert.Contains("plan-treatment-focuses", cut.Markup, StringComparison.Ordinal);
-            Assert.Contains("plan-general-intervention-options", cut.Markup, StringComparison.Ordinal);
+            cut.Find("[data-testid='plan-treatment-focuses']");
+            cut.Find("[data-testid='plan-general-intervention-options']");
         });
 
         cut.FindAll("button").First(button => button.TextContent.Contains("Mobility", StringComparison.Ordinal)).Click();
