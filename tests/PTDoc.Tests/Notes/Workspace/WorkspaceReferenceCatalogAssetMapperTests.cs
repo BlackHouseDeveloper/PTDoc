@@ -51,6 +51,17 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
     }
 
     [Fact]
+    public void Map_MissingSharedSectionMetadata_Throws()
+    {
+        var asset = CreateCompleteAsset();
+        asset.Shared = new WorkspaceReferenceCatalogSharedAsset();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => WorkspaceReferenceCatalogAssetMapper.Map(asset));
+
+        Assert.Contains("missing required shared treatment interventions metadata", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Map_DuplicateBodyPartAcrossTemplates_Throws()
     {
         var asset = CreateCompleteAsset();

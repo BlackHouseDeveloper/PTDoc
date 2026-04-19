@@ -15,6 +15,8 @@ internal static class WorkspaceReferenceCatalogAssetMapper
             throw new InvalidOperationException("Workspace reference catalog asset is missing shared catalog sections.");
         }
 
+        ValidateSharedSections(asset.Shared);
+
         var catalogs = new Dictionary<BodyPart, BodyRegionCatalog>();
         IEnumerable<WorkspaceReferenceCatalogTemplateAsset> templates = asset.Templates is null
             ? Array.Empty<WorkspaceReferenceCatalogTemplateAsset>()
@@ -72,6 +74,42 @@ internal static class WorkspaceReferenceCatalogAssetMapper
         }
 
         return parsed;
+    }
+
+    private static void ValidateSharedSections(WorkspaceReferenceCatalogSharedAsset shared)
+    {
+        ValidateSharedCatalogSection(
+            sectionName: "treatment interventions",
+            isAvailable: shared.TreatmentInterventions?.IsAvailable,
+            notes: shared.TreatmentInterventions?.Notes,
+            provenance: shared.TreatmentInterventions?.Provenance,
+            hasValues: (shared.TreatmentInterventions?.Options?.Count ?? 0) > 0);
+
+        ValidateSharedCatalogSection(
+            sectionName: "joint mobility/MMT",
+            isAvailable: shared.JointMobilityAndMmt?.IsAvailable,
+            notes: shared.JointMobilityAndMmt?.Notes,
+            provenance: shared.JointMobilityAndMmt?.Provenance,
+            hasValues: (shared.JointMobilityAndMmt?.MmtGrades?.Count ?? 0) > 0 &&
+                       (shared.JointMobilityAndMmt?.JointMobilityGrades?.Count ?? 0) > 0);
+    }
+
+    private static void ValidateSharedCatalogSection(
+        string sectionName,
+        bool? isAvailable,
+        string? notes,
+        ReferenceDataProvenance? provenance,
+        bool hasValues)
+    {
+        if (isAvailable != true ||
+            string.IsNullOrWhiteSpace(notes) ||
+            string.IsNullOrWhiteSpace(provenance?.DocumentPath) ||
+            string.IsNullOrWhiteSpace(provenance?.Version) ||
+            !hasValues)
+        {
+            throw new InvalidOperationException(
+                $"Workspace reference catalog asset is missing required shared {sectionName} metadata.");
+        }
     }
 
     private static BodyRegionCatalog CreateTemplateCatalog(
