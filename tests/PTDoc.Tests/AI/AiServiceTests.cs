@@ -203,4 +203,96 @@ public class AiServiceTests
         Assert.False(result.Success);
         Assert.Equal("AI generation failed. Please try again or contact support.", result.ErrorMessage);
     }
+
+    [Fact]
+    public async Task GenerateGoals_WithValidRequest_ReturnsSuccess()
+    {
+        // Arrange
+        var request = new AiGoalsRequest
+        {
+            Diagnosis = "Lumbar strain",
+            FunctionalLimitations = "Difficulty with prolonged standing and sit-to-stand transfers",
+            PriorLevelOfFunction = "Independent with all ADLs prior to injury"
+        };
+
+        // Act
+        var result = await _aiService.GenerateGoalsAsync(request);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.NotEmpty(result.GeneratedText);
+        Assert.Equal("v1", result.Metadata.TemplateVersion);
+        Assert.Equal("gpt-4", result.Metadata.Model);
+        Assert.True(result.Metadata.TokenCount > 0);
+    }
+
+    [Fact]
+    public async Task GenerateGoals_WithMinimalRequest_ReturnsSuccess()
+    {
+        // Arrange
+        var request = new AiGoalsRequest
+        {
+            Diagnosis = "Rotator cuff tendinopathy",
+            FunctionalLimitations = "Overhead reach limited"
+        };
+
+        // Act
+        var result = await _aiService.GenerateGoalsAsync(request);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.NotEmpty(result.GeneratedText);
+    }
+
+    [Fact]
+    public async Task GenerateGoals_NullRequest_ThrowsArgumentNullException()
+    {
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            _aiService.GenerateGoalsAsync(null!));
+    }
+
+    [Fact]
+    public async Task GenerateGoals_MetadataContainsNoPhiFields()
+    {
+        // Arrange
+        var request = new AiGoalsRequest
+        {
+            Diagnosis = "Knee OA",
+            FunctionalLimitations = "Difficulty with stairs"
+        };
+
+        // Act
+        var result = await _aiService.GenerateGoalsAsync(request);
+
+        // Assert - metadata should only contain safe fields
+        Assert.NotNull(result.Metadata);
+        Assert.NotEmpty(result.Metadata.TemplateVersion);
+        Assert.NotEmpty(result.Metadata.Model);
+        Assert.NotEqual(default(DateTime), result.Metadata.GeneratedAtUtc);
+        // NO patient name, MRN, or clinical details in metadata
+    }
+
+    [Fact]
+    public async Task GenerateGoals_Fails_WhenAiFeatureEnabledAndAzureRuntimeConfigMissing()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "FeatureFlags:EnableAiGeneration", "true" },
+                { "Ai:Model", "gpt-4" }
+            })
+            .Build();
+
+        var aiService = new OpenAiService(configuration, NullLogger<OpenAiService>.Instance, _mockHttpClientFactory);
+
+        var result = await aiService.GenerateGoalsAsync(new AiGoalsRequest
+        {
+            Diagnosis = "Hip fracture",
+            FunctionalLimitations = "Non-weight bearing"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation failed. Please try again or contact support.", result.ErrorMessage);
+    }
 }

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.AI;
-using System.Text;
 
 namespace PTDoc.AI.Services;
 
@@ -178,7 +177,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
     }
 
     /// <inheritdoc />
-    public Task<GoalGenerationResult> GenerateGoalNarrativesAsync(
+    public async Task<GoalGenerationResult> GenerateGoalNarrativesAsync(
         GoalNarrativesGenerationRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -191,14 +190,14 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
                 "Goal generation rejected: note {NoteId} is already signed",
                 request.NoteId);
 
-            return Task.FromResult(new GoalGenerationResult
+            return new GoalGenerationResult
             {
                 GeneratedText = string.Empty,
                 Confidence = 0,
                 SourceInputs = request,
                 Success = false,
                 ErrorMessage = "AI generation is not permitted on signed notes."
-            });
+            };
         }
 
         _logger.LogInformation(
@@ -207,42 +206,43 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
 
         try
         {
-            var model = _configuration["Ai:Model"] ?? DefaultModel;
+            // Sanitize all clinician-entered strings before forwarding to the AI provider
+            var aiRequest = new AiGoalsRequest
+            {
+                Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
+                FunctionalLimitations = _promptBuilder.SanitizeInput(request.FunctionalLimitations),
+                PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
+                ShortTermGoals = request.ShortTermGoals is not null ? _promptBuilder.SanitizeInput(request.ShortTermGoals) : null,
+                LongTermGoals = request.LongTermGoals is not null ? _promptBuilder.SanitizeInput(request.LongTermGoals) : null
+            };
 
-            // Use mock generation since the underlying IAiService doesn't have a goals endpoint.
-            // In production this will call the AI provider via a prompt built by ClinicalPromptBuilder.
-            var generatedText = GenerateMockGoals(request);
+            var aiResult = await _aiService.GenerateGoalsAsync(aiRequest, cancellationToken);
 
             var warnings = BuildGoalWarnings(request);
 
-            return Task.FromResult(new GoalGenerationResult
+            return new GoalGenerationResult
             {
-                GeneratedText = generatedText,
-                Confidence = DefaultConfidence,
+                GeneratedText = aiResult.GeneratedText,
+                Confidence = aiResult.Success ? DefaultConfidence : 0,
                 Warnings = warnings,
                 SourceInputs = request,
-                Success = true,
-                Metadata = new AiPromptMetadata
-                {
-                    TemplateVersion = "v1",
-                    Model = model,
-                    GeneratedAtUtc = DateTime.UtcNow,
-                    TokenCount = generatedText.Length / 4
-                }
-            });
+                Success = aiResult.Success,
+                ErrorMessage = aiResult.Success ? null : aiResult.ErrorMessage,
+                Metadata = aiResult.Metadata
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Goal generation failed for note {NoteId}", request.NoteId);
 
-            return Task.FromResult(new GoalGenerationResult
+            return new GoalGenerationResult
             {
                 GeneratedText = string.Empty,
                 Confidence = 0,
                 SourceInputs = request,
                 Success = false,
                 ErrorMessage = "AI generation failed. Please try again or contact support."
-            });
+            };
         }
     }
 
@@ -276,40 +276,5 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
         if (string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
             warnings.Add("No prior level of function provided — goals may not reflect realistic baseline.");
         return warnings;
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // Mock generation for goals (until OpenAI integration is wired)
-    // ──────────────────────────────────────────────────────────────
-
-    private static string GenerateMockGoals(GoalNarrativesGenerationRequest request)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("SHORT-TERM GOALS (2–4 weeks):");
-        sb.AppendLine($"1. Patient will demonstrate improved functional mobility related to {request.Diagnosis} as evidenced by reduced pain with activity (≤3/10 NRS).");
-        sb.AppendLine("2. Patient will independently perform home exercise program as evidenced by verbal return demonstration.");
-        sb.AppendLine();
-        sb.AppendLine("LONG-TERM GOALS (4–8 weeks):");
-
-        if (request.OutcomeContext is not null)
-        {
-            var ctx = request.OutcomeContext;
-            var improvementTarget = ctx.HigherIsBetter
-                ? ctx.CurrentScore + ctx.MinimumClinicallyImportantDifference
-                : ctx.CurrentScore - ctx.MinimumClinicallyImportantDifference;
-            var clampedTarget = ctx.HigherIsBetter
-                ? Math.Min(improvementTarget, ctx.MaxScore)
-                : Math.Max(improvementTarget, 0);
-
-            sb.AppendLine($"1. Patient will improve {ctx.MeasureName} score from {ctx.CurrentScore:F0} to ≥{clampedTarget:F0}" +
-                          $" (MCID: {ctx.MinimumClinicallyImportantDifference:F0} points) as evidenced by re-assessment at discharge.");
-        }
-        else
-        {
-            sb.AppendLine($"1. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by functional outcome measure improvement.");
-        }
-
-        sb.AppendLine("2. Patient will demonstrate independence with a self-management program as evidenced by discharge from skilled physical therapy.");
-        return sb.ToString();
     }
 }

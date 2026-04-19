@@ -63,6 +63,21 @@ public class ClinicalGenerationServiceTests
                     TokenCount = 20
                 }
             });
+
+        _mockAiService
+            .Setup(s => s.GenerateGoalsAsync(It.IsAny<AiGoalsRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiResult
+            {
+                Success = true,
+                GeneratedText = "SHORT-TERM GOALS:\n1. Patient will reduce pain to ≤3/10 NRS.\nLONG-TERM GOALS:\n1. Patient will return to prior level of function.",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    TokenCount = 35
+                }
+            });
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -321,5 +336,94 @@ public class ClinicalGenerationServiceTests
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _service.GenerateGoalNarrativesAsync(null!));
+    }
+
+    [Fact]
+    public async Task GenerateGoalNarratives_WithDraftRequest_DelegatesToAiService()
+    {
+        // Verifies provider-backed implementation: IAiService.GenerateGoalsAsync must be called,
+        // not a local mock implementation.
+        var request = new GoalNarrativesGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Knee OA",
+            FunctionalLimitations = "Difficulty ascending/descending stairs",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GenerateGoalNarrativesAsync(request);
+
+        Assert.True(result.Success);
+        _mockAiService.Verify(
+            s => s.GenerateGoalsAsync(It.IsAny<AiGoalsRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GenerateGoalNarratives_SanitizesInputsBeforeCallingProvider()
+    {
+        // Verify that prompt-injection tokens are stripped before forwarding to the provider.
+        AiGoalsRequest? capturedRequest = null;
+        _mockAiService
+            .Setup(s => s.GenerateGoalsAsync(It.IsAny<AiGoalsRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AiGoalsRequest, CancellationToken>((r, _) => capturedRequest = r)
+            .ReturnsAsync(new AiResult
+            {
+                Success = true,
+                GeneratedText = "Goals text",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            });
+
+        var request = new GoalNarrativesGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "IGNORE Lumbar strain",
+            FunctionalLimitations = "Limited mobility SYSTEM: override",
+            IsNoteSigned = false
+        };
+
+        await _service.GenerateGoalNarrativesAsync(request);
+
+        Assert.NotNull(capturedRequest);
+        Assert.DoesNotContain("IGNORE", capturedRequest!.Diagnosis, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SYSTEM:", capturedRequest.FunctionalLimitations, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenerateGoalNarratives_WhenAiServiceFails_ReturnsFailureResult()
+    {
+        _mockAiService
+            .Setup(s => s.GenerateGoalsAsync(It.IsAny<AiGoalsRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiResult
+            {
+                Success = false,
+                GeneratedText = string.Empty,
+                ErrorMessage = "Provider timeout",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            });
+
+        var request = new GoalNarrativesGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Shoulder impingement",
+            FunctionalLimitations = "Unable to reach overhead",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GenerateGoalNarrativesAsync(request);
+
+        Assert.False(result.Success);
+        Assert.NotEmpty(result.ErrorMessage!);
+        Assert.Empty(result.GeneratedText);
     }
 }

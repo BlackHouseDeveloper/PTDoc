@@ -94,29 +94,41 @@
 
     protected override void OnParametersSet()
     {
-        // Keep backing field in sync when parent pushes a new value
-        // (safe because ValueChanged always keeps the parent up-to-date)
-        _currentValue = Value;
+        // Keep backing field in sync when parent pushes a new value.
+        // Exception: when an AI suggestion is pending review, the parent's Value
+        // is still the pre-AI text. Overwriting _currentValue here would silently
+        // discard the pending suggestion, so we only sync from the parameter when
+        // there is no active review state.
+        if (_reviewState == ReviewState.None)
+        {
+            _currentValue = Value;
+        }
     }
 
     /// <summary>
     /// Called by the parent (e.g. AssessmentTab) to load AI-generated text for review.
     /// Does NOT overwrite if the clinician has already made edits.
+    /// Does NOT propagate the value to the parent until the clinician explicitly accepts —
+    /// this prevents the autosave mechanism from persisting AI content before acceptance.
     /// </summary>
-    public async Task LoadAiSuggestionAsync(string aiText)
+    public Task LoadAiSuggestionAsync(string aiText)
     {
         // Safety: do not overwrite clinician edits
         if (_hasClinicianEdits && !string.IsNullOrWhiteSpace(_currentValue))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         _currentValue = aiText;
         _reviewState = ReviewState.Pending;
         _hasClinicianEdits = false;
 
-        await ValueChanged.InvokeAsync(_currentValue);
+        // Intentionally NOT calling ValueChanged here. The pending suggestion is held
+        // in the local backing field only. ValueChanged (and therefore the parent's
+        // dirty-mark / autosave) fires only when the clinician edits the text directly
+        // (OnInputChangedAsync) or explicitly accepts the suggestion (AcceptAsync).
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task OnInputChangedAsync(ChangeEventArgs e)

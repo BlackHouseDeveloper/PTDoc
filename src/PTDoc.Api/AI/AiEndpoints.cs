@@ -41,6 +41,7 @@ public static class AiEndpoints
         [FromServices] IAiService aiService,
         [FromServices] IAuditService auditService,
         [FromServices] IConfiguration configuration,
+        [FromServices] PTDoc.Infrastructure.Data.ApplicationDbContext db,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -55,6 +56,23 @@ public static class AiEndpoints
         if (string.IsNullOrWhiteSpace(request.ChiefComplaint))
         {
             return Results.BadRequest(new { error = "ChiefComplaint is required" });
+        }
+
+        // Sprint UC-Gamma: if NoteId is provided, verify signing state from the DB
+        // to prevent the client from bypassing the signed-note guardrail.
+        if (request.NoteId.HasValue && request.NoteId.Value != Guid.Empty)
+        {
+            var noteSigning = await db.ClinicalNotes
+                .AsNoTracking()
+                .Where(n => n.Id == request.NoteId.Value)
+                .Select(n => new { n.Id, n.SignatureHash })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (noteSigning is null)
+                return Results.NotFound(new { error = $"Note {request.NoteId} not found." });
+
+            if (noteSigning.SignatureHash != null)
+                return Results.Conflict(new { error = "AI generation is not permitted on signed notes." });
         }
 
         // Generate AI content
@@ -101,6 +119,7 @@ public static class AiEndpoints
         [FromServices] IAiService aiService,
         [FromServices] IAuditService auditService,
         [FromServices] IConfiguration configuration,
+        [FromServices] PTDoc.Infrastructure.Data.ApplicationDbContext db,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -115,6 +134,23 @@ public static class AiEndpoints
         if (string.IsNullOrWhiteSpace(request.Diagnosis))
         {
             return Results.BadRequest(new { error = "Diagnosis is required" });
+        }
+
+        // Sprint UC-Gamma: if NoteId is provided, verify signing state from the DB
+        // to prevent the client from bypassing the signed-note guardrail.
+        if (request.NoteId.HasValue && request.NoteId.Value != Guid.Empty)
+        {
+            var noteSigning = await db.ClinicalNotes
+                .AsNoTracking()
+                .Where(n => n.Id == request.NoteId.Value)
+                .Select(n => new { n.Id, n.SignatureHash })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (noteSigning is null)
+                return Results.NotFound(new { error = $"Note {request.NoteId} not found." });
+
+            if (noteSigning.SignatureHash != null)
+                return Results.Conflict(new { error = "AI generation is not permitted on signed notes." });
         }
 
         // Generate AI content

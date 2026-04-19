@@ -125,7 +125,55 @@ public sealed class OpenAiService : IAiService
         }
     }
 
-    private async Task<string> BuildAssessmentPromptAsync(AiAssessmentRequest request, CancellationToken cancellationToken)
+    public async Task<AiResult> GenerateGoalsAsync(AiGoalsRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            var model = _configuration["AzureOpenAIDeployment"]
+                ?? _configuration["Ai:Model"]
+                ?? DefaultModel;
+            var prompt = await BuildGoalsPromptAsync(request, cancellationToken);
+
+            _logger.LogInformation("Generating AI goals with model {Model}, template version {Version}", model, TemplateVersion);
+
+            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockGoals(request), cancellationToken);
+
+            return new AiResult
+            {
+                Success = true,
+                GeneratedText = generatedText,
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = model,
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    TokenCount = EstimateTokenCount(generatedText)
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate AI goals");
+            return new AiResult
+            {
+                Success = false,
+                GeneratedText = string.Empty,
+                ErrorMessage = "AI generation failed. Please try again or contact support.",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = _configuration["AzureOpenAIDeployment"]
+                        ?? _configuration["Ai:Model"]
+                        ?? DefaultModel,
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            };
+        }
+    }
+
+
     {
         var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Assessment", $"{TemplateVersion}.txt");
         var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
@@ -221,7 +269,46 @@ public sealed class OpenAiService : IAiService
         return sb.ToString();
     }
 
-    private static int EstimateTokenCount(string text)
+    private async Task<string> BuildGoalsPromptAsync(AiGoalsRequest request, CancellationToken cancellationToken)
+    {
+        var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Goals", $"{TemplateVersion}.txt");
+        var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
+
+        var prompt = template.Replace("{Diagnosis}", request.Diagnosis);
+        prompt = prompt.Replace("{FunctionalLimitations}", request.FunctionalLimitations);
+
+        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", $"Prior Level of Function: {request.PriorLevelOfFunction}");
+        else
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.ShortTermGoals))
+            prompt = prompt.Replace("{ShortTermGoals:Existing Short-Term Goals (do not repeat): {0}}", $"Existing Short-Term Goals (do not repeat): {request.ShortTermGoals}");
+        else
+            prompt = prompt.Replace("{ShortTermGoals:Existing Short-Term Goals (do not repeat): {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.LongTermGoals))
+            prompt = prompt.Replace("{LongTermGoals:Existing Long-Term Goals (do not repeat): {0}}", $"Existing Long-Term Goals (do not repeat): {request.LongTermGoals}");
+        else
+            prompt = prompt.Replace("{LongTermGoals:Existing Long-Term Goals (do not repeat): {0}}", string.Empty);
+
+        return prompt;
+    }
+
+    private static string GenerateMockGoals(AiGoalsRequest request)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("SHORT-TERM GOALS (2–4 weeks):");
+        sb.AppendLine($"1. Patient will demonstrate improved functional mobility related to {request.Diagnosis} as evidenced by reduced pain with activity (≤3/10 NRS).");
+        sb.AppendLine("2. Patient will independently perform home exercise program as evidenced by verbal return demonstration.");
+        sb.AppendLine();
+        sb.AppendLine("LONG-TERM GOALS (4–8 weeks):");
+        sb.AppendLine($"1. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by functional outcome measure improvement.");
+        sb.AppendLine("2. Patient will demonstrate independence with a self-management program as evidenced by discharge from skilled physical therapy.");
+        return sb.ToString();
+    }
+
+
     {
         // Rough estimate: ~4 characters per token
         return text.Length / 4;

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - AI acceptance bypass and provider-backed goal generation
+
+#### Prevent autosave from persisting AI-generated content before clinician acceptance
+
+- **`src/PTDoc.UI/Components/Notes/Workspace/EditableNarrativeBox.razor`** — Removed `ValueChanged.InvokeAsync` from `LoadAiSuggestionAsync` so that loading an AI suggestion into the review banner does not prematurely propagate the generated text to the parent, which would trigger the autosave mechanism before the clinician explicitly accepts. `OnParametersSet` is now guarded to skip the `Value` sync while an AI review is pending, preventing parent re-renders from overwriting the pending suggestion. Affects: `AssessmentTab.razor`, `AssessmentWorkspaceSection.razor`. Reason: AI content must not be written to the database before an explicit clinician acceptance step.
+
+#### Replace mock goal generation with provider-backed AI calls
+
+- **`src/PTDoc.Application/AI/IAiService.cs`** — Added `AiGoalsRequest` record and `GenerateGoalsAsync` method to `IAiService`. Added optional `NoteId?` property to `AiAssessmentRequest` and `AiPlanRequest` to carry the note identity for server-side signing-state verification. Affects: all `IAiService` implementations. Reason: goals were the only AI generation type not backed by the AI provider.
+- **`src/PTDoc.AI/Services/OpenAiService.cs`** — Implemented `GenerateGoalsAsync` using the existing `Prompts/Goals/v1.txt` template with the same file-based prompt pattern as assessment and plan, including a deterministic fallback for development/offline scenarios. Reason: complete the goals provider integration.
+- **`src/PTDoc.AI/Services/ClinicalGenerationService.cs`** — Replaced `GenerateMockGoals` stub with a proper delegating call to `IAiService.GenerateGoalsAsync`, sanitizing all clinician-provided inputs through `ClinicalPromptBuilder.SanitizeInput` before forwarding to the provider. Removed the now-unused `System.Text` import and the dead `GenerateMockGoals` helper. Affects: goal generation in `AssessmentWorkspaceSection.razor`. Reason: goal narratives were the last AI generation surface backed by a client-side mock.
+
+#### Add server-side signed-note guard to assessment and plan generation endpoints
+
+- **`src/PTDoc.Api/AI/AiEndpoints.cs`** — When a non-empty `NoteId` is included in an assessment or plan generation request, the endpoint now looks up the note's `SignatureHash` from the database and returns `409 Conflict` if the note is already signed. This prevents a client from bypassing the `IsNoteSigned` check by omitting or falsifying the flag. Affects: `POST /api/v1/ai/assessment`, `POST /api/v1/ai/plan`. Reason: server-side authority must enforce the signed-note guardrail, not just the client.
+- **`src/PTDoc.UI/Services/HttpAiClinicalGenerationService.cs`** — Updated assessment and plan HTTP requests to include `NoteId` in the JSON body so the server can perform the signing-state lookup described above. Reason: client must pass the note identity for the server-side guard to work.
+
+#### Gate /daily-notes/generate-assessment behind the AI feature flag
+
+- **`src/PTDoc.Api/Notes/DailyNoteEndpoints.cs`** — Added `IConfiguration` parameter to the `/generate-assessment` handler and added a `FeatureFlags:EnableAiGeneration` check that returns `403` when AI is disabled, matching the pattern already applied to `POST /api/v1/ai/assessment` and `POST /api/v1/ai/plan`. Reason: the daily-note AI endpoint was callable even when the AI feature flag was off.
+
+#### Remove unused AzureOpenAIClient singleton registration
+
+- **`src/PTDoc.Api/Program.cs`** — Removed the `AzureOpenAIClient` and `AzureOpenAiOptions` singleton factory registrations. `OpenAiService` uses `IHttpClientFactory` directly and never consumed `AzureOpenAIClient`; having an eager factory that throws on missing Azure config was a latent startup risk for non-Azure environments. Also removed the now-unused `Azure` and `Azure.AI.OpenAI` using directives. Reason: dead registration that could cause unnecessary startup failures.
+
+#### Test coverage for new AI behaviors
+
+- **`tests/PTDoc.Tests/AI/AiServiceTests.cs`** — Added `GenerateGoalsAsync` coverage: valid request, minimal request, null-request guard, PHI-clean metadata, and feature-flag failure path. Reason: new interface method requires direct provider tests.
+- **`tests/PTDoc.Tests/AI/ClinicalGenerationServiceTests.cs`** — Added `GenerateGoalsAsync` mock setup to constructor, and added three new tests: `GenerateGoalNarratives_WithDraftRequest_DelegatesToAiService` (verifies provider call replaces mock), `GenerateGoalNarratives_SanitizesInputsBeforeCallingProvider` (injection-token stripping), and `GenerateGoalNarratives_WhenAiServiceFails_ReturnsFailureResult` (failure propagation). Reason: validate the critical behavior changes in goal generation.
+
 ### Changed - Workspace body-region catalog asset canonicalization
 
 #### Note-workspace clinical body-region catalogs now load from a single embedded Application asset

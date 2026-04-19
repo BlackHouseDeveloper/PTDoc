@@ -1,5 +1,3 @@
-using Azure;
-using Azure.AI.OpenAI;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -173,23 +171,6 @@ builder.Services.AddSingleton(sp =>
     }
 
     return new BlobServiceClient(options.ConnectionString);
-});
-builder.Services.AddSingleton(_ => new AzureOpenAiOptions
-{
-    Endpoint = builder.Configuration[AzureOpenAiOptions.EndpointKey] ?? string.Empty,
-    ApiKey = builder.Configuration[AzureOpenAiOptions.ApiKeyKey] ?? string.Empty,
-    Deployment = builder.Configuration[AzureOpenAiOptions.DeploymentKey] ?? string.Empty
-});
-builder.Services.AddSingleton(sp =>
-{
-    var options = sp.GetRequiredService<AzureOpenAiOptions>();
-    if (string.IsNullOrWhiteSpace(options.Endpoint) || string.IsNullOrWhiteSpace(options.ApiKey))
-    {
-        throw new InvalidOperationException(
-            $"{AzureOpenAiOptions.EndpointKey} and {AzureOpenAiOptions.ApiKeyKey} must be configured before AzureOpenAIClient can be used.");
-    }
-
-    return new AzureOpenAIClient(new Uri(options.Endpoint), new AzureKeyCredential(options.ApiKey));
 });
 
 // Register Phase 7 services: Security & Observability

@@ -40,6 +40,7 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             "/api/v1/ai/assessment",
             new AiAssessmentRequest
             {
+                NoteId = request.NoteId,
                 ChiefComplaint = request.ChiefComplaint,
                 PatientHistory = request.PatientHistory,
                 CurrentSymptoms = request.CurrentSymptoms,
@@ -95,6 +96,7 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             "/api/v1/ai/plan",
             new AiPlanRequest
             {
+                NoteId = request.NoteId,
                 Diagnosis = request.Diagnosis,
                 AssessmentSummary = request.AssessmentSummary,
                 Goals = request.Goals,

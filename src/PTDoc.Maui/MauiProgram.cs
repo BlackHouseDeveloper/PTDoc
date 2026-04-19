@@ -63,6 +63,14 @@ public static class MauiProgram
 		builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 		builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
+		// Register HTTP-backed AI generation for the shared UI workspace.
+		// Uses the authenticated ApiClient so generated requests carry the bearer token.
+		builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService>(sp =>
+		{
+			var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient");
+			return new PTDoc.UI.Services.HttpAiClinicalGenerationService(httpClient);
+		});
+
 		// ----------------------------------------------------------------
 		// Local encrypted SQLite database (Sprint D)
 		// IDbKeyProvider uses platform SecureStorage (iOS Keychain / Android Keystore)
