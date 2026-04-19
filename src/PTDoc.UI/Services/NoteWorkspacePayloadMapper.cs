@@ -465,21 +465,28 @@ public sealed class NoteWorkspacePayloadMapper
             return payload.Objective.PrimaryBodyPart.ToString();
         }
 
-        var structuredBodyPart = payload.Subjective.FunctionalLimitations
-            .Select(entry => entry.BodyPart)
-            .FirstOrDefault(bodyPart => bodyPart != BodyPart.Other);
-        if (structuredBodyPart != BodyPart.Other)
+        var structuredBodyPart = FindFirstStructuredBodyPart(payload.Subjective.FunctionalLimitations.Select(entry => entry.BodyPart));
+        if (structuredBodyPart is not null)
         {
-            return structuredBodyPart.ToString();
+            return structuredBodyPart.Value.ToString();
         }
 
-        var metricBodyPart = payload.Objective.Metrics
-            .Select(metric => metric.BodyPart)
-            .FirstOrDefault(bodyPart => bodyPart != BodyPart.Other);
+        var metricBodyPart = FindFirstStructuredBodyPart(payload.Objective.Metrics.Select(metric => metric.BodyPart));
 
-        return metricBodyPart == BodyPart.Other
-            ? null
-            : metricBodyPart.ToString();
+        return metricBodyPart?.ToString();
+    }
+
+    private static BodyPart? FindFirstStructuredBodyPart(IEnumerable<BodyPart> bodyParts)
+    {
+        foreach (var bodyPart in bodyParts)
+        {
+            if (bodyPart != BodyPart.Other)
+            {
+                return bodyPart;
+            }
+        }
+
+        return null;
     }
 
     private static List<FunctionalLimitationEntryV2> MergeStructuredFunctionalLimitations(

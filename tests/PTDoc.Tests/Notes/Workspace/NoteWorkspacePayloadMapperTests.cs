@@ -221,6 +221,29 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_WhenAllBodyPartSignalsAreMissing_LeavesBothTabsUnselected()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                FunctionalLimitations = []
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Other,
+                Metrics = []
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(result.Subjective.SelectedBodyPart);
+        Assert.Null(result.Objective.SelectedBodyPart);
+    }
+
+    [Fact]
     public void MapToV2Payload_BuildsCanonicalWorkspacePayload_FromUiDraftState()
     {
         var payload = new NoteWorkspacePayload
