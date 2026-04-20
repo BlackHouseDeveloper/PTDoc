@@ -2,6 +2,7 @@ using System.Text.Json;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.LocalData.Entities;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
@@ -12,10 +13,11 @@ namespace PTDoc.Maui.Services;
 public sealed class MauiNoteDraftLocalPersistenceService(
     ILocalRepository<LocalClinicalNoteDraft> localRepository,
     ILocalSyncOrchestrator localSyncOrchestrator,
-    IIntakeReferenceDataCatalogService intakeReferenceData) : INoteDraftLocalPersistenceService
+    IIntakeReferenceDataCatalogService intakeReferenceData,
+    IOutcomeMeasureRegistry outcomeMeasureRegistry) : INoteDraftLocalPersistenceService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
-    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData);
+    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData, outcomeMeasureRegistry);
 
     public bool IsEnabled => true;
 

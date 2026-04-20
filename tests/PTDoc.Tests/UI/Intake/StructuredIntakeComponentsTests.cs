@@ -1,11 +1,16 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Notes.Workspace;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.UI.Components.Intake.Cards;
 using PTDoc.UI.Components.Intake.Models;
 using PTDoc.UI.Components.Intake.Steps;
+using PTDoc.UI.Components.Notes.Workspace;
 using Xunit;
 
 namespace PTDoc.Tests.UI.Intake;
@@ -16,6 +21,8 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     public StructuredIntakeComponentsTests()
     {
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+        Services.AddSingleton<IIntakeBodyPartMapper>(new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
+        Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
     }
 
     [Fact]
@@ -99,7 +106,94 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.Contains("Knee", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Aching", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("LEFS", cut.Markup, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("KOOS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PSFS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NPRS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("KOOS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PainDetailsStep_UsesCanonicalUpperExtremityRecommendations()
+    {
+        var state = new IntakeWizardState
+        {
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "shoulder",
+                        Lateralities = ["right"]
+                    }
+                ]
+            }
+        };
+
+        var cut = RenderComponent<PainDetailsStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.ShowOutcomeMeasureRecommendations, true));
+
+        Assert.Contains("DASH", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("QuickDASH", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PSFS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NPRS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ShoulderOutcomeSet_AlignsAcrossIntakeCatalogAndWorkspaceDropdown()
+    {
+        var registry = new OutcomeMeasureRegistry();
+        var catalogs = new WorkspaceReferenceCatalogService(registry);
+        var expected = registry
+            .GetRecommendedMeasureAbbreviationsForBodyPart(BodyPart.Shoulder)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var state = new IntakeWizardState
+        {
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "shoulder",
+                        Lateralities = ["right"]
+                    }
+                ]
+            }
+        };
+
+        var intakeCut = RenderComponent<PainDetailsStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.ShowOutcomeMeasureRecommendations, true));
+
+        var panelCut = RenderComponent<OutcomeMeasurePanel>(parameters => parameters
+            .Add(component => component.PatientId, Guid.NewGuid())
+            .Add(component => component.FilterBodyPart, BodyPart.Shoulder)
+            .Add(component => component.SuggestedMeasures, expected));
+
+        var catalogAbbreviations = catalogs
+            .GetBodyRegionCatalog(BodyPart.Shoulder)
+            .OutcomeMeasureOptions
+            .Select(option => option.Split(" - ")[0])
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var dropdownAbbreviations = panelCut
+            .FindAll("option")
+            .Skip(1)
+            .Select(option => option.TextContent.Split('—')[0].Trim())
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.Equal(expected, catalogAbbreviations);
+        Assert.Equal(expected, dropdownAbbreviations);
+        Assert.Contains("QuickDASH", intakeCut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("QuickDASH", panelCut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("VAS", panelCut.Markup, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -136,7 +230,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         var state = new IntakeWizardState
         {
             PainSeverityScore = 6,
-            RecommendedOutcomeMeasures = ["LEFS", "KOOS"]
+            RecommendedOutcomeMeasures = ["LEFS", "PSFS", "NPRS"]
         };
 
         var cut = RenderComponent<ReviewStep>(parameters => parameters

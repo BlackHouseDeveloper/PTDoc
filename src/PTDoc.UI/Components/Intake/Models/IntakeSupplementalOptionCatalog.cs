@@ -148,34 +148,4 @@ public static class IntakeSupplementalOptionCatalog
 
         return suggested.ToList();
     }
-
-    public static IReadOnlyList<string> GetRecommendedOutcomeMeasures(IEnumerable<string> bodyPartIds)
-    {
-        var recommendations = new List<string>();
-
-        foreach (var bodyPartId in bodyPartIds.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            foreach (var measure in bodyPartId switch
-                     {
-                         "neck" or "cervical-spine" or "head-neck-cervical-spine" => new[] { "NDI", "PSFS", "VAS/NPRS" },
-                         "shoulder" => new[] { "DASH", "QuickDASH", "SPADI", "ASES" },
-                         "elbow" or "wrist" or "hand" or "fingers" or "thumb" or "forearm" => new[] { "DASH", "QuickDASH", "PRWE", "Michigan Hand Outcomes Questionnaire" },
-                         "upper-back-thoracic-spine" or "thoracic-spine" => new[] { "PSFS", "ODI", "VAS" },
-                         "lumbar-spine" or "sacrum" or "coccyx" => new[] { "ODI", "Roland-Morris Disability Questionnaire", "PSFS", "FABQ" },
-                         "hip" => new[] { "LEFS", "HOOS", "Harris Hip Score", "PSFS" },
-                         "knee" => new[] { "LEFS", "KOOS", "IKDC", "Lysholm Knee Score", "Tegner Activity Scale" },
-                         "ankle" or "foot" or "toes" or "heel" or "arch" or "achilles-tendon" => new[] { "FAAM", "LEFS", "AOFAS" },
-                         "balance-systems" or "coordination-motor-planning" => new[] { "BBS", "TUG", "5xSTS", "DGI", "FGA", "ABC", "Mini-BESTest" },
-                         _ => new[] { "PSFS", "NPRS/VAS" }
-                     })
-            {
-                if (!recommendations.Contains(measure, StringComparer.OrdinalIgnoreCase))
-                {
-                    recommendations.Add(measure);
-                }
-            }
-        }
-
-        return recommendations;
-    }
 }

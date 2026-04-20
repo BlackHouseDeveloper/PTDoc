@@ -141,7 +141,7 @@ public class ClinicalRulesEngineTests : IDisposable
             NoteType = NoteType.Evaluation,
             Objective = new WorkspaceObjectiveV2
             {
-                RecommendedOutcomeMeasures = ["NPRS/VAS", "PSFS"]
+                RecommendedOutcomeMeasures = ["NPRS", "PSFS"]
             }
         };
 

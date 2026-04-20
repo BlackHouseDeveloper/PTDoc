@@ -130,6 +130,7 @@ builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
     builder.Configuration.GetSection(PTDoc.Application.Configuration.RetentionOptions.SectionName));
 builder.Services.AddSingleton<ITreatmentTaxonomyCatalogService, TreatmentTaxonomyCatalogService>();
 builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
 builder.Services.AddScoped<INoteWorkspaceV2Service, NoteWorkspaceV2Service>();
 builder.Services.AddSingleton<IWorkspaceReferenceCatalogService, WorkspaceReferenceCatalogService>();
 
@@ -145,6 +146,7 @@ builder.Services.AddHttpClient("AzureOpenAI"); // Used by OpenAiService to avoid
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
+builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
 builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PTDoc.Infrastructure.Outcomes.OutcomeMeasureService>();
 
 // Register integration services

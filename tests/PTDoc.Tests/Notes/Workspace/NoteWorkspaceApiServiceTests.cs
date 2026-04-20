@@ -10,6 +10,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Tests.Integrations;
 using PTDoc.UI.Components.Notes.Models;
@@ -159,6 +160,73 @@ public sealed class NoteWorkspaceApiServiceTests
 
         using var document = JsonDocument.Parse(requestBody!);
         Assert.True(document.RootElement.GetProperty("isReEvaluation").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SaveDraftAsync_NormalizesRecommendedOutcomeMeasuresInPostBody()
+    {
+        var patientId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new NoteWorkspaceV2SaveResponse
+            {
+                Workspace = new NoteWorkspaceV2LoadResponse
+                {
+                    NoteId = Guid.NewGuid(),
+                    PatientId = patientId,
+                    DateOfService = new DateTime(2026, 4, 12, 0, 0, 0, DateTimeKind.Utc),
+                    NoteType = NoteType.Evaluation,
+                    Payload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation
+                    }
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            PatientId = patientId,
+            WorkspaceNoteType = "Evaluation Note",
+            DateOfService = new DateTime(2026, 4, 12, 0, 0, 0, DateTimeKind.Utc),
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Evaluation Note",
+                Subjective = new SubjectiveVm(),
+                Objective = new ObjectiveVm
+                {
+                    RecommendedOutcomeMeasures = ["KOOS", "QuickDASH", "VAS/NPRS", "NPRS/VAS", "VAS"]
+                },
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm()
+            }
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(requestBody);
+
+        using var document = JsonDocument.Parse(requestBody!);
+        var measures = document.RootElement.GetProperty("payload")
+            .GetProperty("objective")
+            .GetProperty("recommendedOutcomeMeasures")
+            .EnumerateArray()
+            .Select(element => element.GetString() ?? string.Empty)
+            .ToArray();
+
+        Assert.Equal(["NPRS", "QuickDASH"], measures);
+        Assert.DoesNotContain(measures, value => string.Equals(value, "KOOS", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(measures, value => string.Equals(value, "DASH", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(measures, value => string.Equals(value, "VAS", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(measures, value => string.Equals(value, "VAS/NPRS", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(measures, value => string.Equals(value, "NPRS/VAS", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -1083,7 +1151,7 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal(WorkspaceSeedKind.IntakePrefill, result.Payload.StructuredPayload!.SeedContext.Kind);
         Assert.Equal(5, result.Payload.Subjective.CurrentPainScore);
         Assert.Equal(BodyPart.Knee.ToString(), result.Payload.Objective.SelectedBodyPart);
-        Assert.Equal(["KOOS", "LEFS"], result.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+        Assert.Equal(["LEFS"], result.Payload.Objective.RecommendedOutcomeMeasures);
         Assert.Empty(result.Payload.Objective.OutcomeMeasures);
     }
 
@@ -1245,6 +1313,9 @@ public sealed class NoteWorkspaceApiServiceTests
             BaseAddress = new Uri("http://localhost")
         };
 
-        return new NoteWorkspaceApiService(client, new IntakeReferenceDataCatalogService());
+        return new NoteWorkspaceApiService(
+            client,
+            new IntakeReferenceDataCatalogService(),
+            new OutcomeMeasureRegistry());
     }
 }

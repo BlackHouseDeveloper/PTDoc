@@ -3,12 +3,30 @@ using System.Collections.Concurrent;
 using PTDoc.Application.Intake;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
+using PTDoc.Infrastructure.Outcomes;
+using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Infrastructure.Services;
 
 public sealed class InMemoryIntakeService : IIntakeService
 {
+    private static readonly IIntakeDraftCanonicalizer DefaultDraftCanonicalizer =
+        new IntakeDraftCanonicalizer(
+            new OutcomeMeasureRegistry(),
+            new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
+
     private readonly ConcurrentDictionary<Guid, IntakeResponseDraft> _drafts = new();
+    private readonly IIntakeDraftCanonicalizer _draftCanonicalizer;
+
+    public InMemoryIntakeService()
+        : this(DefaultDraftCanonicalizer)
+    {
+    }
+
+    public InMemoryIntakeService(IIntakeDraftCanonicalizer draftCanonicalizer)
+    {
+        _draftCanonicalizer = draftCanonicalizer;
+    }
 
     public Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
@@ -80,7 +98,7 @@ public sealed class InMemoryIntakeService : IIntakeService
         return Task.CompletedTask;
     }
 
-    private static IntakeResponseDraft Clone(IntakeResponseDraft state)
+    private IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
         var clone = new IntakeResponseDraft
         {
@@ -138,9 +156,7 @@ public sealed class InMemoryIntakeService : IIntakeService
             IsLocked = state.IsLocked
         };
 
-        IntakeDraftPersistence.HydrateConsentConvenienceFields(clone);
-        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(clone);
-        return clone;
+        return _draftCanonicalizer.CreateCanonicalCopy(clone);
     }
 
     private static IntakeStructuredDataDto? CloneStructuredData(IntakeStructuredDataDto? structuredData)

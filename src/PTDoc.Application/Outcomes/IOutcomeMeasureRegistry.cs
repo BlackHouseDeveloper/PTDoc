@@ -18,16 +18,49 @@ public interface IOutcomeMeasureRegistry
     IReadOnlyList<OutcomeMeasureDefinition> GetAllMeasures();
 
     /// <summary>
+    /// Returns the subset of registered outcome measures that can be selected for new entry.
+    /// Historical-only measures remain registered but are excluded.
+    /// </summary>
+    IReadOnlyList<OutcomeMeasureDefinition> GetSelectableMeasures();
+
+    /// <summary>
     /// Returns the definition for a specific measure type.
     /// </summary>
     /// <param name="measureType">The measure instrument.</param>
     OutcomeMeasureDefinition GetDefinition(OutcomeMeasureType measureType);
 
     /// <summary>
-    /// Returns the outcome measures recommended for a given body region.
+    /// Returns the canonical selectable new-entry measures for a given body region.
     /// </summary>
     /// <param name="bodyPart">The body part being evaluated.</param>
     IReadOnlyList<OutcomeMeasureDefinition> GetMeasuresForBodyPart(BodyPart bodyPart);
+
+    /// <summary>
+    /// Returns whether the supplied measure type may be newly recorded by the system.
+    /// Historical-only measures remain resolvable for read/export compatibility.
+    /// </summary>
+    bool IsSelectableForNewEntry(OutcomeMeasureType measureType);
+
+    /// <summary>
+    /// Returns the canonical recommendation abbreviations for a given body region.
+    /// This recommendation list is a canonical abbreviation projection of the selectable new-entry set.
+    /// </summary>
+    /// <param name="bodyPart">The body part being evaluated.</param>
+    IReadOnlyList<string> GetRecommendedMeasureAbbreviationsForBodyPart(BodyPart bodyPart);
+
+    /// <summary>
+    /// Resolves a recorded or manually-entered supported measure name into a typed instrument.
+    /// Recommendation-only aliases must not change the underlying typed measure.
+    /// </summary>
+    /// <param name="rawValue">A raw measure name, abbreviation, enum value, or safe legacy alias.</param>
+    bool TryResolveSupportedMeasureType(string rawValue, out OutcomeMeasureType measureType);
+
+    /// <summary>
+    /// Normalizes a recommendation name into the canonical stored abbreviation.
+    /// Unsupported recommendations return <see langword="false" />.
+    /// </summary>
+    /// <param name="rawValue">A raw recommendation label or legacy alias.</param>
+    bool TryNormalizeRecommendedMeasure(string rawValue, out string canonicalAbbreviation);
 
     /// <summary>
     /// Interprets a score for a given measure type and returns a human-readable severity label.
@@ -87,8 +120,11 @@ public sealed record OutcomeMeasureDefinition
     /// <summary>The minimum clinically important difference (MCID) for this measure.</summary>
     public required double MinimumClinicallyImportantDifference { get; init; }
 
-    /// <summary>Body parts for which this measure is recommended.</summary>
+    /// <summary>Body parts for which this measure is selectable for new entry.</summary>
     public required IReadOnlyList<BodyPart> RecommendedForBodyParts { get; init; }
+
+    /// <summary>Indicates whether this measure can be selected for new entry.</summary>
+    public required bool IsSelectableForNewEntry { get; init; }
 
     /// <summary>Scoring bands used for interpretation (ordered by ascending score, min→max).
     /// <c>InterpretScore</c> relies on this ordering to clamp out-of-range values correctly.</summary>

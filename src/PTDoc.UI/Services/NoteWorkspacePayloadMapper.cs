@@ -19,10 +19,14 @@ public sealed class NoteWorkspacePayloadMapper
     };
 
     private readonly WorkspaceSubjectiveCatalogNormalizer _subjectiveCatalogNormalizer;
+    private readonly IOutcomeMeasureRegistry _outcomeMeasureRegistry;
 
-    public NoteWorkspacePayloadMapper(IIntakeReferenceDataCatalogService intakeReferenceData)
+    public NoteWorkspacePayloadMapper(
+        IIntakeReferenceDataCatalogService intakeReferenceData,
+        IOutcomeMeasureRegistry outcomeMeasureRegistry)
     {
         _subjectiveCatalogNormalizer = new WorkspaceSubjectiveCatalogNormalizer(intakeReferenceData);
+        _outcomeMeasureRegistry = outcomeMeasureRegistry;
     }
 
     public NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
@@ -120,11 +124,7 @@ public sealed class NoteWorkspacePayloadMapper
                 GaitDeviations = CloneSet(payload.Objective.GaitObservation.Deviations),
                 AdditionalGaitObservations = payload.Objective.GaitObservation.AdditionalObservations,
                 ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes,
-                RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
+                RecommendedOutcomeMeasures = NormalizeRecommendedMeasures(payload.Objective.RecommendedOutcomeMeasures),
                 OutcomeMeasures = payload.Objective.OutcomeMeasures
                     .Select(entry => new OutcomeMeasureEntry
                     {
@@ -324,11 +324,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.GaitObservation.Deviations = CloneSet(payload.Objective.GaitDeviations);
         preservedPayload.Objective.GaitObservation.AdditionalObservations = payload.Objective.AdditionalGaitObservations;
         preservedPayload.Objective.ClinicalObservationNotes = payload.Objective.ClinicalObservationNotes;
-        preservedPayload.Objective.RecommendedOutcomeMeasures = payload.Objective.RecommendedOutcomeMeasures
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        preservedPayload.Objective.RecommendedOutcomeMeasures = NormalizeRecommendedMeasures(payload.Objective.RecommendedOutcomeMeasures);
         preservedPayload.Objective.OutcomeMeasures = payload.Objective.OutcomeMeasures
             .Select(TryMapOutcomeMeasure)
             .Where(entry => entry is not null)
@@ -1006,14 +1002,14 @@ public sealed class NoteWorkspacePayloadMapper
             .ToList();
     }
 
-    private static OutcomeMeasureEntryV2? TryMapOutcomeMeasure(OutcomeMeasureEntry entry)
+    private OutcomeMeasureEntryV2? TryMapOutcomeMeasure(OutcomeMeasureEntry entry)
     {
         if (string.IsNullOrWhiteSpace(entry.Name) || string.IsNullOrWhiteSpace(entry.Score))
         {
             return null;
         }
 
-        if (!TryParseOutcomeMeasureType(entry.Name, out var measureType))
+        if (!_outcomeMeasureRegistry.TryResolveSupportedMeasureType(entry.Name, out var measureType))
         {
             return null;
         }
@@ -1032,39 +1028,18 @@ public sealed class NoteWorkspacePayloadMapper
         };
     }
 
-    private static bool TryParseOutcomeMeasureType(string value, out OutcomeMeasureType measureType)
+    private List<string> NormalizeRecommendedMeasures(IEnumerable<string> values)
     {
-        var normalized = value.Trim();
-        return normalized.Equals("ODI", StringComparison.OrdinalIgnoreCase)
-               || normalized.Contains("Oswestry", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.OswestryDisabilityIndex, out measureType)
-            : normalized.Equals("DASH", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("QuickDASH", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.DASH, out measureType)
-            : normalized.Equals("LEFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.LEFS, out measureType)
-            : normalized.Equals("NDI", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("Neck Disability", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NeckDisabilityIndex, out measureType)
-            : normalized.Equals("PSFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.PSFS, out measureType)
-            : normalized.Equals("VAS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.VAS, out measureType)
-            : normalized.Equals("NPRS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NPRS, out measureType)
-            : ReturnUnmapped(out measureType);
-    }
-
-    private static bool ReturnMapped(OutcomeMeasureType mapped, out OutcomeMeasureType measureType)
-    {
-        measureType = mapped;
-        return true;
-    }
-
-    private static bool ReturnUnmapped(out OutcomeMeasureType measureType)
-    {
-        measureType = default;
-        return false;
+        return values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => _outcomeMeasureRegistry.TryNormalizeRecommendedMeasure(value, out var canonical)
+                ? canonical
+                : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string FormatFrequency(IReadOnlyCollection<int> values)

@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Components;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
+using PTDoc.Infrastructure.Outcomes;
+using PTDoc.Infrastructure.ReferenceData;
+using PTDoc.Infrastructure.Services;
 using PTDoc.Tests.Integrations;
 using PTDoc.UI.Services;
 
@@ -30,10 +33,7 @@ public sealed class IntakeApiServiceTests
             };
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         var result = await service.EnsureDraftAsync(patientId, new IntakeResponseDraft { PatientId = patientId });
 
@@ -70,10 +70,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         await service.EnsureDraftAsync(patientId, new IntakeResponseDraft
         {
@@ -130,10 +127,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         await service.SaveDraftAsync(new IntakeResponseDraft
         {
@@ -187,10 +181,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         var patients = await service.SearchEligiblePatientsAsync("smith", 25);
 
@@ -240,10 +231,10 @@ public sealed class IntakeApiServiceTests
             };
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(new IntakeSessionToken("session-token", DateTimeOffset.UtcNow.AddMinutes(30))),
-            CreateNavigationManager($"https://localhost/intake/{patientId:D}?mode=patient"));
+        var service = CreateService(
+            handler,
+            new IntakeSessionToken("session-token", DateTimeOffset.UtcNow.AddMinutes(30)),
+            $"https://localhost/intake/{patientId:D}?mode=patient");
 
         await service.SaveDraftAsync(new IntakeResponseDraft
         {
@@ -318,10 +309,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         await service.SaveDraftAsync(new IntakeResponseDraft
         {
@@ -376,10 +364,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         var draft = await service.GetDraftByPatientIdAsync(patientId);
 
@@ -419,10 +404,7 @@ public sealed class IntakeApiServiceTests
             }, JsonOptions));
         });
 
-        var service = new IntakeApiService(
-            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
-            new TestSessionStore(null),
-            CreateNavigationManager("https://localhost/intake"));
+        var service = CreateService(handler);
 
         var draft = await service.GetDraftByPatientIdAsync(patientId);
 
@@ -431,6 +413,66 @@ public sealed class IntakeApiServiceTests
         Assert.Empty(draft.SelectedAssistiveDevices);
         Assert.Equal(["hypertension"], draft.StructuredData!.ComorbidityIds);
         Assert.Equal(["cane"], draft.StructuredData.AssistiveDeviceIds);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_RebuildsCanonicalOutcomeRecommendationsFromStructuredBodyParts()
+    {
+        var patientId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal($"/api/v1/intake/patient/{patientId}/draft", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = """
+                               {"recommendedOutcomeMeasures":["LEFS","KOOS"]}
+                               """,
+                StructuredData = new IntakeStructuredDataDto
+                {
+                    SchemaVersion = "2026-03-30",
+                    BodyPartSelections =
+                    [
+                        new IntakeBodyPartSelectionDto
+                        {
+                            BodyPartId = "knee",
+                            Lateralities = ["left"]
+                        }
+                    ]
+                },
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var draft = await CreateService(handler).GetDraftByPatientIdAsync(patientId);
+
+        Assert.NotNull(draft);
+        Assert.Equal(["LEFS", "NPRS", "PSFS"], draft!.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+    }
+
+    private static IntakeApiService CreateService(
+        HttpMessageHandler handler,
+        IntakeSessionToken? token = null,
+        string uri = "https://localhost/intake")
+    {
+        var intakeReferenceData = new IntakeReferenceDataCatalogService();
+        var outcomeRegistry = new OutcomeMeasureRegistry();
+        var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
+        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
+
+        return new IntakeApiService(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+            new TestSessionStore(token),
+            CreateNavigationManager(uri),
+            draftCanonicalizer);
     }
 
     private static NavigationManager CreateNavigationManager(string uri)

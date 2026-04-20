@@ -1,9 +1,12 @@
 @using System.Text.Json
 @using PTDoc.Application.Intake
+@using PTDoc.Application.Outcomes
 @using PTDoc.Application.ReferenceData
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Intake.Models
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
+@inject IIntakeBodyPartMapper IntakeBodyPartMapper
+@inject IOutcomeMeasureRegistry OutcomeMeasureRegistry
 
 <section class="intake-step-shell" data-testid="pain-details-step">
     <div class="intake-step-shell__hero">
@@ -383,8 +386,11 @@
 
     private void RecalculateOutcomeMeasures()
     {
-        State.RecommendedOutcomeMeasures = IntakeSupplementalOptionCatalog
-            .GetRecommendedOutcomeMeasures(StructuredData.BodyPartSelections.Select(selection => selection.BodyPartId))
+        State.RecommendedOutcomeMeasures = StructuredData.BodyPartSelections
+            .Select(selection => IntakeBodyPartMapper.MapBodyPartId(selection.BodyPartId))
+            .Distinct()
+            .SelectMany(OutcomeMeasureRegistry.GetRecommendedMeasureAbbreviationsForBodyPart)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 

@@ -1159,6 +1159,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         => measureType switch
         {
             OutcomeMeasureType.DASH => "DASH",
+            OutcomeMeasureType.QuickDASH => "QuickDASH",
             OutcomeMeasureType.LEFS => "LEFS",
             OutcomeMeasureType.NPRS => "NPRS",
             OutcomeMeasureType.OswestryDisabilityIndex => "Oswestry Disability Index",

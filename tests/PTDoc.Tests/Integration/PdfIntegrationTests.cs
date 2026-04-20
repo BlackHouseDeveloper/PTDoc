@@ -370,6 +370,51 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PDF_Export_WorkspaceOutcomeMeasures_PreservesHistoricalVasAndQuickDashLabels()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Initial Evaluation",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    OutcomeMeasures =
+                    [
+                        new OutcomeMeasureEntryV2
+                        {
+                            MeasureType = OutcomeMeasureType.QuickDASH,
+                            Score = 32,
+                            RecordedAtUtc = new DateTime(2026, 4, 1, 12, 0, 0, DateTimeKind.Utc)
+                        },
+                        new OutcomeMeasureEntryV2
+                        {
+                            MeasureType = OutcomeMeasureType.VAS,
+                            Score = 5,
+                            RecordedAtUtc = new DateTime(2026, 4, 1, 12, 5, 0, DateTimeKind.Utc)
+                        }
+                    ]
+                }
+            }),
+            PatientFirstName = "Outcome",
+            PatientLastName = "Export",
+            PatientMedicalRecordNumber = "MRN-302",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("QuickDASH", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("VAS", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PDF_Export_DryNeedlingWorkspaceV2_UsesCanonicalStructuredContent()
     {
         var noteData = new NoteExportDto

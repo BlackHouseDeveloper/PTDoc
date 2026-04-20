@@ -10,6 +10,7 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Outcomes;
 
 namespace PTDoc.Infrastructure.Services;
 
@@ -989,7 +990,7 @@ public sealed class NoteWriteService(
             return null;
         }
 
-        if (!TryParseOutcomeMeasureType(entry.Name, out var measureType) ||
+        if (!OutcomeMeasureCatalogResolver.TryResolveSupportedMeasureType(entry.Name, out var measureType) ||
             !double.TryParse(entry.Score, out var parsedScore))
         {
             return null;
@@ -1002,42 +1003,6 @@ public sealed class NoteWriteService(
             RecordedAtUtc = entry.Date ?? DateTime.UtcNow
         };
     }
-
-    private static bool TryParseOutcomeMeasureType(string value, out OutcomeMeasureType measureType)
-    {
-        var normalized = value.Trim();
-        return normalized.Equals("ODI", StringComparison.OrdinalIgnoreCase)
-               || normalized.Contains("Oswestry", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.OswestryDisabilityIndex, out measureType)
-            : normalized.Equals("DASH", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("QuickDASH", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.DASH, out measureType)
-            : normalized.Equals("LEFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.LEFS, out measureType)
-            : normalized.Equals("NDI", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("Neck Disability", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NeckDisabilityIndex, out measureType)
-            : normalized.Equals("PSFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.PSFS, out measureType)
-            : normalized.Equals("VAS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.VAS, out measureType)
-            : normalized.Equals("NPRS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NPRS, out measureType)
-            : ReturnUnmapped(out measureType);
-    }
-
-    private static bool ReturnMapped(OutcomeMeasureType mapped, out OutcomeMeasureType measureType)
-    {
-        measureType = mapped;
-        return true;
-    }
-
-    private static bool ReturnUnmapped(out OutcomeMeasureType measureType)
-    {
-        measureType = default;
-        return false;
-    }
-
     private static BodyPart ParseBodyPart(string? value)
         => Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed)
             ? parsed
