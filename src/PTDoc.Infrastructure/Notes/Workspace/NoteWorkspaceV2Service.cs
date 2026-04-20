@@ -346,7 +346,7 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         await SyncObjectiveMetricsAsync(note, payload, cancellationToken);
-        await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, cancellationToken);
+        await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, existingOutcomeResults);
         await SyncPatientGoalsAsync(note, clinicId, payload, cancellationToken);
 
         if (request.Override is not null)
@@ -1017,17 +1017,13 @@ public sealed class NoteWorkspaceV2Service(
         }
     }
 
-    private async Task SyncOutcomeMeasuresAsync(
+    private Task SyncOutcomeMeasuresAsync(
         ClinicalNote note,
         Guid? clinicId,
         Guid clinicianId,
         NoteWorkspaceV2Payload payload,
-        CancellationToken cancellationToken)
+        IReadOnlyCollection<OutcomeMeasureResult> existingResults)
     {
-        var existingResults = await db.OutcomeMeasureResults
-            .Where(result => result.NoteId == note.Id)
-            .ToListAsync(cancellationToken);
-
         var nonSelectableOutcomeErrors = GetNonSelectableOutcomeMeasureErrors(payload.Objective.OutcomeMeasures, existingResults);
         if (nonSelectableOutcomeErrors.Count > 0)
         {
@@ -1049,6 +1045,8 @@ public sealed class NoteWorkspaceV2Service(
                 ClinicId = clinicId
             });
         }
+
+        return Task.CompletedTask;
     }
 
     private List<string> GetNonSelectableOutcomeMeasureErrors(
@@ -1075,7 +1073,7 @@ public sealed class NoteWorkspaceV2Service(
         var index = existingResults.FindIndex(result =>
             result.MeasureType == entry.MeasureType &&
             result.Score == entry.Score &&
-            result.DateRecorded == entry.RecordedAtUtc);
+            HaveSameRecordedTimestamp(result.DateRecorded, entry.RecordedAtUtc));
 
         if (index < 0)
         {
@@ -1085,6 +1083,9 @@ public sealed class NoteWorkspaceV2Service(
         existingResults.RemoveAt(index);
         return true;
     }
+
+    private static bool HaveSameRecordedTimestamp(DateTime left, DateTime right)
+        => left.Ticks == right.Ticks;
 
     private async Task SyncPatientGoalsAsync(
         ClinicalNote note,

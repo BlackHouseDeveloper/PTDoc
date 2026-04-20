@@ -14,7 +14,6 @@ public sealed class WorkspaceReferenceCatalogServiceTests
     private const string CervicalSource = "docs/clinicrefdata/C-spine limitations_objective_Goals.md";
     private const string LumbarSource = "docs/clinicrefdata/LBP limitations_object_smart goals.md";
     private const string SpecialTestsSource = "docs/clinicrefdata/List of commonly used Special test.md";
-    private const string OutcomeMeasuresSource = "docs/clinicrefdata/List of functional outcome measures.md";
     private const string TreatmentInterventionsSource = "docs/clinicrefdata/what-generally-was-worked-on.md";
     private const string TreatmentFocusesSource = "docs/clinicrefdata/what-was-specifically-worked-on.md";
     private const string JointMobilitySource = "docs/clinicrefdata/Joint mobility and MMT.md";
@@ -23,7 +22,7 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
 
     [Fact]
-    public void GetBodyRegionCatalog_Shoulder_UsesAssetBackedReferenceData()
+    public void GetBodyRegionCatalog_Shoulder_UsesAssetBackedReferenceDataAndRegistryBackedOutcomeMetadata()
     {
         var catalog = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);
 
@@ -35,7 +34,8 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, catalog.FunctionalLimitations.Notes);
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, catalog.FunctionalLimitations.Provenance?.DocumentPath);
         Assert.Equal(SpecialTestsSource, catalog.SpecialTests.Provenance?.DocumentPath);
-        Assert.Equal(OutcomeMeasuresSource, catalog.OutcomeMeasures.Provenance?.DocumentPath);
+        Assert.Equal("Outcome registry fallback", catalog.OutcomeMeasures.Notes);
+        Assert.Null(catalog.OutcomeMeasures.Provenance);
         Assert.Equal(TreatmentFocusesSource, catalog.TreatmentFocuses.Provenance?.DocumentPath);
         Assert.Equal(TreatmentInterventionsSource, catalog.TreatmentInterventions.Provenance?.DocumentPath);
         Assert.Equal(JointMobilitySource, catalog.JointMobilityAndMmt.Provenance?.DocumentPath);

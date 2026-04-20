@@ -141,9 +141,7 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
 
         if (canonicalOutcomeMeasures.Count > 0)
         {
-            cloned.OutcomeMeasures = cloned.OutcomeMeasures.IsAvailable
-                ? cloned.OutcomeMeasures
-                : CatalogAvailability.Available("Outcome registry fallback");
+            cloned.OutcomeMeasures = CatalogAvailability.Available("Outcome registry fallback");
             cloned.OutcomeMeasureOptions = canonicalOutcomeMeasures;
         }
 

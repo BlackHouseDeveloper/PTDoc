@@ -404,6 +404,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             LastModifiedUtc = DateTime.UtcNow
         };
         var recordedAtUtc = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc);
+        var persistedRecordedAt = DateTime.SpecifyKind(recordedAtUtc, DateTimeKind.Unspecified);
 
         _context.Patients.Add(patient);
         _context.ClinicalNotes.Add(note);
@@ -414,7 +415,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             MeasureType = OutcomeMeasureType.VAS,
             Score = 5,
             ClinicianId = Guid.NewGuid(),
-            DateRecorded = recordedAtUtc,
+            DateRecorded = persistedRecordedAt,
             ClinicId = patient.ClinicId
         });
         await _context.SaveChangesAsync();
@@ -447,6 +448,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var persisted = Assert.Single(_context.OutcomeMeasureResults.Where(entry => entry.NoteId == note.Id));
         Assert.Equal(OutcomeMeasureType.VAS, persisted.MeasureType);
         Assert.Equal(5, persisted.Score);
+        Assert.Equal(persistedRecordedAt.Ticks, persisted.DateRecorded.Ticks);
     }
 
     [Fact]
