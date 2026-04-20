@@ -6,20 +6,24 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 
 namespace PTDoc.UI.Services;
 
-public sealed class NoteWorkspaceApiService(HttpClient httpClient, IIntakeReferenceDataCatalogService intakeReferenceData) : INoteWorkspaceService
+public sealed class NoteWorkspaceApiService(
+    HttpClient httpClient,
+    IIntakeReferenceDataCatalogService intakeReferenceData,
+    IOutcomeMeasureRegistry outcomeMeasureRegistry) : INoteWorkspaceService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
-    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData);
+    private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData, outcomeMeasureRegistry);
 
     public async Task<NoteWorkspaceLoadResult> LoadAsync(
         Guid patientId,

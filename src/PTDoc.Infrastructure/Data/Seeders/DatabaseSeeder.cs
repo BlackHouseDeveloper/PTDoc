@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Identity;
+using PTDoc.Infrastructure.ReferenceData;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -20,12 +23,19 @@ public static class DatabaseSeeder
     /// Matches the demo clinic_id claim in CredentialValidator.
     /// </summary>
     public static readonly Guid DefaultClinicId = Guid.Parse("00000000-0000-0000-0000-000000000100");
+    private static readonly Guid HistoricalVasPatientId = Guid.Parse("5f2d7a29-3c5f-4a0c-9c6b-2d45c8f78a31");
+    private static readonly Guid HistoricalVasNoteId = Guid.Parse("8d0c3d47-5e33-46a4-9c6d-6d6c01d7e8f4");
+    private static readonly Guid HistoricalVasOutcomeMeasureResultId = Guid.Parse("2b80b173-53b2-4d92-b017-6cfa52aca5c1");
+    private static readonly Guid SubmittedShoulderPatientId = Guid.Parse("c4d1f4e9-f5a5-4ccb-b92a-4c1a1a6ce7d2");
+    private static readonly Guid SubmittedShoulderIntakeFormId = Guid.Parse("6bdb789b-a4c5-41c2-9a4b-bf6173f0d4c8");
 
     private const int TargetActivePtCount = 3;
     private const int TargetActivePtaCount = 7;
     private const int TargetPatientCount = 60;
     private const int SeedScheduleStartHour = 7;
     private const int SeedScheduleEndHour = 18;
+    private const string SeedTemplateVersion = "1.0";
+    private const string IntakeStructuredSchemaVersion = "2026-03-30";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -83,6 +93,7 @@ public static class DatabaseSeeder
     public static async Task SeedTestDataAsync(ApplicationDbContext context, ILogger logger)
     {
         logger.LogInformation("Checking development seed data...");
+        var intakeReferenceData = new IntakeReferenceDataCatalogService();
 
         var now = DateTime.UtcNow;
         var clinic = await EnsureDefaultClinicAsync(context, logger, now);
@@ -109,6 +120,7 @@ public static class DatabaseSeeder
         await EnsureTodayShowcaseAppointmentsAsync(context, clinic.Id, seedActorId, ptClinicians, ptaClinicians, logger, now);
         await NormalizeSeedAppointmentsAsync(context, clinic.Id, seedActorId, logger, now);
         await EnsureNotesAsync(context, clinic.Id, ptClinicians, ptaClinicians, logger, now);
+        await EnsureOutcomeMeasureQaFixturesAsync(context, clinic.Id, seedActorId, ptClinicians, intakeReferenceData, logger, now);
 
         var activePtCount = await context.Users.CountAsync(u => u.ClinicId == clinic.Id && u.IsActive && u.Role == Roles.PT);
         var activePtaCount = await context.Users.CountAsync(u => u.ClinicId == clinic.Id && u.IsActive && u.Role == Roles.PTA);
@@ -126,6 +138,258 @@ public static class DatabaseSeeder
             patientCount,
             appointmentCount,
             noteCount);
+    }
+
+    private static async Task EnsureOutcomeMeasureQaFixturesAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid seedActorId,
+        IReadOnlyList<User> ptClinicians,
+        IIntakeReferenceDataCatalogService intakeReferenceData,
+        ILogger logger,
+        DateTime now)
+    {
+        var clinicianId = ptClinicians.FirstOrDefault()?.Id ?? seedActorId;
+        var historicalFixtureCreated = false;
+        var shoulderFixtureCreated = false;
+
+        var historicalPatient = await context.Patients.FirstOrDefaultAsync(patient => patient.Id == HistoricalVasPatientId);
+        if (historicalPatient is null)
+        {
+            historicalPatient = new Patient
+            {
+                Id = HistoricalVasPatientId,
+            };
+
+            context.Patients.Add(historicalPatient);
+            historicalFixtureCreated = true;
+        }
+        historicalPatient.FirstName = "Legacy";
+        historicalPatient.LastName = "Vas";
+        historicalPatient.DateOfBirth = new DateTime(1984, 5, 14);
+        historicalPatient.Email = "legacy.vas.fixture@ptdoc.local";
+        historicalPatient.Phone = "555-2101";
+        historicalPatient.AddressLine1 = "101 Legacy Rehab Lane";
+        historicalPatient.City = "San Diego";
+        historicalPatient.State = "CA";
+        historicalPatient.ZipCode = "92121";
+        historicalPatient.MedicalRecordNumber = "DEV-QA-VAS-001";
+        historicalPatient.ReferringPhysician = "Dr. Fixture";
+        historicalPatient.PhysicianNpi = "1400000999";
+        historicalPatient.ConsentSigned = true;
+        historicalPatient.ConsentSignedDate = now.Date.AddDays(-20);
+        historicalPatient.DiagnosisCodesJson = SerializeJson(new[]
+        {
+            new
+            {
+                IcdCode = "M25.511",
+                Description = "Pain in right shoulder",
+                IsPrimary = true
+            }
+        });
+        historicalPatient.PayerInfoJson = SerializeJson(new
+        {
+            PayerType = "Commercial",
+            PlanName = "QA Fixture PPO",
+            MemberId = "DEVQAVAS001"
+        });
+        EnsurePatientFixtureVisibility(historicalPatient, clinicId, seedActorId, now);
+
+        var historicalNote = await context.ClinicalNotes.FirstOrDefaultAsync(note => note.Id == HistoricalVasNoteId);
+        if (historicalNote is null)
+        {
+            historicalNote = new ClinicalNote
+            {
+                Id = HistoricalVasNoteId,
+            };
+
+            context.ClinicalNotes.Add(historicalNote);
+            historicalFixtureCreated = true;
+        }
+        historicalNote.PatientId = HistoricalVasPatientId;
+        historicalNote.NoteType = NoteType.ProgressNote;
+        historicalNote.NoteStatus = NoteStatus.Signed;
+        historicalNote.ContentJson = SerializeJson(new
+        {
+            subjective = "Legacy QA fixture progress note with a historical VAS outcome row.",
+            objective = "Historical-only outcome row verification fixture.",
+            assessment = "Stable shoulder pain history.",
+            plan = "Continue home exercise program."
+        });
+        historicalNote.DateOfService = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc);
+        historicalNote.TherapistNpi = BuildTherapistNpi(clinicianId);
+        historicalNote.TotalTreatmentMinutes = 38;
+        historicalNote.CptCodesJson = SerializeJson(new[]
+        {
+            new { Code = "97110", Description = "Therapeutic exercise", Units = 2 }
+        });
+        historicalNote.SignatureHash = ComputeSignatureHash(
+            HistoricalVasPatientId,
+            historicalNote.DateOfService,
+            NoteType.ProgressNote,
+            historicalNote.ContentJson,
+            historicalNote.CptCodesJson);
+        historicalNote.SignedUtc = new DateTime(2026, 4, 5, 13, 0, 0, DateTimeKind.Utc);
+        EnsureClinicalNoteFixtureVisibility(historicalNote, HistoricalVasPatientId, clinicId, seedActorId, clinicianId, now);
+
+        var historicalOutcome = await context.OutcomeMeasureResults.FirstOrDefaultAsync(result => result.Id == HistoricalVasOutcomeMeasureResultId);
+        if (historicalOutcome is null)
+        {
+            context.OutcomeMeasureResults.Add(new OutcomeMeasureResult
+            {
+                Id = HistoricalVasOutcomeMeasureResultId,
+                PatientId = HistoricalVasPatientId,
+                MeasureType = OutcomeMeasureType.VAS,
+                Score = 5,
+                DateRecorded = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc),
+                ClinicianId = clinicianId,
+                NoteId = HistoricalVasNoteId,
+                ClinicId = clinicId
+            });
+            historicalFixtureCreated = true;
+        }
+        else
+        {
+            historicalOutcome.PatientId = HistoricalVasPatientId;
+            historicalOutcome.NoteId = HistoricalVasNoteId;
+            historicalOutcome.ClinicId = clinicId;
+            historicalOutcome.ClinicianId = clinicianId;
+            historicalOutcome.MeasureType = OutcomeMeasureType.VAS;
+            historicalOutcome.Score = 5;
+            historicalOutcome.DateRecorded = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc);
+        }
+
+        var shoulderPatient = await context.Patients.FirstOrDefaultAsync(patient => patient.Id == SubmittedShoulderPatientId);
+        if (shoulderPatient is null)
+        {
+            shoulderPatient = new Patient
+            {
+                Id = SubmittedShoulderPatientId,
+            };
+
+            context.Patients.Add(shoulderPatient);
+            shoulderFixtureCreated = true;
+        }
+        shoulderPatient.FirstName = "Shoulder";
+        shoulderPatient.LastName = "Prefill";
+        shoulderPatient.DateOfBirth = new DateTime(1991, 9, 7);
+        shoulderPatient.Email = "shoulder.prefill.fixture@ptdoc.local";
+        shoulderPatient.Phone = "555-2102";
+        shoulderPatient.AddressLine1 = "202 Intake Seed Avenue";
+        shoulderPatient.City = "San Diego";
+        shoulderPatient.State = "CA";
+        shoulderPatient.ZipCode = "92122";
+        shoulderPatient.MedicalRecordNumber = "DEV-QA-SHOULDER-001";
+        shoulderPatient.ReferringPhysician = "Dr. Intake";
+        shoulderPatient.PhysicianNpi = "1400001000";
+        shoulderPatient.ConsentSigned = true;
+        shoulderPatient.ConsentSignedDate = now.Date.AddDays(-10);
+        shoulderPatient.DiagnosisCodesJson = SerializeJson(new[]
+        {
+            new
+            {
+                IcdCode = "M25.511",
+                Description = "Pain in right shoulder",
+                IsPrimary = true
+            }
+        });
+        shoulderPatient.PayerInfoJson = SerializeJson(new
+        {
+            PayerType = "Commercial",
+            PlanName = "QA Fixture PPO",
+            MemberId = "DEVQASHOULDER001"
+        });
+        EnsurePatientFixtureVisibility(shoulderPatient, clinicId, seedActorId, now);
+
+        await RemoveNewerEvaluationNotesAsync(context, SubmittedShoulderPatientId, new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc));
+
+        var laterQualifyingIntakes = await context.IntakeForms
+            .Where(form => form.PatientId == SubmittedShoulderPatientId
+                && form.Id != SubmittedShoulderIntakeFormId
+                && (form.IsLocked || form.SubmittedAt.HasValue)
+                && ((form.SubmittedAt ?? form.LastModifiedUtc) > new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc)))
+            .ToListAsync();
+
+        foreach (var laterQualifyingIntake in laterQualifyingIntakes)
+        {
+            laterQualifyingIntake.IsLocked = false;
+            laterQualifyingIntake.SubmittedAt = null;
+            laterQualifyingIntake.LastModifiedUtc = now;
+            laterQualifyingIntake.ModifiedByUserId = seedActorId;
+            laterQualifyingIntake.SyncState = SyncState.Pending;
+        }
+
+        var shoulderStructuredData = new IntakeStructuredDataDto
+        {
+            SchemaVersion = IntakeStructuredSchemaVersion,
+            BodyPartSelections =
+            [
+                new IntakeBodyPartSelectionDto
+                {
+                    BodyPartId = "shoulder",
+                    Lateralities = [IntakeLateralityValues.Right],
+                    DigitIds = []
+                }
+            ]
+        };
+
+        var shoulderDraft = BuildSubmittedShoulderDraft(SubmittedShoulderPatientId, shoulderStructuredData);
+        var shoulderStructuredDataJson = IntakeStructuredDataJson.Serialize(shoulderStructuredData);
+        var shoulderPainMapData = IntakeStructuredDataJson.BuildPainMapProjectionJson(shoulderStructuredData, intakeReferenceData);
+        var shoulderConsents = BuildSeedConsentsJson(shoulderDraft);
+
+        var shoulderIntake = await context.IntakeForms.FirstOrDefaultAsync(form => form.Id == SubmittedShoulderIntakeFormId);
+        if (shoulderIntake is null)
+        {
+            shoulderIntake = new IntakeForm
+            {
+                Id = SubmittedShoulderIntakeFormId,
+                PatientId = SubmittedShoulderPatientId,
+                TemplateVersion = SeedTemplateVersion,
+                AccessToken = ComputeSeedTokenHash("dev-qa-shoulder-intake"),
+                ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(shoulderDraft),
+                StructuredDataJson = shoulderStructuredDataJson,
+                PainMapData = shoulderPainMapData,
+                Consents = shoulderConsents,
+                SubmittedAt = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc),
+                IsLocked = true,
+                ClinicId = clinicId,
+                LastModifiedUtc = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc),
+                ModifiedByUserId = seedActorId,
+                SyncState = SyncState.Pending
+            };
+
+            context.IntakeForms.Add(shoulderIntake);
+            shoulderFixtureCreated = true;
+        }
+        else
+        {
+            shoulderIntake.PatientId = SubmittedShoulderPatientId;
+            shoulderIntake.TemplateVersion = SeedTemplateVersion;
+            shoulderIntake.AccessToken = ComputeSeedTokenHash("dev-qa-shoulder-intake");
+            shoulderIntake.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(shoulderDraft);
+            shoulderIntake.StructuredDataJson = shoulderStructuredDataJson;
+            shoulderIntake.PainMapData = shoulderPainMapData;
+            shoulderIntake.Consents = shoulderConsents;
+            shoulderIntake.SubmittedAt = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc);
+            shoulderIntake.IsLocked = true;
+            shoulderIntake.ClinicId = clinicId;
+            shoulderIntake.LastModifiedUtc = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc);
+            shoulderIntake.ModifiedByUserId = seedActorId;
+            shoulderIntake.SyncState = SyncState.Pending;
+        }
+
+        if (!historicalFixtureCreated && !shoulderFixtureCreated && laterQualifyingIntakes.Count == 0)
+        {
+            return;
+        }
+
+        await context.SaveChangesAsync();
+        logger.LogInformation(
+            "Ensured outcome-measure QA fixtures. HistoricalVasUpdated={HistoricalVasUpdated}, SubmittedShoulderUpdated={SubmittedShoulderUpdated}, DemotedLaterQualifyingIntakes={DemotedIntakeCount}.",
+            historicalFixtureCreated,
+            shoulderFixtureCreated,
+            laterQualifyingIntakes.Count);
     }
 
     private static async Task<Clinic> EnsureDefaultClinicAsync(
@@ -1025,6 +1289,129 @@ public static class DatabaseSeeder
             plan = "Discharge to independent home exercise program.",
             functionalLimitations = $"Previously had {condition.FunctionalLimitation}; now independent with self-management."
         });
+
+    private static void EnsurePatientFixtureVisibility(
+        Patient patient,
+        Guid clinicId,
+        Guid seedActorId,
+        DateTime now)
+    {
+        patient.ClinicId = clinicId;
+        patient.LastModifiedUtc = now;
+        patient.ModifiedByUserId = seedActorId;
+        patient.SyncState = SyncState.Pending;
+    }
+
+    private static void EnsureClinicalNoteFixtureVisibility(
+        ClinicalNote note,
+        Guid patientId,
+        Guid clinicId,
+        Guid seedActorId,
+        Guid clinicianId,
+        DateTime now)
+    {
+        note.PatientId = patientId;
+        note.NoteType = NoteType.ProgressNote;
+        note.NoteStatus = NoteStatus.Signed;
+        note.ClinicId = clinicId;
+        note.ModifiedByUserId = seedActorId;
+        note.LastModifiedUtc = now;
+        note.SignedByUserId = clinicianId;
+        note.SyncState = SyncState.Pending;
+    }
+
+    private static async Task RemoveNewerEvaluationNotesAsync(
+        ApplicationDbContext context,
+        Guid patientId,
+        DateTime intakeReferenceTimeUtc)
+    {
+        var newerEvaluations = await context.ClinicalNotes
+            .Where(note => note.PatientId == patientId
+                && note.NoteType == NoteType.Evaluation
+                && note.DateOfService > intakeReferenceTimeUtc)
+            .ToListAsync();
+
+        if (newerEvaluations.Count == 0)
+        {
+            return;
+        }
+
+        var noteIds = newerEvaluations.Select(note => note.Id).ToList();
+        var linkedOutcomeMeasures = await context.OutcomeMeasureResults
+            .Where(result => result.NoteId != null && noteIds.Contains(result.NoteId.Value))
+            .ToListAsync();
+        var linkedMetrics = await context.ObjectiveMetrics
+            .Where(metric => noteIds.Contains(metric.NoteId))
+            .ToListAsync();
+        var linkedGoals = await context.PatientGoals
+            .Where(goal =>
+                (goal.OriginatingNoteId != null && noteIds.Contains(goal.OriginatingNoteId.Value))
+                || (goal.MetByNoteId != null && noteIds.Contains(goal.MetByNoteId.Value))
+                || (goal.ArchivedByNoteId != null && noteIds.Contains(goal.ArchivedByNoteId.Value)))
+            .ToListAsync();
+
+        context.OutcomeMeasureResults.RemoveRange(linkedOutcomeMeasures);
+        context.ObjectiveMetrics.RemoveRange(linkedMetrics);
+        context.PatientGoals.RemoveRange(linkedGoals);
+        context.ClinicalNotes.RemoveRange(newerEvaluations);
+    }
+
+    private static IntakeResponseDraft BuildSubmittedShoulderDraft(
+        Guid patientId,
+        IntakeStructuredDataDto structuredData)
+    {
+        return new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            FullName = "Shoulder Prefill",
+            DateOfBirth = new DateTime(1991, 9, 7),
+            EmailAddress = "shoulder.prefill.fixture@ptdoc.local",
+            PhoneNumber = "555-2102",
+            AddressLine1 = "202 Intake Seed Avenue",
+            City = "San Diego",
+            StateOrProvince = "CA",
+            PostalCode = "92122",
+            EmergencyContactName = "Fixture Contact",
+            EmergencyContactPhone = "555-2103",
+            InsuranceCompanyName = "QA Fixture PPO",
+            MemberOrPolicyNumber = "DEVQASHOULDER001",
+            PayerType = "Commercial",
+            InsuranceCoverageType = "Primary",
+            HasCurrentMedications = true,
+            UsesAssistiveDevices = false,
+            HasOtherMedicalConditions = true,
+            MedicalHistoryNotes = "Fixture shoulder intake for live suggestion chip signoff.",
+            SelectedBodyRegion = "RightShoulderFront",
+            PainSeverityScore = 6,
+            StructuredData = structuredData,
+            SelectedComorbidities = [],
+            SelectedAssistiveDevices = [],
+            SelectedLivingSituations = ["Lives alone"],
+            SelectedHouseLayoutOptions = ["single-story-main-floor-bed-bath"],
+            RecommendedOutcomeMeasures = [],
+            HipaaAcknowledged = true,
+            ConsentToTreatAcknowledged = true,
+            AccuracyConfirmed = true,
+            IsSubmitted = true,
+            IsLocked = true
+        };
+    }
+
+    private static string BuildSeedConsentsJson(IntakeResponseDraft draft)
+    {
+        var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(draft);
+        return SerializeJson(new
+        {
+            HipaaAcknowledged = canonicalConsent.HipaaAcknowledged == true,
+            ConsentToTreat = canonicalConsent.TreatmentConsentAccepted == true
+        });
+    }
+
+    private static string ComputeSeedTokenHash(string seed)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        return Convert.ToHexString(bytes);
+    }
 
     private static string BuildDraftDischargeContent(Patient patient, PatientSeedCondition condition) =>
         SerializeJson(new

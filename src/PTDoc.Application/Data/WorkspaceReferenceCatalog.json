@@ -9,7 +9,9 @@
         "version": "2026-04-18",
         "notes": "Branch 2 canonical workspace treatment interventions."
       },
-      "categories": [],
+      "categories": [
+
+      ],
       "options": [
         "Range of Motion (ROM) - active, passive, and active-assistive",
         "Joint Mobilization - grade I-V, Maitland or Kaltenborn techniques",
@@ -167,7 +169,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": true,
@@ -203,7 +207,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": true,
@@ -213,7 +219,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical special tests."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Spurling's Test - Cervical radiculopathy",
           "Distraction Test - Nerve root compression",
@@ -230,11 +238,11 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical outcome measures."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
-          "NDI - Neck Disability Index",
-          "PSFS - Patient-Specific Functional Scale",
-          "VAS/NPRS - Pain rating scales"
+
         ]
       },
       "normalRangeOfMotion": {
@@ -245,7 +253,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical ROM norms."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Flexion: 0-45 degrees",
           "Extension: 0-45 degrees",
@@ -261,7 +271,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical tender muscles."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Sternocleidomastoid",
           "Scalenes (anterior, middle, posterior)",
@@ -279,7 +291,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical exercises."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Chin tucks",
           "Upper trapezius stretch",
@@ -296,7 +310,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 cervical treatment focuses."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Cervical joint mobility (flexion/extension/rotation/side-bend)",
           "Cervical arthrokinematics (facet glide, OA joint)",
@@ -394,7 +410,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": true,
@@ -430,7 +448,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": true,
@@ -440,7 +460,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar special tests."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Straight Leg Raise (SLR) - Lumbar radiculopathy/sciatica",
           "Slump Test - Neural tension",
@@ -458,12 +480,11 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar outcome measures."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
-          "ODI - Oswestry Disability Index",
-          "Roland-Morris Disability Questionnaire",
-          "PSFS - Patient-Specific Functional Scale",
-          "FABQ - Fear-Avoidance Beliefs Questionnaire"
+
         ]
       },
       "normalRangeOfMotion": {
@@ -474,7 +495,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar ROM norms."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Flexion: 0-60 degrees",
           "Extension: 0-25 degrees",
@@ -490,7 +513,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar tender muscles."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Erector spinae (iliocostalis, longissimus, spinalis)",
           "Quadratus lumborum",
@@ -508,7 +533,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar exercises."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Pelvic tilts",
           "Supine knees-to-chest stretch",
@@ -525,7 +552,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lumbar treatment focuses."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Lumbar segmental mobility",
           "Core activation and bracing (transversus abdominis, multifidus)",
@@ -642,14 +671,20 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": false,
         "notes": "No validated upper-extremity goal source loaded; goal templates remain unavailable until a validated source exists.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": true,
@@ -659,7 +694,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity special tests."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Hawkins-Kennedy Test - Impingement",
           "Neer Test - Impingement",
@@ -690,14 +727,11 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity outcome measures."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
-          "DASH - Disabilities of the Arm, Shoulder, and Hand",
-          "QuickDASH - Shortened DASH",
-          "SPADI - Shoulder Pain and Disability Index",
-          "ASES - American Shoulder and Elbow Surgeons Score",
-          "PRWE - Patient-Rated Wrist Evaluation",
-          "Michigan Hand Outcomes Questionnaire"
+
         ]
       },
       "normalRangeOfMotion": {
@@ -708,7 +742,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity ROM norms."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Shoulder Flexion: 0-180 degrees",
           "Shoulder Extension: 0-60 degrees",
@@ -742,7 +778,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity tender muscles."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Deltoid (anterior, middle, posterior)",
           "Supraspinatus",
@@ -784,7 +822,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity exercises."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Pendulum swings",
           "Wall slides",
@@ -811,7 +851,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 upper-extremity treatment focuses."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Glenohumeral arthrokinematics",
           "Scapulohumeral rhythm",
@@ -913,7 +955,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": true,
@@ -949,7 +993,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": true,
@@ -959,7 +1005,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity special tests."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "FABER (Patrick's) Test - Hip/SI joint dysfunction",
           "FADIR Test - Hip impingement (FAI)",
@@ -993,17 +1041,11 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity outcome measures."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
-          "LEFS - Lower Extremity Functional Scale",
-          "HOOS - Hip disability and Osteoarthritis Outcome Score",
-          "KOOS - Knee Injury and Osteoarthritis Outcome Score",
-          "IKDC - International Knee Documentation Committee form",
-          "Lysholm Knee Score",
-          "Tegner Activity Scale",
-          "FAAM - Foot and Ankle Ability Measure",
-          "AOFAS - American Orthopaedic Foot & Ankle Society Score",
-          "PSFS - Patient-Specific Functional Scale"
+
         ]
       },
       "normalRangeOfMotion": {
@@ -1014,7 +1056,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity ROM norms."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Hip Flexion: 0-120 degrees",
           "Hip Extension: 0-30 degrees",
@@ -1040,7 +1084,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity tender muscles."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Gluteus maximus, medius, minimus",
           "Piriformis",
@@ -1069,7 +1115,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity exercises."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Clamshells",
           "Side-lying hip abduction",
@@ -1101,7 +1149,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 lower-extremity treatment focuses."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Hip arthrokinematics",
           "Lateral pelvic control (Trendelenburg)",
@@ -1204,7 +1254,9 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": true,
@@ -1240,28 +1292,42 @@
             ]
           }
         ],
-        "options": []
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": false,
         "notes": "No validated source-backed special-test list loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "outcomeMeasures": {
         "isAvailable": false,
         "notes": "No validated source-backed outcome-measure mapping loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "normalRangeOfMotion": {
         "isAvailable": false,
         "notes": "No validated source-backed ROM norms loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "tenderMuscles": {
         "isAvailable": true,
@@ -1271,7 +1337,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 pelvic-floor tender muscles."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "Gluteus maximus, medius, minimus",
           "Piriformis",
@@ -1287,8 +1355,12 @@
         "isAvailable": false,
         "notes": "No validated source-backed exercise library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "treatmentFocuses": {
         "isAvailable": true,
@@ -1298,7 +1370,9 @@
           "version": "2026-04-18",
           "notes": "Branch 2 pelvic-floor treatment focuses."
         },
-        "categories": [],
+        "categories": [
+
+        ],
         "options": [
           "SI joint mobility/stability",
           "Sacral nutation/counternutation control",
@@ -1318,57 +1392,89 @@
         "isAvailable": false,
         "notes": "No validated source-backed library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": false,
         "notes": "No validated source-backed goal library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": false,
         "notes": "No validated source-backed special-test list loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "outcomeMeasures": {
         "isAvailable": false,
         "notes": "No validated source-backed outcome-measure mapping loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "normalRangeOfMotion": {
         "isAvailable": false,
         "notes": "No validated source-backed ROM norms loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "tenderMuscles": {
         "isAvailable": false,
         "notes": "No validated source-backed tenderness reference loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "exercises": {
         "isAvailable": false,
         "notes": "No validated source-backed exercise library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "treatmentFocuses": {
         "isAvailable": false,
         "notes": "No validated source-backed treatment-focus mapping loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       }
     },
     {
@@ -1380,57 +1486,89 @@
         "isAvailable": false,
         "notes": "No validated source-backed library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "goalTemplates": {
         "isAvailable": false,
         "notes": "No validated source-backed goal library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "specialTests": {
         "isAvailable": false,
         "notes": "No validated source-backed special-test list loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "outcomeMeasures": {
         "isAvailable": false,
         "notes": "No validated source-backed outcome-measure mapping loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "normalRangeOfMotion": {
         "isAvailable": false,
         "notes": "No validated source-backed ROM norms loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "tenderMuscles": {
         "isAvailable": false,
         "notes": "No validated source-backed tenderness reference loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "exercises": {
         "isAvailable": false,
         "notes": "No validated source-backed exercise library loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       },
       "treatmentFocuses": {
         "isAvailable": false,
         "notes": "No validated source-backed treatment-focus mapping loaded for this body region.",
         "provenance": null,
-        "categories": [],
-        "options": []
+        "categories": [
+
+        ],
+        "options": [
+
+        ]
       }
     }
   ]

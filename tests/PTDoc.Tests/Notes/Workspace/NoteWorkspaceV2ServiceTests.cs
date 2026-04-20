@@ -12,6 +12,7 @@ using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
+using PTDoc.Infrastructure.Services;
 using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
@@ -31,6 +32,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         _context = new ApplicationDbContext(options);
 
         var registry = new OutcomeMeasureRegistry();
+        var intakeReferenceData = new IntakeReferenceDataCatalogService();
+        var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
+        var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper);
         var catalogs = new WorkspaceReferenceCatalogService(registry);
         var auditService = new AuditService(_context);
         var rulesEngine = new RulesEngine(_context, auditService);
@@ -45,7 +49,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             new AssessmentCompositionService(),
             new GoalManagementService(catalogs),
             registry,
-            new IntakeReferenceDataCatalogService(),
+            intakeReferenceData,
+            intakeBodyPartMapper,
+            intakeDraftCanonicalizer,
             carryForwardService);
     }
 
@@ -332,6 +338,118 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_RejectsHistoricalOnlyVasAsNewOutcomeEntry()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Outcome",
+            LastName = "Validation",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 3),
+            NoteType = NoteType.ProgressNote,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    OutcomeMeasures =
+                    [
+                        new OutcomeMeasureEntryV2
+                        {
+                            MeasureType = OutcomeMeasureType.VAS,
+                            Score = 5,
+                            RecordedAtUtc = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc)
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("VAS", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(result.Workspace);
+        Assert.Empty(_context.OutcomeMeasureResults);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AllowsUnchangedHistoricalVasRowsOnExistingNote()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Outcome",
+            LastName = "History",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = new DateTime(2026, 4, 3),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote
+            }),
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        var recordedAtUtc = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc);
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        _context.OutcomeMeasureResults.Add(new OutcomeMeasureResult
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            MeasureType = OutcomeMeasureType.VAS,
+            Score = 5,
+            ClinicianId = Guid.NewGuid(),
+            DateRecorded = recordedAtUtc,
+            ClinicId = patient.ClinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            NoteType = note.NoteType,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = note.NoteType,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    OutcomeMeasures =
+                    [
+                        new OutcomeMeasureEntryV2
+                        {
+                            MeasureType = OutcomeMeasureType.VAS,
+                            Score = 5,
+                            RecordedAtUtc = recordedAtUtc
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        var persisted = Assert.Single(_context.OutcomeMeasureResults.Where(entry => entry.NoteId == note.Id));
+        Assert.Equal(OutcomeMeasureType.VAS, persisted.MeasureType);
+        Assert.Equal(5, persisted.Score);
+    }
+
+    [Fact]
     public async Task GetEvaluationSeedAsync_PrefersSubmittedIntakeAndKeepsRecommendedMeasuresSeparate()
     {
         var patient = new Patient
@@ -425,7 +543,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal("Zestril / Lisinopril", Assert.Single(seed.Payload.Subjective.Medications).Name);
         Assert.Contains("Left leg", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Knee, seed.Payload.Objective.PrimaryBodyPart);
-        Assert.Equal(["KOOS", "LEFS"], seed.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+        Assert.Equal(["LEFS", "NPRS", "PSFS"], seed.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
         Assert.Empty(seed.Payload.Objective.OutcomeMeasures);
         Assert.Empty(_context.OutcomeMeasureResults);
     }
@@ -482,7 +600,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(3, seed.Payload.Subjective.CurrentPainScore);
         Assert.Contains("Right shoulder", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Shoulder, seed.Payload.Objective.PrimaryBodyPart);
-        Assert.Equal(["DASH"], seed.Payload.Objective.RecommendedOutcomeMeasures);
+        Assert.Equal(["DASH", "NPRS", "PSFS", "QuickDASH"], seed.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
     }
 
     [Fact]

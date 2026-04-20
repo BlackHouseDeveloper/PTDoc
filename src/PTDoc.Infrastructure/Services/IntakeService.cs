@@ -23,6 +23,7 @@ public sealed class IntakeService : IIntakeService
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IIdentityContextAccessor _identityContext;
     private readonly IIntakeReferenceDataCatalogService _intakeReferenceData;
+    private readonly IIntakeDraftCanonicalizer _draftCanonicalizer;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -34,12 +35,14 @@ public sealed class IntakeService : IIntakeService
         ApplicationDbContext context,
         ITenantContextAccessor tenantContext,
         IIdentityContextAccessor identityContext,
-        IIntakeReferenceDataCatalogService intakeReferenceData)
+        IIntakeReferenceDataCatalogService intakeReferenceData,
+        IIntakeDraftCanonicalizer draftCanonicalizer)
     {
         _context = context;
         _tenantContext = tenantContext;
         _identityContext = identityContext;
         _intakeReferenceData = intakeReferenceData;
+        _draftCanonicalizer = draftCanonicalizer;
     }
 
     public async Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
@@ -169,32 +172,33 @@ public sealed class IntakeService : IIntakeService
 
     public async Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
     {
+        var canonicalState = _draftCanonicalizer.CreateCanonicalCopy(state);
         var clinicId = _tenantContext.GetCurrentClinicId();
         var userId = _identityContext.GetCurrentUserId();
 
         // Parse name into first/last — split on first space only
-        var name = state.FullName?.Trim() ?? string.Empty;
+        var name = canonicalState.FullName?.Trim() ?? string.Empty;
         var spaceIndex = name.IndexOf(' ');
         // Use everything before first space as first name, rest as last name
         var firstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
         var lastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
 
-        var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
+        var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
         var patient = new Patient
         {
             FirstName = string.IsNullOrWhiteSpace(firstName) ? "Unknown" : firstName,
             LastName = string.IsNullOrWhiteSpace(lastName) ? "Patient" : lastName,
-            DateOfBirth = state.DateOfBirth ?? DateTime.UtcNow.AddYears(-30),
-            Email = state.EmailAddress?.Trim(),
-            Phone = state.PhoneNumber?.Trim(),
-            AddressLine1 = state.AddressLine1?.Trim(),
-            AddressLine2 = state.AddressLine2?.Trim(),
-            City = state.City?.Trim(),
-            State = state.StateOrProvince?.Trim(),
-            ZipCode = state.PostalCode?.Trim(),
-            EmergencyContactName = state.EmergencyContactName?.Trim(),
-            EmergencyContactPhone = state.EmergencyContactPhone?.Trim(),
-            PayerInfoJson = BuildPayerInfoJson(state),
+            DateOfBirth = canonicalState.DateOfBirth ?? DateTime.UtcNow.AddYears(-30),
+            Email = canonicalState.EmailAddress?.Trim(),
+            Phone = canonicalState.PhoneNumber?.Trim(),
+            AddressLine1 = canonicalState.AddressLine1?.Trim(),
+            AddressLine2 = canonicalState.AddressLine2?.Trim(),
+            City = canonicalState.City?.Trim(),
+            State = canonicalState.StateOrProvince?.Trim(),
+            ZipCode = canonicalState.PostalCode?.Trim(),
+            EmergencyContactName = canonicalState.EmergencyContactName?.Trim(),
+            EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim(),
+            PayerInfoJson = BuildPayerInfoJson(canonicalState),
             ConsentSigned = canonicalConsent.HipaaAcknowledged == true,
             ConsentSignedDate = canonicalConsent.HipaaAcknowledged == true ? DateTime.UtcNow : null,
             ClinicId = clinicId,
@@ -207,7 +211,7 @@ public sealed class IntakeService : IIntakeService
 
         var draft = new IntakeResponseDraft();
         // Copy state properties
-        CopyDraftProperties(state, draft);
+        CopyDraftProperties(canonicalState, draft);
         draft.PatientId = patient.Id;
 
         var intake = new IntakeForm
@@ -219,7 +223,7 @@ public sealed class IntakeService : IIntakeService
             ResponseJson = SerializeDraft(draft),
             StructuredDataJson = SerializeStructuredData(draft.StructuredData),
             PainMapData = BuildPainMapJson(draft),
-            Consents = BuildConsentsJson(state),
+            Consents = BuildConsentsJson(canonicalState),
             IsLocked = false,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
@@ -238,10 +242,12 @@ public sealed class IntakeService : IIntakeService
         if (state.PatientId is null)
             return;
 
+        var canonicalState = _draftCanonicalizer.CreateCanonicalCopy(state);
+        var patientId = canonicalState.PatientId ?? state.PatientId.Value;
         var userId = _identityContext.GetCurrentUserId();
 
         var intake = await _context.IntakeForms
-            .Where(f => f.PatientId == state.PatientId.Value && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && !f.IsLocked)
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -250,21 +256,21 @@ public sealed class IntakeService : IIntakeService
             // Before creating a new draft, check if a locked intake already exists for this patient.
             // A locked intake (created after Eval) must not be silently replaced with a new unlocked draft.
             var hasLockedIntake = await _context.IntakeForms
-                .AnyAsync(f => f.PatientId == state.PatientId.Value && f.IsLocked, cancellationToken);
+                .AnyAsync(f => f.PatientId == patientId && f.IsLocked, cancellationToken);
 
             if (hasLockedIntake)
                 return;
             var clinicId = _tenantContext.GetCurrentClinicId();
             intake = new IntakeForm
             {
-                PatientId = state.PatientId.Value,
+                PatientId = patientId,
                 TemplateVersion = "1.0",
                 // Canonical invite links are minted separately; store a non-shareable placeholder hash.
                 AccessToken = GenerateAccessTokenPlaceholderHash(),
-                ResponseJson = SerializeDraft(state),
-                StructuredDataJson = SerializeStructuredData(state.StructuredData),
-                PainMapData = BuildPainMapJson(state),
-                Consents = BuildConsentsJson(state),
+                ResponseJson = SerializeDraft(canonicalState),
+                StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData),
+                PainMapData = BuildPainMapJson(canonicalState),
+                Consents = BuildConsentsJson(canonicalState),
                 IsLocked = false,
                 ClinicId = clinicId,
                 LastModifiedUtc = DateTime.UtcNow,
@@ -275,10 +281,10 @@ public sealed class IntakeService : IIntakeService
         }
         else
         {
-            intake.ResponseJson = SerializeDraft(state);
-            intake.StructuredDataJson = SerializeStructuredData(state.StructuredData);
-            intake.PainMapData = BuildPainMapJson(state);
-            intake.Consents = BuildConsentsJson(state);
+            intake.ResponseJson = SerializeDraft(canonicalState);
+            intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
+            intake.PainMapData = BuildPainMapJson(canonicalState);
+            intake.Consents = BuildConsentsJson(canonicalState);
             intake.LastModifiedUtc = DateTime.UtcNow;
             intake.ModifiedByUserId = userId;
             intake.SyncState = SyncState.Pending;
@@ -292,10 +298,12 @@ public sealed class IntakeService : IIntakeService
         if (state.PatientId is null)
             return;
 
+        var canonicalState = _draftCanonicalizer.CreateCanonicalCopy(state);
+        var patientId = canonicalState.PatientId ?? state.PatientId.Value;
         var userId = _identityContext.GetCurrentUserId();
 
         var intake = await _context.IntakeForms
-            .Where(f => f.PatientId == state.PatientId.Value && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && !f.IsLocked)
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -304,12 +312,12 @@ public sealed class IntakeService : IIntakeService
 
         // Update intake with final submitted state
         var submittedState = new IntakeResponseDraft();
-        CopyDraftProperties(state, submittedState);
+        CopyDraftProperties(canonicalState, submittedState);
         submittedState.IsSubmitted = true;
         intake.ResponseJson = SerializeDraft(submittedState);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
-        intake.Consents = BuildConsentsJson(state);
+        intake.Consents = BuildConsentsJson(canonicalState);
         intake.SubmittedAt = DateTime.UtcNow;
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = userId;
@@ -318,11 +326,11 @@ public sealed class IntakeService : IIntakeService
 
         // Flush all demographic data back to the Patient record.
         var patient = await _context.Patients
-            .FirstOrDefaultAsync(p => p.Id == state.PatientId.Value, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == patientId, cancellationToken);
 
         if (patient is not null)
         {
-            var name = state.FullName?.Trim() ?? string.Empty;
+            var name = canonicalState.FullName?.Trim() ?? string.Empty;
             var spaceIndex = name.IndexOf(' ');
             if (!string.IsNullOrWhiteSpace(name))
             {
@@ -330,20 +338,20 @@ public sealed class IntakeService : IIntakeService
                 patient.LastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
             }
 
-            if (state.DateOfBirth.HasValue)
-                patient.DateOfBirth = state.DateOfBirth.Value;
+            if (canonicalState.DateOfBirth.HasValue)
+                patient.DateOfBirth = canonicalState.DateOfBirth.Value;
 
-            patient.Email = state.EmailAddress?.Trim() ?? patient.Email;
-            patient.Phone = state.PhoneNumber?.Trim() ?? patient.Phone;
-            patient.AddressLine1 = state.AddressLine1?.Trim() ?? patient.AddressLine1;
-            patient.AddressLine2 = state.AddressLine2?.Trim() ?? patient.AddressLine2;
-            patient.City = state.City?.Trim() ?? patient.City;
-            patient.State = state.StateOrProvince?.Trim() ?? patient.State;
-            patient.ZipCode = state.PostalCode?.Trim() ?? patient.ZipCode;
-            patient.EmergencyContactName = state.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
-            patient.EmergencyContactPhone = state.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
-            patient.PayerInfoJson = BuildPayerInfoJson(state);
-            var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
+            patient.Email = canonicalState.EmailAddress?.Trim() ?? patient.Email;
+            patient.Phone = canonicalState.PhoneNumber?.Trim() ?? patient.Phone;
+            patient.AddressLine1 = canonicalState.AddressLine1?.Trim() ?? patient.AddressLine1;
+            patient.AddressLine2 = canonicalState.AddressLine2?.Trim() ?? patient.AddressLine2;
+            patient.City = canonicalState.City?.Trim() ?? patient.City;
+            patient.State = canonicalState.StateOrProvince?.Trim() ?? patient.State;
+            patient.ZipCode = canonicalState.PostalCode?.Trim() ?? patient.ZipCode;
+            patient.EmergencyContactName = canonicalState.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
+            patient.EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
+            patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
+            var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
             patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
             if (canonicalConsent.HipaaAcknowledged == true && patient.ConsentSignedDate is null)
                 patient.ConsentSignedDate = DateTime.UtcNow;
@@ -413,7 +421,7 @@ public sealed class IntakeService : IIntakeService
         target.IsLocked = source.IsLocked;
     }
 
-    private static IntakeResponseDraft DeserializeDraft(IntakeForm intake)
+    private IntakeResponseDraft DeserializeDraft(IntakeForm intake)
     {
         var draft = DeserializeDraft(intake.ResponseJson, intake.StructuredDataJson, intake.PatientId);
         draft.IntakeId = intake.Id;
@@ -422,7 +430,7 @@ public sealed class IntakeService : IIntakeService
         return draft;
     }
 
-    private static IntakeResponseDraft DeserializeDraft(string json, string? structuredDataJson, Guid patientId)
+    private IntakeResponseDraft DeserializeDraft(string json, string? structuredDataJson, Guid patientId)
     {
         try
         {
@@ -435,10 +443,7 @@ public sealed class IntakeService : IIntakeService
                     draft.StructuredData = structuredData;
                 }
 
-                IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
-                IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
-
-                return draft;
+                return _draftCanonicalizer.CreateCanonicalCopy(draft);
             }
         }
         catch { /* fall through */ }
@@ -449,10 +454,7 @@ public sealed class IntakeService : IIntakeService
             fallback.StructuredData = fallbackStructuredData;
         }
 
-        IntakeDraftPersistence.HydrateConsentConvenienceFields(fallback);
-        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(fallback);
-
-        return fallback;
+        return _draftCanonicalizer.CreateCanonicalCopy(fallback);
     }
 
     private static string SerializeDraft(IntakeResponseDraft state)
@@ -461,15 +463,13 @@ public sealed class IntakeService : IIntakeService
     private static string? SerializeStructuredData(IntakeStructuredDataDto? structuredData)
         => structuredData is null ? null : IntakeStructuredDataJson.Serialize(structuredData);
 
-    private static IntakeResponseDraft Clone(IntakeResponseDraft state)
+    private IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
         var draft = new IntakeResponseDraft();
         CopyDraftProperties(state, draft);
         draft.IntakeId = state.IntakeId;
         draft.PatientId = state.PatientId;
-        IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
-        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
-        return draft;
+        return _draftCanonicalizer.CreateCanonicalCopy(draft);
     }
 
     private string BuildPainMapJson(IntakeResponseDraft state)

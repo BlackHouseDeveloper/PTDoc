@@ -10,6 +10,7 @@ public interface IOutcomeMeasureService
 {
     /// <summary>
     /// Records a new outcome measure result for a patient.
+    /// Only measures selectable for new entry may be recorded through this API.
     /// </summary>
     /// <param name="patientId">The patient identifier.</param>
     /// <param name="measureType">The instrument used.</param>

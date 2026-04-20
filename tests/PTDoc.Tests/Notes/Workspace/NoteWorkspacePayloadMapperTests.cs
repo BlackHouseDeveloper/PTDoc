@@ -1,5 +1,6 @@
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Services;
@@ -9,7 +10,8 @@ namespace PTDoc.Tests.Notes.Workspace;
 [Trait("Category", "CoreCi")]
 public sealed class NoteWorkspacePayloadMapperTests
 {
-    private readonly NoteWorkspacePayloadMapper _mapper = new(new IntakeReferenceDataCatalogService());
+    private readonly NoteWorkspacePayloadMapper _mapper =
+        new(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
 
     [Fact]
     public void MapToUiPayload_SplitsCatalogSelectionsFromLegacySubjectiveValues()
@@ -130,6 +132,57 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Basement laundry", roundTrippedUiPayload.Subjective.OtherLivingSituation);
         Assert.Contains("Zestril / Lisinopril", roundTrippedUiPayload.Subjective.SelectedMedicationLabels);
         Assert.Equal("Fish oil", roundTrippedUiPayload.Subjective.MedicationDetails);
+    }
+
+    [Fact]
+    public void MapToUiPayload_NormalizesRecommendedOutcomeMeasures()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                RecommendedOutcomeMeasures = ["LEFS", "KOOS", "VAS/NPRS"]
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(["LEFS", "NPRS"], result.Objective.RecommendedOutcomeMeasures);
+    }
+
+    [Fact]
+    public void MapToV2Payload_NormalizesRecommendationsWithoutRetypingVasScores()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation
+            },
+            Subjective = new SubjectiveVm(),
+            Objective = new ObjectiveVm
+            {
+                RecommendedOutcomeMeasures = ["KOOS", "QuickDASH", "VAS"],
+                OutcomeMeasures =
+                [
+                    new OutcomeMeasureEntry
+                    {
+                        Name = "VAS",
+                        Score = "5",
+                        Date = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc)
+                    }
+                ]
+            },
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal(["NPRS", "QuickDASH"], result.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+        Assert.Equal(OutcomeMeasureType.VAS, Assert.Single(result.Objective.OutcomeMeasures).MeasureType);
     }
 
     [Fact]

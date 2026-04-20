@@ -12,7 +12,8 @@ namespace PTDoc.UI.Services;
 public sealed class IntakeApiService(
     HttpClient httpClient,
     IIntakeSessionStore sessionStore,
-    NavigationManager navigationManager) : IIntakeService
+    NavigationManager navigationManager,
+    IIntakeDraftCanonicalizer draftCanonicalizer) : IIntakeService
 {
     private const string EligiblePatientsEndpoint = "/api/v1/intake/patients/eligible";
 
@@ -382,7 +383,7 @@ public sealed class IntakeApiService(
         return query.Any(part => string.Equals(part, "mode=patient", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IntakeResponseDraft ToDraft(IntakeResponse response)
+    private IntakeResponseDraft ToDraft(IntakeResponse response)
     {
         IntakeResponseDraft draft;
 
@@ -405,12 +406,10 @@ public sealed class IntakeApiService(
         draft.PatientId = response.PatientId;
         draft.IntakeId = response.Id;
         draft.ConsentPacket = response.ConsentPacket ?? draft.ConsentPacket;
-        IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
         draft.StructuredData = response.StructuredData ?? draft.StructuredData;
-        IntakeDraftPersistence.NormalizeCanonicalSupplementalSelections(draft);
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
-        return draft;
+        return draftCanonicalizer.CreateCanonicalCopy(draft);
     }
 
     private static string SerializeDraft(IntakeResponseDraft state)

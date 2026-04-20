@@ -129,6 +129,97 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public void NewNotePage_SeededEvaluation_RendersCanonicalSuggestedOutcomeChipsOnObjectiveTab()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Jamie",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = true,
+                FromLockedSubmittedIntake = true,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation,
+                        SeedContext = new WorkspaceSeedContextV2
+                        {
+                            Kind = WorkspaceSeedKind.IntakePrefill,
+                            SourceIntakeId = Guid.NewGuid(),
+                            FromLockedSubmittedIntake = true,
+                            SourceReferenceDateUtc = new DateTime(2026, 4, 5, 12, 0, 0, DateTimeKind.Utc)
+                        },
+                        Objective = new WorkspaceObjectiveV2
+                        {
+                            PrimaryBodyPart = BodyPart.Shoulder,
+                            RecommendedOutcomeMeasures = ["QuickDASH", "NPRS"]
+                        }
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm
+                    {
+                        SelectedBodyPart = BodyPart.Shoulder.ToString(),
+                        RecommendedOutcomeMeasures = ["QuickDASH", "NPRS"]
+                    }
+                }
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Shoulder, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Shoulder,
+                OutcomeMeasureOptions =
+                [
+                    "DASH - Disabilities of the Arm, Shoulder and Hand",
+                    "QuickDASH - Quick Disabilities of the Arm, Shoulder and Hand",
+                    "NPRS - Numeric Pain Rating Scale",
+                    "PSFS - Patient-Specific Functional Scale"
+                ]
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-next']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Suggested from Intake", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("QuickDASH", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("NPRS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("VAS", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
     public void NewNotePage_AppliesSignedCarryForward_ForDefaultProgressNote_WhenNoEvaluationSeedExists()
     {
         var patientId = Guid.NewGuid();

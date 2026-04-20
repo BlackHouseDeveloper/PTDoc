@@ -2,6 +2,7 @@ using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 
 namespace PTDoc.Infrastructure.Notes.Workspace;
@@ -128,29 +129,25 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     private BodyRegionCatalog CloneCatalog(BodyRegionCatalog catalog, BodyPart requestedBodyPart)
     {
         var cloned = CloneForBodyPart(catalog, requestedBodyPart);
-        var registryMeasures = outcomeMeasureRegistry
-            .GetMeasuresForBodyPart(requestedBodyPart)
-            .Select(definition => $"{definition.Abbreviation} - {definition.FullName}");
+        var canonicalOutcomeMeasures = outcomeMeasureRegistry
+            .GetRecommendedMeasureAbbreviationsForBodyPart(requestedBodyPart)
+            .Select(abbreviation => OutcomeMeasureCatalogResolver.TryFormatDisplayOption(abbreviation, out var displayOption)
+                ? displayOption
+                : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var mergedOutcomeMeasures = MergeDistinct(cloned.OutcomeMeasureOptions, registryMeasures);
-        if (mergedOutcomeMeasures.Count > 0)
+        if (canonicalOutcomeMeasures.Count > 0)
         {
             cloned.OutcomeMeasures = cloned.OutcomeMeasures.IsAvailable
                 ? cloned.OutcomeMeasures
                 : CatalogAvailability.Available("Outcome registry fallback");
-            cloned.OutcomeMeasureOptions = mergedOutcomeMeasures;
+            cloned.OutcomeMeasureOptions = canonicalOutcomeMeasures;
         }
 
         return cloned;
-    }
-
-    private static List<string> MergeDistinct(IEnumerable<string> first, IEnumerable<string> second)
-    {
-        return first
-            .Concat(second)
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
     }
 
     private sealed class SearchableCodeLookupEntry

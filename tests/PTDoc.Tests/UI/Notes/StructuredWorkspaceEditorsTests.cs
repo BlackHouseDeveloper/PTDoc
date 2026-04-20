@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.ReferenceData;
 using Moq;
 using PTDoc.Application.Outcomes;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
@@ -117,7 +118,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     public void SubjectiveTab_RendersCanonicalLabels_ForLegacyCatalogIds()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var mapper = new NoteWorkspacePayloadMapper(new IntakeReferenceDataCatalogService());
+        var mapper = new NoteWorkspacePayloadMapper(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
         var vm = mapper.MapToUiPayload(new NoteWorkspaceV2Payload
         {
             NoteType = NoteType.Evaluation,

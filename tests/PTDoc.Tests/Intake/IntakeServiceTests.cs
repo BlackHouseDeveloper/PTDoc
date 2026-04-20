@@ -7,6 +7,7 @@ using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
 
@@ -32,11 +33,16 @@ public sealed class IntakeServiceTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
+        var intakeReferenceData = new IntakeReferenceDataCatalogService();
+        var outcomeRegistry = new OutcomeMeasureRegistry();
+        var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
+        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
         _service = new IntakeService(
             _context,
             _tenantContext.Object,
             _identityContext.Object,
-            new IntakeReferenceDataCatalogService());
+            intakeReferenceData,
+            draftCanonicalizer);
     }
 
     [Fact]
@@ -276,6 +282,49 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Empty(draft.SelectedAssistiveDevices);
         Assert.Equal(["hypertension"], draft.StructuredData!.ComorbidityIds);
         Assert.Equal(["cane"], draft.StructuredData.AssistiveDeviceIds);
+    }
+
+    [Fact]
+    public async Task GetDraftByPatientIdAsync_RebuildsCanonicalOutcomeRecommendationsFromStructuredBodyParts()
+    {
+        var patient = CreatePatient("Riley", "Recommendations");
+        var structuredData = new IntakeStructuredDataDto
+        {
+            SchemaVersion = "2026-03-30",
+            BodyPartSelections =
+            [
+                new IntakeBodyPartSelectionDto
+                {
+                    BodyPartId = "knee",
+                    Lateralities = ["left"]
+                }
+            ]
+        };
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """
+                           {"recommendedOutcomeMeasures":["LEFS","KOOS"]}
+                           """,
+            StructuredDataJson = IntakeStructuredDataJson.Serialize(structuredData),
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(draft);
+        Assert.Equal(["LEFS", "NPRS", "PSFS"], draft!.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
     }
 
     [Fact]

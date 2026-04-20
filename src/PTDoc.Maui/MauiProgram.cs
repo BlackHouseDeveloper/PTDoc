@@ -52,7 +52,9 @@ public static class MauiProgram
 		builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 		builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 		builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+		builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
 		builder.Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
+		builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
 		builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 		builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 		builder.Services.AddScoped<INoteDraftLocalPersistenceService, MauiNoteDraftLocalPersistenceService>();

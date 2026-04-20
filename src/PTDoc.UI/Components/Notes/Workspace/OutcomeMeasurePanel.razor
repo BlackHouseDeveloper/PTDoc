@@ -16,7 +16,7 @@
         </div>
     }
 
-    @if (SuggestedMeasures.Count > 0)
+    @if (_normalizedSuggestedMeasures.Count > 0)
     {
         <div class="outcome-panel__suggestions" data-testid="outcome-suggested-measures">
             <div class="outcome-panel__suggestions-header">
@@ -25,27 +25,17 @@
             </div>
 
             <div class="outcome-panel__suggestions-list">
-                @foreach (var suggestion in SuggestedMeasures.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+                @foreach (var suggestion in _normalizedSuggestedMeasures.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
                 {
-                    var isSupported = TryResolveDefinition(suggestion, out var definition);
-                    var isSelected = isSupported && _selectedDefinition?.MeasureType == definition!.MeasureType;
+                    var definition = ResolveSupportedDefinition(suggestion);
+                    var isSelected = definition is not null && _selectedDefinition?.MeasureType == definition.MeasureType;
 
-                    if (isSupported)
-                    {
-                        <button type="button"
-                                class="@(isSelected ? "outcome-panel__suggestion-chip outcome-panel__suggestion-chip--selected" : "outcome-panel__suggestion-chip")"
-                                disabled="@IsReadOnly"
-                                @onclick="() => SelectSuggestedMeasure(definition!.MeasureType)">
-                            @suggestion
-                        </button>
-                    }
-                    else
-                    {
-                        <span class="outcome-panel__suggestion-chip outcome-panel__suggestion-chip--unsupported"
-                              title="This suggested measure is not yet configured for scoring in PTDoc.">
-                            @suggestion
-                        </span>
-                    }
+                    <button type="button"
+                            class="@(isSelected ? "outcome-panel__suggestion-chip outcome-panel__suggestion-chip--selected" : "outcome-panel__suggestion-chip")"
+                            disabled="@IsReadOnly"
+                            @onclick="() => SelectSuggestedMeasure(definition!.MeasureType)">
+                        @suggestion
+                    </button>
                 }
             </div>
         </div>
@@ -124,6 +114,12 @@
     {
         <div class="outcome-panel__history" data-testid="outcome-history">
             <h4 class="outcome-panel__history-title">Recorded Scores</h4>
+            @if (_historicalOnlyRecordedMeasureAbbreviations.Count > 0)
+            {
+                <p class="outcome-panel__history-copy" data-testid="outcome-history-legacy-copy">
+                    Legacy measures such as @string.Join(", ", _historicalOnlyRecordedMeasureAbbreviations) may still appear in recorded history. New scores can only be added from the current selectable measure set.
+                </p>
+            }
             <table class="outcome-panel__history-table">
                 <thead>
                     <tr>
@@ -138,7 +134,8 @@
                         .Where(record => record.Date.HasValue)
                         .OrderByDescending(record => record.Date))
                     {
-                        var isSupported = TryResolveDefinition(entry.Name, out var def);
+                        var def = ResolveSupportedDefinition(entry.Name);
+                        var isSupported = def is not null;
                         var parsedScore = TryParseScore(entry.Score, out var score);
                         var label = isSupported && parsedScore
                             ? Registry.InterpretScore(def!.MeasureType, score)
@@ -201,6 +198,8 @@
     // ──────────────────────────────────────────────────────────────
 
     private IReadOnlyList<OutcomeMeasureDefinition> _availableMeasures = Array.Empty<OutcomeMeasureDefinition>();
+    private IReadOnlyList<string> _normalizedSuggestedMeasures = Array.Empty<string>();
+    private IReadOnlyList<string> _historicalOnlyRecordedMeasureAbbreviations = Array.Empty<string>();
     private OutcomeMeasureDefinition? _selectedDefinition;
     private string _selectedMeasureTypeRaw = string.Empty;
     private double? _scoreInput;
@@ -236,15 +235,31 @@
     {
         _availableMeasures = FilterBodyPart.HasValue
             ? Registry.GetMeasuresForBodyPart(FilterBodyPart.Value)
-            : Registry.GetAllMeasures();
+            : Registry.GetSelectableMeasures();
+        _normalizedSuggestedMeasures = SuggestedMeasures
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => Registry.TryNormalizeRecommendedMeasure(value, out var canonical)
+                ? canonical
+                : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _historicalOnlyRecordedMeasureAbbreviations = RecordedEntries
+            .Select(entry => ResolveSupportedDefinition(entry.Name))
+            .Where(definition => definition is not null && !Registry.IsSelectableForNewEntry(definition.MeasureType))
+            .Select(definition => definition!.Abbreviation)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         if (_hasInitializedSuggestedSelection || _selectedDefinition is not null)
         {
             return;
         }
 
-        var firstSupportedSuggestion = SuggestedMeasures
-            .Select(suggestion => TryResolveDefinition(suggestion, out var definition) ? definition : null)
+        var firstSupportedSuggestion = _normalizedSuggestedMeasures
+            .Select(ResolveSupportedDefinition)
             .FirstOrDefault(definition => definition is not null);
 
         if (firstSupportedSuggestion is not null)
@@ -290,28 +305,19 @@
         _errorMessage = string.Empty;
     }
 
-    private bool TryResolveDefinition(string? rawValue, out OutcomeMeasureDefinition? definition)
+    private OutcomeMeasureDefinition? ResolveSupportedDefinition(string? rawValue)
     {
-        definition = null;
         if (string.IsNullOrWhiteSpace(rawValue))
         {
-            return false;
+            return null;
         }
 
-        var normalized = rawValue.Trim();
-        if (Enum.TryParse<OutcomeMeasureType>(normalized, ignoreCase: true, out var measureType))
+        if (Registry.TryResolveSupportedMeasureType(rawValue.Trim(), out var measureType))
         {
-            definition = Registry.GetDefinition(measureType);
-            return true;
+            return Registry.GetDefinition(measureType);
         }
 
-        definition = Registry.GetAllMeasures().FirstOrDefault(candidate =>
-            string.Equals(candidate.Abbreviation, normalized, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(candidate.FullName, normalized, StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains(candidate.Abbreviation, StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains(candidate.FullName, StringComparison.OrdinalIgnoreCase));
-
-        return definition is not null;
+        return null;
     }
 
     private static bool TryParseScore(string? rawValue, out double score)

@@ -16,6 +16,7 @@
       "higherIsBetter": false,
       "scoreUnit": "%",
       "minimumClinicallyImportantDifference": 10,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Lumbar", "Thoracic" ],
       "scoringBands": [
         { "label": "Minimal disability", "minScore": 0, "maxScore": 20 },
@@ -35,6 +36,7 @@
       "higherIsBetter": false,
       "scoreUnit": "points",
       "minimumClinicallyImportantDifference": 10.2,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Shoulder", "Elbow", "Wrist", "Hand" ],
       "scoringBands": [
         { "label": "Minimal disability", "minScore": 0, "maxScore": 20 },
@@ -43,6 +45,29 @@
         { "label": "Severe disability", "minScore": 61, "maxScore": 80 },
         { "label": "Maximum disability", "minScore": 81, "maxScore": 100 }
       ]
+    },
+    {
+      "measureType": "QuickDASH",
+      "abbreviation": "QuickDASH",
+      "fullName": "Quick Disabilities of the Arm, Shoulder and Hand",
+      "description": "Measures upper extremity disability using the aggregate QuickDASH score.",
+      "minScore": 0,
+      "maxScore": 100,
+      "higherIsBetter": false,
+      "scoreUnit": "points",
+      "minimumClinicallyImportantDifference": 10,
+      "isSelectableForNewEntry": true,
+      "recommendedForBodyParts": [ "Shoulder", "Elbow", "Wrist", "Hand" ],
+      "scoringBands": [
+        { "label": "Minimal disability", "minScore": 0, "maxScore": 14.99 },
+        { "label": "Moderate disability", "minScore": 15, "maxScore": 44.99 },
+        { "label": "Severe disability", "minScore": 45, "maxScore": 100 }
+      ],
+      "provenance": {
+        "documentPath": "docs/clinicrefdata/List of functional outcome measures.md",
+        "version": "2026-04-19",
+        "notes": "QuickDASH body-part applicability comes from the clinic reference document; aggregate-score MCID and interpretation thresholds are branch-defined defaults for this registry."
+      }
     },
     {
       "measureType": "LEFS",
@@ -54,6 +79,7 @@
       "higherIsBetter": true,
       "scoreUnit": "points",
       "minimumClinicallyImportantDifference": 9,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Hip", "Knee", "Ankle", "Foot" ],
       "scoringBands": [
         { "label": "Maximum disability", "minScore": 0, "maxScore": 19 },
@@ -73,6 +99,7 @@
       "higherIsBetter": false,
       "scoreUnit": "points",
       "minimumClinicallyImportantDifference": 5,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Cervical" ],
       "scoringBands": [
         { "label": "No disability", "minScore": 0, "maxScore": 4 },
@@ -92,6 +119,7 @@
       "higherIsBetter": true,
       "scoreUnit": "points",
       "minimumClinicallyImportantDifference": 2,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Knee", "Shoulder", "Hip", "Ankle", "Elbow", "Wrist", "Cervical", "Lumbar", "Thoracic", "Foot", "Hand", "PelvicFloor", "Other" ],
       "scoringBands": [
         { "label": "Unable to perform", "minScore": 0, "maxScore": 2 },
@@ -111,6 +139,7 @@
       "higherIsBetter": false,
       "scoreUnit": "/10",
       "minimumClinicallyImportantDifference": 2,
+      "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Knee", "Shoulder", "Hip", "Ankle", "Elbow", "Wrist", "Cervical", "Lumbar", "Thoracic", "Foot", "Hand", "PelvicFloor", "Other" ],
       "scoringBands": [
         { "label": "No pain", "minScore": 0, "maxScore": 0 },
@@ -129,13 +158,19 @@
       "higherIsBetter": false,
       "scoreUnit": "/10",
       "minimumClinicallyImportantDifference": 1.5,
-      "recommendedForBodyParts": [ "Knee", "Shoulder", "Hip", "Ankle", "Elbow", "Wrist", "Cervical", "Lumbar", "Thoracic", "Foot", "Hand", "PelvicFloor", "Other" ],
+      "isSelectableForNewEntry": false,
+      "recommendedForBodyParts": [],
       "scoringBands": [
         { "label": "No pain", "minScore": 0, "maxScore": 0 },
         { "label": "Mild pain", "minScore": 1, "maxScore": 3 },
         { "label": "Moderate pain", "minScore": 4, "maxScore": 6 },
         { "label": "Severe pain", "minScore": 7, "maxScore": 10 }
-      ]
+      ],
+      "provenance": {
+        "documentPath": "docs/clinicrefdata/List of functional outcome measures.md",
+        "version": "2026-04-19",
+        "notes": "Historical compatibility only; new-entry pain scale selection is standardized on NPRS in this branch."
+      }
     }
   ]
 }

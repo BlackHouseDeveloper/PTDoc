@@ -24,6 +24,8 @@ public sealed class NoteWorkspaceV2Service(
     IGoalManagementService goalManagementService,
     IOutcomeMeasureRegistry outcomeMeasureRegistry,
     IIntakeReferenceDataCatalogService intakeReferenceData,
+    IIntakeBodyPartMapper intakeBodyPartMapper,
+    IIntakeDraftCanonicalizer intakeDraftCanonicalizer,
     ICarryForwardService carryForwardService,
     IAuditService? auditService = null,
     IOverrideService? overrideService = null) : INoteWorkspaceV2Service
@@ -300,6 +302,23 @@ public sealed class NoteWorkspaceV2Service(
             return saveResponse;
         }
 
+        List<OutcomeMeasureResult> existingOutcomeResults = note is null
+            ? []
+            : await db.OutcomeMeasureResults
+                .Where(result => result.NoteId == note.Id)
+                .ToListAsync(cancellationToken);
+
+        var nonSelectableOutcomeErrors = GetNonSelectableOutcomeMeasureErrors(payload.Objective.OutcomeMeasures, existingOutcomeResults);
+        if (nonSelectableOutcomeErrors.Count > 0)
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = saveResponse.Errors
+                .Concat(nonSelectableOutcomeErrors)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return saveResponse;
+        }
+
         var now = DateTime.UtcNow;
         note ??= new ClinicalNote
         {
@@ -363,6 +382,8 @@ public sealed class NoteWorkspaceV2Service(
     {
         var draft = DeserializeIntakeDraft(intake);
         var structuredData = ResolveStructuredIntakeData(intake, draft);
+        draft = intakeDraftCanonicalizer.CreateCanonicalCopy(draft, structuredData);
+        structuredData = draft.StructuredData ?? structuredData;
         var (locations, otherLocation) = MapIntakeLocations(draft, structuredData);
         var medicationEntries = structuredData.MedicationIds
             .Select(id => intakeReferenceData.GetMedication(id)?.DisplayLabel ?? id)
@@ -702,11 +723,12 @@ public sealed class NoteWorkspaceV2Service(
         }
     }
 
-    private static BodyPart ResolvePrimaryBodyPart(IntakeResponseDraft draft, IntakeStructuredDataDto structuredData)
+    private BodyPart ResolvePrimaryBodyPart(IntakeResponseDraft draft, IntakeStructuredDataDto structuredData)
     {
         foreach (var selection in structuredData.BodyPartSelections)
         {
-            if (TryMapIntakeBodyPart(selection.BodyPartId, out var mapped))
+            var mapped = intakeBodyPartMapper.MapBodyPartId(selection.BodyPartId);
+            if (mapped != BodyPart.Other)
             {
                 return mapped;
             }
@@ -722,32 +744,6 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         return BodyPart.Other;
-    }
-
-    private static bool TryMapIntakeBodyPart(string? bodyPartId, out BodyPart mapped)
-    {
-        var normalized = bodyPartId?.Trim() ?? string.Empty;
-
-        mapped = normalized switch
-        {
-            "knee" => BodyPart.Knee,
-            "shoulder" => BodyPart.Shoulder,
-            "hip" => BodyPart.Hip,
-            "ankle" => BodyPart.Ankle,
-            "elbow" => BodyPart.Elbow,
-            "wrist" => BodyPart.Wrist,
-            "foot" or "toes" or "heel" or "arch" => BodyPart.Foot,
-            "hand" or "fingers" or "thumb" => BodyPart.Hand,
-            "neck" or "cervical-spine" or "head-neck-cervical-spine" => BodyPart.Cervical,
-            "lumbar-spine" or "sacrum" or "coccyx" => BodyPart.Lumbar,
-            "thoracic-spine" or "upper-back-thoracic-spine" => BodyPart.Thoracic,
-            _ when normalized.Contains("achilles", StringComparison.OrdinalIgnoreCase) => BodyPart.Ankle,
-            _ when normalized.Contains("pelvic", StringComparison.OrdinalIgnoreCase) => BodyPart.PelvicFloor,
-            _ when normalized.Contains("forearm", StringComparison.OrdinalIgnoreCase) => BodyPart.Elbow,
-            _ => BodyPart.Other
-        };
-
-        return mapped != BodyPart.Other;
     }
 
     private static bool TryMapRegionBodyPart(string regionKey, out BodyPart mapped)
@@ -1032,6 +1028,12 @@ public sealed class NoteWorkspaceV2Service(
             .Where(result => result.NoteId == note.Id)
             .ToListAsync(cancellationToken);
 
+        var nonSelectableOutcomeErrors = GetNonSelectableOutcomeMeasureErrors(payload.Objective.OutcomeMeasures, existingResults);
+        if (nonSelectableOutcomeErrors.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(" ", nonSelectableOutcomeErrors));
+        }
+
         db.OutcomeMeasureResults.RemoveRange(existingResults);
 
         foreach (var entry in payload.Objective.OutcomeMeasures)
@@ -1047,6 +1049,41 @@ public sealed class NoteWorkspaceV2Service(
                 ClinicId = clinicId
             });
         }
+    }
+
+    private List<string> GetNonSelectableOutcomeMeasureErrors(
+        IEnumerable<OutcomeMeasureEntryV2> entries,
+        IReadOnlyCollection<OutcomeMeasureResult> existingResults)
+    {
+        var remainingHistoricalResults = existingResults
+            .Where(result => !outcomeMeasureRegistry.IsSelectableForNewEntry(result.MeasureType))
+            .ToList();
+
+        return entries
+            .Where(entry => !outcomeMeasureRegistry.IsSelectableForNewEntry(entry.MeasureType))
+            .Where(entry => !ConsumeMatchingHistoricalResult(remainingHistoricalResults, entry))
+            .Select(entry => entry.MeasureType)
+            .Distinct()
+            .Select(measureType => $"Outcome measure '{outcomeMeasureRegistry.GetDefinition(measureType).Abbreviation}' is historical-only and cannot be newly recorded.")
+            .ToList();
+    }
+
+    private static bool ConsumeMatchingHistoricalResult(
+        List<OutcomeMeasureResult> existingResults,
+        OutcomeMeasureEntryV2 entry)
+    {
+        var index = existingResults.FindIndex(result =>
+            result.MeasureType == entry.MeasureType &&
+            result.Score == entry.Score &&
+            result.DateRecorded == entry.RecordedAtUtc);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        existingResults.RemoveAt(index);
+        return true;
     }
 
     private async Task SyncPatientGoalsAsync(
@@ -1283,7 +1320,7 @@ public sealed class NoteWorkspaceV2Service(
             return null;
         }
 
-        if (!TryParseOutcomeMeasureType(entry.Name, out var measureType))
+        if (!outcomeMeasureRegistry.TryResolveSupportedMeasureType(entry.Name, out var measureType))
         {
             return null;
         }
@@ -1300,41 +1337,6 @@ public sealed class NoteWorkspaceV2Service(
             RecordedAtUtc = entry.Date ?? DateTime.UtcNow,
             MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(measureType).MinimumClinicallyImportantDifference
         };
-    }
-
-    private static bool TryParseOutcomeMeasureType(string value, out OutcomeMeasureType measureType)
-    {
-        var normalized = value.Trim();
-        return normalized.Equals("ODI", StringComparison.OrdinalIgnoreCase)
-               || normalized.Contains("Oswestry", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.OswestryDisabilityIndex, out measureType)
-            : normalized.Equals("DASH", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("QuickDASH", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.DASH, out measureType)
-            : normalized.Equals("LEFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.LEFS, out measureType)
-            : normalized.Equals("NDI", StringComparison.OrdinalIgnoreCase)
-              || normalized.Contains("Neck Disability", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NeckDisabilityIndex, out measureType)
-            : normalized.Equals("PSFS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.PSFS, out measureType)
-            : normalized.Equals("VAS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.VAS, out measureType)
-            : normalized.Equals("NPRS", StringComparison.OrdinalIgnoreCase)
-            ? ReturnMapped(OutcomeMeasureType.NPRS, out measureType)
-            : ReturnUnmapped(out measureType);
-    }
-
-    private static bool ReturnMapped(OutcomeMeasureType mapped, out OutcomeMeasureType measureType)
-    {
-        measureType = mapped;
-        return true;
-    }
-
-    private static bool ReturnUnmapped(out OutcomeMeasureType measureType)
-    {
-        measureType = default;
-        return false;
     }
 
     private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)

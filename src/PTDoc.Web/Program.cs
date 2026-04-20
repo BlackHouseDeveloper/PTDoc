@@ -38,6 +38,7 @@ builder.Services.AddScoped<IIntakeService, IntakeApiService>();
 builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocalPersistenceService>();
 builder.Services.AddTransient<DraftAutosaveService>();
@@ -57,6 +58,7 @@ builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, Ht
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
+builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();

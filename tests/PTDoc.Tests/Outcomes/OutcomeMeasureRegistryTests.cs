@@ -22,12 +22,13 @@ public class OutcomeMeasureRegistryTests
     {
         var measures = _registry.GetAllMeasures();
         Assert.NotEmpty(measures);
-        // At minimum the four required instruments from the spec
         var types = measures.Select(m => m.MeasureType).ToHashSet();
         Assert.Contains(OutcomeMeasureType.OswestryDisabilityIndex, types);
         Assert.Contains(OutcomeMeasureType.DASH, types);
+        Assert.Contains(OutcomeMeasureType.QuickDASH, types);
         Assert.Contains(OutcomeMeasureType.LEFS, types);
         Assert.Contains(OutcomeMeasureType.NeckDisabilityIndex, types);
+        Assert.Contains(OutcomeMeasureType.VAS, types);
     }
 
     [Fact]
@@ -36,8 +37,28 @@ public class OutcomeMeasureRegistryTests
         foreach (var measure in _registry.GetAllMeasures())
         {
             Assert.NotEmpty(measure.ScoringBands);
-            Assert.Equal("docs/clinicrefdata/List of functional outcome measures.md", measure.Provenance?.DocumentPath);
         }
+    }
+
+    [Fact]
+    public void GetAllMeasures_QuickDashUsesMeasureLevelProvenance()
+    {
+        var quickDash = _registry.GetDefinition(OutcomeMeasureType.QuickDASH);
+        var provenance = Assert.IsType<PTDoc.Application.ReferenceData.ReferenceDataProvenance>(quickDash.Provenance);
+
+        Assert.Equal("docs/clinicrefdata/List of functional outcome measures.md", provenance.DocumentPath);
+        Assert.Contains("branch-defined defaults", provenance.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetSelectableMeasures_ExcludesHistoricalOnlyVas_AndIncludesQuickDash()
+    {
+        var measures = _registry.GetSelectableMeasures();
+
+        Assert.DoesNotContain(measures, m => m.MeasureType == OutcomeMeasureType.VAS);
+        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.QuickDASH);
+        Assert.False(_registry.IsSelectableForNewEntry(OutcomeMeasureType.VAS));
+        Assert.True(_registry.IsSelectableForNewEntry(OutcomeMeasureType.QuickDASH));
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -83,6 +104,15 @@ public class OutcomeMeasureRegistryTests
     }
 
     [Fact]
+    public void GetMeasuresForBodyPart_Shoulder_UsesSelectableSet()
+    {
+        var measures = _registry.GetMeasuresForBodyPart(BodyPart.Shoulder);
+
+        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.QuickDASH);
+        Assert.DoesNotContain(measures, m => m.MeasureType == OutcomeMeasureType.VAS);
+    }
+
+    [Fact]
     public void GetMeasuresForBodyPart_Knee_ReturnsLefs()
     {
         var measures = _registry.GetMeasuresForBodyPart(BodyPart.Knee);
@@ -103,7 +133,7 @@ public class OutcomeMeasureRegistryTests
 
         Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.PSFS);
         Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.NPRS);
-        Assert.Contains(measures, m => m.MeasureType == OutcomeMeasureType.VAS);
+        Assert.DoesNotContain(measures, m => m.MeasureType == OutcomeMeasureType.VAS);
     }
 
     [Fact]
@@ -114,6 +144,76 @@ public class OutcomeMeasureRegistryTests
             var measures = _registry.GetMeasuresForBodyPart(part);
             Assert.NotNull(measures);
         }
+    }
+
+    [Fact]
+    public void GetRecommendedMeasureAbbreviationsForBodyPart_Thoracic_ReturnsCanonicalSetWithoutVas()
+    {
+        var measures = _registry.GetRecommendedMeasureAbbreviationsForBodyPart(BodyPart.Thoracic);
+
+        Assert.Equal(["ODI", "PSFS", "NPRS"], measures);
+        Assert.DoesNotContain("VAS", measures);
+    }
+
+    [Fact]
+    public void TryResolveSupportedMeasureType_Vas_ReturnsTypedVas()
+    {
+        var resolved = _registry.TryResolveSupportedMeasureType("VAS", out var measureType);
+
+        Assert.True(resolved);
+        Assert.Equal(OutcomeMeasureType.VAS, measureType);
+    }
+
+    [Theory]
+    [InlineData("VAS")]
+    [InlineData("VAS/NPRS")]
+    [InlineData("NPRS/VAS")]
+    public void TryNormalizeRecommendedMeasure_PainAliases_ReturnNprs(string rawValue)
+    {
+        var normalized = _registry.TryNormalizeRecommendedMeasure(rawValue, out var canonicalAbbreviation);
+
+        Assert.True(normalized);
+        Assert.Equal("NPRS", canonicalAbbreviation);
+    }
+
+    [Fact]
+    public void TryNormalizeRecommendedMeasure_QuickDash_ReturnsQuickDash()
+    {
+        var normalized = _registry.TryNormalizeRecommendedMeasure("QuickDASH", out var canonicalAbbreviation);
+
+        Assert.True(normalized);
+        Assert.Equal("QuickDASH", canonicalAbbreviation);
+    }
+
+    [Fact]
+    public void TryResolveSupportedMeasureType_QuickDash_ReturnsTypedQuickDash()
+    {
+        var resolved = _registry.TryResolveSupportedMeasureType("QuickDASH", out var measureType);
+
+        Assert.True(resolved);
+        Assert.Equal(OutcomeMeasureType.QuickDASH, measureType);
+    }
+
+    [Fact]
+    public void GetRecommendedMeasureAbbreviationsForBodyPart_Shoulder_MatchesSelectableSet()
+    {
+        var measures = _registry.GetRecommendedMeasureAbbreviationsForBodyPart(BodyPart.Shoulder);
+
+        Assert.Equal(["DASH", "QuickDASH", "PSFS", "NPRS"], measures);
+    }
+
+    [Theory]
+    [InlineData(0, "Minimal disability")]
+    [InlineData(14.9, "Minimal disability")]
+    [InlineData(15, "Moderate disability")]
+    [InlineData(44.9, "Moderate disability")]
+    [InlineData(45, "Severe disability")]
+    [InlineData(100, "Severe disability")]
+    public void InterpretScore_QuickDash_UsesBranchThresholds(double score, string expectedLabel)
+    {
+        var label = _registry.InterpretScore(OutcomeMeasureType.QuickDASH, score);
+
+        Assert.Equal(expectedLabel, label);
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -20,8 +20,10 @@ public sealed class OutcomeMeasureDefinitionAsset
     public bool HigherIsBetter { get; set; }
     public string ScoreUnit { get; set; } = string.Empty;
     public double MinimumClinicallyImportantDifference { get; set; }
+    public bool IsSelectableForNewEntry { get; set; } = true;
     public List<string> RecommendedForBodyParts { get; set; } = new();
     public List<OutcomeMeasureScoringBandAsset> ScoringBands { get; set; } = new();
+    public ReferenceDataProvenance? Provenance { get; set; }
 }
 
 public sealed class OutcomeMeasureScoringBandAsset

@@ -76,5 +76,8 @@ public enum OutcomeMeasureType
     VAS = 5,
 
     /// <summary>Numeric Pain Rating Scale — pain intensity (0–10, higher = more pain).</summary>
-    NPRS = 6
+    NPRS = 6,
+
+    /// <summary>Quick Disabilities of the Arm, Shoulder and Hand — upper extremity (0–100, higher = more disability).</summary>
+    QuickDASH = 7
 }
