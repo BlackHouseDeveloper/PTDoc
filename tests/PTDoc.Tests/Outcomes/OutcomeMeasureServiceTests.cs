@@ -57,6 +57,22 @@ public sealed class OutcomeMeasureServiceTests : IDisposable
         Assert.Empty(_context.OutcomeMeasureResults);
     }
 
+    [Fact]
+    public async Task RecordResultAsync_RejectsUnknownOutcomeMeasureType()
+    {
+        var service = new OutcomeMeasureService(_context, _registry, _tenantContext.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RecordResultAsync(
+            Guid.NewGuid(),
+            (OutcomeMeasureType)999,
+            5,
+            Guid.NewGuid()));
+
+        Assert.Contains("not recognized", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("999", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(_context.OutcomeMeasureResults);
+    }
+
     public void Dispose()
     {
         _context.Dispose();

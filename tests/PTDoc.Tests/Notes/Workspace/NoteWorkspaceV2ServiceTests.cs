@@ -381,6 +381,50 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_RejectsUnknownOutcomeMeasureType()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Outcome",
+            LastName = "Unknown",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 3),
+            NoteType = NoteType.ProgressNote,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    OutcomeMeasures =
+                    [
+                        new OutcomeMeasureEntryV2
+                        {
+                            MeasureType = (OutcomeMeasureType)999,
+                            Score = 5,
+                            RecordedAtUtc = new DateTime(2026, 4, 3, 12, 0, 0, DateTimeKind.Utc)
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("not recognized", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Errors, error => error.Contains("999", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(result.Workspace);
+        Assert.Empty(_context.OutcomeMeasureResults);
+    }
+
+    [Fact]
     public async Task SaveAsync_AllowsUnchangedHistoricalVasRowsOnExistingNote()
     {
         var patient = new Patient

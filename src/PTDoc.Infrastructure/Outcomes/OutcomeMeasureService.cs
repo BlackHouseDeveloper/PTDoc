@@ -37,9 +37,14 @@ public sealed class OutcomeMeasureService : IOutcomeMeasureService
         Guid? noteId = null,
         CancellationToken cancellationToken = default)
     {
-        if (!_outcomeMeasureRegistry.IsSelectableForNewEntry(measureType))
+        if (!TryGetDefinition(measureType, out var definition))
         {
-            var definition = _outcomeMeasureRegistry.GetDefinition(measureType);
+            throw new InvalidOperationException(
+                $"Outcome measure type '{FormatMeasureTypeForError(measureType)}' is not recognized.");
+        }
+
+        if (!definition.IsSelectableForNewEntry)
+        {
             throw new InvalidOperationException(
                 $"Outcome measure '{definition.Abbreviation}' is historical-only and cannot be newly recorded.");
         }
@@ -61,6 +66,25 @@ public sealed class OutcomeMeasureService : IOutcomeMeasureService
         await _db.SaveChangesAsync(cancellationToken);
         return result;
     }
+
+    private bool TryGetDefinition(OutcomeMeasureType measureType, out OutcomeMeasureDefinition definition)
+    {
+        try
+        {
+            definition = _outcomeMeasureRegistry.GetDefinition(measureType);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            definition = null!;
+            return false;
+        }
+    }
+
+    private static string FormatMeasureTypeForError(OutcomeMeasureType measureType)
+        => Enum.IsDefined(typeof(OutcomeMeasureType), measureType)
+            ? measureType.ToString()
+            : $"{measureType} ({(int)measureType})";
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<OutcomeMeasureResult>> GetPatientHistoryAsync(

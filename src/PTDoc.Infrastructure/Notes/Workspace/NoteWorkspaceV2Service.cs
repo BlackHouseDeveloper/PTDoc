@@ -1062,8 +1062,18 @@ public sealed class NoteWorkspaceV2Service(
             .Where(entry => !ConsumeMatchingHistoricalResult(remainingHistoricalResults, entry))
             .Select(entry => entry.MeasureType)
             .Distinct()
-            .Select(measureType => $"Outcome measure '{outcomeMeasureRegistry.GetDefinition(measureType).Abbreviation}' is historical-only and cannot be newly recorded.")
+            .Select(GetOutcomeMeasureValidationError)
             .ToList();
+    }
+
+    private string GetOutcomeMeasureValidationError(OutcomeMeasureType measureType)
+    {
+        if (!TryGetOutcomeMeasureDefinition(measureType, out var definition))
+        {
+            return $"Outcome measure type '{FormatOutcomeMeasureTypeForError(measureType)}' is not recognized.";
+        }
+
+        return $"Outcome measure '{definition.Abbreviation}' is historical-only and cannot be newly recorded.";
     }
 
     private static bool ConsumeMatchingHistoricalResult(
@@ -1086,6 +1096,25 @@ public sealed class NoteWorkspaceV2Service(
 
     private static bool HaveSameRecordedTimestamp(DateTime left, DateTime right)
         => left.Ticks == right.Ticks;
+
+    private bool TryGetOutcomeMeasureDefinition(OutcomeMeasureType measureType, out OutcomeMeasureDefinition definition)
+    {
+        try
+        {
+            definition = outcomeMeasureRegistry.GetDefinition(measureType);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            definition = null!;
+            return false;
+        }
+    }
+
+    private static string FormatOutcomeMeasureTypeForError(OutcomeMeasureType measureType)
+        => Enum.IsDefined(typeof(OutcomeMeasureType), measureType)
+            ? measureType.ToString()
+            : $"{measureType} ({(int)measureType})";
 
     private async Task SyncPatientGoalsAsync(
         ClinicalNote note,
