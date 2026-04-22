@@ -3,6 +3,7 @@
 @using PTDoc.UI.Components.Notes.Models
 
 @inject IAiClinicalGenerationService AiService
+@inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<PlanSection> Logger
 
 <section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
@@ -34,16 +35,25 @@
         <div class="daily-col-12">
             <FormSection Title="Clinical Summary (S.O.A.P)" Subtitle="AI-generated comprehensive summary of all SOAP sections">
                 <div class="daily-plan__summary-header">
-                    <button type="button" disabled="@(IsReadOnly || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
+                    <button type="button" disabled="@(IsReadOnly || NoteId == Guid.Empty || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
                         @(_isGeneratingSummary ? "Generating..." : "Generate Summary")
                     </button>
                 </div>
 
-                <EditableTextArea Value="@(_vm.ClinicalSummary ?? string.Empty)"
-                                  ValueChanged="UpdateClinicalSummary"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Click 'Generate Summary' to create an AI-powered comprehensive clinical summary..."
-                                  Rows="5" />
+                <EditableNarrativeBox @ref="_clinicalSummaryBox"
+                                      Value="@(_vm.ClinicalSummary ?? string.Empty)"
+                                      ValueChanged="UpdateClinicalSummary"
+                                      OnAccepted="HandleClinicalSummaryAcceptedAsync"
+                                      OnDiscarded="HandleClinicalSummaryDiscardedAsync"
+                                      IsReadOnly="IsReadOnly"
+                                      Placeholder="Click 'Generate Summary' to create an AI-powered comprehensive clinical summary..."
+                                      Rows="5"
+                                      TestId="daily-plan-clinical-summary-box" />
+
+                @if (!IsReadOnly && NoteId == Guid.Empty)
+                {
+                    <p class="daily-plan__message" role="note">Save the note before generating an AI plan summary.</p>
+                }
 
                 @if (!string.IsNullOrWhiteSpace(_summaryErrorMessage))
                 {
@@ -58,6 +68,7 @@
     private PlanVm _vm = new();
     private bool _isGeneratingSummary;
     private string? _summaryErrorMessage;
+    private EditableNarrativeBox? _clinicalSummaryBox;
 
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
@@ -98,6 +109,12 @@
             return;
         }
 
+        if (NoteId == Guid.Empty)
+        {
+            _summaryErrorMessage = "Save the note before generating an AI plan summary.";
+            return;
+        }
+
         _isGeneratingSummary = true;
         _summaryErrorMessage = null;
         StateHasChanged();
@@ -120,8 +137,10 @@
                 return;
             }
 
-            _vm.ClinicalSummary = result.GeneratedText;
-            await NotifyChangedAsync();
+            if (_clinicalSummaryBox is not null)
+            {
+                await _clinicalSummaryBox.LoadAiSuggestionAsync(result.GeneratedText);
+            }
         }
         catch (Exception ex)
         {
@@ -131,6 +150,47 @@
         finally
         {
             _isGeneratingSummary = false;
+        }
+    }
+
+    private Task HandleClinicalSummaryDiscardedAsync()
+    {
+        _summaryErrorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task<EditableNarrativeAcceptResult> HandleClinicalSummaryAcceptedAsync(string acceptedText)
+    {
+        try
+        {
+            if (NoteId != Guid.Empty)
+            {
+                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                    NoteId,
+                    section: "plan",
+                    generatedText: acceptedText,
+                    generationType: "ClinicalSummary");
+
+                if (!acceptance.Success)
+                {
+                    _summaryErrorMessage = acceptance.ErrorMessage ?? "Unable to accept the AI-generated summary.";
+                    await InvokeAsync(StateHasChanged);
+                    return EditableNarrativeAcceptResult.Fail(_summaryErrorMessage);
+                }
+            }
+
+            _vm.ClinicalSummary = acceptedText;
+            _summaryErrorMessage = null;
+            await NotifyChangedAsync();
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Daily plan summary acceptance failed for note {NoteId}", NoteId);
+            _summaryErrorMessage = "Unable to accept the AI-generated summary.";
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Fail(_summaryErrorMessage);
         }
     }
 }

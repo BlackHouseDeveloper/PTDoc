@@ -70,6 +70,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             // Sanitize all clinician-entered strings before forwarding to the AI provider
             var aiRequest = new AiAssessmentRequest
             {
+                NoteId = request.NoteId,
                 ChiefComplaint = _promptBuilder.SanitizeInput(request.ChiefComplaint),
                 PatientHistory = request.PatientHistory is not null ? _promptBuilder.SanitizeInput(request.PatientHistory) : null,
                 CurrentSymptoms = request.CurrentSymptoms is not null ? _promptBuilder.SanitizeInput(request.CurrentSymptoms) : null,
@@ -140,6 +141,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             // Sanitize all clinician-entered strings before forwarding to the AI provider
             var aiRequest = new AiPlanRequest
             {
+                NoteId = request.NoteId,
                 Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
                 AssessmentSummary = request.AssessmentSummary is not null ? _promptBuilder.SanitizeInput(request.AssessmentSummary) : null,
                 Goals = request.Goals is not null ? _promptBuilder.SanitizeInput(request.Goals) : null,
@@ -213,7 +215,21 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
                 FunctionalLimitations = _promptBuilder.SanitizeInput(request.FunctionalLimitations),
                 PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
                 ShortTermGoals = request.ShortTermGoals is not null ? _promptBuilder.SanitizeInput(request.ShortTermGoals) : null,
-                LongTermGoals = request.LongTermGoals is not null ? _promptBuilder.SanitizeInput(request.LongTermGoals) : null
+                LongTermGoals = request.LongTermGoals is not null ? _promptBuilder.SanitizeInput(request.LongTermGoals) : null,
+                OutcomeContext = request.OutcomeContext is null
+                    ? null
+                    : new OutcomeContext
+                    {
+                        MeasureName = _promptBuilder.SanitizeInput(request.OutcomeContext.MeasureName),
+                        BaselineScore = request.OutcomeContext.BaselineScore,
+                        CurrentScore = request.OutcomeContext.CurrentScore,
+                        MaxScore = request.OutcomeContext.MaxScore,
+                        HigherIsBetter = request.OutcomeContext.HigherIsBetter,
+                        MinimumClinicallyImportantDifference = request.OutcomeContext.MinimumClinicallyImportantDifference,
+                        CurrentInterpretation = request.OutcomeContext.CurrentInterpretation is null
+                            ? null
+                            : _promptBuilder.SanitizeInput(request.OutcomeContext.CurrentInterpretation)
+                    }
             };
 
             var aiResult = await _aiService.GenerateGoalsAsync(aiRequest, cancellationToken);

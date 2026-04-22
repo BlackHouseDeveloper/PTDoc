@@ -156,4 +156,391 @@ public sealed class PlanTabTests : TestContext
 
         workspaceService.VerifyAll();
     }
+
+    [Fact]
+    public void PlanTab_WhenNoteIsUnsaved_DisablesAllAiButtonsAndShowsSaveFirstReason()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm())
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.Empty)
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+
+        foreach (var testId in new[]
+        {
+            "ai-suggest-discharge-btn",
+            "ai-suggest-followup-btn",
+            "generate-summary-btn"
+        })
+        {
+            var button = cut.Find($"[data-testid='{testId}']");
+            Assert.True(button.HasAttribute("disabled"));
+            Assert.Equal("Save the note before generating AI plan content.", cut.Find($"[data-testid='{testId}-disabled-reason']").TextContent.Trim());
+        }
+
+        aiService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void PlanTab_DischargeSuggestionAfterManualEdit_RequiresExplicitAcceptance()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var noteId = Guid.NewGuid();
+        var vm = new PlanVm();
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI discharge guidance"));
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='discharge-planning-box-textarea']").Input("Manual discharge plan");
+
+        cut.WaitForAssertion(() => Assert.Equal("Manual discharge plan", vm.DischargePlanningNotes));
+
+        cut.Find("[data-testid='ai-suggest-discharge-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-testid='discharge-planning-box-review-banner']");
+            Assert.Equal("Manual discharge plan", vm.DischargePlanningNotes);
+            Assert.Equal("AI discharge guidance", cut.Find("[data-testid='discharge-planning-box-textarea']").GetAttribute("value"));
+        });
+
+        cut.Find("[data-testid='discharge-planning-box-discard-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Manual discharge plan", vm.DischargePlanningNotes);
+            Assert.Equal("Manual discharge plan", cut.Find("[data-testid='discharge-planning-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='discharge-planning-box-review-banner']"));
+        });
+
+        cut.Find("[data-testid='ai-suggest-discharge-btn']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='discharge-planning-box-review-banner']"));
+
+        cut.Find("[data-testid='discharge-planning-box-accept-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("AI discharge guidance", vm.DischargePlanningNotes);
+            cut.Find("[data-testid='discharge-planning-box-accepted-note']");
+        });
+
+        aiService.Verify(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public void PlanTab_FollowUpSuggestionAfterManualEdit_RequiresExplicitAcceptance()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var noteId = Guid.NewGuid();
+        var vm = new PlanVm();
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI follow-up instructions"));
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='followup-instructions-box-textarea']").Input("Manual follow-up");
+
+        cut.WaitForAssertion(() => Assert.Equal("Manual follow-up", vm.FollowUpInstructions));
+
+        cut.Find("[data-testid='ai-suggest-followup-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-testid='followup-instructions-box-review-banner']");
+            Assert.Equal("Manual follow-up", vm.FollowUpInstructions);
+            Assert.Equal("AI follow-up instructions", cut.Find("[data-testid='followup-instructions-box-textarea']").GetAttribute("value"));
+        });
+
+        cut.Find("[data-testid='followup-instructions-box-discard-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Manual follow-up", vm.FollowUpInstructions);
+            Assert.Equal("Manual follow-up", cut.Find("[data-testid='followup-instructions-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='followup-instructions-box-review-banner']"));
+        });
+
+        cut.Find("[data-testid='ai-suggest-followup-btn']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='followup-instructions-box-review-banner']"));
+
+        cut.Find("[data-testid='followup-instructions-box-accept-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("AI follow-up instructions", vm.FollowUpInstructions);
+            cut.Find("[data-testid='followup-instructions-box-accepted-note']");
+        });
+
+        aiService.Verify(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public void PlanTab_ClinicalSummarySuggestionAfterManualEdit_RequiresExplicitAcceptance()
+    {
+        var noteId = Guid.NewGuid();
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var vm = new PlanVm();
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+
+        workspaceService
+            .Setup(service => service.AcceptAiSuggestionAsync(
+                noteId,
+                "plan",
+                "AI summary draft",
+                "ClinicalSummary",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceAiAcceptanceResult
+            {
+                Success = true
+            });
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='clinical-summary-box-textarea']").Input("Manual summary");
+
+        cut.WaitForAssertion(() => Assert.Equal("Manual summary", vm.ClinicalSummary));
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-testid='clinical-summary-box-review-banner']");
+            Assert.Equal("Manual summary", vm.ClinicalSummary);
+            Assert.Equal("AI summary draft", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+        });
+
+        cut.Find("[data-testid='clinical-summary-box-discard-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Manual summary", vm.ClinicalSummary);
+            Assert.Equal("Manual summary", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
+        });
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='clinical-summary-box-review-banner']"));
+
+        cut.Find("[data-testid='clinical-summary-box-accept-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("AI summary draft", vm.ClinicalSummary);
+            cut.Find("[data-testid='clinical-summary-box-accepted-note']");
+        });
+
+        aiService.VerifyAll();
+        workspaceService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanTab_GenerationFailureShowsVisibleErrorMessage()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var noteId = Guid.NewGuid();
+        var vm = new PlanVm();
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlanGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = new PlanOfCareGenerationRequest
+                {
+                    NoteId = noteId,
+                    Diagnosis = "Lumbar strain"
+                },
+                ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123",
+                Success = false
+            });
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='ai-suggest-discharge-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("AI generation failed. Please try again or contact support. Reference ID: ai-ref-123", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("[data-testid='discharge-planning-box-review-banner']"));
+        });
+
+        aiService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanTab_ClinicalSummaryAcceptFailure_ShowsVisibleErrorAndPreservesVmValue()
+    {
+        var noteId = Guid.NewGuid();
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Original summary"
+        };
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+
+        workspaceService
+            .Setup(service => service.AcceptAiSuggestionAsync(
+                noteId,
+                "plan",
+                "AI summary draft",
+                "ClinicalSummary",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceAiAcceptanceResult
+            {
+                Success = false,
+                ErrorMessage = "Unable to accept AI-generated summary content."
+            });
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-testid='clinical-summary-box-review-banner']");
+            Assert.Equal("Original summary", vm.ClinicalSummary);
+        });
+
+        cut.Find("[data-testid='clinical-summary-box-accept-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to accept AI-generated summary content.", cut.Find("[data-testid='clinical-summary-box-error']").TextContent, StringComparison.Ordinal);
+            Assert.Equal("Original summary", vm.ClinicalSummary);
+            cut.Find("[data-testid='clinical-summary-box-review-banner']");
+            cut.Find("[data-testid='clinical-summary-box-actions']");
+            Assert.Equal("AI summary draft", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-accepted-note']"));
+        });
+
+        cut.Find("[data-testid='clinical-summary-box-discard-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Original summary", vm.ClinicalSummary);
+            Assert.Equal("Original summary", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-error']"));
+        });
+
+        aiService.VerifyAll();
+        workspaceService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanTab_ClinicalSummaryAcceptException_ShowsVisibleErrorAndKeepsReviewPending()
+    {
+        var noteId = Guid.NewGuid();
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Original summary"
+        };
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+
+        workspaceService
+            .Setup(service => service.AcceptAiSuggestionAsync(
+                noteId,
+                "plan",
+                "AI summary draft",
+                "ClinicalSummary",
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("accept request failed"));
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='clinical-summary-box-review-banner']"));
+
+        cut.Find("[data-testid='clinical-summary-box-accept-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to accept AI-generated summary content.", cut.Find("[data-testid='clinical-summary-box-error']").TextContent, StringComparison.Ordinal);
+            Assert.Equal("Original summary", vm.ClinicalSummary);
+            cut.Find("[data-testid='clinical-summary-box-review-banner']");
+            cut.Find("[data-testid='clinical-summary-box-actions']");
+            Assert.Equal("AI summary draft", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-accepted-note']"));
+        });
+
+        cut.Find("[data-testid='clinical-summary-box-discard-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Original summary", vm.ClinicalSummary);
+            Assert.Equal("Original summary", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-error']"));
+        });
+
+        aiService.VerifyAll();
+        workspaceService.VerifyAll();
+    }
+
+    private IRenderedComponent<PlanTab> RenderSavedPlanTab(
+        PlanVm vm,
+        Guid noteId,
+        Mock<INoteWorkspaceService> workspaceService,
+        Mock<IAiClinicalGenerationService> aiService)
+    {
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        return RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, noteId)
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+    }
+
+    private static PlanGenerationResult CreateSuccessfulPlanResult(Guid noteId, string generatedText)
+    {
+        return new PlanGenerationResult
+        {
+            GeneratedText = generatedText,
+            Confidence = 0.85,
+            SourceInputs = new PlanOfCareGenerationRequest
+            {
+                NoteId = noteId,
+                Diagnosis = "Lumbar strain"
+            },
+            Success = true
+        };
+    }
 }

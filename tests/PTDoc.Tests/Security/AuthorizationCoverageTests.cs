@@ -294,6 +294,10 @@ public class AuthorizationCoverageTests
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
+        new("GET", "/diagnostics/runtime", AuthorizationPolicies.AdminOnly),
+        new("GET", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
+        new("PUT", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
+        new("DELETE", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
 
         // ── Integrations (Integrations/IntegrationEndpoints.cs) ───────────────
         new("POST", "/api/v1/integrations/payment/process",                         AuthorizationPolicies.ClinicalStaff),

@@ -56,10 +56,10 @@
                     <div class="authorization-item urgency-@auth.Urgency.ToString().ToLower()">
                         <div class="authorization-header">
                             <div class="authorization-patient">
-                                <a href="/patients/@auth.PatientId" class="patient-link">@auth.PatientName</a>
+                                <a href="/patient/@auth.PatientId" class="patient-link">@auth.PatientName</a>
                                 <span class="authorization-mrn">MRN: @auth.MedicalRecordNumber</span>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => HandleUpdate(auth.Id)">
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => HandleUpdate(auth.PatientId)">
                                 Update
                             </button>
                         </div>
@@ -106,9 +106,9 @@
         Navigation.NavigateTo("/patients");
     }
     
-    private void HandleUpdate(string authId)
+    private void HandleUpdate(string patientId)
     {
-        Navigation.NavigateTo($"/patients/{Uri.EscapeDataString(authId)}/info");
+        Navigation.NavigateTo($"/patient/{Uri.EscapeDataString(patientId)}/info");
     }
     
     private double GetProgressPercentage(ExpiringAuthorization auth)

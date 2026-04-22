@@ -21,6 +21,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Security.Claims;
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
@@ -49,6 +50,7 @@ builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterSer
 builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
+builder.Services.AddSingleton<ApiClusterAddressResolver>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
 
@@ -61,13 +63,17 @@ builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationServi
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
-builder.Services.AddHttpClient("PTDocAuthApi", client =>
+builder.Services.AddHttpClient("PTDocAuthApi", (serviceProvider, client) =>
 {
-    client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
+    client.BaseAddress = serviceProvider
+        .GetRequiredService<ApiClusterAddressResolver>()
+        .ResolveApiClusterAddress();
 });
-builder.Services.AddHttpClient("ServerAPI", client =>
+builder.Services.AddHttpClient("ServerAPI", (serviceProvider, client) =>
 {
-    client.BaseAddress = ResolveApiClusterAddress(builder.Configuration);
+    client.BaseAddress = serviceProvider
+        .GetRequiredService<ApiClusterAddressResolver>()
+        .ResolveApiClusterAddress();
 })
     .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
 
@@ -170,6 +176,10 @@ builder.Services
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
+var apiClusterAddressResolver = app.Services.GetRequiredService<ApiClusterAddressResolver>();
+app.Logger.LogInformation(
+    "PTDoc.Web upstream API base address resolved to {UpstreamApiBaseAddress}",
+    apiClusterAddressResolver.ResolveApiClusterAddress());
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -352,6 +362,38 @@ app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 })
 .RequireAuthorization();
 
+app.MapGet("/diagnostics/runtime", (
+    IHostEnvironment environment,
+    IConfiguration configuration,
+    ApiClusterAddressResolver addressResolver) =>
+{
+    var assembly = typeof(Program).Assembly;
+
+    return Results.Ok(new
+    {
+        environmentName = environment.EnvironmentName,
+        isDevelopment = environment.IsDevelopment(),
+        release = new
+        {
+            releaseId = GetReleaseValue(configuration, "Release:Id", "PTDOC_RELEASE_ID"),
+            sourceSha = GetReleaseValue(configuration, "Release:SourceSha", "PTDOC_SOURCE_SHA")
+                ?? GetAssemblyMetadata(assembly, "SourceRevisionId"),
+            imageTag = GetReleaseValue(configuration, "Release:ImageTag", "PTDOC_IMAGE_TAG"),
+            assemblyVersion = assembly.GetName().Version?.ToString(),
+            informationalVersion = assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion,
+            sourceRevisionId = GetAssemblyMetadata(assembly, "SourceRevisionId")
+        },
+        webRuntime = new
+        {
+            effectiveUpstreamApiBaseAddress = addressResolver.ResolveApiClusterAddress().ToString()
+        }
+    });
+})
+.RequireAuthorization(AuthorizationPolicies.AdminOnly)
+.WithName("GetWebRuntimeDiagnostics");
+
 app.MapRazorComponents<PTDoc.Web.Components.App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(PTDoc.UI.Components.Routes).Assembly);
@@ -395,15 +437,17 @@ static void ValidateEntraExternalIdConfiguration(EntraExternalIdOptions options)
     }
 }
 
-static Uri ResolveApiClusterAddress(ConfigurationManager configuration)
+static string? GetReleaseValue(IConfiguration configuration, string configKey, string environmentVariableName)
 {
-    var configuredAddress = configuration["ReverseProxy:Clusters:apiCluster:Destinations:api:Address"];
-    if (Uri.TryCreate(configuredAddress, UriKind.Absolute, out var uri))
-    {
-        return uri;
-    }
+    return Environment.GetEnvironmentVariable(environmentVariableName)
+        ?? configuration[configKey];
+}
 
-    return new Uri("http://localhost:5170/");
+static string? GetAssemblyMetadata(Assembly assembly, string key)
+{
+    return assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))
+        ?.Value;
 }
 
 static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)

@@ -14,8 +14,8 @@
             <AiGenerateButton
                 ButtonLabel="Generate Assessment"
                 IsGenerating="@_isGenerating"
-                IsDisabled="@IsNoteSigned"
-                DisabledReason="@(IsNoteSigned ? "AI generation is not available on signed notes." : null)"
+                IsDisabled="@IsAssessmentGenerationDisabled"
+                DisabledReason="@AssessmentGenerationDisabledReason"
                 OnGenerate="GenerateAssessmentAsync"
                 TestId="assessment-generate-btn" />
         </div>
@@ -144,6 +144,15 @@
         _functionalLimitations = FunctionalLimitations;
     }
 
+    private bool IsAssessmentGenerationDisabled => IsNoteSigned || NoteId == Guid.Empty;
+
+    private string? AssessmentGenerationDisabledReason =>
+        IsNoteSigned
+            ? "AI generation is not available on signed notes."
+            : NoteId == Guid.Empty
+                ? "Save the note before generating an AI assessment."
+                : null;
+
     // ──────────────────────────────────────────────────────────────
     // Generation flow: Generate → Review → Accept
     // ──────────────────────────────────────────────────────────────
@@ -154,6 +163,12 @@
         if (IsNoteSigned)
         {
             _errorMessage = "AI generation is not permitted on signed notes.";
+            return;
+        }
+
+        if (NoteId == Guid.Empty)
+        {
+            _errorMessage = "Save the note before generating an AI assessment.";
             return;
         }
 
@@ -220,28 +235,41 @@
         return AssessmentTextChanged.InvokeAsync(value);
     }
 
-    private async Task OnNarrativeAcceptedAsync(string acceptedText)
+    private async Task<EditableNarrativeAcceptResult> OnNarrativeAcceptedAsync(string acceptedText)
     {
-        if (NoteId != Guid.Empty)
+        try
         {
-            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                NoteId,
-                section: "assessment",
-                generatedText: acceptedText,
-                generationType: "Assessment");
-
-            if (!acceptance.Success)
+            if (NoteId != Guid.Empty)
             {
-                _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated assessment content.";
-                return;
-            }
-        }
+                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                    NoteId,
+                    section: "assessment",
+                    generatedText: acceptedText,
+                    generationType: "Assessment");
 
-        _assessmentText = acceptedText;
-        _generationWarnings.Clear();
-        _errorMessage = null;
-        await AssessmentTextChanged.InvokeAsync(acceptedText);
-        await OnAiAccepted.InvokeAsync(acceptedText);
+                if (!acceptance.Success)
+                {
+                    _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated assessment content.";
+                    await InvokeAsync(StateHasChanged);
+                    return EditableNarrativeAcceptResult.Fail(_errorMessage);
+                }
+            }
+
+            _assessmentText = acceptedText;
+            _generationWarnings.Clear();
+            _errorMessage = null;
+            await AssessmentTextChanged.InvokeAsync(acceptedText);
+            await OnAiAccepted.InvokeAsync(acceptedText);
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Assessment acceptance failed for note {NoteId}", NoteId);
+            _errorMessage = "Unable to accept AI-generated assessment content.";
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Fail(_errorMessage);
+        }
     }
 
     private Task OnNarrativeDiscardedAsync()

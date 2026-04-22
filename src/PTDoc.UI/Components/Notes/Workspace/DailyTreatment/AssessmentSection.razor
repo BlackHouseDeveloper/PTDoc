@@ -15,16 +15,25 @@
             <FormSection Title="Clinical Assessment Summary" Subtitle="Clinical assessment narrative based on subjective and objective findings"
                          TestId="daily-assessment-summary">
                 <div class="daily-assessment__actions">
-                    <button type="button" disabled="@(IsReadOnly || _isGeneratingAssessment)" @onclick="GenerateAssessmentAsync">
+                    <button type="button" disabled="@(IsReadOnly || NoteId == Guid.Empty || _isGeneratingAssessment)" @onclick="GenerateAssessmentAsync">
                         @(_isGeneratingAssessment ? "Generating..." : "Generate Assessment")
                     </button>
                 </div>
 
-                <EditableTextArea Value="@_vm.AssessmentNarrative"
-                                  ValueChanged="UpdateNarrative"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Click 'Generate Assessment' to create an AI-assisted draft."
-                                  Rows="5" />
+                <EditableNarrativeBox @ref="_assessmentNarrativeBox"
+                                      Value="@_vm.AssessmentNarrative"
+                                      ValueChanged="UpdateNarrative"
+                                      OnAccepted="HandleAssessmentAcceptedAsync"
+                                      OnDiscarded="HandleAssessmentDiscardedAsync"
+                                      IsReadOnly="IsReadOnly"
+                                      Placeholder="Click 'Generate Assessment' to create an AI-assisted draft."
+                                      Rows="5"
+                                      TestId="daily-assessment-narrative-box" />
+
+                @if (!IsReadOnly && NoteId == Guid.Empty)
+                {
+                    <p class="daily-assessment__message" role="note">Save the note before generating an AI assessment.</p>
+                }
 
                 @if (!string.IsNullOrWhiteSpace(_assessmentErrorMessage))
                 {
@@ -275,6 +284,7 @@
     private List<CodeLookupEntry> _icdResults = [];
     private CancellationTokenSource? _icdSearchCts;
     private bool _disposed;
+    private EditableNarrativeBox? _assessmentNarrativeBox;
 
     private IReadOnlyList<SmartGoalEntry> TrackedGoals => _vm.Goals
         .Where(goal => !string.IsNullOrWhiteSpace(goal.Description) && (!goal.IsAiSuggested || goal.IsAccepted))
@@ -384,6 +394,13 @@
             return;
         }
 
+        if (NoteId == Guid.Empty)
+        {
+            _assessmentErrorMessage = "Save the note before generating an AI assessment.";
+            _assessmentWarnings = Array.Empty<string>();
+            return;
+        }
+
         _isGeneratingAssessment = true;
         _assessmentErrorMessage = null;
         _assessmentWarnings = Array.Empty<string>();
@@ -406,9 +423,12 @@
                 return;
             }
 
-            _vm.AssessmentNarrative = result.GeneratedText;
             _assessmentWarnings = result.Warnings;
-            await NotifyChangedAsync();
+
+            if (_assessmentNarrativeBox is not null)
+            {
+                await _assessmentNarrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+            }
         }
         catch (Exception ex)
         {
@@ -418,6 +438,49 @@
         finally
         {
             _isGeneratingAssessment = false;
+        }
+    }
+
+    private Task HandleAssessmentDiscardedAsync()
+    {
+        _assessmentWarnings = Array.Empty<string>();
+        _assessmentErrorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task<EditableNarrativeAcceptResult> HandleAssessmentAcceptedAsync(string acceptedText)
+    {
+        try
+        {
+            if (NoteId != Guid.Empty)
+            {
+                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                    NoteId,
+                    section: "assessment",
+                    generatedText: acceptedText,
+                    generationType: "Assessment");
+
+                if (!acceptance.Success)
+                {
+                    _assessmentErrorMessage = acceptance.ErrorMessage ?? "Unable to accept the AI-generated assessment.";
+                    await InvokeAsync(StateHasChanged);
+                    return EditableNarrativeAcceptResult.Fail(_assessmentErrorMessage);
+                }
+            }
+
+            _vm.AssessmentNarrative = acceptedText;
+            _assessmentWarnings = Array.Empty<string>();
+            _assessmentErrorMessage = null;
+            await NotifyChangedAsync();
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Daily assessment acceptance failed for note {NoteId}", NoteId);
+            _assessmentErrorMessage = "Unable to accept the AI-generated assessment.";
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Fail(_assessmentErrorMessage);
         }
     }
 

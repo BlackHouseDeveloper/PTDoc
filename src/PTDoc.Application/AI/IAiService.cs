@@ -40,7 +40,7 @@ public sealed record AiAssessmentRequest
     /// Identity of the note being authored. Used by API endpoints to verify signing state
     /// server-side before calling the AI provider.
     /// </summary>
-    public Guid? NoteId { get; init; }
+    public required Guid NoteId { get; init; }
 
     /// <summary>
     /// Patient's chief complaint or reason for visit.
@@ -77,7 +77,7 @@ public sealed record AiPlanRequest
     /// Identity of the note being authored. Used by API endpoints to verify signing state
     /// server-side before calling the AI provider.
     /// </summary>
-    public Guid? NoteId { get; init; }
+    public required Guid NoteId { get; init; }
 
     /// <summary>
     /// Patient's diagnosis or condition.
@@ -129,6 +129,11 @@ public sealed record AiGoalsRequest
     /// Existing long-term goals (used to avoid duplication).
     /// </summary>
     public string? LongTermGoals { get; init; }
+
+    /// <summary>
+    /// Outcome-measure context to inform quantitative goal targets.
+    /// </summary>
+    public OutcomeContext? OutcomeContext { get; init; }
 }
 
 /// <summary>

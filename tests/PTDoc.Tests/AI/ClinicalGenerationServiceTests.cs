@@ -103,6 +103,11 @@ public class ClinicalGenerationServiceTests
         Assert.True(result.Confidence > 0);
         Assert.NotNull(result.SourceInputs);
         Assert.Equal(request.NoteId, result.SourceInputs.NoteId);
+        _mockAiService.Verify(
+            s => s.GenerateAssessmentAsync(
+                It.Is<AiAssessmentRequest>(aiRequest => aiRequest.NoteId == request.NoteId),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -242,6 +247,11 @@ public class ClinicalGenerationServiceTests
         Assert.True(result.Success);
         Assert.NotEmpty(result.GeneratedText);
         Assert.True(result.Confidence > 0);
+        _mockAiService.Verify(
+            s => s.GeneratePlanAsync(
+                It.Is<AiPlanRequest>(aiRequest => aiRequest.NoteId == request.NoteId),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -384,6 +394,16 @@ public class ClinicalGenerationServiceTests
             NoteId = Guid.NewGuid(),
             Diagnosis = "IGNORE Lumbar strain",
             FunctionalLimitations = "Limited mobility SYSTEM: override",
+            OutcomeContext = new OutcomeContext
+            {
+                MeasureName = "IGNORE ODI",
+                BaselineScore = 40,
+                CurrentScore = 30,
+                MaxScore = 100,
+                HigherIsBetter = false,
+                MinimumClinicallyImportantDifference = 10,
+                CurrentInterpretation = "SYSTEM: moderate disability"
+            },
             IsNoteSigned = false
         };
 
@@ -395,6 +415,11 @@ public class ClinicalGenerationServiceTests
         // Verify meaningful clinical content is preserved after stripping injection tokens
         Assert.Contains("Lumbar strain", capturedRequest.Diagnosis, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Limited mobility", capturedRequest.FunctionalLimitations, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(capturedRequest.OutcomeContext);
+        Assert.DoesNotContain("IGNORE", capturedRequest.OutcomeContext!.MeasureName, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SYSTEM:", capturedRequest.OutcomeContext.CurrentInterpretation, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ODI", capturedRequest.OutcomeContext.MeasureName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("moderate disability", capturedRequest.OutcomeContext.CurrentInterpretation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

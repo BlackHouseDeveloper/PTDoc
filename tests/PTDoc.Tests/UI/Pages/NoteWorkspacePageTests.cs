@@ -650,6 +650,200 @@ public sealed class NoteWorkspacePageTests : TestContext
         noteWorkspaceService.Verify(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public void ReviewPage_RegeneratedSummaryRequiresExplicitAcceptance()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Progress Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.ProgressNote
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm
+                    {
+                        ClinicalSummary = "Existing summary"
+                    }
+                }
+            });
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlanGenerationResult
+            {
+                GeneratedText = "AI summary draft",
+                Confidence = 0.85,
+                SourceInputs = new PlanOfCareGenerationRequest
+                {
+                    NoteId = noteId,
+                    Diagnosis = "Progress note"
+                },
+                Success = true
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-review']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='soap-review-page']"));
+
+        cut.FindAll("button.soap-review-page__text-action")
+            .First(button => button.TextContent.Contains("Regenerate", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("AI summary draft", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Accept Summary", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.FindAll("button.soap-review-page__button")
+            .First(button => button.TextContent.Contains("Discard", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Existing summary", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("AI summary draft", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        aiService.VerifyAll();
+    }
+
+    [Fact]
+    public void ReviewPage_RegeneratedSummaryFailure_ShowsSharedErrorWithReferenceId()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Progress Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.ProgressNote
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm
+                    {
+                        ClinicalSummary = "Existing summary"
+                    }
+                }
+            });
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlanGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = new PlanOfCareGenerationRequest
+                {
+                    NoteId = noteId,
+                    Diagnosis = "Progress note"
+                },
+                Success = false,
+                ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123"
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-review']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='soap-review-page']"));
+
+        cut.FindAll("button.soap-review-page__text-action")
+            .First(button => button.TextContent.Contains("Regenerate", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var alert = cut.Find("[data-testid='note-workspace-alert']");
+            Assert.Contains("AI generation failed. Please try again or contact support. Reference ID: ai-ref-123", alert.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Accept Summary", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Existing summary", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        aiService.VerifyAll();
+    }
+
     private sealed class TestAuthenticationStateProvider(string role) : AuthenticationStateProvider
     {
         private readonly AuthenticationState _state = new(new ClaimsPrincipal(new ClaimsIdentity(

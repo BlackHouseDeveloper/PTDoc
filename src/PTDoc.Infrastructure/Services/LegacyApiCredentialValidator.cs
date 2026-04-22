@@ -25,10 +25,12 @@ public sealed class LegacyApiCredentialValidator : ICredentialValidator
         }
 
         var normalizedUsername = username.Trim();
+        var normalizedUsernameLower = normalizedUsername.ToLowerInvariant();
         var user = await _context.Users
             .AsNoTracking()
             .Where(u => u.IsActive &&
-                (u.Username == normalizedUsername || (u.Email != null && u.Email == normalizedUsername)))
+                (u.Username.ToLower() == normalizedUsernameLower
+                 || (u.Email != null && u.Email.ToLower() == normalizedUsernameLower)))
             .Select(u => new
             {
                 u.Id,

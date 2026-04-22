@@ -70,6 +70,10 @@ public static class DailyNoteEndpoints
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
           .WithName("SaveDailyNoteDraft");
 
+        // Legacy daily-note assessment generation path. This endpoint remains feature-gated,
+        // but it intentionally stays outside the saved-note requirement used by the
+        // /api/v1/ai/assessment and /api/v1/ai/plan routes until the UI caller is migrated
+        // or the route is retired.
         group.MapPost("/generate-assessment", async (
             [FromBody] JsonElement content,
             IDailyNoteService service,

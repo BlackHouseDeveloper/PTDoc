@@ -100,6 +100,7 @@ builder.Services.Configure<IntakeInviteOptions>(builder.Configuration.GetSection
 
 // Register sync services
 builder.Services.AddSingleton<ISyncRuntimeStateStore, SyncRuntimeStateStore>();
+builder.Services.AddSingleton<AiDiagnosticsFaultStore>();
 builder.Services.AddScoped<ISyncEngine, SyncEngine>();
 
 // Register background job services (Sprint I)

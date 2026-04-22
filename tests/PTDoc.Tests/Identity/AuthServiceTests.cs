@@ -177,6 +177,35 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task AuthenticateAsync_UsernameIdentifier_IsCaseInsensitive()
+    {
+        var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "antoniolhardy27",
+            Email = "antonio@example.com",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Antonio",
+            LastName = "Hardy",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync("Antoniolhardy27", "1234", "127.0.0.1", "MobileSafari");
+
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal("antoniolhardy27", authResult.Username);
+    }
+
+    [Fact]
     public async Task AuthenticateAsync_EmailIdentifier_ForInactiveUser_ReturnsPendingApprovalStatus()
     {
         var context = CreateInMemoryContext();
