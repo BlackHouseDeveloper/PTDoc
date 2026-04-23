@@ -41,7 +41,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Bootstrap development secrets before running API or Web:
   - `./setup-dev-secrets.sh`
   - Windows: `./setup-dev-secrets.ps1`
-- `setup-dev-secrets.sh` stores `Jwt:SigningKey` for `src/PTDoc.Api` and `IntakeInvite:SigningKey` for `src/PTDoc.Web` in user-secrets. Do not commit real keys.
+- `setup-dev-secrets.sh` stores `Jwt:SigningKey` and `IntakeInvite:SigningKey` for `src/PTDoc.Api`, plus `IntakeInvite:SigningKey` for `src/PTDoc.Web`, in user-secrets. Do not commit real keys.
 - Initial repo setup: `./PTDoc-Foundry.sh`
 - Create and apply the default SQLite migration: `./PTDoc-Foundry.sh --create-migration`
 - Seed dev data when `src/PTDoc.Seeder/PTDoc.Seeder.csproj` exists: `./PTDoc-Foundry.sh --seed`
@@ -71,7 +71,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 ## Platform Notes
 
-- `run-ptdoc.sh` auto-starts the API for Android, iOS, and Mac Catalyst unless `SKIP_API` is set.
+- `run-ptdoc.sh` auto-starts the API for Web, Android, iOS, and Mac Catalyst unless `SKIP_API` is set.
 - `run-ptdoc.sh` considers the API ready only after `GET /health/live` succeeds; if the API exits because dev signing keys are missing, it will try `./setup-dev-secrets.sh` once unless `SKIP_SECRET_SETUP` is set.
 - Android emulator traffic should use `http://10.0.2.2:5170`; iOS simulator and Mac Catalyst use `http://localhost:5170`.
 - `cleanbuild-ptdoc.sh` logs to `build-logs/cleanbuild-*.log`, runs Debug and Release builds, then runs tests discovered under `src/` and `tests/` matching `*.Tests.csproj`.

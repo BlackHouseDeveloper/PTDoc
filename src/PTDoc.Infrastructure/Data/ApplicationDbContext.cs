@@ -63,6 +63,18 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<UserNotificationPreferences> UserNotificationPreferences => Set<UserNotificationPreferences>();
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        NormalizeTrackedUsers();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        NormalizeTrackedUsers();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -609,6 +621,43 @@ public class ApplicationDbContext : DbContext
     /// Evaluated at query execution time, not at model creation time.
     /// </summary>
     private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
+
+    private void NormalizeTrackedUsers()
+    {
+        foreach (var entry in ChangeTracker.Entries<User>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+            {
+                continue;
+            }
+
+            entry.Entity.Username = NormalizeUsername(entry.Entity.Username);
+            entry.Entity.Email = NormalizeEmail(entry.Entity.Email);
+        }
+    }
+
+    private static string NormalizeUsername(string username)
+    {
+        ArgumentNullException.ThrowIfNull(username);
+
+        var trimmed = username.Trim();
+        return trimmed.Length == 0
+            ? trimmed
+            : trimmed.ToLowerInvariant();
+    }
+
+    private static string? NormalizeEmail(string? email)
+    {
+        if (email is null)
+        {
+            return null;
+        }
+
+        var trimmed = email.Trim();
+        return trimmed.Length == 0
+            ? trimmed
+            : trimmed.ToLowerInvariant();
+    }
 
     /// <summary>
     /// Returns a partial-index filter predicate appropriate for the configured database provider.

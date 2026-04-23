@@ -36,10 +36,23 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             };
         }
 
+        if (request.NoteId == Guid.Empty)
+        {
+            return new AssessmentGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Save the note before generating an AI assessment."
+            };
+        }
+
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/ai/assessment",
             new AiAssessmentRequest
             {
+                NoteId = request.NoteId,
                 ChiefComplaint = request.ChiefComplaint,
                 PatientHistory = request.PatientHistory,
                 CurrentSymptoms = request.CurrentSymptoms,
@@ -91,10 +104,23 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             };
         }
 
+        if (request.NoteId == Guid.Empty)
+        {
+            return new PlanGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Save the note before generating an AI plan of care."
+            };
+        }
+
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/ai/plan",
             new AiPlanRequest
             {
+                NoteId = request.NoteId,
                 Diagnosis = request.Diagnosis,
                 AssessmentSummary = request.AssessmentSummary,
                 Goals = request.Goals,
@@ -237,19 +263,48 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
         try
         {
             using var json = JsonDocument.Parse(payload);
+            string? message = null;
+            string? code = null;
+            string? correlationId = null;
+
             if (json.RootElement.TryGetProperty("error", out var errorElement) && errorElement.ValueKind == JsonValueKind.String)
             {
-                return errorElement.GetString();
+                message = errorElement.GetString();
             }
 
-            if (json.RootElement.TryGetProperty("detail", out var detailElement) && detailElement.ValueKind == JsonValueKind.String)
+            if (string.IsNullOrWhiteSpace(message) &&
+                json.RootElement.TryGetProperty("detail", out var detailElement) &&
+                detailElement.ValueKind == JsonValueKind.String)
             {
-                return detailElement.GetString();
+                message = detailElement.GetString();
             }
 
-            if (json.RootElement.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String)
+            if (string.IsNullOrWhiteSpace(message) &&
+                json.RootElement.TryGetProperty("title", out var titleElement) &&
+                titleElement.ValueKind == JsonValueKind.String)
             {
-                return titleElement.GetString();
+                message = titleElement.GetString();
+            }
+
+            if (json.RootElement.TryGetProperty("code", out var codeElement) && codeElement.ValueKind == JsonValueKind.String)
+            {
+                code = codeElement.GetString();
+            }
+
+            if (json.RootElement.TryGetProperty("correlationId", out var correlationIdElement) &&
+                correlationIdElement.ValueKind == JsonValueKind.String)
+            {
+                correlationId = correlationIdElement.GetString();
+            }
+
+            if (string.IsNullOrWhiteSpace(message) && !string.IsNullOrWhiteSpace(code))
+            {
+                message = "The AI request could not be completed.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                return FormatErrorMessage(message, correlationId);
             }
         }
         catch (JsonException)
@@ -258,6 +313,16 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
         }
 
         return payload;
+    }
+
+    private static string FormatErrorMessage(string message, string? correlationId)
+    {
+        if (string.IsNullOrWhiteSpace(correlationId))
+        {
+            return message;
+        }
+
+        return $"{message} Reference ID: {correlationId}";
     }
 
     private static AiPromptMetadata? ToPromptMetadata(MetadataResponse? metadata)

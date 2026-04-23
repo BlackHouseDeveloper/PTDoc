@@ -396,6 +396,8 @@
                 {
                     <AiGenerateButton ButtonLabel="AI Suggest"
                                       IsGenerating="@_isGeneratingDischarge"
+                                      IsDisabled="@IsPlanGenerationDisabled"
+                                      DisabledReason="@PlanGenerationDisabledReason"
                                       OnGenerate="HandleAiSuggestDischargeAsync"
                                       TestId="ai-suggest-discharge-btn" />
                 }
@@ -406,7 +408,7 @@
                                   Value="@(Vm.DischargePlanningNotes ?? string.Empty)"
                                   ValueChanged="@(v => SetAndNotify(vm => vm.DischargePlanningNotes = v))"
                                   OnAccepted="HandleDischargeAcceptedAsync"
-                                  OnDiscarded="() => SetAndNotify(vm => vm.DischargePlanningNotes = string.Empty)"
+                                  OnDiscarded="HandleDischargeDiscardedAsync"
                                   IsReadOnly="@IsReadOnly"
                                   Rows="3"
                                   TestId="discharge-planning-box" />
@@ -420,6 +422,8 @@
                 {
                     <AiGenerateButton ButtonLabel="AI Suggest"
                                       IsGenerating="@_isGeneratingFollowUp"
+                                      IsDisabled="@IsPlanGenerationDisabled"
+                                      DisabledReason="@PlanGenerationDisabledReason"
                                       OnGenerate="HandleAiSuggestFollowUpAsync"
                                       TestId="ai-suggest-followup-btn" />
                 }
@@ -430,7 +434,7 @@
                                   Value="@(Vm.FollowUpInstructions ?? string.Empty)"
                                   ValueChanged="@(v => SetAndNotify(vm => vm.FollowUpInstructions = v))"
                                   OnAccepted="HandleFollowUpAcceptedAsync"
-                                  OnDiscarded="() => SetAndNotify(vm => vm.FollowUpInstructions = string.Empty)"
+                                  OnDiscarded="HandleFollowUpDiscardedAsync"
                                   IsReadOnly="@IsReadOnly"
                                   Rows="3"
                                   TestId="followup-instructions-box" />
@@ -448,6 +452,8 @@
             {
                 <AiGenerateButton ButtonLabel="Generate Summary"
                                   IsGenerating="@_isGeneratingSummary"
+                                  IsDisabled="@IsPlanGenerationDisabled"
+                                  DisabledReason="@PlanGenerationDisabledReason"
                                   OnGenerate="HandleGenerateSummaryAsync"
                                   TestId="generate-summary-btn" />
             }
@@ -459,7 +465,7 @@
                               Value="@(Vm.ClinicalSummary ?? string.Empty)"
                               ValueChanged="@(v => SetAndNotify(vm => vm.ClinicalSummary = v))"
                               OnAccepted="HandleClinicalSummaryAcceptedAsync"
-                              OnDiscarded="() => SetAndNotify(vm => vm.ClinicalSummary = string.Empty)"
+                              OnDiscarded="HandleClinicalSummaryDiscardedAsync"
                               IsReadOnly="@IsReadOnly"
                               Rows="6"
                               TestId="clinical-summary-box" />
@@ -471,6 +477,7 @@
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsNoteSigned { get; set; }
     [Parameter] public Guid NoteId { get; set; }
     [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
@@ -494,6 +501,17 @@
     private EditableNarrativeBox? _dischargePlanningBox;
     private EditableNarrativeBox? _followUpBox;
     private EditableNarrativeBox? _clinicalSummaryBox;
+
+    private bool IsPlanGenerationDisabled => IsNoteSigned || IsReadOnly || NoteId == Guid.Empty;
+
+    private string? PlanGenerationDisabledReason =>
+        IsNoteSigned
+            ? "AI generation is not available on signed notes."
+            : IsReadOnly
+                ? "AI generation is only available for editable draft notes."
+            : NoteId == Guid.Empty
+                ? "Save the note before generating AI plan content."
+                : null;
 
     // ── Static: Favorite CPT codes ─────────────────────────────────
 
@@ -846,7 +864,12 @@
 
     private async Task HandleAiSuggestDischargeAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
+        if (NoteId == Guid.Empty)
+        {
+            _errorMessage = "Save the note before generating AI plan content.";
+            return;
+        }
         _isGeneratingDischarge = true;
         _errorMessage = null;
         StateHasChanged();
@@ -860,10 +883,11 @@
             }
 
             var suggestion = result.GeneratedText;
-            if (_dischargePlanningBox is not null)
-            {
-                await _dischargePlanningBox.LoadAiSuggestionAsync(suggestion);
-            }
+            await ShowPlanSuggestionAsync(
+                _dischargePlanningBox,
+                suggestion,
+                "discharge planning",
+                "Unable to open AI review for discharge planning. Please try again.");
         }
         catch (Exception ex)
         {
@@ -875,7 +899,12 @@
 
     private async Task HandleAiSuggestFollowUpAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
+        if (NoteId == Guid.Empty)
+        {
+            _errorMessage = "Save the note before generating AI plan content.";
+            return;
+        }
         _isGeneratingFollowUp = true;
         _errorMessage = null;
         StateHasChanged();
@@ -889,10 +918,11 @@
             }
 
             var suggestion = result.GeneratedText;
-            if (_followUpBox is not null)
-            {
-                await _followUpBox.LoadAiSuggestionAsync(suggestion);
-            }
+            await ShowPlanSuggestionAsync(
+                _followUpBox,
+                suggestion,
+                "follow-up instructions",
+                "Unable to open AI review for follow-up instructions. Please try again.");
         }
         catch (Exception ex)
         {
@@ -904,7 +934,12 @@
 
     private async Task HandleGenerateSummaryAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
+        if (NoteId == Guid.Empty)
+        {
+            _errorMessage = "Save the note before generating AI plan content.";
+            return;
+        }
         _isGeneratingSummary = true;
         _errorMessage = null;
         StateHasChanged();
@@ -918,10 +953,11 @@
             }
 
             var suggestion = result.GeneratedText;
-            if (_clinicalSummaryBox is not null)
-            {
-                await _clinicalSummaryBox.LoadAiSuggestionAsync(suggestion);
-            }
+            await ShowPlanSuggestionAsync(
+                _clinicalSummaryBox,
+                suggestion,
+                "clinical summary",
+                "Unable to open AI review for the clinical summary. Please try again.");
         }
         catch (Exception ex)
         {
@@ -931,31 +967,91 @@
         finally { _isGeneratingSummary = false; }
     }
 
-    private Task HandleDischargeAcceptedAsync(string acceptedText) =>
-        SetAndNotify(vm => vm.DischargePlanningNotes = acceptedText);
-
-    private Task HandleFollowUpAcceptedAsync(string acceptedText) =>
-        SetAndNotify(vm => vm.FollowUpInstructions = acceptedText);
-
-    private async Task HandleClinicalSummaryAcceptedAsync(string acceptedText)
+    private async Task<EditableNarrativeAcceptResult> HandleDischargeAcceptedAsync(string acceptedText)
     {
-        if (NoteId != Guid.Empty)
-        {
-            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                NoteId,
-                section: "plan",
-                generatedText: acceptedText,
-                generationType: "ClinicalSummary");
+        await SetAndNotify(vm => vm.DischargePlanningNotes = acceptedText);
+        _errorMessage = null;
+        await InvokeAsync(StateHasChanged);
+        return EditableNarrativeAcceptResult.Ok();
+    }
 
-            if (!acceptance.Success)
+    private Task HandleDischargeDiscardedAsync()
+    {
+        _errorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task<EditableNarrativeAcceptResult> HandleFollowUpAcceptedAsync(string acceptedText)
+    {
+        await SetAndNotify(vm => vm.FollowUpInstructions = acceptedText);
+        _errorMessage = null;
+        await InvokeAsync(StateHasChanged);
+        return EditableNarrativeAcceptResult.Ok();
+    }
+
+    private Task HandleFollowUpDiscardedAsync()
+    {
+        _errorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task<EditableNarrativeAcceptResult> HandleClinicalSummaryAcceptedAsync(string acceptedText)
+    {
+        try
+        {
+            if (NoteId != Guid.Empty)
             {
-                _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.";
-                return;
+                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                    NoteId,
+                    section: "plan",
+                    generatedText: acceptedText,
+                    generationType: "ClinicalSummary");
+
+                if (!acceptance.Success)
+                {
+                    _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.";
+                    await InvokeAsync(StateHasChanged);
+                    return EditableNarrativeAcceptResult.Fail(_errorMessage);
+                }
             }
+
+            await SetAndNotify(vm => vm.ClinicalSummary = acceptedText);
+            _errorMessage = null;
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", NoteId);
+            _errorMessage = "Unable to accept AI-generated summary content.";
+            await InvokeAsync(StateHasChanged);
+            return EditableNarrativeAcceptResult.Fail(_errorMessage);
+        }
+    }
+
+    private Task HandleClinicalSummaryDiscardedAsync()
+    {
+        _errorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task ShowPlanSuggestionAsync(
+        EditableNarrativeBox? narrativeBox,
+        string suggestion,
+        string sectionName,
+        string unavailableMessage)
+    {
+        if (narrativeBox is null)
+        {
+            Logger.LogWarning(
+                "Plan AI generation succeeded for {SectionName} on note {NoteId}, but the review box reference was unavailable.",
+                sectionName,
+                NoteId);
+            _errorMessage = unavailableMessage;
+            return;
         }
 
-        await SetAndNotify(vm => vm.ClinicalSummary = acceptedText);
-        _errorMessage = null;
+        await narrativeBox.LoadAiSuggestionAsync(suggestion);
     }
 
     private PlanOfCareGenerationRequest BuildPlanRequest()
@@ -969,7 +1065,7 @@
             AssessmentSummary = AssessmentSummary,
             Goals = GoalsSummary,
             Precautions = PrecautionsSummary,
-            IsNoteSigned = IsReadOnly
+            IsNoteSigned = IsNoteSigned
         };
     }
 

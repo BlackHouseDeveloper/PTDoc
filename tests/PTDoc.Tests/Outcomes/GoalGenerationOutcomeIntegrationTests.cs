@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using PTDoc.AI;
 using PTDoc.AI.Services;
 using PTDoc.Application.AI;
+using System.Net.Http;
 using Xunit;
 
 namespace PTDoc.Tests.Outcomes;
@@ -17,7 +17,7 @@ namespace PTDoc.Tests.Outcomes;
 public class GoalGenerationOutcomeIntegrationTests
 {
     private readonly IAiClinicalGenerationService _service;
-    private readonly Mock<IAiService> _mockAiService;
+    private static readonly IHttpClientFactory _mockHttpClientFactory = new Moq.Mock<IHttpClientFactory>().Object;
 
     public GoalGenerationOutcomeIntegrationTests()
     {
@@ -28,10 +28,13 @@ public class GoalGenerationOutcomeIntegrationTests
             })
             .Build();
 
-        _mockAiService = new Mock<IAiService>();
+        var aiService = new OpenAiService(
+            configuration,
+            NullLogger<OpenAiService>.Instance,
+            _mockHttpClientFactory);
 
         _service = new ClinicalGenerationService(
-            _mockAiService.Object,
+            aiService,
             new ClinicalPromptBuilder(),
             configuration,
             NullLogger<ClinicalGenerationService>.Instance);

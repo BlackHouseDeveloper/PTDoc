@@ -9,9 +9,19 @@ public static class AzureRuntimeConfigurationValidator
         return configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration");
     }
 
-    public static void ValidateAzureOpenAiConfiguration(IConfiguration configuration)
+    public static string GetStartupValidationMode(IConfiguration configuration, bool isDevelopment)
     {
-        var missing = new List<string>();
+        if (!RequiresAzureOpenAiConfiguration(configuration))
+        {
+            return "Disabled";
+        }
+
+        return isDevelopment ? "LazyOnFirstRequest" : "EagerAtStartup";
+    }
+
+    public static IReadOnlyList<string> GetMissingAzureOpenAiConfigurationKeys(IConfiguration configuration)
+    {
+        List<string> missing = [];
 
         if (string.IsNullOrWhiteSpace(configuration[AzureOpenAiOptions.EndpointKey]))
         {
@@ -27,6 +37,18 @@ public static class AzureRuntimeConfigurationValidator
         {
             missing.Add(AzureOpenAiOptions.DeploymentKey);
         }
+
+        return missing;
+    }
+
+    public static bool HasCompleteAzureOpenAiConfiguration(IConfiguration configuration)
+    {
+        return GetMissingAzureOpenAiConfigurationKeys(configuration).Count == 0;
+    }
+
+    public static void ValidateAzureOpenAiConfiguration(IConfiguration configuration)
+    {
+        var missing = GetMissingAzureOpenAiConfigurationKeys(configuration);
 
         if (missing.Count > 0)
         {

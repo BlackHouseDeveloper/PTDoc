@@ -12,6 +12,13 @@
             </svg>
             <span class="editable-narrative-box__review-text">AI-generated content — please review before accepting</span>
         </div>
+
+        @if (!string.IsNullOrWhiteSpace(_acceptErrorMessage))
+        {
+            <p class="editable-narrative-box__error" role="alert" data-testid="@($"{TestId}-error")">
+                @_acceptErrorMessage
+            </p>
+        }
     }
 
     <div class="editable-narrative-box__editor-row">
@@ -62,8 +69,9 @@
 
     private string _inputId = $"narrative-{Guid.NewGuid():N}";
     private ReviewState _reviewState = ReviewState.None;
-    private bool _hasClinicianEdits = false;
     private string _currentValue = string.Empty;
+    private string _preReviewValue = string.Empty;
+    private string? _acceptErrorMessage;
 
     /// <summary>The current text value of the narrative box.</summary>
     [Parameter] public string Value { get; set; } = string.Empty;
@@ -72,7 +80,7 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
     /// <summary>Raised when the clinician explicitly accepts the AI-generated text.</summary>
-    [Parameter] public EventCallback<string> OnAccepted { get; set; }
+    [Parameter] public Func<string, Task<EditableNarrativeAcceptResult>>? OnAccepted { get; set; }
 
     /// <summary>Raised when the clinician discards the AI-generated text.</summary>
     [Parameter] public EventCallback OnDiscarded { get; set; }
@@ -94,53 +102,98 @@
 
     protected override void OnParametersSet()
     {
-        // Keep backing field in sync when parent pushes a new value
-        // (safe because ValueChanged always keeps the parent up-to-date)
-        _currentValue = Value;
+        // Keep backing field in sync when parent pushes a new value.
+        // Exception: when an AI suggestion is pending review, the parent's Value
+        // is still the pre-AI text. Overwriting _currentValue here would silently
+        // discard the pending suggestion, so we only sync from the parameter when
+        // there is no active review state.
+        if (_reviewState != ReviewState.Pending)
+        {
+            _currentValue = Value;
+        }
     }
 
     /// <summary>
     /// Called by the parent (e.g. AssessmentTab) to load AI-generated text for review.
-    /// Does NOT overwrite if the clinician has already made edits.
+    /// Explicit generation always enters local review state, even when the clinician has
+    /// already typed content. The pre-review value is preserved for discard.
+    /// Does NOT propagate the value to the parent until the clinician explicitly accepts —
+    /// this prevents the autosave mechanism from persisting AI content before acceptance.
     /// </summary>
-    public async Task LoadAiSuggestionAsync(string aiText)
+    public Task LoadAiSuggestionAsync(string aiText)
     {
-        // Safety: do not overwrite clinician edits
-        if (_hasClinicianEdits && !string.IsNullOrWhiteSpace(_currentValue))
+        // Preserve the original pre-review text across repeated generations while the
+        // clinician is still in the same review session. Discard should always return
+        // to the last accepted/manual value, not a previous AI draft.
+        if (_reviewState != ReviewState.Pending)
         {
-            return;
+            _preReviewValue = _currentValue;
         }
 
         _currentValue = aiText;
         _reviewState = ReviewState.Pending;
-        _hasClinicianEdits = false;
+        _acceptErrorMessage = null;
 
-        await ValueChanged.InvokeAsync(_currentValue);
+        // Intentionally NOT calling ValueChanged here. The pending suggestion is held
+        // in the local backing field only. ValueChanged (and therefore the parent's
+        // dirty-mark / autosave) fires only for ordinary manual edits outside the
+        // review flow. Pending AI text stays local until the clinician explicitly
+        // accepts it.
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task OnInputChangedAsync(ChangeEventArgs e)
     {
         _currentValue = e.Value?.ToString() ?? string.Empty;
-        _hasClinicianEdits = true;
+        _acceptErrorMessage = null;
+
+        if (_reviewState == ReviewState.Pending)
+        {
+            StateHasChanged();
+            return;
+        }
+
         _reviewState = ReviewState.None;
         await ValueChanged.InvokeAsync(_currentValue);
     }
 
     private async Task AcceptAsync()
     {
+        EditableNarrativeAcceptResult result;
+
+        try
+        {
+            result = OnAccepted is null
+                ? EditableNarrativeAcceptResult.Ok()
+                : await OnAccepted(_currentValue);
+        }
+        catch
+        {
+            result = EditableNarrativeAcceptResult.Fail("Unable to accept AI-generated content.");
+        }
+
+        if (!result.Success)
+        {
+            _acceptErrorMessage = result.ErrorMessage ?? "Unable to accept AI-generated content.";
+            _reviewState = ReviewState.Pending;
+            StateHasChanged();
+            return;
+        }
+
         _reviewState = ReviewState.Accepted;
-        await OnAccepted.InvokeAsync(_currentValue);
+        _preReviewValue = string.Empty;
+        _acceptErrorMessage = null;
         StateHasChanged();
     }
 
     private async Task DiscardAsync()
     {
-        _currentValue = string.Empty;
+        _currentValue = _preReviewValue;
         _reviewState = ReviewState.None;
-        _hasClinicianEdits = false;
+        _preReviewValue = string.Empty;
+        _acceptErrorMessage = null;
 
-        await ValueChanged.InvokeAsync(_currentValue);
         await OnDiscarded.InvokeAsync();
         StateHasChanged();
     }

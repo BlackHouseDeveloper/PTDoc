@@ -93,9 +93,15 @@ public sealed class UserRegistrationService : IUserRegistrationService
                 validationErrors);
         }
 
-        var normalizedEmail = request.Email.Trim();
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
         var emailExists = await dbContext.Users
-            .AnyAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail.ToLower(), cancellationToken);
+            .AnyAsync(u => u.Email == normalizedEmail, cancellationToken);
+
+        if (!emailExists)
+        {
+            emailExists = await dbContext.Users
+                .AnyAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail, cancellationToken);
+        }
 
         if (emailExists)
         {
@@ -390,13 +396,22 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return ValidationFailure("Registration data is incomplete.", validationErrors, userId);
         }
 
-        var normalizedEmail = request.Email.Trim();
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
         var duplicateEmail = await dbContext.Users
             .AnyAsync(
                 existing => existing.Id != userId
-                    && existing.Email != null
-                    && existing.Email.ToLower() == normalizedEmail.ToLower(),
+                    && existing.Email == normalizedEmail,
                 cancellationToken);
+
+        if (!duplicateEmail)
+        {
+            duplicateEmail = await dbContext.Users
+                .AnyAsync(
+                    existing => existing.Id != userId
+                        && existing.Email != null
+                        && existing.Email.ToLower() == normalizedEmail,
+                    cancellationToken);
+        }
         if (duplicateEmail)
         {
             return ValidationFailure(
@@ -596,7 +611,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     private async Task<string?> GenerateUniqueUsernameAsync(string email, CancellationToken cancellationToken)
     {
-        var emailPrefix = email.Split('@', 2)[0].Trim();
+        var emailPrefix = email.Split('@', 2)[0].Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(emailPrefix))
         {
             emailPrefix = "user";
