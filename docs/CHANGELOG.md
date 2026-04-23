@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - AI review follow-up corrections
+
+#### Azure deployment routing now honors the validated runtime contract, and the goal guard/comment pair matches the actual server behavior
+
+- **`src/PTDoc.AI/Services/OpenAiService.cs`**, **`tests/PTDoc.Tests/AI/AiServiceTests.cs`** — Separated Azure deployment resolution from the metadata model label so Azure chat-completions requests always use `AzureOpenAIDeployment`, while `Ai:Model` remains a reporting label when configured, and added a regression test for the mixed-config case. Reason: falling back to `Ai:Model` for the Azure deployment path could build invalid `/deployments/...` URLs and blur the required-runtime-config contract.
+- **`src/PTDoc.Api/AI/AiEndpoints.cs`**, **`docs/CHANGELOG.md`** — Clarified the goals endpoint comment to reflect that signed-note enforcement happens in `ValidateDraftNoteAsync` before the downstream `IsNoteSigned = false` normalization, and corrected the earlier changelog entry to describe `AiAssessmentRequest.NoteId` and `AiPlanRequest.NoteId` as required `Guid` values. Reason: keep inline comments and release notes aligned with the actual signed-note guardrail and request contract.
+
 ### Fixed - Safari/iPhone username login failures
 
 - **`src/PTDoc.Infrastructure/Identity/AuthService.cs`**, **`src/PTDoc.Infrastructure/Services/LegacyApiCredentialValidator.cs`**, **`src/PTDoc.UI/Pages/Login.razor`**, **`tests/PTDoc.Tests/Identity/AuthServiceTests.cs`**, **`tests/PTDoc.Tests/Identity/LegacyApiCredentialValidatorTests.cs`** — Made username matching case-insensitive in both authentication flows and disabled username auto-capitalization/autocorrect in the shared web login form so iPhone Safari no longer turns a valid lowercase username into a 401. Reason: web login on iPhone could submit an auto-capitalized username while the server compared usernames case-sensitively.
@@ -102,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Replace mock goal generation with provider-backed AI calls
 
-- **`src/PTDoc.Application/AI/IAiService.cs`** — Added `AiGoalsRequest` record and `GenerateGoalsAsync` method to `IAiService`. Added optional `NoteId?` property to `AiAssessmentRequest` and `AiPlanRequest` to carry the note identity for server-side signing-state verification. Affects: all `IAiService` implementations. Reason: goals were the only AI generation type not backed by the AI provider.
+- **`src/PTDoc.Application/AI/IAiService.cs`** — Added `AiGoalsRequest` record and `GenerateGoalsAsync` method to `IAiService`. Added required `NoteId` (`Guid`) to `AiAssessmentRequest` and `AiPlanRequest` to carry the note identity for server-side signing-state verification. Affects: all `IAiService` implementations. Reason: goals were the only AI generation type not backed by the AI provider.
 - **`src/PTDoc.AI/Services/OpenAiService.cs`** — Implemented `GenerateGoalsAsync` using the existing `Prompts/Goals/v1.txt` template with the same file-based prompt pattern as assessment and plan, including a deterministic fallback for development/offline scenarios. Reason: complete the goals provider integration.
 - **`src/PTDoc.AI/Services/ClinicalGenerationService.cs`** — Replaced `GenerateMockGoals` stub with a proper delegating call to `IAiService.GenerateGoalsAsync`, sanitizing all clinician-provided inputs through `ClinicalPromptBuilder.SanitizeInput` before forwarding to the provider. Removed the now-unused `System.Text` import and the dead `GenerateMockGoals` helper. Affects: goal generation in `AssessmentWorkspaceSection.razor`. Reason: goal narratives were the last AI generation surface backed by a client-side mock.
 

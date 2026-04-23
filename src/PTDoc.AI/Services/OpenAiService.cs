@@ -37,14 +37,12 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["AzureOpenAIDeployment"]
-                ?? _configuration["Ai:Model"]
-                ?? DefaultModel;
+            var model = ResolveModelIdentifier();
             var prompt = await BuildAssessmentPromptAsync(request, cancellationToken);
 
             _logger.LogInformation("Generating AI assessment with model {Model}, template version {Version}", model, TemplateVersion);
 
-            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockAssessment(request), cancellationToken);
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockAssessment(request), cancellationToken);
 
             return new AiResult
             {
@@ -70,9 +68,7 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["AzureOpenAIDeployment"]
-                        ?? _configuration["Ai:Model"]
-                        ?? DefaultModel,
+                    Model = ResolveModelIdentifier(),
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -85,14 +81,12 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["AzureOpenAIDeployment"]
-                ?? _configuration["Ai:Model"]
-                ?? DefaultModel;
+            var model = ResolveModelIdentifier();
             var prompt = await BuildPlanPromptAsync(request, cancellationToken);
 
             _logger.LogInformation("Generating AI plan with model {Model}, template version {Version}", model, TemplateVersion);
 
-            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockPlan(request), cancellationToken);
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockPlan(request), cancellationToken);
 
             return new AiResult
             {
@@ -118,9 +112,7 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["AzureOpenAIDeployment"]
-                        ?? _configuration["Ai:Model"]
-                        ?? DefaultModel,
+                    Model = ResolveModelIdentifier(),
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -133,14 +125,12 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["AzureOpenAIDeployment"]
-                ?? _configuration["Ai:Model"]
-                ?? DefaultModel;
+            var model = ResolveModelIdentifier();
             var prompt = await BuildGoalsPromptAsync(request, cancellationToken);
 
             _logger.LogInformation("Generating AI goals with model {Model}, template version {Version}", model, TemplateVersion);
 
-            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockGoals(request), cancellationToken);
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockGoals(request), cancellationToken);
 
             return new AiResult
             {
@@ -166,9 +156,7 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["AzureOpenAIDeployment"]
-                        ?? _configuration["Ai:Model"]
-                        ?? DefaultModel,
+                    Model = ResolveModelIdentifier(),
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -370,17 +358,31 @@ public sealed class OpenAiService : IAiService
         return text.Length / 4;
     }
 
+    private string ResolveModelIdentifier()
+    {
+        var configuredModel = _configuration["Ai:Model"];
+        if (!string.IsNullOrWhiteSpace(configuredModel))
+        {
+            return configuredModel.Trim();
+        }
+
+        var deployment = _configuration["AzureOpenAIDeployment"];
+        if (!string.IsNullOrWhiteSpace(deployment))
+        {
+            return deployment.Trim();
+        }
+
+        return DefaultModel;
+    }
+
     private async Task<string> GenerateTextAsync(
         string prompt,
-        string model,
         Func<string> fallbackFactory,
         CancellationToken cancellationToken)
     {
         var endpoint = _configuration["AzureOpenAIEndpoint"];
         var apiKey = _configuration["AzureOpenAIKey"];
-        var deployment = !string.IsNullOrWhiteSpace(model)
-            ? model
-            : _configuration["AzureOpenAIDeployment"];
+        var deployment = _configuration["AzureOpenAIDeployment"];
         var aiFeatureEnabled = bool.TryParse(
             _configuration["FeatureFlags:EnableAiGeneration"],
             out var parsedAiFeatureEnabled)

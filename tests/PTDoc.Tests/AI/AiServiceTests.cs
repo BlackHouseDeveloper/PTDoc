@@ -362,6 +362,26 @@ public class AiServiceTests
     }
 
     [Fact]
+    public async Task GenerateAssessment_UsesAzureDeploymentForUri_WhenAiModelMetadataDiffers()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        var configuration = BuildAzureConfiguration(("Ai:Model", "gpt-4.1"));
+        var aiService = CreateAzureBackedService(configuration, handler);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("gpt-4.1", result.Metadata.Model);
+        Assert.Equal(
+            "https://example.openai.azure.com/openai/deployments/ptdoc-gpt-4o-mini/chat/completions?api-version=2024-06-01",
+            handler.LastRequestUri?.ToString());
+    }
+
+    [Fact]
     public async Task GenerateAssessment_ClampsMaxOutputTokens_ToLowerBound()
     {
         var handler = new CapturingHttpMessageHandler();

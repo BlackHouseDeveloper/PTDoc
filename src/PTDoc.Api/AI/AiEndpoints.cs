@@ -271,8 +271,8 @@ public static class AiEndpoints
             return validationFailure;
         }
 
-        // Rebuild the request with the server-authoritative IsNoteSigned value.
-        // This prevents the client from bypassing the signed-note guardrail by omitting the flag.
+        // ValidateDraftNoteAsync already rejected signed notes above.
+        // Normalize the downstream flag so client-supplied IsNoteSigned cannot change server-authoritative behavior.
         var guardedRequest = request with { IsNoteSigned = false };
 
         // Generate AI content
