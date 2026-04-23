@@ -152,7 +152,7 @@
                                     <span class="pt-card__unit-label">units</span>
                                 </div>
 
-                                @if (KnownTimedCptCodes.Codes.Contains(entry.Code))
+                                @if (IsTimedCode(entry.Code))
                                 {
                                     <label class="pt-card__minutes-field">
                                         <span class="pt-card__unit-label">Minutes</span>
@@ -681,6 +681,9 @@
     private static bool CodesMatch(string? left, string? right) =>
         string.Equals(NormalizeCode(left), NormalizeCode(right), StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsTimedCode(string? code) =>
+        KnownTimedCptCodes.Codes.Contains(NormalizeCode(code));
+
     private void ChangeUnits(UiCptCodeEntry entry, int delta)
     {
         entry.Units = Math.Max(1, entry.Units + delta);
@@ -777,7 +780,7 @@
         var advisories = new List<string>();
 
         var timedCodesMissingMinutes = Vm.SelectedCptCodes
-            .Where(entry => KnownTimedCptCodes.Codes.Contains(entry.Code) && entry.Units > 0 && entry.Minutes is null or <= 0)
+            .Where(entry => IsTimedCode(entry.Code) && entry.Units > 0 && entry.Minutes is null or <= 0)
             .Select(entry => entry.Code)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -801,8 +804,7 @@
         return advisories;
     }
 
-    private static int ResolveDefaultUnits(string code) =>
-        KnownTimedCptCodes.Codes.Contains(NormalizeCode(code)) ? 2 : 1;
+    private static int ResolveDefaultUnits(string code) => IsTimedCode(code) ? 2 : 1;
 
     private Task ToggleTreatmentFocus(string focus)
     {

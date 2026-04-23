@@ -185,6 +185,37 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
+    public void PlanTab_NormalizesLegacyTimedCodesForMinutesInputAndBillingAdvisories()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = " 97110 ",
+                        Description = "Legacy therapeutic exercises",
+                        Units = 2
+                    }
+                ]
+            })
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.Single(cut.FindAll("[data-testid='cpt-minutes-input']"));
+        Assert.Contains("Timed CPT minutes are still needed", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("97110", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PlanTab_QuickPicksUseLookupBackedModifierMetadata()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
