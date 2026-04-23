@@ -24,6 +24,7 @@
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.UI.Services
 
+@inject ILogger<NoteWorkspacePage> Logger
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject INoteWorkspaceService NoteWorkspaceService
@@ -1025,6 +1026,11 @@ else
             _pendingClinicalSummary = result.GeneratedText;
             SetStatusMessage("Clinical summary regenerated. Review and accept it before applying it to the note.", "success");
         }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical summary regeneration failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage("Unable to generate a clinical summary.", "error");
+        }
         finally
         {
             _isRegeneratingSummary = false;
@@ -1044,22 +1050,30 @@ else
             return;
         }
 
-        var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-            _note.NoteId.Value,
-            section: "plan",
-            generatedText: _pendingClinicalSummary,
-            generationType: "ClinicalSummary");
-
-        if (!acceptance.Success)
+        try
         {
-            SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error");
-            return;
-        }
+            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                _note.NoteId.Value,
+                section: "plan",
+                generatedText: _pendingClinicalSummary,
+                generationType: "ClinicalSummary");
 
-        _note.Plan.ClinicalSummary = _pendingClinicalSummary;
-        _pendingClinicalSummary = null;
-        MarkUnsaved();
-        SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success");
+            if (!acceptance.Success)
+            {
+                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error");
+                return;
+            }
+
+            _note.Plan.ClinicalSummary = _pendingClinicalSummary;
+            _pendingClinicalSummary = null;
+            MarkUnsaved();
+            SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage("Unable to accept AI-generated summary content.", "error");
+        }
     }
 
     private Task HandleDiscardPendingSummaryAsync()

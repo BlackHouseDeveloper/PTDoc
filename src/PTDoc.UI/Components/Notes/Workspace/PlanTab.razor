@@ -502,7 +502,7 @@
     private EditableNarrativeBox? _followUpBox;
     private EditableNarrativeBox? _clinicalSummaryBox;
 
-    private bool IsPlanGenerationDisabled => IsReadOnly || NoteId == Guid.Empty;
+    private bool IsPlanGenerationDisabled => IsNoteSigned || IsReadOnly || NoteId == Guid.Empty;
 
     private string? PlanGenerationDisabledReason =>
         IsNoteSigned
@@ -864,7 +864,7 @@
 
     private async Task HandleAiSuggestDischargeAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
@@ -899,7 +899,7 @@
 
     private async Task HandleAiSuggestFollowUpAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
@@ -934,7 +934,7 @@
 
     private async Task HandleGenerateSummaryAsync()
     {
-        if (IsReadOnly) return;
+        if (IsNoteSigned || IsReadOnly) return;
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";

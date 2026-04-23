@@ -190,7 +190,7 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
-    public void PlanTab_WhenReadOnlyForNonSignedReason_ShowsEditableDraftDisabledReason()
+    public void PlanTab_WhenReadOnlyForNonSignedReason_HidesAiButtons()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
         var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
@@ -214,16 +214,15 @@ public sealed class PlanTabTests : TestContext
             "generate-summary-btn"
         })
         {
-            var button = cut.Find($"[data-testid='{testId}']");
-            Assert.True(button.HasAttribute("disabled"));
-            Assert.Equal("AI generation is only available for editable draft notes.", cut.Find($"[data-testid='{testId}-disabled-reason']").TextContent.Trim());
+            Assert.Empty(cut.FindAll($"[data-testid='{testId}']"));
+            Assert.Empty(cut.FindAll($"[data-testid='{testId}-disabled-reason']"));
         }
 
         aiService.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public void PlanTab_WhenSigned_ShowsSignedDisabledReason()
+    public void PlanTab_WhenSignedEvenIfNotReadOnly_ShowsSignedDisabledReason()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
         var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
@@ -236,7 +235,7 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.Vm, new PlanVm())
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, Guid.NewGuid())
-            .Add(component => component.IsReadOnly, true)
+            .Add(component => component.IsReadOnly, false)
             .Add(component => component.IsNoteSigned, true)
             .Add(component => component.DiagnosisSummary, "Lumbar strain"));
 
