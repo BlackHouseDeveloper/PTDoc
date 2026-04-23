@@ -127,10 +127,61 @@ public sealed class PlanTabTests : TestContext
         var quickPick = cut.FindAll("[data-testid='cpt-quick-pick']")
             .First(button => button.TextContent.Contains("97140", StringComparison.Ordinal));
 
+        Assert.Contains("pt-card__cpt-tile--active", quickPick.ClassList);
+        Assert.Equal("true", quickPick.GetAttribute("aria-pressed"));
+
         await cut.InvokeAsync(() => quickPick.Click());
 
         cut.WaitForAssertion(() => Assert.Empty(vm.SelectedCptCodes));
         workspaceService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task PlanTab_SearchResultNormalizesCodeBeforeApplyingTimedDefaultUnits()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm();
+
+        workspaceService
+            .Setup(service => service.SearchCptAsync(
+                "97110",
+                8,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CodeLookupEntry
+                {
+                    Code = " 97110 ",
+                    Description = "Therapeutic exercises",
+                    Source = CptSource,
+                    ModifierOptions = ["GP", "KX", "CQ"],
+                    SuggestedModifiers = ["GP"],
+                    ModifierSource = CptSource
+                }
+            ]);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("[data-testid='cpt-search-input']").Input("97110");
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[data-testid='cpt-search-result']")));
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid='cpt-search-result']").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            var selected = Assert.Single(vm.SelectedCptCodes);
+            Assert.Equal("97110", selected.Code);
+            Assert.Equal(2, selected.Units);
+        });
+
+        workspaceService.VerifyAll();
     }
 
     [Fact]

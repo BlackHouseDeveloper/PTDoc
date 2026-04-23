@@ -80,7 +80,7 @@
         <div class="pt-card__cpt-grid">
             @foreach (var quickPick in _quickPickCptCodes)
             {
-                var alreadySelected = Vm.SelectedCptCodes.Any(c => c.Code == quickPick.Code);
+                var alreadySelected = Vm.SelectedCptCodes.Any(c => CodesMatch(c.Code, quickPick.Code));
                 <button type="button"
                         class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
                         disabled="@IsReadOnly"
@@ -608,8 +608,9 @@
 
     private async Task AddCptCodeAsync(CodeLookupEntry result)
     {
+        var normalizedCode = NormalizeCode(result.Code);
         var existing = Vm.SelectedCptCodes.FirstOrDefault(code =>
-            CodesMatch(code.Code, result.Code));
+            CodesMatch(code.Code, normalizedCode));
 
         if (existing is not null)
         {
@@ -627,9 +628,9 @@
 
         Vm.SelectedCptCodes.Add(new UiCptCodeEntry
         {
-            Code = NormalizeCode(result.Code),
+            Code = normalizedCode,
             Description = result.Description,
-            Units = ResolveDefaultUnits(result.Code),
+            Units = ResolveDefaultUnits(normalizedCode),
             Modifiers = [.. result.SuggestedModifiers],
             ModifierOptions = [.. result.ModifierOptions],
             SuggestedModifiers = [.. result.SuggestedModifiers],
@@ -801,7 +802,7 @@
     }
 
     private static int ResolveDefaultUnits(string code) =>
-        KnownTimedCptCodes.Codes.Contains(code) ? 2 : 1;
+        KnownTimedCptCodes.Codes.Contains(NormalizeCode(code)) ? 2 : 1;
 
     private Task ToggleTreatmentFocus(string focus)
     {
