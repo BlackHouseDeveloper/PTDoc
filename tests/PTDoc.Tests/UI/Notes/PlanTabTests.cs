@@ -190,6 +190,72 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
+    public void PlanTab_WhenReadOnlyForNonSignedReason_ShowsEditableDraftDisabledReason()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm())
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, true)
+            .Add(component => component.IsNoteSigned, false)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+
+        foreach (var testId in new[]
+        {
+            "ai-suggest-discharge-btn",
+            "ai-suggest-followup-btn",
+            "generate-summary-btn"
+        })
+        {
+            var button = cut.Find($"[data-testid='{testId}']");
+            Assert.True(button.HasAttribute("disabled"));
+            Assert.Equal("AI generation is only available for editable draft notes.", cut.Find($"[data-testid='{testId}-disabled-reason']").TextContent.Trim());
+        }
+
+        aiService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void PlanTab_WhenSigned_ShowsSignedDisabledReason()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm())
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, true)
+            .Add(component => component.IsNoteSigned, true)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+
+        foreach (var testId in new[]
+        {
+            "ai-suggest-discharge-btn",
+            "ai-suggest-followup-btn",
+            "generate-summary-btn"
+        })
+        {
+            var button = cut.Find($"[data-testid='{testId}']");
+            Assert.True(button.HasAttribute("disabled"));
+            Assert.Equal("AI generation is not available on signed notes.", cut.Find($"[data-testid='{testId}-disabled-reason']").TextContent.Trim());
+        }
+
+        aiService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public void PlanTab_DischargeSuggestionAfterManualEdit_RequiresExplicitAcceptance()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);

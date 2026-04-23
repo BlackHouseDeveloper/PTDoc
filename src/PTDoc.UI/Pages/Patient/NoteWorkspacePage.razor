@@ -363,6 +363,7 @@ else
                                      Vm="@_note.Plan"
                                      VmChanged="HandlePlanChanged"
                                      IsReadOnly="@IsWorkspaceReadOnly"
+                                     IsNoteSigned="@(_note.Status == NoteStatus.Signed)"
                                      SelectedBodyPart="@GetSelectedBodyPart()"
                                      DiagnosisSummary="@GetDiagnosisSummary()"
                                      AssessmentSummary="@GetAssessmentSummary()"

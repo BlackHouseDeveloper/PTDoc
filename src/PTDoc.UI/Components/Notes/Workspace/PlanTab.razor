@@ -477,6 +477,7 @@
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsNoteSigned { get; set; }
     [Parameter] public Guid NoteId { get; set; }
     [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
@@ -504,8 +505,10 @@
     private bool IsPlanGenerationDisabled => IsReadOnly || NoteId == Guid.Empty;
 
     private string? PlanGenerationDisabledReason =>
-        IsReadOnly
+        IsNoteSigned
             ? "AI generation is not available on signed notes."
+            : IsReadOnly
+                ? "AI generation is only available for editable draft notes."
             : NoteId == Guid.Empty
                 ? "Save the note before generating AI plan content."
                 : null;
@@ -1062,7 +1065,7 @@
             AssessmentSummary = AssessmentSummary,
             Goals = GoalsSummary,
             Precautions = PrecautionsSummary,
-            IsNoteSigned = IsReadOnly
+            IsNoteSigned = IsNoteSigned
         };
     }
 
