@@ -63,6 +63,22 @@ public sealed class WebRuntimeDiagnosticsIntegrationTests
     }
 
     [Fact]
+    public void ApiClusterAddressResolver_TrimsConfiguredUpstreamApiAddress_BeforeParsing()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:apiCluster:Destinations:api:Address"] = "  https://api.example.test/ptdoc/  "
+            })
+            .Build();
+        var resolver = new PTDoc.Web.Services.ApiClusterAddressResolver(configuration);
+
+        var resolvedAddress = resolver.ResolveApiClusterAddress();
+
+        Assert.Equal("https://api.example.test/ptdoc/", resolvedAddress.ToString());
+    }
+
+    [Fact]
     public async Task RuntimeDiagnostics_ForNonAdmin_ReturnsForbidden()
     {
         await using var factory = new PTDocWebFactory();

@@ -7,6 +7,8 @@ namespace PTDoc.Api.Notes;
 
 public static class DailyNoteEndpoints
 {
+    private const string AiFeatureDisabledCode = "ai_feature_disabled";
+
     public static WebApplication MapDailyNoteEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/daily-notes").RequireAuthorization();
@@ -78,12 +80,18 @@ public static class DailyNoteEndpoints
             [FromBody] JsonElement content,
             IDailyNoteService service,
             IConfiguration configuration,
+            HttpContext httpContext,
             CancellationToken ct) =>
         {
             var enableAi = configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration", false);
             if (!enableAi)
             {
-                return Results.StatusCode(403);
+                return Results.Json(new
+                {
+                    error = "AI generation is currently disabled.",
+                    code = AiFeatureDisabledCode,
+                    correlationId = httpContext.TraceIdentifier
+                }, statusCode: StatusCodes.Status403Forbidden);
             }
 
             var narrative = await service.GenerateAssessmentNarrativeAsync(content, ct);

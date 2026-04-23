@@ -8,7 +8,8 @@ public sealed class ApiClusterAddressResolver(IConfiguration configuration)
     public Uri ResolveApiClusterAddress()
     {
         var configuredAddress = configuration[ReverseProxyApiAddressKey];
-        if (Uri.TryCreate(configuredAddress, UriKind.Absolute, out var uri))
+        if (!string.IsNullOrWhiteSpace(configuredAddress)
+            && Uri.TryCreate(configuredAddress.Trim(), UriKind.Absolute, out var uri))
         {
             return uri;
         }

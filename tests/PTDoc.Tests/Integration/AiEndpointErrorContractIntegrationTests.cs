@@ -46,6 +46,33 @@ public sealed class AiEndpointErrorContractIntegrationTests
     }
 
     [Fact]
+    public async Task DailyNoteGenerateAssessment_WhenFeatureDisabled_ReturnsStructured403()
+    {
+        using var env = new EnvironmentVariableScope(new Dictionary<string, string?>
+        {
+            ["FeatureFlags__EnableAiGeneration"] = "false"
+        });
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/daily-notes/generate-assessment",
+                CreateJson("""{"subjective":"Shoulder pain"}"""));
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            await AssertErrorResponseAsync(response, "AI generation is currently disabled.", "ai_feature_disabled");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task AssessmentEndpoint_WhenChiefComplaintMissing_ReturnsStructured400()
     {
         using var env = CreateAiEnabledEnvironment();
