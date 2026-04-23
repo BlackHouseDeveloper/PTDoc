@@ -40,15 +40,29 @@ public class AuthService : IAuthService
     {
         var attemptedAt = DateTime.UtcNow;
         var normalizedIdentifier = username.Trim();
+        var normalizedIdentifierLower = normalizedIdentifier.ToLowerInvariant();
+        var identifierCandidates = normalizedIdentifier.Equals(normalizedIdentifierLower, StringComparison.Ordinal)
+            ? [normalizedIdentifierLower]
+            : new[] { normalizedIdentifier, normalizedIdentifierLower };
 
         try
         {
-            // Keep the existing request shape but allow the identifier field to be either username or email.
+            // Query exact identifier candidates so the username/email indexes remain usable.
             var user = await _context.Users
                 .Where(u =>
-                    u.Username == normalizedIdentifier
-                    || (u.Email != null && u.Email.ToLower() == normalizedIdentifier.ToLower()))
+                    identifierCandidates.Contains(u.Username)
+                    || (u.Email != null && identifierCandidates.Contains(u.Email)))
                 .FirstOrDefaultAsync(cancellationToken);
+
+            if (user == null)
+            {
+                // Legacy fallback for rows that predate save-time identifier normalization.
+                user = await _context.Users
+                    .Where(u =>
+                        u.Username.ToLower() == normalizedIdentifierLower
+                        || (u.Email != null && u.Email.ToLower() == normalizedIdentifierLower))
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
 
             if (user == null)
             {

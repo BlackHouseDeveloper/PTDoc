@@ -7,6 +7,8 @@ namespace PTDoc.Api.Notes;
 
 public static class DailyNoteEndpoints
 {
+    private const string AiFeatureDisabledCode = "ai_feature_disabled";
+
     public static WebApplication MapDailyNoteEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/daily-notes").RequireAuthorization();
@@ -70,8 +72,28 @@ public static class DailyNoteEndpoints
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
           .WithName("SaveDailyNoteDraft");
 
-        group.MapPost("/generate-assessment", async ([FromBody] JsonElement content, IDailyNoteService service, CancellationToken ct) =>
+        // Legacy daily-note assessment generation path. This endpoint remains feature-gated,
+        // but it intentionally stays outside the saved-note requirement used by the
+        // /api/v1/ai/assessment and /api/v1/ai/plan routes until the UI caller is migrated
+        // or the route is retired.
+        group.MapPost("/generate-assessment", async (
+            [FromBody] JsonElement content,
+            IDailyNoteService service,
+            IConfiguration configuration,
+            HttpContext httpContext,
+            CancellationToken ct) =>
         {
+            var enableAi = configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration", false);
+            if (!enableAi)
+            {
+                return Results.Json(new
+                {
+                    error = "AI generation is currently disabled.",
+                    code = AiFeatureDisabledCode,
+                    correlationId = httpContext.TraceIdentifier
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var narrative = await service.GenerateAssessmentNarrativeAsync(content, ct);
             return Results.Ok(new { narrative });
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)

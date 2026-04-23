@@ -488,6 +488,9 @@ public class DailyNoteService : IDailyNoteService
                 ?? string.Join(", ", (content.LimitedActivities ?? new()).Select(a => a.ActivityName));
             var request = new AssessmentGenerationRequest
             {
+                // Legacy endpoint path: daily-note assessment generation is still allowed
+                // before the note has a persisted ID. The main assessment/plan AI routes
+                // now require saved notes; this path remains a temporary exception.
                 NoteId = Guid.Empty,
                 ChiefComplaint = chiefComplaint,
                 CurrentSymptoms = content.ChangesSinceLastSession,

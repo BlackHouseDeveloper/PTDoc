@@ -666,6 +666,39 @@ operator investigates.
 > **Security:** Connection strings and encryption keys are never included in
 > diagnostics responses. The endpoint always requires a valid JWT Bearer token.
 
+`GET /diagnostics/runtime` — also requires authentication (Bearer token). Returns:
+
+| Field | Description |
+|-------|-------------|
+| `environmentName` | Active ASP.NET environment name (for example `Development`, `Testing`, `Production`) |
+| `isDevelopment` | Whether the runtime is in `Development` mode |
+| `release.releaseId` | Optional deployment/release identifier from `PTDOC_RELEASE_ID` or `Release:Id` |
+| `release.sourceSha` | Optional source revision SHA from `PTDOC_SOURCE_SHA`, `Release:SourceSha`, or assembly metadata |
+| `release.imageTag` | Optional image or package tag from `PTDOC_IMAGE_TAG` or `Release:ImageTag` |
+| `aiRuntime.featureEnabled` | Whether `FeatureFlags:EnableAiGeneration` is enabled |
+| `aiRuntime.developerDiagnosticsEnabled` | Whether developer-only diagnostics such as AI fault injection are enabled for this runtime |
+| `aiRuntime.startupValidationMode` | `Disabled`, `EagerAtStartup`, or `LazyOnFirstRequest` depending on feature-flag state and environment mode |
+| `aiRuntime.configurationState` | `NotRequired`, `Complete`, or `Incomplete` for the required Azure OpenAI settings |
+| `aiRuntime.missingAzureOpenAiSettings` | Names of required Azure OpenAI settings that are still missing |
+| `aiRuntime.runtimeHealthGate` | Explicit next gate required before treating AI as healthy in the environment |
+
+> **AI runtime note:** `GET /diagnostics/runtime` does not prove Azure OpenAI
+> provider execution. Health probes and diagnostics cover process, environment,
+> and database readiness only. Treat one authenticated saved-note AI request as
+> the operational runtime-health gate for AI-enabled deployments.
+
+When `aiRuntime.developerDiagnosticsEnabled` is `true`, the API also exposes an
+admin-only developer diagnostics surface for deterministic AI fault injection:
+
+- `GET /diagnostics/ai-faults`
+- `PUT /diagnostics/ai-faults`
+- `DELETE /diagnostics/ai-faults`
+
+These endpoints are intentionally in-memory, one-shot, and actor-scoped by
+`mode + noteId + targetUserId`. They exist to support troubleshooting and live
+verification of clinician-safe failure paths without breaking the real Azure
+OpenAI configuration.
+
 ### Migration State Logging
 
 At startup the API logs:

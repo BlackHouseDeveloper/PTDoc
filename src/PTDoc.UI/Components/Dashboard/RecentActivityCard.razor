@@ -59,7 +59,7 @@
                                 @if (!string.IsNullOrEmpty(activity.PatientName))
                                 {
                                     <text> for </text>
-                                    <a href="/patients/@activity.PatientId" class="activity-patient-link">@activity.PatientName</a>
+                                    <a href="/patient/@activity.PatientId" class="activity-patient-link">@activity.PatientName</a>
                                 }
                             </p>
                             <span class="activity-time">@DashboardHelpers.FormatTimeAgo(activity.Timestamp)</span>

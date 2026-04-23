@@ -744,6 +744,7 @@ When enabled, PTDoc may show:
 - Cache hit/miss ratios
 - Database query statistics
 - Build and version information
+- Admin-only developer fault injection for deterministic AI troubleshooting
 
 ### Diagnostics Troubleshooting
 
@@ -870,6 +871,156 @@ curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db
 ```
 
 > **Security:** Connection strings and encryption keys are never exposed in this response.
+
+### Local Azure AI Setup
+
+PTDoc's AI path is currently Azure OpenAI-only. For local development, prefer API user-secrets or environment variables. Using environment variables:
+
+```bash
+export FeatureFlags__EnableAiGeneration=true
+export AzureOpenAIEndpoint="https://<your-resource>.cognitiveservices.azure.com"
+export AzureOpenAIKey="<your-azure-openai-resource-key>"
+export AzureOpenAIDeployment="ptdoc-gpt-4o-mini"
+export AzureOpenAIApiVersion="2025-01-01-preview"
+export Ai__MaxOutputTokens=400
+```
+
+Recommended low-cost baseline:
+
+- Azure deployment type: `Global Standard`
+- Azure model deployment: `gpt-4o-mini`
+- `Ai__MaxOutputTokens=400`
+
+`Ai__MaxOutputTokens` is optional. When unset, PTDoc now defaults to `400` and clamps configured values to `128..800` before calling Azure OpenAI.
+`AzureOpenAIApiVersion` is also optional; when unset, PTDoc falls back to `2024-06-01`.
+
+Set these values on **`PTDoc.Api`**. PTDoc builds the Azure chat-completions path itself, so `AzureOpenAIEndpoint` must stay the base resource URL only, not the full `/openai/deployments/.../chat/completions?...` request URL.
+
+### Runtime Diagnostics Endpoint
+
+Authenticated Admin/Owner users can inspect deployment parity and AI runtime mode:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/runtime
+```
+
+**Response highlights:**
+```json
+{
+  "environmentName": "Production",
+  "isDevelopment": false,
+  "release": {
+    "releaseId": "2026.04.20.1",
+    "sourceSha": "abc123def456",
+    "imageTag": "ptdoc-api:2026.04.20.1"
+  },
+  "aiRuntime": {
+    "featureEnabled": true,
+    "developerDiagnosticsEnabled": true,
+    "startupValidationMode": "EagerAtStartup",
+    "effectiveAzureOpenAiEndpoint": "https://ptdoc-ai.cognitiveservices.azure.com",
+    "effectiveAzureOpenAiDeployment": "ptdoc-gpt-4o-mini",
+    "effectiveAzureOpenAiApiVersion": "2025-01-01-preview",
+    "configurationState": "Complete",
+    "missingAzureOpenAiSettings": [],
+    "runtimeHealthGate": "AuthenticatedSavedNoteAiRequestRequired"
+  }
+}
+```
+
+Use this endpoint to answer two operational questions:
+
+1. **Parity:** Which release/build identifier is actually deployed?
+2. **Runtime mode:** Is AI disabled, eagerly validated at startup, or deferred until the first authenticated AI request?
+3. **Developer diagnostics:** Are the admin-only one-shot AI fault endpoints expected to exist in this environment?
+
+> **Important:** `/health/live`, `/health/ready`, and `/diagnostics/runtime` do
+> **not** prove Azure OpenAI provider execution. The Azure provider path is still
+> exercised lazily by the first authenticated AI request. For AI-enabled
+> environments, the operational readiness gate is one authenticated saved-note AI
+> request, preferably a real saved-note Plan generation flow.
+>
+> If `PTDoc.Web` is what you have exposed via devtunnel or reverse proxy, remember
+> that the Azure AI environment variables still belong on `PTDoc.Api`, and direct
+> `/diagnostics/runtime` or `/api/v1/ai/*` troubleshooting needs to target the API
+> host or its logs rather than the web tunnel.
+
+`PTDoc.Web` now exposes its own admin-only `GET /diagnostics/runtime` surface too.
+Use the web-host version to confirm the effective upstream API base address resolved
+from `ReverseProxy:Clusters:apiCluster:Destinations:api:Address`, and use the API-host
+version to confirm the effective Azure endpoint, deployment, and API version. The two
+diagnostics surfaces are complementary: the web host tells you which API instance it is
+pointing at, and the API host tells you which Azure target it is trying to call.
+
+### Developer AI Fault Injection
+
+When `aiRuntime.developerDiagnosticsEnabled` is `true`, `PTDoc.Api` also exposes an
+admin-only, developer-only diagnostics surface for deterministic AI failure testing:
+
+- `GET /diagnostics/ai-faults`
+- `PUT /diagnostics/ai-faults`
+- `DELETE /diagnostics/ai-faults`
+
+Faults are intentionally narrow:
+
+- one-shot only
+- in-memory only
+- cleared on first matching request
+- cleared on API restart
+- scoped by `mode + noteId + targetUserId`
+
+Supported modes:
+
+- `plan_generation_failure`
+- `clinical_summary_accept_failure`
+
+If `targetUserId` is omitted when arming or clearing a fault, the API defaults it to
+the current admin/owner caller. This is useful for same-user verification and still
+allows explicit PT-targeting in shared troubleshooting environments.
+
+Example arm request:
+
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  http://localhost:5170/diagnostics/ai-faults \
+  -d '{
+    "mode": "plan_generation_failure",
+    "noteId": "11111111-1111-1111-1111-111111111111",
+    "targetUserId": "00000000-0000-0000-0001-000000000001"
+  }'
+```
+
+Example clear request:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer <admin-token>" \
+  "http://localhost:5170/diagnostics/ai-faults?mode=plan_generation_failure&noteId=11111111-1111-1111-1111-111111111111&targetUserId=00000000-0000-0000-0001-000000000001"
+```
+
+### Residual Plan-AI Verification Runbook
+
+Use this sequence when verifying the remaining Plan AI edge cases without breaking real
+Azure configuration:
+
+1. Query `PTDoc.Web` `GET /diagnostics/runtime` and confirm the effective upstream API base address.
+2. Query that exact `PTDoc.Api` host’s `GET /diagnostics/runtime` and confirm:
+   - Azure config is complete
+   - expected endpoint, deployment, and API version are reported
+   - `developerDiagnosticsEnabled` is `true`
+3. In the target clinician session, open a new unsaved note and confirm all three Plan AI buttons are disabled with the save-first reason.
+4. Save the note, arm `plan_generation_failure` for that `noteId` and consuming user, and trigger one Plan AI action.
+5. Verify a clinician-safe inline failure with `Reference ID`, no review banner, and unchanged manual text.
+6. Allow the fault to auto-consume or clear it, then generate a clinical summary normally and confirm pending review appears.
+7. Arm `clinical_summary_accept_failure` for the same `noteId` and consuming user, click `Accept`, and verify:
+   - a visible safe accept-failure message,
+   - no accepted-success note,
+   - pending review still active,
+   - AI draft still visible,
+   - `Discard` restores the pre-review text.
+8. Clear the fault and re-run a normal summary accept to confirm no lingering injected state.
 
 ### Detecting Migration Drift
 

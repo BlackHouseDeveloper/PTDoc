@@ -21,6 +21,14 @@ public interface IAiService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>AI-generated plan with metadata</returns>
     Task<AiResult> GeneratePlanAsync(AiPlanRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates functional goal narratives based on diagnosis and limitations.
+    /// </summary>
+    /// <param name="request">Structured goals request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>AI-generated goal narratives with metadata</returns>
+    Task<AiResult> GenerateGoalsAsync(AiGoalsRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -28,6 +36,12 @@ public interface IAiService
 /// </summary>
 public sealed record AiAssessmentRequest
 {
+    /// <summary>
+    /// Identity of the note being authored. Used by API endpoints to verify signing state
+    /// server-side before calling the AI provider.
+    /// </summary>
+    public required Guid NoteId { get; init; }
+
     /// <summary>
     /// Patient's chief complaint or reason for visit.
     /// </summary>
@@ -60,6 +74,12 @@ public sealed record AiAssessmentRequest
 public sealed record AiPlanRequest
 {
     /// <summary>
+    /// Identity of the note being authored. Used by API endpoints to verify signing state
+    /// server-side before calling the AI provider.
+    /// </summary>
+    public required Guid NoteId { get; init; }
+
+    /// <summary>
     /// Patient's diagnosis or condition.
     /// </summary>
     public required string Diagnosis { get; init; }
@@ -78,6 +98,42 @@ public sealed record AiPlanRequest
     /// Precautions or contraindications.
     /// </summary>
     public string? Precautions { get; init; }
+}
+
+/// <summary>
+/// Request for AI-generated goal narratives.
+/// </summary>
+public sealed record AiGoalsRequest
+{
+    /// <summary>
+    /// Clinical diagnosis or condition.
+    /// </summary>
+    public required string Diagnosis { get; init; }
+
+    /// <summary>
+    /// Identified functional limitations requiring goal coverage.
+    /// </summary>
+    public required string FunctionalLimitations { get; init; }
+
+    /// <summary>
+    /// Prior level of function before injury or illness.
+    /// </summary>
+    public string? PriorLevelOfFunction { get; init; }
+
+    /// <summary>
+    /// Existing short-term goals (used to avoid duplication).
+    /// </summary>
+    public string? ShortTermGoals { get; init; }
+
+    /// <summary>
+    /// Existing long-term goals (used to avoid duplication).
+    /// </summary>
+    public string? LongTermGoals { get; init; }
+
+    /// <summary>
+    /// Outcome-measure context to inform quantitative goal targets.
+    /// </summary>
+    public OutcomeContext? OutcomeContext { get; init; }
 }
 
 /// <summary>

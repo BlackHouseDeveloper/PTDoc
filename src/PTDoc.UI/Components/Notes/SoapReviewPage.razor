@@ -21,7 +21,7 @@
 
             <button type="button"
                     class="soap-review-page__text-action"
-                    disabled="@(IsReadOnly || IsRegeneratingSummary)"
+                    disabled="@(IsReadOnly || IsRegeneratingSummary || !CanRegenerateSummary)"
                     @onclick="() => OnRegenerateSummary.InvokeAsync()">
                 @if (IsRegeneratingSummary)
                 {
@@ -43,12 +43,42 @@
             </button>
         </div>
 
+        @if (!IsReadOnly && !CanRegenerateSummary && !string.IsNullOrWhiteSpace(RegenerateSummaryDisabledReason))
+        {
+            <p class="soap-review-page__helper-text" role="note">@RegenerateSummaryDisabledReason</p>
+        }
+
+        @if (IsPendingClinicalSummary)
+        {
+            <div class="soap-review-page__helper-text" role="alert" aria-live="polite">
+                AI-generated clinical summary ready for review. The current note summary is unchanged until you accept it.
+            </div>
+        }
+
         <div class="soap-review-page__summary-box">
-            <p>@GetClinicalSummary()</p>
+            <p>@GetDisplayedClinicalSummary()</p>
         </div>
 
+        @if (IsPendingClinicalSummary)
+        {
+            <div class="soap-review-page__action-bar" aria-label="AI summary review actions">
+                <button type="button"
+                        class="soap-review-page__button soap-review-page__button--secondary"
+                        disabled="@IsReadOnly"
+                        @onclick="() => OnDiscardPendingSummary.InvokeAsync()">
+                    <span>Discard</span>
+                </button>
+                <button type="button"
+                        class="soap-review-page__button soap-review-page__button--primary"
+                        disabled="@IsReadOnly"
+                        @onclick="() => OnAcceptPendingSummary.InvokeAsync()">
+                    <span>Accept Summary</span>
+                </button>
+            </div>
+        }
+
         <p class="soap-review-page__helper-text">
-            Note: AI-generated summaries should be reviewed and edited for accuracy before submission.
+            Note: AI-generated summaries should be reviewed and explicitly accepted before they replace the current note summary.
         </p>
     </section>
 
@@ -438,9 +468,15 @@
     [Parameter] public bool IsSubmitting { get; set; }
     [Parameter] public bool CanSubmit { get; set; } = true;
     [Parameter] public bool CanExportPdf { get; set; } = true;
+    [Parameter] public bool CanRegenerateSummary { get; set; } = true;
+    [Parameter] public string? RegenerateSummaryDisabledReason { get; set; }
+    [Parameter] public bool IsPendingClinicalSummary { get; set; }
+    [Parameter] public string? PendingClinicalSummary { get; set; }
     [Parameter, EditorRequired] public EventCallback<SoapSection> OnEditSection { get; set; }
     [Parameter, EditorRequired] public EventCallback OnBackToEdit { get; set; }
     [Parameter, EditorRequired] public EventCallback OnRegenerateSummary { get; set; }
+    [Parameter] public EventCallback OnAcceptPendingSummary { get; set; }
+    [Parameter] public EventCallback OnDiscardPendingSummary { get; set; }
     [Parameter, EditorRequired] public EventCallback OnRegenerateGoals { get; set; }
     [Parameter, EditorRequired] public EventCallback OnExportPdf { get; set; }
     [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
@@ -469,7 +505,10 @@
 
     private string GetNoteType() => DisplayOrEmpty(Note.NoteType);
 
-    private string GetClinicalSummary() => DisplayOrEmpty(Note.Plan.ClinicalSummary);
+    private string GetDisplayedClinicalSummary() =>
+        IsPendingClinicalSummary
+            ? DisplayOrEmpty(PendingClinicalSummary)
+            : DisplayOrEmpty(Note.Plan.ClinicalSummary);
 
     private string GetChiefComplaint() => JoinValues(Note.Subjective.Problems, Note.Subjective.OtherProblem);
 

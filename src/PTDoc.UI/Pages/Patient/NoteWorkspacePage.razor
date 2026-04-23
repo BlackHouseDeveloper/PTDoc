@@ -24,6 +24,7 @@
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.UI.Services
 
+@inject ILogger<NoteWorkspacePage> Logger
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject INoteWorkspaceService NoteWorkspaceService
@@ -363,6 +364,7 @@ else
                                      Vm="@_note.Plan"
                                      VmChanged="HandlePlanChanged"
                                      IsReadOnly="@IsWorkspaceReadOnly"
+                                     IsNoteSigned="@(_note.Status == NoteStatus.Signed)"
                                      SelectedBodyPart="@GetSelectedBodyPart()"
                                      DiagnosisSummary="@GetDiagnosisSummary()"
                                      AssessmentSummary="@GetAssessmentSummary()"
@@ -380,9 +382,15 @@ else
                                         IsSubmitting="@_isSubmittingNote"
                                         CanSubmit="@CanSubmitCurrentNote"
                                         CanExportPdf="@CanExportPdf"
+                                        CanRegenerateSummary="@CanRegenerateReviewSummary"
+                                        RegenerateSummaryDisabledReason="@ReviewSummaryDisabledReason"
+                                        IsPendingClinicalSummary="@HasPendingClinicalSummary"
+                                        PendingClinicalSummary="@_pendingClinicalSummary"
                                         OnEditSection="HandleEditSection"
                                         OnBackToEdit="HandleBackToEdit"
                                         OnRegenerateSummary="HandleRegenerateSummaryAsync"
+                                        OnAcceptPendingSummary="HandleAcceptPendingSummaryAsync"
+                                        OnDiscardPendingSummary="HandleDiscardPendingSummaryAsync"
                                         OnRegenerateGoals="HandleRegenerateGoalsAsync"
                                         OnExportPdf="HandleExportPdfAsync"
                                         OnSubmit="HandleSubmitAsync" />
@@ -475,6 +483,7 @@ else
     private bool _isDarkMode;
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
+    private string? _pendingClinicalSummary;
     private bool _isInitialLoading = true;
     private bool _isSubmittingNote;
     private SoapSection _lastEditableSection = SoapSection.Plan;
@@ -581,6 +590,12 @@ else
     private bool DisableSaveAction => !CanSaveDraft || DraftAutosaveService.IsSaving;
     private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
+    private bool HasPendingClinicalSummary => !string.IsNullOrWhiteSpace(_pendingClinicalSummary);
+    private bool CanRegenerateReviewSummary => _note.NoteId.HasValue;
+    private string? ReviewSummaryDisabledReason =>
+        !CanRegenerateReviewSummary && !IsWorkspaceReadOnly
+            ? "Save the note before generating an AI plan summary."
+            : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -678,6 +693,7 @@ else
         _dateOfService = DateTime.UtcNow;
         _isDarkMode = false;
         _lastEditableSection = SoapSection.Plan;
+        _pendingClinicalSummary = null;
         _hasAppliedEvaluationSeed = false;
         _hasAttemptedEvaluationSeed = false;
         _attemptedCarryForwardSeedNoteTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -729,6 +745,7 @@ else
         _note.Status = status;
         _note.IsDirty = false;
         _note.MarkSaved();
+        _pendingClinicalSummary = null;
         _dateOfService = dateOfService == default ? DateTime.UtcNow : dateOfService;
         DraftAutosaveService.Reset();
         ClearValidationDetails();
@@ -978,6 +995,12 @@ else
             return;
         }
 
+        if (!_note.NoteId.HasValue)
+        {
+            SetStatusMessage("Save the note before generating an AI plan summary.", "error");
+            return;
+        }
+
         _isRegeneratingSummary = true;
         ClearStatusMessage();
         StateHasChanged();
@@ -1000,14 +1023,69 @@ else
                 return;
             }
 
-            _note.Plan.ClinicalSummary = result.GeneratedText;
-            MarkUnsaved();
-            SetStatusMessage("Clinical summary regenerated. Save the note to keep the updated summary.", "success");
+            _pendingClinicalSummary = result.GeneratedText;
+            SetStatusMessage("Clinical summary regenerated. Review and accept it before applying it to the note.", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical summary regeneration failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage("Unable to generate a clinical summary.", "error");
         }
         finally
         {
             _isRegeneratingSummary = false;
         }
+    }
+
+    private async Task HandleAcceptPendingSummaryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_pendingClinicalSummary))
+        {
+            return;
+        }
+
+        if (!_note.NoteId.HasValue)
+        {
+            SetStatusMessage("Save the note before accepting AI-generated summary content.", "error");
+            return;
+        }
+
+        try
+        {
+            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
+                _note.NoteId.Value,
+                section: "plan",
+                generatedText: _pendingClinicalSummary,
+                generationType: "ClinicalSummary");
+
+            if (!acceptance.Success)
+            {
+                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error");
+                return;
+            }
+
+            _note.Plan.ClinicalSummary = _pendingClinicalSummary;
+            _pendingClinicalSummary = null;
+            MarkUnsaved();
+            SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage("Unable to accept AI-generated summary content.", "error");
+        }
+    }
+
+    private Task HandleDiscardPendingSummaryAsync()
+    {
+        if (!HasPendingClinicalSummary)
+        {
+            return Task.CompletedTask;
+        }
+
+        _pendingClinicalSummary = null;
+        SetStatusMessage("Regenerated clinical summary discarded.", "info");
+        return Task.CompletedTask;
     }
 
     private async Task HandleRegenerateGoalsAsync()

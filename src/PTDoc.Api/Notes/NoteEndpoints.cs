@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.Diagnostics;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -25,6 +26,8 @@ namespace PTDoc.Api.Notes;
 /// </summary>
 public static class NoteEndpoints
 {
+    private const string AiAcceptanceFailedCode = "ai_acceptance_failed";
+
     private static readonly JsonSerializerOptions WorkspaceContentSerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -612,6 +615,7 @@ public static class NoteEndpoints
         Guid noteId,
         [FromBody] AiSuggestionAcceptanceRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] AiDiagnosticsFaultStore faultStore,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
         [FromServices] IRulesEngine rulesEngine,
@@ -686,6 +690,33 @@ public static class NoteEndpoints
                 error = "AI-generated content cannot be accepted into a signed note. Create an addendum instead.",
                 ruleId = immutabilityResult.RuleId
             });
+        }
+
+        var currentUserId = identityContext.TryGetCurrentUserId();
+        if (currentUserId is Guid consumingUserId
+            && string.Equals(request.Section, "plan", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(request.GenerationType, "ClinicalSummary", StringComparison.Ordinal)
+            && faultStore.TryConsume(
+                AiDiagnosticsFaultModes.ClinicalSummaryAcceptFailure,
+                noteId,
+                consumingUserId,
+                out var consumedFault))
+        {
+            httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("PTDoc.Api.Diagnostics")
+                .LogWarning(
+                    "Consumed AI diagnostics fault {Mode} for note {NoteId} targeting user {TargetUserId}. CorrelationId {CorrelationId}",
+                    consumedFault!.Mode,
+                    consumedFault.NoteId,
+                    consumedFault.TargetUserId,
+                    httpContext.TraceIdentifier);
+
+            return Results.Json(new
+            {
+                error = "Unable to accept AI-generated summary content.",
+                code = AiAcceptanceFailedCode,
+                correlationId = httpContext.TraceIdentifier
+            }, statusCode: StatusCodes.Status500InternalServerError);
         }
 
         // Merge the accepted AI content into the target SOAP section of ContentJson.

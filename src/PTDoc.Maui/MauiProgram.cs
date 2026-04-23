@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Intake;
@@ -64,6 +65,14 @@ public static class MauiProgram
 		builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 		builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 		builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
+
+		// Register HTTP-backed AI generation for the shared UI workspace.
+		// Uses the authenticated ApiClient so generated requests carry the bearer token.
+		builder.Services.AddScoped<IAiClinicalGenerationService>(sp =>
+		{
+			var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient");
+			return new HttpAiClinicalGenerationService(httpClient);
+		});
 
 		// ----------------------------------------------------------------
 		// Local encrypted SQLite database (Sprint D)

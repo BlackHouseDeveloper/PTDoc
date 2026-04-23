@@ -15,7 +15,9 @@ namespace PTDoc.AI.Services;
 /// </summary>
 public sealed class OpenAiService : IAiService
 {
-    private const string AzureApiVersion = "2024-06-01";
+    private const int DefaultMaxOutputTokens = 400;
+    private const int MinMaxOutputTokens = 128;
+    private const int MaxMaxOutputTokens = 800;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -35,14 +37,17 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["AzureOpenAIDeployment"]
-                ?? _configuration["Ai:Model"]
-                ?? DefaultModel;
+            var model = ResolveModelIdentifier();
+            var deployment = ResolveAzureDeployment();
             var prompt = await BuildAssessmentPromptAsync(request, cancellationToken);
 
-            _logger.LogInformation("Generating AI assessment with model {Model}, template version {Version}", model, TemplateVersion);
+            _logger.LogInformation(
+                "Generating AI assessment with model label {ModelLabel}, Azure deployment {AzureDeployment}, template version {Version}",
+                model,
+                deployment ?? "not-configured",
+                TemplateVersion);
 
-            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockAssessment(request), cancellationToken);
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockAssessment(request), cancellationToken);
 
             return new AiResult
             {
@@ -68,9 +73,7 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["AzureOpenAIDeployment"]
-                        ?? _configuration["Ai:Model"]
-                        ?? DefaultModel,
+                    Model = ResolveModelIdentifier(),
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -83,14 +86,17 @@ public sealed class OpenAiService : IAiService
 
         try
         {
-            var model = _configuration["AzureOpenAIDeployment"]
-                ?? _configuration["Ai:Model"]
-                ?? DefaultModel;
+            var model = ResolveModelIdentifier();
+            var deployment = ResolveAzureDeployment();
             var prompt = await BuildPlanPromptAsync(request, cancellationToken);
 
-            _logger.LogInformation("Generating AI plan with model {Model}, template version {Version}", model, TemplateVersion);
+            _logger.LogInformation(
+                "Generating AI plan with model label {ModelLabel}, Azure deployment {AzureDeployment}, template version {Version}",
+                model,
+                deployment ?? "not-configured",
+                TemplateVersion);
 
-            var generatedText = await GenerateTextAsync(prompt, model, () => GenerateMockPlan(request), cancellationToken);
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockPlan(request), cancellationToken);
 
             return new AiResult
             {
@@ -116,9 +122,56 @@ public sealed class OpenAiService : IAiService
                 Metadata = new AiPromptMetadata
                 {
                     TemplateVersion = TemplateVersion,
-                    Model = _configuration["AzureOpenAIDeployment"]
-                        ?? _configuration["Ai:Model"]
-                        ?? DefaultModel,
+                    Model = ResolveModelIdentifier(),
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            };
+        }
+    }
+
+    public async Task<AiResult> GenerateGoalsAsync(AiGoalsRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            var model = ResolveModelIdentifier();
+            var deployment = ResolveAzureDeployment();
+            var prompt = await BuildGoalsPromptAsync(request, cancellationToken);
+
+            _logger.LogInformation(
+                "Generating AI goals with model label {ModelLabel}, Azure deployment {AzureDeployment}, template version {Version}",
+                model,
+                deployment ?? "not-configured",
+                TemplateVersion);
+
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockGoals(request), cancellationToken);
+
+            return new AiResult
+            {
+                Success = true,
+                GeneratedText = generatedText,
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = model,
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    TokenCount = EstimateTokenCount(generatedText)
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate AI goals");
+            return new AiResult
+            {
+                Success = false,
+                GeneratedText = string.Empty,
+                ErrorMessage = "AI generation failed. Please try again or contact support.",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = ResolveModelIdentifier(),
                     GeneratedAtUtc = DateTime.UtcNow
                 }
             };
@@ -221,23 +274,138 @@ public sealed class OpenAiService : IAiService
         return sb.ToString();
     }
 
+    private async Task<string> BuildGoalsPromptAsync(AiGoalsRequest request, CancellationToken cancellationToken)
+    {
+        var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Goals", $"{TemplateVersion}.txt");
+        var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
+
+        var prompt = template.Replace("{Diagnosis}", request.Diagnosis);
+        prompt = prompt.Replace("{FunctionalLimitations}", request.FunctionalLimitations);
+
+        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", $"Prior Level of Function: {request.PriorLevelOfFunction}");
+        else
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.ShortTermGoals))
+            prompt = prompt.Replace("{ShortTermGoals:Existing Short-Term Goals (do not repeat): {0}}", $"Existing Short-Term Goals (do not repeat): {request.ShortTermGoals}");
+        else
+            prompt = prompt.Replace("{ShortTermGoals:Existing Short-Term Goals (do not repeat): {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.LongTermGoals))
+            prompt = prompt.Replace("{LongTermGoals:Existing Long-Term Goals (do not repeat): {0}}", $"Existing Long-Term Goals (do not repeat): {request.LongTermGoals}");
+        else
+            prompt = prompt.Replace("{LongTermGoals:Existing Long-Term Goals (do not repeat): {0}}", string.Empty);
+
+        if (request.OutcomeContext is not null)
+        {
+            prompt = string.Join(
+                Environment.NewLine,
+                prompt,
+                string.Empty,
+                $"Outcome Measure: {request.OutcomeContext.MeasureName}",
+                $"Baseline Score: {FormatGoalNumber(request.OutcomeContext.BaselineScore)}",
+                $"Current Score: {FormatGoalNumber(request.OutcomeContext.CurrentScore)}",
+                $"Maximum Score: {FormatGoalNumber(request.OutcomeContext.MaxScore)}",
+                $"Higher Score Is Better: {request.OutcomeContext.HigherIsBetter}",
+                $"MCID: {FormatGoalNumber(request.OutcomeContext.MinimumClinicallyImportantDifference)}",
+                string.IsNullOrWhiteSpace(request.OutcomeContext.CurrentInterpretation)
+                    ? string.Empty
+                    : $"Current Interpretation: {request.OutcomeContext.CurrentInterpretation}");
+        }
+
+        return prompt;
+    }
+
+    private static string GenerateMockGoals(AiGoalsRequest request)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("SHORT-TERM GOALS (2–4 weeks):");
+
+        if (request.OutcomeContext is { } outcomeContext)
+        {
+            var targetScore = CalculateOutcomeTarget(outcomeContext);
+            var currentScore = FormatGoalNumber(outcomeContext.CurrentScore);
+            var formattedTargetScore = FormatGoalNumber(targetScore);
+            var formattedMcid = FormatGoalNumber(outcomeContext.MinimumClinicallyImportantDifference);
+
+            sb.AppendLine(
+                $"1. Patient will improve {outcomeContext.MeasureName} score from {currentScore} to {formattedTargetScore}, meeting the MCID of {formattedMcid}, to reflect improved tolerance for {request.FunctionalLimitations}.");
+            sb.AppendLine(
+                $"2. Patient will demonstrate measurable progress toward reduced limitation with {request.FunctionalLimitations} as evidenced by functional improvement documented on {outcomeContext.MeasureName}.");
+            sb.AppendLine();
+            sb.AppendLine("LONG-TERM GOALS (4–8 weeks):");
+            sb.AppendLine(
+                $"1. Patient will achieve a {outcomeContext.MeasureName} score of {formattedTargetScore} or better, sustaining an improvement that exceeds the MCID and supports return to prior level of function.");
+            sb.AppendLine(
+                $"2. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by improved participation and independence with self-management.");
+            return sb.ToString();
+        }
+
+        sb.AppendLine(
+            $"1. Patient will demonstrate improved tolerance for {request.FunctionalLimitations} as evidenced by reduced pain with activity (<=3/10 NRS).");
+        sb.AppendLine("2. Patient will independently perform home exercise program as evidenced by verbal return demonstration.");
+        sb.AppendLine();
+        sb.AppendLine("LONG-TERM GOALS (4–8 weeks):");
+        sb.AppendLine(
+            $"1. Patient will return to prior level of function for activities limited by {request.FunctionalLimitations} as evidenced by functional outcome measure improvement.");
+        sb.AppendLine("2. Patient will demonstrate independence with a self-management program as evidenced by discharge from skilled physical therapy.");
+        return sb.ToString();
+    }
+
+    private static double CalculateOutcomeTarget(OutcomeContext outcomeContext)
+    {
+        var rawTarget = outcomeContext.HigherIsBetter
+            ? outcomeContext.CurrentScore + outcomeContext.MinimumClinicallyImportantDifference
+            : outcomeContext.CurrentScore - outcomeContext.MinimumClinicallyImportantDifference;
+
+        return Math.Clamp(rawTarget, 0, outcomeContext.MaxScore);
+    }
+
+    private static string FormatGoalNumber(double value) =>
+        value % 1 == 0
+            ? ((int)value).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
     private static int EstimateTokenCount(string text)
     {
         // Rough estimate: ~4 characters per token
         return text.Length / 4;
     }
 
+    private string ResolveModelIdentifier()
+    {
+        var configuredModel = _configuration["Ai:Model"];
+        if (!string.IsNullOrWhiteSpace(configuredModel))
+        {
+            return configuredModel.Trim();
+        }
+
+        var deployment = _configuration["AzureOpenAIDeployment"];
+        if (!string.IsNullOrWhiteSpace(deployment))
+        {
+            return deployment.Trim();
+        }
+
+        return DefaultModel;
+    }
+
+    private string? ResolveAzureDeployment()
+    {
+        var deployment = _configuration["AzureOpenAIDeployment"];
+        return string.IsNullOrWhiteSpace(deployment)
+            ? null
+            : deployment.Trim();
+    }
+
     private async Task<string> GenerateTextAsync(
         string prompt,
-        string model,
         Func<string> fallbackFactory,
         CancellationToken cancellationToken)
     {
         var endpoint = _configuration["AzureOpenAIEndpoint"];
         var apiKey = _configuration["AzureOpenAIKey"];
-        var deployment = !string.IsNullOrWhiteSpace(model)
-            ? model
-            : _configuration["AzureOpenAIDeployment"];
+        var deployment = ResolveAzureDeployment();
         var aiFeatureEnabled = bool.TryParse(
             _configuration["FeatureFlags:EnableAiGeneration"],
             out var parsedAiFeatureEnabled)
@@ -257,10 +425,12 @@ public sealed class OpenAiService : IAiService
             return fallbackFactory();
         }
 
+        var maxOutputTokens = ResolveMaxOutputTokens();
+
         using var client = _httpClientFactory.CreateClient("AzureOpenAI");
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={AzureApiVersion}");
+            BuildAzureChatCompletionsUri(endpoint, deployment));
         request.Headers.Add("api-key", apiKey);
         request.Content = JsonContent.Create(new
         {
@@ -270,11 +440,14 @@ public sealed class OpenAiService : IAiService
                 new { role = "user", content = prompt }
             },
             temperature = 0.2,
-            max_tokens = 800
+            max_tokens = maxOutputTokens
         });
 
         using var response = await client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateAzureRequestFailureAsync(response, deployment, cancellationToken);
+        }
 
         await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
@@ -326,5 +499,110 @@ public sealed class OpenAiService : IAiService
         }
 
         throw new InvalidOperationException("Azure OpenAI response did not contain usable text content.");
+    }
+
+    private string BuildAzureChatCompletionsUri(string endpoint, string deployment)
+    {
+        var apiVersion = ResolveAzureApiVersion();
+        return $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(apiVersion)}";
+    }
+
+    private int ResolveMaxOutputTokens()
+    {
+        var configuredValue = _configuration["Ai:MaxOutputTokens"];
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return DefaultMaxOutputTokens;
+        }
+
+        if (!int.TryParse(configuredValue, out var parsedValue))
+        {
+            return DefaultMaxOutputTokens;
+        }
+
+        return Math.Clamp(parsedValue, MinMaxOutputTokens, MaxMaxOutputTokens);
+    }
+
+    private string ResolveAzureApiVersion()
+    {
+        var configuredValue = _configuration[AzureOpenAiOptions.ApiVersionKey];
+        return string.IsNullOrWhiteSpace(configuredValue)
+            ? AzureOpenAiOptions.DefaultApiVersion
+            : configuredValue.Trim();
+    }
+
+    private async Task<HttpRequestException> CreateAzureRequestFailureAsync(
+        HttpResponseMessage response,
+        string deployment,
+        CancellationToken cancellationToken)
+    {
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        var (azureCode, azureMessage) = TryParseAzureError(payload);
+
+        _logger.LogWarning(
+            "Azure OpenAI request failed with status {StatusCode} for deployment {Deployment}. AzureCode={AzureCode}. AzureMessage={AzureMessage}",
+            (int)response.StatusCode,
+            deployment,
+            azureCode ?? "unknown",
+            azureMessage ?? "unavailable");
+
+        return new HttpRequestException(
+            $"Azure OpenAI request failed with status {(int)response.StatusCode}.",
+            inner: null,
+            statusCode: response.StatusCode);
+    }
+
+    private static (string? Code, string? Message) TryParseAzureError(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            using var json = JsonDocument.Parse(payload);
+            if (!json.RootElement.TryGetProperty("error", out var errorElement) ||
+                errorElement.ValueKind != JsonValueKind.Object)
+            {
+                return (null, null);
+            }
+
+            string? code = null;
+            string? message = null;
+
+            if (errorElement.TryGetProperty("code", out var codeElement) &&
+                codeElement.ValueKind == JsonValueKind.String)
+            {
+                code = SanitizeForLog(codeElement.GetString());
+            }
+
+            if (errorElement.TryGetProperty("message", out var messageElement) &&
+                messageElement.ValueKind == JsonValueKind.String)
+            {
+                message = SanitizeForLog(messageElement.GetString());
+            }
+
+            return (code, message);
+        }
+        catch (JsonException)
+        {
+            return (null, SanitizeForLog(payload));
+        }
+    }
+
+    private static string? SanitizeForLog(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var sanitized = value
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+
+        return sanitized.Length <= 256 ? sanitized : sanitized[..256];
     }
 }

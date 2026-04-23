@@ -84,16 +84,62 @@ This will install the EF Core tools (if not already installed), add an Initial m
 bash
 Copy code
 ./PTDoc-Foundry.sh --seed
-This command uses the internal seeding logic built into `PTDoc-Foundry.sh` to populate the SQLite database with initial test data. By default, the data file is created at dev.PTDoc.db in the project root. If the file already exists, the script will add any missing data without duplicating existing entries.
+This command uses the internal seeding logic built into `PTDoc-Foundry.sh` to populate a SQLite database with initial test data. By default, the helper creates `dev.PTDoc.db` in the repo root. If the file already exists, the script adds any missing seed data without duplicating existing entries.
 #### Verify the Database Path
 
-The database is created at `dev.PTDoc.db` in the repo root. The API resolves its SQLite path in this order:
+`PTDoc-Foundry.sh` and the API do not use the same default database path.
 
-1. `PFP_DB_PATH` environment variable (CI/CD or container override)
-2. `ConnectionStrings:DefaultConnection` in `appsettings.{Environment}.json`
-3. Fallback `Data Source=PTDoc.db`
+- `PTDoc-Foundry.sh --seed` defaults to `dev.PTDoc.db` in the repo root and can be overridden with `PFP_DB_PATH`.
+- The API resolves its SQLite path in this order:
 
-For development, `appsettings.Development.json` already points at `dev.PTDoc.db`, so the API immediately serves the seeded data.
+1. `PTDoc_DB_PATH` environment variable
+2. `Database:Path` from configuration
+3. Fallback `PTDoc.db`
+
+In development, `src/PTDoc.Api/appsettings.Development.json` sets `Database:Path` to `PTDoc.db`. When you start the API with:
+
+```bash
+dotnet run --project src/PTDoc.Api --urls http://localhost:5170
+```
+
+the API uses `src/PTDoc.Api/PTDoc.db` unless you override it with `PTDoc_DB_PATH`.
+
+If you want the API to use the database created by `PTDoc-Foundry.sh --seed`, point the API at that file explicitly:
+
+```bash
+PTDoc_DB_PATH=/absolute/path/to/dev.PTDoc.db dotnet run --project src/PTDoc.Api --urls http://localhost:5170
+```
+
+#### Optional: Enable Azure AI Draft Generation
+
+PTDoc is wired for **Azure OpenAI**, not a ChatGPT subscription key. For local development, prefer API user-secrets or environment variables. Using environment variables:
+
+```bash
+export FeatureFlags__EnableAiGeneration=true
+export AzureOpenAIEndpoint="https://<your-resource>.cognitiveservices.azure.com"
+export AzureOpenAIKey="<your-azure-openai-resource-key>"
+export AzureOpenAIDeployment="ptdoc-gpt-4o-mini"
+export AzureOpenAIApiVersion="2025-01-01-preview"
+export Ai__MaxOutputTokens=400
+```
+
+Use the **base** Azure resource endpoint only. Do not paste the full Azure chat-completions URL into `AzureOpenAIEndpoint`; PTDoc builds the `/openai/deployments/.../chat/completions` path itself from the base endpoint, deployment name, and API version.
+
+These settings must be applied to **`PTDoc.Api`**, which is the process that performs AI generation. If you are running `PTDoc.Web` behind a tunnel or reverse proxy, do not assume the web host’s environment matches the API host’s environment.
+
+Then start the API normally:
+
+```bash
+dotnet run --project src/PTDoc.Api --urls http://localhost:5170
+```
+
+Recommended low-cost starting point:
+
+- Azure deployment type: `Global Standard`
+- Model deployment: `gpt-4o-mini`
+- Output cap: `Ai__MaxOutputTokens=400`
+
+After startup, verify `/diagnostics/runtime` reports AI configuration as complete, then run one authenticated saved-note AI action to confirm the provider path is working end-to-end. Health endpoints alone do not prove Azure generation works.
 
 ### 3. Running the Application
 
@@ -110,7 +156,7 @@ This interactive script lets you choose:
 3. iOS (simulator)
 4. Mac Catalyst (desktop)
 
-The script automatically starts the API server when needed.
+The script automatically starts the API server when needed, waits for `/health/live`, and writes API output to `/tmp/ptdoc-api.log`.
 
 #### Desktop Application (Mac Catalyst)
 
@@ -205,7 +251,7 @@ For detailed styling guidelines, see `docs/style-system.md` and `docs/context/pt
 
 ### 7. Troubleshooting & FAQ
 
-**Database not found / issues:** Ensure you have run the migration (`--create-migration`) and seeding steps. The SQLite database file `dev.PTDoc.db` should be present in the project root and referenced by `appsettings.Development.json`. Override it via `PFP_DB_PATH` environment variable if you need a different location.
+**Database not found / issues:** Check which database file you are actually using. `PTDoc-Foundry.sh --seed` creates `dev.PTDoc.db` in the repo root by default, but the development API uses `src/PTDoc.Api/PTDoc.db` unless `PTDoc_DB_PATH` is set. Override the helper script with `PFP_DB_PATH` and the API with `PTDoc_DB_PATH` if you need both to target the same file. If `./run-ptdoc.sh` reports an API startup failure, inspect `/tmp/ptdoc-api.log`.
 
 **iOS build issues:** If building for iOS, make sure you've opened the project in Xcode at least once to accept any license agreements, and that you have an iOS simulator selected. You might also need to adjust code signing settings in Xcode for the iOS target if you deploy to a physical device.
 

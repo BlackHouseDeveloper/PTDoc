@@ -81,6 +81,52 @@ public sealed class HttpAiClinicalGenerationServiceTests
     }
 
     [Fact]
+    public async Task GenerateAssessmentAsync_WithEmptyNoteId_DoesNotCallApi()
+    {
+        var wasCalled = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            wasCalled = true;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GenerateAssessmentAsync(new AssessmentGenerationRequest
+        {
+            NoteId = Guid.Empty,
+            ChiefComplaint = "Shoulder pain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("save the note", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(wasCalled);
+    }
+
+    [Fact]
+    public async Task GeneratePlanOfCareAsync_WithEmptyNoteId_DoesNotCallApi()
+    {
+        var wasCalled = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            wasCalled = true;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
+        {
+            NoteId = Guid.Empty,
+            Diagnosis = "Lumbar strain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("save the note", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(wasCalled);
+    }
+
+    [Fact]
     public async Task GenerateAssessmentAsync_WhenApiReturnsProblemDetails_UsesDetailMessage()
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
@@ -103,6 +149,32 @@ public sealed class HttpAiClinicalGenerationServiceTests
 
         Assert.False(result.Success);
         Assert.Equal("Chief complaint is required.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task GeneratePlanOfCareAsync_WhenApiReturnsStructuredAiError_IncludesReferenceId()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("""
+            {
+              "error": "AI generation is currently disabled.",
+              "code": "ai_feature_disabled",
+              "correlationId": "ai-ref-123"
+            }
+            """, System.Text.Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation is currently disabled. Reference ID: ai-ref-123", result.ErrorMessage);
     }
 
     private static HttpAiClinicalGenerationService CreateService(HttpMessageHandler handler)
