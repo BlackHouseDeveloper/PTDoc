@@ -606,7 +606,7 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal("Manual therapy", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("name").GetString());
         Assert.Equal("Mobilization grade III", payload.GetProperty("plan").GetProperty("generalInterventions")[0].GetProperty("notes").GetString());
         Assert.Equal("GP", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifiers")[0].GetString());
-        Assert.Equal("Commonly used CPT codes and modifiers.md", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifierSource").GetString());
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", payload.GetProperty("plan").GetProperty("selectedCptCodes")[0].GetProperty("modifierSource").GetString());
     }
 
     [Fact]
@@ -1084,6 +1084,11 @@ public sealed class NoteWorkspaceApiServiceTests
                     Code = "97110",
                     Description = "Therapeutic exercise",
                     Source = "Commonly used CPT codes and modifiers.md",
+                    Provenance = new ReferenceDataProvenance
+                    {
+                        DocumentPath = "Commonly used CPT codes and modifiers.md",
+                        Version = "2026-04-23"
+                    },
                     ModifierOptions = ["GP", "KX", "CQ"],
                     SuggestedModifiers = ["GP"],
                     ModifierSource = "Commonly used CPT codes and modifiers.md"
@@ -1097,9 +1102,45 @@ public sealed class NoteWorkspaceApiServiceTests
         var entry = Assert.Single(results);
         Assert.Equal("97110", entry.Code);
         Assert.Equal("Therapeutic exercise", entry.Description);
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", entry.Source);
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", entry.Provenance?.DocumentPath);
         Assert.Equal(["CQ", "GP", "KX"], entry.ModifierOptions.OrderBy(value => value).ToArray());
         Assert.Equal(["GP"], entry.SuggestedModifiers);
-        Assert.Equal("Commonly used CPT codes and modifiers.md", entry.ModifierSource);
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", entry.ModifierSource);
+    }
+
+    [Fact]
+    public async Task SearchIcd10Async_NormalizesLookupProvenance()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/lookup/icd10", request.RequestUri!.AbsolutePath);
+            Assert.Equal("?q=pelvic&take=8", request.RequestUri!.Query);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
+            {
+                new CodeLookupEntry
+                {
+                    Code = "R10.2",
+                    Description = "Pelvic and perineal pain",
+                    Source = "ICD-10 codes.md",
+                    Provenance = new ReferenceDataProvenance
+                    {
+                        DocumentPath = "ICD-10 codes.md",
+                        Version = "2026-04-23"
+                    }
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+        var results = await service.SearchIcd10Async("pelvic", 8);
+
+        var entry = Assert.Single(results);
+        Assert.Equal("R10.2", entry.Code);
+        Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", entry.Source);
+        Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", entry.Provenance?.DocumentPath);
     }
 
     [Fact]

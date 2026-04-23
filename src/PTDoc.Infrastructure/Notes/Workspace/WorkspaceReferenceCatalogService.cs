@@ -65,13 +65,12 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         IEnumerable<SearchableCodeLookupEntry> results = source;
         if (!string.IsNullOrWhiteSpace(trimmed))
         {
-            results = results.Where(entry =>
-                entry.Entry.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                entry.Entry.Description.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                entry.SearchTerms.Any(term => term.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
+            results = results.Where(entry => GetMatchRank(entry, trimmed!) < int.MaxValue);
         }
 
         return results
+            .OrderBy(entry => string.IsNullOrWhiteSpace(trimmed) ? 0 : GetMatchRank(entry, trimmed!))
+            .ThenBy(entry => entry.SourceOrder)
             .Take(effectiveTake)
             .Select(searchable => new CodeLookupEntry
             {
@@ -94,17 +93,19 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         IReadOnlyCollection<string>? defaultModifierOptions = null,
         IReadOnlyCollection<string>? defaultSuggestedModifiers = null)
     {
-        var documentPath = provenance.DocumentPath;
+        var normalizedProvenance = ReferenceDataProvenanceNormalizer.Normalize(provenance) ?? new ReferenceDataProvenance();
+        var documentPath = ReferenceDataProvenanceNormalizer.NormalizeDocumentPathOrEmpty(normalizedProvenance.DocumentPath);
 
         return source
-            .Select(entry => new SearchableCodeLookupEntry
+            .Select((entry, index) => new SearchableCodeLookupEntry
             {
+                SourceOrder = index,
                 Entry = new CodeLookupEntry
                 {
                     Code = entry.Code,
                     Description = entry.Description,
                     Source = documentPath,
-                    Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(provenance),
+                    Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(normalizedProvenance),
                     IsCompleteLibrary = entry.IsCompleteLibrary,
                     ModifierOptions = entry.ModifierOptions.Count > 0
                         ? [.. entry.ModifierOptions]
@@ -124,6 +125,43 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
             })
             .ToList()
             .AsReadOnly();
+    }
+
+    private static int GetMatchRank(SearchableCodeLookupEntry entry, string query)
+    {
+        if (entry.Entry.Code.Equals(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (entry.Entry.Code.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        if (entry.Entry.Description.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        if (entry.SearchTerms.Any(term => string.Equals(term, query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 3;
+        }
+
+        if (entry.SearchTerms.Any(term => term.StartsWith(query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 4;
+        }
+
+        if (entry.Entry.Code.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            entry.Entry.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            entry.SearchTerms.Any(term => term.Contains(query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 5;
+        }
+
+        return int.MaxValue;
     }
 
     private BodyRegionCatalog CloneCatalog(BodyRegionCatalog catalog, BodyPart requestedBodyPart)
@@ -152,6 +190,7 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     {
         public CodeLookupEntry Entry { get; init; } = new();
         public List<string> SearchTerms { get; init; } = new();
+        public int SourceOrder { get; init; }
     }
 
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()

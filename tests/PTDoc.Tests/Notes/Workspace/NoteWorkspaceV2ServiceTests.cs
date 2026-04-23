@@ -205,7 +205,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(["GP"], cptEntry.Modifiers);
         Assert.Equal(["CQ", "GP", "KX"], cptEntry.ModifierOptions.OrderBy(value => value).ToArray());
         Assert.Equal(["GP"], cptEntry.SuggestedModifiers);
-        Assert.Equal("Commonly used CPT codes and modifiers.md", cptEntry.ModifierSource);
+        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", cptEntry.ModifierSource);
     }
 
     [Fact]

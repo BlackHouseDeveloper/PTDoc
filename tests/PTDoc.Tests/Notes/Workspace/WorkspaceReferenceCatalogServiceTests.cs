@@ -17,6 +17,8 @@ public sealed class WorkspaceReferenceCatalogServiceTests
     private const string TreatmentInterventionsSource = "docs/clinicrefdata/what-generally-was-worked-on.md";
     private const string TreatmentFocusesSource = "docs/clinicrefdata/what-was-specifically-worked-on.md";
     private const string JointMobilitySource = "docs/clinicrefdata/Joint mobility and MMT.md";
+    private const string Icd10Source = "docs/clinicrefdata/ICD-10 codes.md";
+    private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
 
     private readonly IWorkspaceReferenceCatalogService _catalogs =
         new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
@@ -161,14 +163,15 @@ public sealed class WorkspaceReferenceCatalogServiceTests
     [Fact]
     public void SearchIcd10_PelvicQuery_ReturnsSuppliedPelvicCodes()
     {
-        var matches = _catalogs.SearchIcd10("pelvic");
+        var matches = _catalogs.SearchIcd10("pelvic", take: 8);
 
-        Assert.Contains(matches, item => item.Code == "R10.2");
-        Assert.Contains(matches, item => item.Code == "N94.1");
+        Assert.Equal(
+            ["R10.2", "M79.4", "N94.89", "N94.1", "N81.10", "N81.2", "N81.6", "N81.4"],
+            matches.Select(item => item.Code).ToArray());
         Assert.All(matches, item =>
         {
-            Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", item.Source);
-            Assert.Equal("docs/clinicrefdata/ICD-10 codes.md", item.Provenance?.DocumentPath);
+            Assert.Equal(Icd10Source, item.Source);
+            Assert.Equal(Icd10Source, item.Provenance?.DocumentPath);
         });
     }
 
@@ -178,10 +181,29 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         var matches = _catalogs.SearchCpt("97116");
 
         var match = Assert.Single(matches.Where(item => item.Code == "97116"));
-        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", match.Source);
-        Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", match.Provenance?.DocumentPath);
+        Assert.Equal(CptSource, match.Source);
+        Assert.Equal(CptSource, match.Provenance?.DocumentPath);
+        Assert.Equal(CptSource, match.ModifierSource);
         Assert.Contains("GP", match.SuggestedModifiers);
         Assert.Contains("CO", match.ModifierOptions);
+    }
+
+    [Fact]
+    public void SearchCpt_QuickPickCodesResolveToExactLookupRowsWithModifierMetadata()
+    {
+        var quickPickCodes = new[] { "97140", "97110", "97112", "97530", "97116", "97535" };
+
+        foreach (var code in quickPickCodes)
+        {
+            var match = Assert.Single(_catalogs.SearchCpt(code, take: 5)
+                .Where(item => string.Equals(item.Code, code, StringComparison.OrdinalIgnoreCase)));
+
+            Assert.Equal(CptSource, match.Source);
+            Assert.Equal(CptSource, match.Provenance?.DocumentPath);
+            Assert.Equal(CptSource, match.ModifierSource);
+            Assert.Contains("GP", match.SuggestedModifiers);
+            Assert.Contains("GP", match.ModifierOptions);
+        }
     }
 
     [Fact]

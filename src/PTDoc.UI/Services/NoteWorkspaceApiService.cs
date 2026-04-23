@@ -400,7 +400,7 @@ public sealed class NoteWorkspaceApiService(
         }
 
         var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
-        return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
+        return NormalizeLookupResults(results);
     }
 
     public async Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(
@@ -446,7 +446,24 @@ public sealed class NoteWorkspaceApiService(
         }
 
         var results = await response.Content.ReadFromJsonAsync<List<CodeLookupEntry>>(SerializerOptions, cancellationToken);
-        return (IReadOnlyList<CodeLookupEntry>?)results ?? Array.Empty<CodeLookupEntry>();
+        return NormalizeLookupResults(results);
+    }
+
+    private static IReadOnlyList<CodeLookupEntry> NormalizeLookupResults(List<CodeLookupEntry>? results)
+    {
+        if (results is null || results.Count == 0)
+        {
+            return Array.Empty<CodeLookupEntry>();
+        }
+
+        foreach (var entry in results)
+        {
+            entry.Source = ReferenceDataProvenanceNormalizer.NormalizeDocumentPathOrEmpty(entry.Source);
+            entry.Provenance = ReferenceDataProvenanceNormalizer.Normalize(entry.Provenance);
+            entry.ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(entry.ModifierSource);
+        }
+
+        return results;
     }
 
     private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)

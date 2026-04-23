@@ -12,7 +12,7 @@
 @inject ILogger<PlanTab> Logger
 
 @* PlanTab: CPT codes, treatment plan, additional planning, clinical summary.
-   Per Blueprint: CPT favorites grid, frequency/duration required fields, AI-assisted
+   Per Blueprint: CPT quick-pick grid, frequency/duration required fields, AI-assisted
    discharge planning, follow-up instructions, and final clinical summary.
 *@
 
@@ -27,16 +27,8 @@
         <div class="pt-card__header">
             <div>
                 <h3 class="pt-card__title">CPT Procedure Codes</h3>
-                <p class="pt-card__subtitle">Select billable procedure codes for this session</p>
+                <p class="pt-card__subtitle">Search the source-backed CPT catalog or use product-default quick picks</p>
             </div>
-            @if (!IsReadOnly)
-            {
-                <button type="button" class="pt-card__secondary-btn"
-                        data-testid="customize-cpt-btn"
-                        @onclick="HandleCustomizeCptAsync">
-                    Customize
-                </button>
-            }
         </div>
 
         @if (!IsReadOnly)
@@ -83,20 +75,21 @@
             }
         }
 
-        <!-- Favorites grid (6 pre-loaded) -->
-        <p class="pt-card__field-label">Favorite CPT Codes</p>
+        <!-- Product-default quick picks; lookup search remains the canonical CPT source. -->
+        <p class="pt-card__field-label">Quick-pick CPT shortcuts</p>
         <div class="pt-card__cpt-grid">
-            @foreach (var fav in _favoriteCptCodes)
+            @foreach (var quickPick in _quickPickCptCodes)
             {
-                var alreadySelected = Vm.SelectedCptCodes.Any(c => c.Code == fav.Code);
+                var alreadySelected = Vm.SelectedCptCodes.Any(c => c.Code == quickPick.Code);
                 <button type="button"
                         class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
-                        disabled="@(IsReadOnly || (alreadySelected ? false : false))"
+                        disabled="@IsReadOnly"
                         aria-pressed="@alreadySelected.ToString().ToLower()"
-                        @onclick="() => ToggleCptFavoriteAsync(fav)">
-                    <span class="pt-card__cpt-code">@fav.Code</span>
-                    <span class="pt-card__cpt-name">@fav.ShortName</span>
-                    <span class="pt-card__cpt-unit">@fav.DefaultUnits min</span>
+                        @onclick="() => ToggleCptQuickPickAsync(quickPick)"
+                        data-testid="cpt-quick-pick">
+                    <span class="pt-card__cpt-code">@quickPick.Code</span>
+                    <span class="pt-card__cpt-name">@quickPick.ShortName</span>
+                    <span class="pt-card__cpt-unit">@quickPick.DefaultUnits min</span>
                 </button>
             }
         </div>
@@ -109,7 +102,7 @@
                     <rect x="4" y="4" width="20" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M9 10h10M9 14h10M9 18h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
-                <p>No CPT codes selected — click a favorite above to add.</p>
+                <p>No CPT codes selected — search the catalog or choose a quick pick above to add one.</p>
             </div>
         }
         else
@@ -513,11 +506,11 @@
                 ? "Save the note before generating AI plan content."
                 : null;
 
-    // ── Static: Favorite CPT codes ─────────────────────────────────
+    // ── Static: product-default CPT quick picks ────────────────────
 
-    private record FavoriteCptCode(string Code, string ShortName, int DefaultUnits);
+    private record QuickPickCptCode(string Code, string ShortName, int DefaultUnits);
 
-    private static readonly FavoriteCptCode[] _favoriteCptCodes =
+    private static readonly QuickPickCptCode[] _quickPickCptCodes =
     [
         new("97140", "Manual Therapy",           2),
         new("97110", "Therapeutic Exercise",      2),
@@ -596,9 +589,9 @@
         return VmChanged.InvokeAsync(Vm);
     }
 
-    private async Task ToggleCptFavoriteAsync(FavoriteCptCode fav)
+    private async Task ToggleCptQuickPickAsync(QuickPickCptCode quickPick)
     {
-        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == fav.Code);
+        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == quickPick.Code);
         if (existing is not null)
         {
             Vm.SelectedCptCodes.Remove(existing);
@@ -607,9 +600,9 @@
         }
 
         Vm.SelectedCptCodes.Add(await BuildCptEntryAsync(
-            fav.Code,
-            fav.ShortName,
-            fav.DefaultUnits));
+            quickPick.Code,
+            quickPick.ShortName,
+            quickPick.DefaultUnits));
         await VmChanged.InvokeAsync(Vm);
     }
 
@@ -802,12 +795,6 @@
 
     private static int ResolveDefaultUnits(string code) =>
         KnownTimedCptCodes.Codes.Contains(code) ? 2 : 1;
-
-    private Task HandleCustomizeCptAsync()
-    {
-        // Reserved for a future CPT customization dialog.
-        return Task.CompletedTask;
-    }
 
     private Task ToggleTreatmentFocus(string focus)
     {
