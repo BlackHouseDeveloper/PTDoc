@@ -26,11 +26,14 @@ public sealed class LegacyApiCredentialValidator : ICredentialValidator
 
         var normalizedUsername = username.Trim();
         var normalizedUsernameLower = normalizedUsername.ToLowerInvariant();
+        var identifierCandidates = normalizedUsername.Equals(normalizedUsernameLower, StringComparison.Ordinal)
+            ? [normalizedUsernameLower]
+            : new[] { normalizedUsername, normalizedUsernameLower };
         var user = await _context.Users
             .AsNoTracking()
             .Where(u => u.IsActive &&
-                (u.Username.ToLower() == normalizedUsernameLower
-                 || (u.Email != null && u.Email.ToLower() == normalizedUsernameLower)))
+                (identifierCandidates.Contains(u.Username)
+                 || (u.Email != null && identifierCandidates.Contains(u.Email))))
             .Select(u => new
             {
                 u.Id,
@@ -43,6 +46,28 @@ public sealed class LegacyApiCredentialValidator : ICredentialValidator
                 u.PinHash
             })
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (user is null)
+        {
+            // Legacy fallback for rows that predate save-time identifier normalization.
+            user = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.IsActive &&
+                    (u.Username.ToLower() == normalizedUsernameLower
+                     || (u.Email != null && u.Email.ToLower() == normalizedUsernameLower)))
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Username,
+                    u.FirstName,
+                    u.LastName,
+                    u.Email,
+                    u.Role,
+                    u.ClinicId,
+                    u.PinHash
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
         if (user is null || !BCrypt.Net.BCrypt.Verify(password, user.PinHash))
         {

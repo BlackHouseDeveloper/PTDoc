@@ -382,6 +382,28 @@ public class AiServiceTests
     }
 
     [Fact]
+    public async Task GenerateAssessment_LogsModelLabelAndAzureDeployment_WhenTheyDiffer()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        var logger = new TestLogger<OpenAiService>();
+        var configuration = BuildAzureConfiguration(("Ai:Model", "gpt-4.1"));
+        var aiService = CreateAzureBackedService(configuration, handler, logger);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.True(result.Success);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.LogLevel == LogLevel.Information
+                && entry.Message.Contains("model label gpt-4.1", StringComparison.Ordinal)
+                && entry.Message.Contains("Azure deployment ptdoc-gpt-4o-mini", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GenerateAssessment_ClampsMaxOutputTokens_ToLowerBound()
     {
         var handler = new CapturingHttpMessageHandler();
