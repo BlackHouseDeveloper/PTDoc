@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace PTDoc.Application.ReferenceData;
 
 public static class ReferenceDataProvenanceNormalizer
@@ -65,6 +67,7 @@ public static class ReferenceDataProvenanceNormalizer
     public static string NormalizeDocumentPathOrEmpty(string? documentPath) =>
         NormalizeDocumentPath(documentPath) ?? string.Empty;
 
+    [return: NotNullIfNotNull(nameof(provenance))]
     public static ReferenceDataProvenance? Normalize(ReferenceDataProvenance? provenance)
         => provenance is null
             ? null
