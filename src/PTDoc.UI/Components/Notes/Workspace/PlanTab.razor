@@ -591,7 +591,7 @@
 
     private async Task ToggleCptQuickPickAsync(QuickPickCptCode quickPick)
     {
-        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == quickPick.Code);
+        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => CodesMatch(c.Code, quickPick.Code));
         if (existing is not null)
         {
             Vm.SelectedCptCodes.Remove(existing);
@@ -609,7 +609,7 @@
     private async Task AddCptCodeAsync(CodeLookupEntry result)
     {
         var existing = Vm.SelectedCptCodes.FirstOrDefault(code =>
-            string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase));
+            CodesMatch(code.Code, result.Code));
 
         if (existing is not null)
         {
@@ -627,7 +627,7 @@
 
         Vm.SelectedCptCodes.Add(new UiCptCodeEntry
         {
-            Code = result.Code,
+            Code = NormalizeCode(result.Code),
             Description = result.Description,
             Units = ResolveDefaultUnits(result.Code),
             Modifiers = [.. result.SuggestedModifiers],
@@ -640,17 +640,19 @@
 
     private async Task<UiCptCodeEntry> BuildCptEntryAsync(string code, string description, int defaultUnits)
     {
+        var normalizedCode = NormalizeCode(code);
+
         try
         {
-            var matches = await NoteWorkspaceService.SearchCptAsync(code, take: 5);
+            var matches = await NoteWorkspaceService.SearchCptAsync(normalizedCode, take: 5);
             var exactMatch = matches.FirstOrDefault(match =>
-                string.Equals(match.Code, code, StringComparison.OrdinalIgnoreCase));
+                CodesMatch(match.Code, normalizedCode));
 
             if (exactMatch is not null)
             {
                 return new UiCptCodeEntry
                 {
-                    Code = exactMatch.Code,
+                    Code = NormalizeCode(exactMatch.Code),
                     Description = exactMatch.Description,
                     Units = defaultUnits,
                     Modifiers = [.. exactMatch.SuggestedModifiers],
@@ -667,11 +669,16 @@
 
         return new UiCptCodeEntry
         {
-            Code = code,
+            Code = normalizedCode,
             Description = description,
             Units = defaultUnits
         };
     }
+
+    private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
+
+    private static bool CodesMatch(string? left, string? right) =>
+        string.Equals(NormalizeCode(left), NormalizeCode(right), StringComparison.OrdinalIgnoreCase);
 
     private void ChangeUnits(UiCptCodeEntry entry, int delta)
     {

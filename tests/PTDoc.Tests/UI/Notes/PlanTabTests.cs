@@ -98,6 +98,42 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
+    public async Task PlanTab_QuickPickToggle_RemovesExistingEntryUsingNormalizedCodeMatch()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm
+        {
+            SelectedCptCodes =
+            [
+                new CptCodeEntry
+                {
+                    Code = " 97140 ",
+                    Description = "Legacy manual therapy",
+                    Units = 2
+                }
+            ]
+        };
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        var quickPick = cut.FindAll("[data-testid='cpt-quick-pick']")
+            .First(button => button.TextContent.Contains("97140", StringComparison.Ordinal));
+
+        await cut.InvokeAsync(() => quickPick.Click());
+
+        cut.WaitForAssertion(() => Assert.Empty(vm.SelectedCptCodes));
+        workspaceService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task PlanTab_QuickPicksUseLookupBackedModifierMetadata()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);

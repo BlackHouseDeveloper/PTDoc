@@ -62,30 +62,41 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         var trimmed = query?.Trim();
         var effectiveTake = take <= 0 ? 20 : Math.Min(take, 100);
 
-        IEnumerable<SearchableCodeLookupEntry> results = source;
-        if (!string.IsNullOrWhiteSpace(trimmed))
+        if (string.IsNullOrWhiteSpace(trimmed))
         {
-            results = results.Where(entry => GetMatchRank(entry, trimmed!) < int.MaxValue);
+            return source
+                .Take(effectiveTake)
+                .Select(ToCodeLookupEntry)
+                .ToList()
+                .AsReadOnly();
         }
 
-        return results
-            .OrderBy(entry => string.IsNullOrWhiteSpace(trimmed) ? 0 : GetMatchRank(entry, trimmed!))
-            .ThenBy(entry => entry.SourceOrder)
-            .Take(effectiveTake)
-            .Select(searchable => new CodeLookupEntry
+        return source
+            .Select(entry => new
             {
-                Code = searchable.Entry.Code,
-                Description = searchable.Entry.Description,
-                Source = searchable.Entry.Source,
-                Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(searchable.Entry.Provenance),
-                IsCompleteLibrary = searchable.Entry.IsCompleteLibrary,
-                ModifierOptions = [.. searchable.Entry.ModifierOptions],
-                SuggestedModifiers = [.. searchable.Entry.SuggestedModifiers],
-                ModifierSource = searchable.Entry.ModifierSource
+                Entry = entry,
+                Rank = GetMatchRank(entry, trimmed!)
             })
+            .Where(entry => entry.Rank < int.MaxValue)
+            .OrderBy(entry => entry.Rank)
+            .ThenBy(entry => entry.Entry.SourceOrder)
+            .Take(effectiveTake)
+            .Select(searchable => ToCodeLookupEntry(searchable.Entry))
             .ToList()
             .AsReadOnly();
     }
+
+    private static CodeLookupEntry ToCodeLookupEntry(SearchableCodeLookupEntry searchable) => new()
+    {
+        Code = searchable.Entry.Code,
+        Description = searchable.Entry.Description,
+        Source = searchable.Entry.Source,
+        Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(searchable.Entry.Provenance),
+        IsCompleteLibrary = searchable.Entry.IsCompleteLibrary,
+        ModifierOptions = [.. searchable.Entry.ModifierOptions],
+        SuggestedModifiers = [.. searchable.Entry.SuggestedModifiers],
+        ModifierSource = searchable.Entry.ModifierSource
+    };
 
     private static IReadOnlyList<SearchableCodeLookupEntry> BuildLookupEntries(
         IReadOnlyCollection<WorkspaceLookupCodeAsset> source,

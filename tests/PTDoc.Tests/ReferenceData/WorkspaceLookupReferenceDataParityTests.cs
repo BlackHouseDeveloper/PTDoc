@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PTDoc.Application.ReferenceData;
+using PTDoc.Tests.Security;
 using Xunit;
 
 namespace PTDoc.Tests.ReferenceData;
@@ -132,20 +133,7 @@ public sealed partial class WorkspaceLookupReferenceDataParityTests
             .Trim();
 
     private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "PTDoc.sln")))
-            {
-                return dir.FullName;
-            }
-
-            dir = dir.Parent;
-        }
-
-        throw new InvalidOperationException("Could not locate PTDoc.sln.");
-    }
+        => ConfigurationValidationTests.FindRepoRoot();
 
     [GeneratedRegex("^\\s*\\*\\s*\\*\\*(?<code>[A-Z][A-Z0-9.]+)\\*\\*\\s*[–-]\\s*(?<description>.*?)\\s*$")]
     private static partial Regex IcdMarkdownCodeRegex();
