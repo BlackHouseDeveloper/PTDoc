@@ -104,8 +104,8 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         IReadOnlyCollection<string>? defaultModifierOptions = null,
         IReadOnlyCollection<string>? defaultSuggestedModifiers = null)
     {
-        var normalizedProvenance = ReferenceDataProvenanceNormalizer.Normalize(provenance) ?? new ReferenceDataProvenance();
-        var documentPath = ReferenceDataProvenanceNormalizer.NormalizeDocumentPathOrEmpty(normalizedProvenance.DocumentPath);
+        var normalizedProvenance = ReferenceDataProvenanceNormalizer.Normalize(provenance);
+        var documentPath = normalizedProvenance.DocumentPath;
 
         return source
             .Select((entry, index) => new SearchableCodeLookupEntry
