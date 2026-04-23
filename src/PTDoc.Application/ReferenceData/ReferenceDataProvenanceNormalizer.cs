@@ -49,7 +49,7 @@ public static class ReferenceDataProvenanceNormalizer
         var normalizedSeparators = trimmed.Replace('\\', '/');
         if (normalizedSeparators.StartsWith(ClinicReferenceDataPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            return normalizedSeparators;
+            return $"{ClinicReferenceDataPrefix}{normalizedSeparators[ClinicReferenceDataPrefix.Length..]}";
         }
 
         if (normalizedSeparators.Contains('/'))

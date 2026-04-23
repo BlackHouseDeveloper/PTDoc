@@ -23,6 +23,15 @@ public sealed class ReferenceDataProvenanceNormalizerTests
     }
 
     [Fact]
+    public void NormalizeDocumentPath_CanonicalizesClinicReferencePrefixCasing()
+    {
+        Assert.Equal(
+            "docs/clinicrefdata/Commonly used CPT codes and modifiers.md",
+            ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(
+                " Docs/clinicrefdata/Commonly used CPT codes and modifiers.md "));
+    }
+
+    [Fact]
     public void NormalizeDocumentPath_MapsKnownBareClinicReferenceFilename()
     {
         Assert.Equal(

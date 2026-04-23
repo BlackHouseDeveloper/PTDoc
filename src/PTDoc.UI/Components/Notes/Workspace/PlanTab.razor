@@ -84,7 +84,7 @@
                 <button type="button"
                         class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
                         disabled="@IsReadOnly"
-                        aria-pressed="@alreadySelected.ToString().ToLower()"
+                        aria-pressed="@(alreadySelected ? "true" : "false")"
                         @onclick="() => ToggleCptQuickPickAsync(quickPick)"
                         data-testid="cpt-quick-pick">
                     <span class="pt-card__cpt-code">@quickPick.Code</span>
