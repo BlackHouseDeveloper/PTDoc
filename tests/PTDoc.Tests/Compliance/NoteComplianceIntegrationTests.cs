@@ -168,7 +168,7 @@ public class NoteComplianceIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateAsync_SourceBackedCptModifier_ReturnsNoModifierError()
+    public async Task ValidateAsync_AllowedCptModifierForKnownCode_ReturnsNoModifierError()
     {
         var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
         {
