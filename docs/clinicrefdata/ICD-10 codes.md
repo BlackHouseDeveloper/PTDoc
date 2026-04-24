@@ -102,7 +102,7 @@ ICD-10 codes
 
 ###  **Wrist & Hand**
 
-* **M65.4** – Radial styloid tenosynovitis (De Quervain’s), unspecified
+* **M65.4** – Radial styloid tenosynovitis (De Quervain's), unspecified
 
 * **M65.311** – Trigger finger, right hand
 
@@ -206,79 +206,76 @@ ICD-10 codes
 
 * **G25.81** – Restless legs syndrome
 
-* **G20** – Parkinson’s disease
+* **G20** – Parkinson's disease
 
-  ###  **Pelvic Pain**
+---
 
-* **R10.2 – Pelvic and perineal pain (general pelvic pain)**
+###  **Pelvic Pain**
 
-* **M79.4 – Neuralgia/neuritis of unspecified site (can apply if pudendal or pelvic nerves involved)**
+* **R10.2** – Pelvic and perineal pain (general pelvic pain)
 
-* **N94.89 – Other specified conditions associated with female genital organs and menstrual cycle (used for pelvic pain with gynecological causes)**
+* **M79.4** – Neuralgia/neuritis of unspecified site (can apply if pudendal or pelvic nerves involved)
 
-* **N94.1 – Dyspareunia (painful intercourse)**
+* **N94.89** – Other specified conditions associated with female genital organs and menstrual cycle (used for pelvic pain with gynecological causes)
 
-  ---
+* **N94.1** – Dyspareunia (painful intercourse)
 
-  ###  **Pelvic Floor Dysfunction / Incontinence**
+---
 
-* **N81.10 – Cystocele, unspecified**
+###  **Pelvic Floor Dysfunction / Incontinence**
 
-* **N81.2 – Incomplete uterovaginal prolapse**
+* **N81.10** – Cystocele, unspecified
 
-* **N81.6 – Rectocele**
+* **N81.2** – Incomplete uterovaginal prolapse
 
-* **N81.4 – Uterovaginal prolapse, unspecified**
+* **N81.6** – Rectocele
 
-* **N39.3 – Stress incontinence (female/male)**
+* **N81.4** – Uterovaginal prolapse, unspecified
 
-* **N39.41 – Urge incontinence**
+* **N39.3** – Stress incontinence (female/male)
 
-* **N39.46 – Mixed incontinence (stress and urge)**
+* **N39.41** – Urge incontinence
 
-* **N32.81 – Overactive bladder**
+* **N39.46** – Mixed incontinence (stress and urge)
 
-* **R39.81 – Functional urinary incontinence**
+* **N32.81** – Overactive bladder
 
-* **R15.9 – Full incontinence of feces (fecal incontinence)**
+* **R39.81** – Functional urinary incontinence
 
-* **K59.00 – Constipation, unspecified**
+* **R15.9** – Full incontinence of feces (fecal incontinence)
 
-  ---
+* **K59.00** – Constipation, unspecified
 
-  ### **Pelvic Instability / Musculoskeletal**
+---
 
-* **S33.6XXA – Sprain of sacroiliac joint (initial encounter)**
+### **Pelvic Instability / Musculoskeletal**
 
-* **M53.3 – Sacrococcygeal disorders, not elsewhere classified**
+* **S33.6XXA** – Sprain of sacroiliac joint, initial encounter
 
-* **M53.2X7 – Spinal instabilities, lumbosacral region**
+* **M53.3** – Sacrococcygeal disorders, not elsewhere classified
 
-* **M54.30 – Sciatica, unspecified side (can be related to piriformis/pelvic referral)**
+* **M53.2X7** – Spinal instabilities, lumbosacral region
 
-* **M62.89 – Other specified disorders of muscle (used when specific pelvic floor or deep hip muscle dysfunction is identified)**
+* **M54.30** – Sciatica, unspecified side (can be related to piriformis/pelvic referral)
 
-  ---
+* **M62.89** – Other specified disorders of muscle (used when specific pelvic floor or deep hip muscle dysfunction is identified)
 
-  ###  **Sacroiliac Joint / Coccyx**
+---
 
-* **S33.6XXA – Sprain of sacroiliac joint, initial encounter**
+###  **Sacroiliac Joint / Coccyx**
 
-* **S33.6XXD – Sprain of sacroiliac joint, subsequent encounter**
+* **S33.6XXD** – Sprain of sacroiliac joint, subsequent encounter
 
-* **M53.3 – Sacrococcygeal disorders (includes coccydynia)**
+* **S33.2XXA** – Subluxation of sacroiliac joint
 
-* **S33.2XXA – Subluxation of sacroiliac joint**
+---
 
-  ---
+###  **Post-Surgical or Obstetric Related**
 
-  ###  **Post-Surgical or Obstetric Related**
+* **Z98.890** – Post-surgical status (e.g., hysterectomy, pelvic floor repair)
 
-* **Z98.890 – Post-surgical status (e.g., hysterectomy, pelvic floor repair)**
+* **O90.89** – Other complications of the puerperium (used for postpartum pelvic complications)
 
-* **O90.89 – Other complications of the puerperium (used for postpartum pelvic complications)**
+* **O71.89** – Other specified obstetric trauma
 
-* **O71.89 – Other specified obstetric trauma**
-
-* **Z39.2 – Encounter for routine postpartum follow-up**
-
+* **Z39.2** – Encounter for routine postpartum follow-up

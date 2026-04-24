@@ -15,6 +15,8 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class PlanTabTests : TestContext
 {
+    private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
+
     [Fact]
     public void PlanTab_SearchResultAddsSuggestedModifierSelection()
     {
@@ -32,10 +34,10 @@ public sealed class PlanTabTests : TestContext
                 {
                     Code = "97110",
                     Description = "Therapeutic exercises",
-                    Source = "Commonly used CPT codes and modifiers.md",
+                    Source = CptSource,
                     ModifierOptions = ["GP", "KX", "CQ"],
                     SuggestedModifiers = ["GP"],
-                    ModifierSource = "Commonly used CPT codes and modifiers.md"
+                    ModifierSource = CptSource
                 }
             ]);
 
@@ -69,7 +71,202 @@ public sealed class PlanTabTests : TestContext
             var chips = cut.FindAll("[data-testid='modifier-chip']");
             Assert.Equal(3, chips.Count);
             Assert.Contains("pt-card__modifier-chip--active", chips[0].ClassList);
-            Assert.Contains("Commonly used CPT codes and modifiers.md", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains(CptSource, cut.Markup, StringComparison.Ordinal);
+        });
+
+        workspaceService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanTab_RendersQuickPicksWithoutCustomizeButton()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm())
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.Empty(cut.FindAll("[data-testid='customize-cpt-btn']"));
+        Assert.Contains("Quick-pick CPT shortcuts", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(6, cut.FindAll("[data-testid='cpt-quick-pick']").Count);
+    }
+
+    [Fact]
+    public async Task PlanTab_QuickPickToggle_RemovesExistingEntryUsingNormalizedCodeMatch()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm
+        {
+            SelectedCptCodes =
+            [
+                new CptCodeEntry
+                {
+                    Code = " 97140 ",
+                    Description = "Legacy manual therapy",
+                    Units = 2
+                }
+            ]
+        };
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        var quickPick = cut.FindAll("[data-testid='cpt-quick-pick']")
+            .First(button => button.TextContent.Contains("97140", StringComparison.Ordinal));
+
+        Assert.Contains("pt-card__cpt-tile--active", quickPick.ClassList);
+        Assert.Equal("true", quickPick.GetAttribute("aria-pressed"));
+
+        await cut.InvokeAsync(() => quickPick.Click());
+
+        cut.WaitForAssertion(() => Assert.Empty(vm.SelectedCptCodes));
+        workspaceService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task PlanTab_SearchResultNormalizesCodeBeforeApplyingTimedDefaultUnits()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm();
+
+        workspaceService
+            .Setup(service => service.SearchCptAsync(
+                "97110",
+                8,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CodeLookupEntry
+                {
+                    Code = " 97110 ",
+                    Description = "Therapeutic exercises",
+                    Source = CptSource,
+                    ModifierOptions = ["GP", "KX", "CQ"],
+                    SuggestedModifiers = ["GP"],
+                    ModifierSource = CptSource
+                }
+            ]);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("[data-testid='cpt-search-input']").Input("97110");
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[data-testid='cpt-search-result']")));
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid='cpt-search-result']").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            var selected = Assert.Single(vm.SelectedCptCodes);
+            Assert.Equal("97110", selected.Code);
+            Assert.Equal(2, selected.Units);
+        });
+
+        workspaceService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanTab_NormalizesLegacyTimedCodesForMinutesInputAndBillingAdvisories()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = " 97110 ",
+                        Description = "Legacy therapeutic exercises",
+                        Units = 2
+                    }
+                ]
+            })
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.Single(cut.FindAll("[data-testid='cpt-minutes-input']"));
+        Assert.Contains("Timed CPT minutes are still needed", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("97110", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PlanTab_QuickPicksUseLookupBackedModifierMetadata()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm();
+        var quickPickCodes = new[] { "97140", "97110", "97112", "97530", "97116", "97535" };
+
+        foreach (var code in quickPickCodes)
+        {
+            workspaceService
+                .Setup(service => service.SearchCptAsync(code, 5, It.IsAny<CancellationToken>()))
+                .ReturnsAsync([
+                    new CodeLookupEntry
+                    {
+                        Code = code,
+                        Description = $"Lookup description for {code}",
+                        Source = CptSource,
+                        ModifierOptions = ["GP", "KX", "CQ"],
+                        SuggestedModifiers = ["GP"],
+                        ModifierSource = CptSource
+                    }
+                ]);
+        }
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        for (var index = 0; index < quickPickCodes.Length; index++)
+        {
+            var button = cut.FindAll("[data-testid='cpt-quick-pick']")[index];
+            await cut.InvokeAsync(() => button.Click());
+        }
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(
+                quickPickCodes.OrderBy(value => value).ToArray(),
+                vm.SelectedCptCodes.Select(code => code.Code).OrderBy(value => value).ToArray());
+            Assert.All(vm.SelectedCptCodes, entry =>
+            {
+                Assert.Equal(["GP"], entry.Modifiers);
+                Assert.Equal(["GP"], entry.SuggestedModifiers);
+                Assert.Equal(["CQ", "GP", "KX"], entry.ModifierOptions.OrderBy(value => value).ToArray());
+                Assert.Equal(CptSource, entry.ModifierSource);
+            });
         });
 
         workspaceService.VerifyAll();

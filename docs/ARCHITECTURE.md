@@ -46,6 +46,14 @@ PTDoc follows Robert C. Martin's Clean Architecture with strict dependency rules
 - **Security:** JWT authentication, role-based authorization
 - **Auditing:** Database-level audit trails for PHI access
 
+### Reference Data Source Model
+
+Clinic reference markdown files under `docs/clinicrefdata/` are the human authoring source for clinical lookup code and description coverage. Runtime services do not parse those markdown files directly; they load embedded JSON mirrors owned by `PTDoc.Application/Data/`, such as `WorkspaceLookupReferenceData.json`, so API, UI, and MAUI callers share deterministic runtime assets.
+
+Embedded runtime mirrors may include application-only lookup metadata that is not authored in markdown, including search terms and derived suggested defaults. For CPT lookup, the modifier option list mirrors the markdown modifier cheat sheet, while `defaultPtSuggestedModifiers` is app policy derived from the markdown's GP plan-of-care guidance.
+
+Reference-data provenance paths must use canonical repo-relative `docs/clinicrefdata/...` strings. Cross-layer normalization helpers for these paths live in `PTDoc.Application.ReferenceData` so Infrastructure and Presentation can normalize provenance without violating Clean Architecture dependencies.
+
 ## Layer Details
 
 ### 1. Core Layer (PTDoc.Core)

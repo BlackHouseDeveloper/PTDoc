@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -49,9 +50,7 @@ public sealed class NoteSaveValidationService(
                     .Select(value => value.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList(),
-                ModifierSource = string.IsNullOrWhiteSpace(entry.ModifierSource)
-                    ? null
-                    : entry.ModifierSource.Trim()
+                ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(entry.ModifierSource)
             })
             .ToList();
         var diagnosisCodes = (request.DiagnosisCodes ?? [])

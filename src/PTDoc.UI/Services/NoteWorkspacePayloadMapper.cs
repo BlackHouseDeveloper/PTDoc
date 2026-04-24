@@ -35,11 +35,13 @@ public sealed class NoteWorkspacePayloadMapper
         var houseLayoutSelections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(payload.Subjective.OtherLivingSituation);
         var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
         var selectedBodyPart = ResolveEffectiveSelectedBodyPart(payload);
+        var structuredPayload = ClonePayload(payload);
+        NormalizePlannedCptCodeSources(structuredPayload?.Plan?.SelectedCptCodes);
 
         return new NoteWorkspacePayload
         {
             WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(payload),
-            StructuredPayload = ClonePayload(payload),
+            StructuredPayload = structuredPayload,
             DryNeedling = payload.DryNeedling is null
                 ? new DryNeedlingVm()
                 : new DryNeedlingVm
@@ -223,7 +225,7 @@ public sealed class NoteWorkspacePayloadMapper
                         Modifiers = [.. code.Modifiers],
                         ModifierOptions = [.. code.ModifierOptions],
                         SuggestedModifiers = [.. code.SuggestedModifiers],
-                        ModifierSource = code.ModifierSource
+                        ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource)
                     })
                     .ToList(),
                 TreatmentFrequency = FormatFrequency(payload.Plan.TreatmentFrequencyDaysPerWeek),
@@ -256,6 +258,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
         preservedPayload.Plan ??= new WorkspacePlanV2();
         preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+        NormalizePlannedCptCodeSources(preservedPayload.Plan.SelectedCptCodes);
 
         var primaryBodyPart = ParseBodyPart(
             !string.IsNullOrWhiteSpace(payload.Objective.SelectedBodyPart)
@@ -908,7 +911,7 @@ public sealed class NoteWorkspacePayloadMapper
                     Modifiers = [.. code.Modifiers],
                     ModifierOptions = [.. code.ModifierOptions],
                     SuggestedModifiers = [.. code.SuggestedModifiers],
-                    ModifierSource = code.ModifierSource
+                    ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource)
                 })),
                 StringComparer.OrdinalIgnoreCase);
 
@@ -955,7 +958,7 @@ public sealed class NoteWorkspacePayloadMapper
                             .ToList();
                     existing.ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
                         ? existing.ModifierSource
-                        : code.ModifierSource.Trim();
+                        : ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource);
                     return existing;
                 }
 
@@ -980,12 +983,23 @@ public sealed class NoteWorkspacePayloadMapper
                         .Select(value => value.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList(),
-                    ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
-                        ? null
-                        : code.ModifierSource.Trim()
+                    ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource)
                 };
             })
             .ToList();
+    }
+
+    private static void NormalizePlannedCptCodeSources(IEnumerable<PlannedCptCodeV2>? codes)
+    {
+        if (codes is null)
+        {
+            return;
+        }
+
+        foreach (var code in codes)
+        {
+            code.ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource);
+        }
     }
 
     private static List<string> SplitDelimitedValues(string? value)

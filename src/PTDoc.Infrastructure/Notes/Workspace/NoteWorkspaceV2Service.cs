@@ -177,6 +177,8 @@ public sealed class NoteWorkspaceV2Service(
         var payload = request.Payload ?? new NoteWorkspaceV2Payload();
         payload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
         payload.NoteType = request.NoteType;
+        payload.Plan ??= new WorkspacePlanV2();
+        NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         var scheduledVisits = await db.Appointments
             .Where(appointment => appointment.PatientId == request.PatientId && appointment.StartTimeUtc >= request.DateOfService.Date)
@@ -251,9 +253,7 @@ public sealed class NoteWorkspaceV2Service(
                         .Select(value => value.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList(),
-                    ModifierSource = string.IsNullOrWhiteSpace(code.ModifierSource)
-                        ? null
-                        : code.ModifierSource.Trim()
+                    ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource)
                 };
             })
             .ToList();
@@ -506,6 +506,19 @@ public sealed class NoteWorkspaceV2Service(
             IsLocked = intake.IsLocked,
             IsSubmitted = intake.SubmittedAt.HasValue
         };
+    }
+
+    private static void NormalizeCptModifierSources(IEnumerable<PlannedCptCodeV2>? codes)
+    {
+        if (codes is null)
+        {
+            return;
+        }
+
+        foreach (var code in codes)
+        {
+            code.ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource);
+        }
     }
 
     private static IntakeStructuredDataDto ResolveStructuredIntakeData(IntakeForm intake, IntakeResponseDraft draft)
@@ -1241,6 +1254,8 @@ public sealed class NoteWorkspaceV2Service(
                     if (payload is not null)
                     {
                         payload.NoteType = note.NoteType;
+                        payload.Plan ??= new WorkspacePlanV2();
+                        NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
                         return Task.FromResult(new PayloadDeserializationResult(payload, CanBackfill: false));
                     }
                 }
@@ -1266,6 +1281,8 @@ public sealed class NoteWorkspaceV2Service(
                     if (payload is not null)
                     {
                         payload.NoteType = note.NoteType;
+                        payload.Plan ??= new WorkspacePlanV2();
+                        NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
                         return Task.FromResult(new PayloadDeserializationResult(payload, CanBackfill: true));
                     }
                 }

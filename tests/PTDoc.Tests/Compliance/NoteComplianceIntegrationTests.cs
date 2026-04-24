@@ -167,6 +167,29 @@ public class NoteComplianceIntegrationTests : IDisposable
         Assert.Contains(result.Errors, error => error.Contains("unsupported modifier", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task ValidateAsync_AllowedCptModifierForKnownCode_ReturnsNoModifierError()
+    {
+        var result = await _validationService.ValidateAsync(new NoteSaveComplianceRequest
+        {
+            PatientId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 1),
+            CptEntries =
+            [
+                new CptCodeEntry
+                {
+                    Code = "97110",
+                    Units = 1,
+                    Minutes = 8,
+                    Modifiers = ["GP"]
+                }
+            ]
+        });
+
+        Assert.DoesNotContain(result.Errors, error => error.Contains("unsupported modifier", StringComparison.OrdinalIgnoreCase));
+    }
+
     // ─── Audit logging for note edits ─────────────────────────────────────────
 
     [Fact]

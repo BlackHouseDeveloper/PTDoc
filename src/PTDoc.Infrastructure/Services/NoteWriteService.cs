@@ -5,6 +5,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
@@ -650,7 +651,7 @@ public sealed class NoteWriteService(
                         .Select(value => value.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList(),
-                    ModifierSource = code.ModifierSource
+                    ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource)
                 })
                 .ToList();
             payload.Plan.HomeExerciseProgramNotes = content.Plan.HomeExerciseProgramNotes;
@@ -821,7 +822,22 @@ public sealed class NoteWriteService(
     private static string SerializeWorkspacePayload(NoteWorkspaceV2Payload payload)
     {
         payload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
+        payload.Plan ??= new WorkspacePlanV2();
+        NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
         return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
+    private static void NormalizeCptModifierSources(IEnumerable<PlannedCptCodeV2>? codes)
+    {
+        if (codes is null)
+        {
+            return;
+        }
+
+        foreach (var code in codes)
+        {
+            code.ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource);
+        }
     }
 
     private static bool TryReadSchemaVersion(JsonElement root, out int schemaVersion)

@@ -1,14 +1,14 @@
 {
-  "version": "2026-04-10",
+  "version": "2026-04-23",
   "icd10Provenance": {
     "documentPath": "docs/clinicrefdata/ICD-10 codes.md",
-    "version": "2026-04-10",
-    "notes": "Branch 2 canonical lookup catalog for workspace and generic ICD search."
+    "version": "2026-04-23",
+    "notes": "Markdown is the human authoring source for ICD code and description coverage; this JSON is the embedded runtime mirror with JSON-only search terms."
   },
   "cptProvenance": {
     "documentPath": "docs/clinicrefdata/Commonly used CPT codes and modifiers.md",
-    "version": "2026-04-10",
-    "notes": "Branch 2 canonical CPT and modifier catalog for workspace lookup."
+    "version": "2026-04-23",
+    "notes": "Markdown is the human authoring source for CPT and modifier option coverage; default PT suggested modifiers are app policy derived from the GP plan-of-care guidance."
   },
   "defaultCptModifierOptions": [
     "GP",
@@ -115,9 +115,31 @@
     { "code": "G25.81", "description": "Restless legs syndrome", "isCompleteLibrary": false },
     { "code": "G20", "description": "Parkinson's disease", "isCompleteLibrary": false },
     { "code": "R10.2", "description": "Pelvic and perineal pain (general pelvic pain)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic pain", "pelvic floor" ] },
-    { "code": "M79.4", "description": "Neuralgia/neuritis of unspecified site", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic nerve", "pudendal", "pelvic pain" ] },
-    { "code": "N94.89", "description": "Other specified conditions associated with female genital organs and menstrual cycle", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic pain", "gynecological pelvic pain" ] },
-    { "code": "N94.1", "description": "Dyspareunia (painful intercourse)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic pain", "painful intercourse", "dyspareunia" ] }
+    { "code": "M79.4", "description": "Neuralgia/neuritis of unspecified site (can apply if pudendal or pelvic nerves involved)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic nerve", "pudendal", "pelvic pain" ] },
+    { "code": "N94.89", "description": "Other specified conditions associated with female genital organs and menstrual cycle (used for pelvic pain with gynecological causes)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic pain", "gynecological pelvic pain" ] },
+    { "code": "N94.1", "description": "Dyspareunia (painful intercourse)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic pain", "painful intercourse", "dyspareunia" ] },
+    { "code": "N81.10", "description": "Cystocele, unspecified", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "prolapse", "cystocele" ] },
+    { "code": "N81.2", "description": "Incomplete uterovaginal prolapse", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "prolapse", "uterovaginal prolapse" ] },
+    { "code": "N81.6", "description": "Rectocele", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "prolapse", "rectocele" ] },
+    { "code": "N81.4", "description": "Uterovaginal prolapse, unspecified", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "prolapse", "uterovaginal prolapse" ] },
+    { "code": "N39.3", "description": "Stress incontinence (female/male)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "incontinence", "stress incontinence" ] },
+    { "code": "N39.41", "description": "Urge incontinence", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "incontinence", "urge incontinence" ] },
+    { "code": "N39.46", "description": "Mixed incontinence (stress and urge)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "incontinence", "mixed incontinence" ] },
+    { "code": "N32.81", "description": "Overactive bladder", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "overactive bladder", "incontinence" ] },
+    { "code": "R39.81", "description": "Functional urinary incontinence", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "urinary incontinence", "functional incontinence" ] },
+    { "code": "R15.9", "description": "Full incontinence of feces (fecal incontinence)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "fecal incontinence", "incontinence" ] },
+    { "code": "K59.00", "description": "Constipation, unspecified", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "constipation" ] },
+    { "code": "S33.6XXA", "description": "Sprain of sacroiliac joint, initial encounter", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic instability", "sacroiliac", "SI joint" ] },
+    { "code": "M53.3", "description": "Sacrococcygeal disorders, not elsewhere classified", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "coccyx", "coccydynia", "sacroiliac" ] },
+    { "code": "M53.2X7", "description": "Spinal instabilities, lumbosacral region", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic instability", "lumbosacral instability" ] },
+    { "code": "M54.30", "description": "Sciatica, unspecified side (can be related to piriformis/pelvic referral)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "piriformis", "sciatica" ] },
+    { "code": "M62.89", "description": "Other specified disorders of muscle (used when specific pelvic floor or deep hip muscle dysfunction is identified)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "pelvic floor", "deep hip muscle", "muscle dysfunction" ] },
+    { "code": "S33.6XXD", "description": "Sprain of sacroiliac joint, subsequent encounter", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "sacroiliac", "SI joint" ] },
+    { "code": "S33.2XXA", "description": "Subluxation of sacroiliac joint", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "sacroiliac", "SI joint", "subluxation" ] },
+    { "code": "Z98.890", "description": "Post-surgical status (e.g., hysterectomy, pelvic floor repair)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "post-surgical", "pelvic floor repair", "hysterectomy" ] },
+    { "code": "O90.89", "description": "Other complications of the puerperium (used for postpartum pelvic complications)", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "postpartum", "puerperium" ] },
+    { "code": "O71.89", "description": "Other specified obstetric trauma", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "postpartum", "obstetric trauma" ] },
+    { "code": "Z39.2", "description": "Encounter for routine postpartum follow-up", "isCompleteLibrary": false, "searchTerms": [ "pelvic", "postpartum", "postpartum follow-up" ] }
   ],
   "cptCodes": [
     { "code": "97110", "description": "Therapeutic Exercise (strength, ROM, endurance, flexibility)", "isCompleteLibrary": false },

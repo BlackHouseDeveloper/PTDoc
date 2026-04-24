@@ -9,6 +9,7 @@ namespace PTDoc.Tests.Notes;
 public sealed class NoteWriteServiceNormalizationTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
 
     [Fact]
     public void NormalizeContentJson_LegacyWorkspaceOutcomeMeasures_UsesSharedTypedParser()
@@ -46,5 +47,39 @@ public sealed class NoteWriteServiceNormalizationTests
         Assert.Equal(
             [OutcomeMeasureType.QuickDASH, OutcomeMeasureType.VAS],
             payload!.Objective.OutcomeMeasures.Select(entry => entry.MeasureType).ToArray());
+    }
+
+    [Fact]
+    public void NormalizeContentJson_LegacyWorkspaceCptModifierSource_NormalizesProvenance()
+    {
+        var legacyContentJson = """
+                                {
+                                  "workspaceNoteType": "Evaluation Note",
+                                  "plan": {
+                                    "selectedCptCodes": [
+                                      {
+                                        "code": "97110",
+                                        "description": "Therapeutic exercise",
+                                        "units": 1,
+                                        "modifiers": [ "GP" ],
+                                        "modifierOptions": [ "GP", "KX" ],
+                                        "suggestedModifiers": [ "GP" ],
+                                        "modifierSource": "Commonly used CPT codes and modifiers.md"
+                                      }
+                                    ]
+                                  }
+                                }
+                                """;
+
+        var normalizedJson = NoteWriteService.NormalizeContentJson(
+            NoteType.Evaluation,
+            isReEvaluation: false,
+            new DateTime(2026, 4, 5),
+            legacyContentJson);
+
+        var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(normalizedJson, JsonOptions);
+
+        Assert.NotNull(payload);
+        Assert.Equal(CptSource, Assert.Single(payload!.Plan.SelectedCptCodes).ModifierSource);
     }
 }

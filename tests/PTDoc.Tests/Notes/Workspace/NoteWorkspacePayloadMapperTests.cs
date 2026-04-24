@@ -10,6 +10,8 @@ namespace PTDoc.Tests.Notes.Workspace;
 [Trait("Category", "CoreCi")]
 public sealed class NoteWorkspacePayloadMapperTests
 {
+    private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
+
     private readonly NoteWorkspacePayloadMapper _mapper =
         new(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
 
@@ -57,6 +59,71 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Contains("Hypertension (High Blood Pressure)", uiPayload.Subjective.Comorbidities);
         Assert.Contains("Zestril / Lisinopril", uiPayload.Subjective.SelectedMedicationLabels);
         Assert.Equal("Fish oil", uiPayload.Subjective.MedicationDetails);
+    }
+
+    [Fact]
+    public void MapToUiPayload_NormalizesCptModifierSource()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97110",
+                        Description = "Therapeutic exercise",
+                        ModifierSource = "Commonly used CPT codes and modifiers.md"
+                    }
+                ]
+            }
+        };
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(CptSource, Assert.Single(uiPayload.Plan.SelectedCptCodes).ModifierSource);
+        Assert.Equal(CptSource, Assert.Single(uiPayload.StructuredPayload!.Plan.SelectedCptCodes).ModifierSource);
+    }
+
+    [Fact]
+    public void MapToV2Payload_NormalizesCptModifierSource()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                Plan = new WorkspacePlanV2
+                {
+                    SelectedCptCodes =
+                    [
+                        new PlannedCptCodeV2
+                        {
+                            Code = "97110",
+                            ModifierSource = "Commonly used CPT codes and modifiers.md"
+                        }
+                    ]
+                }
+            },
+            Plan = new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = "97110",
+                        Description = "Therapeutic exercise",
+                        Units = 1,
+                        ModifierSource = "Commonly used CPT codes and modifiers.md"
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal(CptSource, Assert.Single(result.Plan.SelectedCptCodes).ModifierSource);
     }
 
     [Fact]

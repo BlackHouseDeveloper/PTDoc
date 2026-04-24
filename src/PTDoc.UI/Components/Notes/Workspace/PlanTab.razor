@@ -12,7 +12,7 @@
 @inject ILogger<PlanTab> Logger
 
 @* PlanTab: CPT codes, treatment plan, additional planning, clinical summary.
-   Per Blueprint: CPT favorites grid, frequency/duration required fields, AI-assisted
+   Per Blueprint: CPT quick-pick grid, frequency/duration required fields, AI-assisted
    discharge planning, follow-up instructions, and final clinical summary.
 *@
 
@@ -27,16 +27,8 @@
         <div class="pt-card__header">
             <div>
                 <h3 class="pt-card__title">CPT Procedure Codes</h3>
-                <p class="pt-card__subtitle">Select billable procedure codes for this session</p>
+                <p class="pt-card__subtitle">Search the source-backed CPT catalog or use product-default quick picks</p>
             </div>
-            @if (!IsReadOnly)
-            {
-                <button type="button" class="pt-card__secondary-btn"
-                        data-testid="customize-cpt-btn"
-                        @onclick="HandleCustomizeCptAsync">
-                    Customize
-                </button>
-            }
         </div>
 
         @if (!IsReadOnly)
@@ -83,20 +75,21 @@
             }
         }
 
-        <!-- Favorites grid (6 pre-loaded) -->
-        <p class="pt-card__field-label">Favorite CPT Codes</p>
+        <!-- Product-default quick picks; lookup search remains the canonical CPT source. -->
+        <p class="pt-card__field-label">Quick-pick CPT shortcuts</p>
         <div class="pt-card__cpt-grid">
-            @foreach (var fav in _favoriteCptCodes)
+            @foreach (var quickPick in _quickPickCptCodes)
             {
-                var alreadySelected = Vm.SelectedCptCodes.Any(c => c.Code == fav.Code);
+                var alreadySelected = Vm.SelectedCptCodes.Any(c => CodesMatch(c.Code, quickPick.Code));
                 <button type="button"
                         class="pt-card__cpt-tile @(alreadySelected ? "pt-card__cpt-tile--active" : "")"
-                        disabled="@(IsReadOnly || (alreadySelected ? false : false))"
-                        aria-pressed="@alreadySelected.ToString().ToLower()"
-                        @onclick="() => ToggleCptFavoriteAsync(fav)">
-                    <span class="pt-card__cpt-code">@fav.Code</span>
-                    <span class="pt-card__cpt-name">@fav.ShortName</span>
-                    <span class="pt-card__cpt-unit">@fav.DefaultUnits min</span>
+                        disabled="@IsReadOnly"
+                        aria-pressed="@(alreadySelected ? "true" : "false")"
+                        @onclick="() => ToggleCptQuickPickAsync(quickPick)"
+                        data-testid="cpt-quick-pick">
+                    <span class="pt-card__cpt-code">@quickPick.Code</span>
+                    <span class="pt-card__cpt-name">@quickPick.ShortName</span>
+                    <span class="pt-card__cpt-unit">@quickPick.DefaultUnits min</span>
                 </button>
             }
         </div>
@@ -109,7 +102,7 @@
                     <rect x="4" y="4" width="20" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M9 10h10M9 14h10M9 18h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
-                <p>No CPT codes selected — click a favorite above to add.</p>
+                <p>No CPT codes selected — search the catalog or choose a quick pick above to add one.</p>
             </div>
         }
         else
@@ -159,7 +152,7 @@
                                     <span class="pt-card__unit-label">units</span>
                                 </div>
 
-                                @if (KnownTimedCptCodes.Codes.Contains(entry.Code))
+                                @if (IsTimedCode(entry.Code))
                                 {
                                     <label class="pt-card__minutes-field">
                                         <span class="pt-card__unit-label">Minutes</span>
@@ -513,11 +506,11 @@
                 ? "Save the note before generating AI plan content."
                 : null;
 
-    // ── Static: Favorite CPT codes ─────────────────────────────────
+    // ── Static: product-default CPT quick picks ────────────────────
 
-    private record FavoriteCptCode(string Code, string ShortName, int DefaultUnits);
+    private record QuickPickCptCode(string Code, string ShortName, int DefaultUnits);
 
-    private static readonly FavoriteCptCode[] _favoriteCptCodes =
+    private static readonly QuickPickCptCode[] _quickPickCptCodes =
     [
         new("97140", "Manual Therapy",           2),
         new("97110", "Therapeutic Exercise",      2),
@@ -596,9 +589,9 @@
         return VmChanged.InvokeAsync(Vm);
     }
 
-    private async Task ToggleCptFavoriteAsync(FavoriteCptCode fav)
+    private async Task ToggleCptQuickPickAsync(QuickPickCptCode quickPick)
     {
-        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => c.Code == fav.Code);
+        var existing = Vm.SelectedCptCodes.FirstOrDefault(c => CodesMatch(c.Code, quickPick.Code));
         if (existing is not null)
         {
             Vm.SelectedCptCodes.Remove(existing);
@@ -607,16 +600,17 @@
         }
 
         Vm.SelectedCptCodes.Add(await BuildCptEntryAsync(
-            fav.Code,
-            fav.ShortName,
-            fav.DefaultUnits));
+            quickPick.Code,
+            quickPick.ShortName,
+            quickPick.DefaultUnits));
         await VmChanged.InvokeAsync(Vm);
     }
 
     private async Task AddCptCodeAsync(CodeLookupEntry result)
     {
+        var normalizedCode = NormalizeCode(result.Code);
         var existing = Vm.SelectedCptCodes.FirstOrDefault(code =>
-            string.Equals(code.Code, result.Code, StringComparison.OrdinalIgnoreCase));
+            CodesMatch(code.Code, normalizedCode));
 
         if (existing is not null)
         {
@@ -634,9 +628,9 @@
 
         Vm.SelectedCptCodes.Add(new UiCptCodeEntry
         {
-            Code = result.Code,
+            Code = normalizedCode,
             Description = result.Description,
-            Units = ResolveDefaultUnits(result.Code),
+            Units = ResolveDefaultUnits(normalizedCode),
             Modifiers = [.. result.SuggestedModifiers],
             ModifierOptions = [.. result.ModifierOptions],
             SuggestedModifiers = [.. result.SuggestedModifiers],
@@ -647,17 +641,19 @@
 
     private async Task<UiCptCodeEntry> BuildCptEntryAsync(string code, string description, int defaultUnits)
     {
+        var normalizedCode = NormalizeCode(code);
+
         try
         {
-            var matches = await NoteWorkspaceService.SearchCptAsync(code, take: 5);
+            var matches = await NoteWorkspaceService.SearchCptAsync(normalizedCode, take: 5);
             var exactMatch = matches.FirstOrDefault(match =>
-                string.Equals(match.Code, code, StringComparison.OrdinalIgnoreCase));
+                CodesMatch(match.Code, normalizedCode));
 
             if (exactMatch is not null)
             {
                 return new UiCptCodeEntry
                 {
-                    Code = exactMatch.Code,
+                    Code = NormalizeCode(exactMatch.Code),
                     Description = exactMatch.Description,
                     Units = defaultUnits,
                     Modifiers = [.. exactMatch.SuggestedModifiers],
@@ -674,11 +670,19 @@
 
         return new UiCptCodeEntry
         {
-            Code = code,
+            Code = normalizedCode,
             Description = description,
             Units = defaultUnits
         };
     }
+
+    private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
+
+    private static bool CodesMatch(string? left, string? right) =>
+        string.Equals(NormalizeCode(left), NormalizeCode(right), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsTimedCode(string? code) =>
+        KnownTimedCptCodes.Codes.Contains(NormalizeCode(code));
 
     private void ChangeUnits(UiCptCodeEntry entry, int delta)
     {
@@ -776,7 +780,7 @@
         var advisories = new List<string>();
 
         var timedCodesMissingMinutes = Vm.SelectedCptCodes
-            .Where(entry => KnownTimedCptCodes.Codes.Contains(entry.Code) && entry.Units > 0 && entry.Minutes is null or <= 0)
+            .Where(entry => IsTimedCode(entry.Code) && entry.Units > 0 && entry.Minutes is null or <= 0)
             .Select(entry => entry.Code)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -800,14 +804,7 @@
         return advisories;
     }
 
-    private static int ResolveDefaultUnits(string code) =>
-        KnownTimedCptCodes.Codes.Contains(code) ? 2 : 1;
-
-    private Task HandleCustomizeCptAsync()
-    {
-        // Reserved for a future CPT customization dialog.
-        return Task.CompletedTask;
-    }
+    private static int ResolveDefaultUnits(string code) => IsTimedCode(code) ? 2 : 1;
 
     private Task ToggleTreatmentFocus(string focus)
     {

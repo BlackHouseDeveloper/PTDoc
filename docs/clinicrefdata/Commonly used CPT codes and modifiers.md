@@ -58,7 +58,8 @@ Commonly used CPT codes
 | **97755** | Assistive Technology Assessment |
 | **97760** | Orthotic Management and Training |
 | **97761** | Prosthetic Training |
-| **97545/97546** | Work Hardening/Conditioning (first hour/each add’l hour) |
+| **97545** | Work Hardening/Conditioning (first hour) |
+| **97546** | Work Hardening/Conditioning (each additional hour) |
 
 ---
 
@@ -107,4 +108,3 @@ Commonly used CPT codes
 * PTA provided part of session: Add CQ
 
 * Maintenance exercise: Add GY
-

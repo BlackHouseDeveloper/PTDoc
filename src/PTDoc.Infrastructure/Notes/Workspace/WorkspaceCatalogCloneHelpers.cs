@@ -10,7 +10,7 @@ internal static class WorkspaceCatalogCloneHelpers
             ? null
             : new ReferenceDataProvenance
             {
-                DocumentPath = provenance.DocumentPath,
+                DocumentPath = ReferenceDataProvenanceNormalizer.NormalizeDocumentPathOrEmpty(provenance.DocumentPath),
                 Version = provenance.Version,
                 Notes = provenance.Notes
             };
