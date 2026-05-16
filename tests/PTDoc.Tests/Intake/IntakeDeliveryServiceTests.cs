@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Moq;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Intake;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Communication;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
@@ -30,11 +32,13 @@ public sealed class IntakeDeliveryServiceTests
                 DateTimeOffset.Parse("2026-03-31T20:00:00Z"),
                 null));
 
-        var service = new IntakeDeliveryService(
+        var service = new IntakeDeliveryService(new IntakeCommunicationWorkflow(
             db,
             inviteService.Object,
             Mock.Of<ICommunicationService>(),
-            auditService);
+            new ContactNormalizer(),
+            auditService,
+            Options.Create(new CommunicationOptions())));
 
         var bundle = await service.GetDeliveryBundleAsync(intake.Id);
 
@@ -85,11 +89,13 @@ public sealed class IntakeDeliveryServiceTests
             .Setup(service => service.SendIntakeLinkSmsAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
             .Throws(new InvalidOperationException("SMS should not be called."));
 
-        var service = new IntakeDeliveryService(
+        var service = new IntakeDeliveryService(new IntakeCommunicationWorkflow(
             db,
             inviteService.Object,
             communicationService.Object,
-            auditService);
+            new ContactNormalizer(),
+            auditService,
+            Options.Create(new CommunicationOptions())));
 
         var sendResult = await service.SendInviteAsync(new IntakeSendInviteRequest
         {

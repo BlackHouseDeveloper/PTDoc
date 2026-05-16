@@ -60,6 +60,12 @@ public sealed class AzureSmsSender : ISmsSender
                     value.HttpStatusCode,
                     attempt);
 
+                if (IsTransient(value.HttpStatusCode) && attempt < MaxAttempts)
+                {
+                    await DelayForRetryAsync(attempt, cancellationToken);
+                    continue;
+                }
+
                 return Failed(message.Purpose, $"Http{value.HttpStatusCode}", attempt - 1);
             }
             catch (RequestFailedException ex) when (IsTransient(ex.Status) && attempt < MaxAttempts)

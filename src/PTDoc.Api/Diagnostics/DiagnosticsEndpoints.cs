@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.AI;
 using PTDoc.Application.AI;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Services;
 using PTDoc.Infrastructure.Data;
 
@@ -147,6 +148,14 @@ public static class DiagnosticsEndpoints
                         : missingAzureSettings.Length > 0
                             ? "AI generation is enabled but the required Azure OpenAI configuration is incomplete."
                             : "Health checks only prove process and database readiness. Azure OpenAI is exercised on the first authenticated saved-note AI request."
+                },
+                communicationRuntime = new
+                {
+                    publicBaseUrl = configuration[$"{CommunicationOptions.SectionName}:PublicBaseUrl"],
+                    recipientHashSaltConfigured = !string.IsNullOrWhiteSpace(configuration[$"{CommunicationOptions.SectionName}:RecipientHashSalt"]),
+                    acsConnectionStringConfigured = !string.IsNullOrWhiteSpace(configuration[$"{CommunicationOptions.SectionName}:Azure:ConnectionString"]),
+                    emailFromConfigured = !string.IsNullOrWhiteSpace(configuration[$"{CommunicationOptions.SectionName}:Azure:EmailFromAddress"]),
+                    smsFromConfigured = !string.IsNullOrWhiteSpace(configuration[$"{CommunicationOptions.SectionName}:Azure:SmsFromPhoneNumber"])
                 }
             });
         })

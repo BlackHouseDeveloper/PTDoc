@@ -32,6 +32,18 @@ public sealed class DeliveryResult
     public int RetryCount { get; init; }
 }
 
+public sealed record ContactNormalizationResult(
+    bool Succeeded,
+    string NormalizedValue,
+    string? SafeErrorMessage)
+{
+    public static ContactNormalizationResult Success(string normalizedValue)
+        => new(true, normalizedValue, null);
+
+    public static ContactNormalizationResult Failure(string message)
+        => new(false, string.Empty, message);
+}
+
 public sealed class PasswordResetDeliveryRequest
 {
     public string Recipient { get; init; } = string.Empty;
@@ -43,6 +55,7 @@ public sealed class IntakeLinkDeliveryRequest
 {
     public Guid IntakeId { get; init; }
     public Guid PatientId { get; init; }
+    public Guid? ClinicId { get; init; }
     public Guid? UserId { get; init; }
     public string Recipient { get; init; } = string.Empty;
     public string InviteUrl { get; init; } = string.Empty;
@@ -53,6 +66,7 @@ public sealed class IntakeLinkDeliveryRequest
 public sealed class IntakeOtpDeliveryRequest
 {
     public Guid? PatientId { get; init; }
+    public Guid? ClinicId { get; init; }
     public Guid? UserId { get; init; }
     public string Recipient { get; init; } = string.Empty;
     public string OtpCode { get; init; } = string.Empty;
@@ -62,6 +76,7 @@ public sealed class IntakeOtpDeliveryRequest
 
 public sealed class CommunicationAuditWriteRequest
 {
+    public Guid? ClinicId { get; init; }
     public Guid? PatientId { get; init; }
     public Guid? UserId { get; init; }
     public DeliveryPurpose Purpose { get; init; }
@@ -77,10 +92,45 @@ public sealed class CommunicationAuditWriteRequest
     public int RetryCount { get; init; }
 }
 
+public sealed class CommunicationDestinationRequest
+{
+    public string? Recipient { get; init; }
+    public string? Destination { get; init; }
+    public string? Contact { get; init; }
+    public string? Email { get; init; }
+    public string? PhoneNumber { get; init; }
+    public string? Phone { get; init; }
+}
+
+public sealed class PasswordResetSendRequest
+{
+    public string? Recipient { get; init; }
+    public string? Contact { get; init; }
+    public string? Email { get; init; }
+    public string? PhoneNumber { get; init; }
+    public string? Phone { get; init; }
+}
+
+public sealed class PasswordResetCompleteRequest
+{
+    public string? Token { get; init; }
+    public string? NewPin { get; init; }
+}
+
 public sealed class PasswordResetCompletionRequest
 {
     public string Token { get; init; } = string.Empty;
     public string NewPin { get; init; } = string.Empty;
+}
+
+public sealed class PasswordResetTokenValidationRequest
+{
+    public string Token { get; init; } = string.Empty;
+}
+
+public sealed class PasswordResetTokenValidationResult
+{
+    public bool IsValid { get; init; }
 }
 
 public sealed class PasswordResetCompletionResult
@@ -97,4 +147,10 @@ public enum PasswordResetCompletionStatus
     Expired,
     AlreadyUsed,
     InvalidPin
+}
+
+public sealed class IntakeCommunicationContext
+{
+    public Guid? UserId { get; init; }
+    public string? CorrelationId { get; init; }
 }

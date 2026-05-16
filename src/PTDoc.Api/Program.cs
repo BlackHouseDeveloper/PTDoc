@@ -103,13 +103,8 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
-    options.OnRejected = async (context, cancellationToken) =>
-    {
-        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        await context.HttpContext.Response.WriteAsJsonAsync(
-            new { message = "If an account matches that contact method, a secure reset link has been sent." },
-            cancellationToken);
-    };
+    options.OnRejected = (context, cancellationToken) =>
+        new ValueTask(PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
 });
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();

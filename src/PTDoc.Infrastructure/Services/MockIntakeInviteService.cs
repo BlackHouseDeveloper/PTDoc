@@ -45,9 +45,13 @@ public sealed class MockIntakeInviteService : IIntakeInviteService
         return Task.FromResult(new IntakeInviteResult(true, accessToken, expiry, null));
     }
 
-    public Task<bool> SendOtpAsync(string contact, OtpChannel channel, CancellationToken cancellationToken = default)
+    public Task<bool> SendOtpAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(contact))
+        if (string.IsNullOrWhiteSpace(inviteToken) || string.IsNullOrWhiteSpace(contact))
         {
             return Task.FromResult(false);
         }
@@ -58,10 +62,17 @@ public sealed class MockIntakeInviteService : IIntakeInviteService
     }
 
     public Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(
+        string inviteToken,
         string contact,
+        OtpChannel channel,
         string otpCode,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(inviteToken))
+        {
+            return Task.FromResult(new IntakeInviteResult(false, null, null, "Invalid invite token."));
+        }
+
         if (!_pendingOtps.TryGetValue(contact, out var pending) || pending.Expiry < DateTimeOffset.UtcNow)
         {
             return Task.FromResult(new IntakeInviteResult(false, null, null, "Invalid or expired code."));

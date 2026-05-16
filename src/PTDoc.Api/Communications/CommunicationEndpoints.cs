@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Identity;
-using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Communication;
 using PTDoc.Infrastructure.Data;
@@ -45,15 +44,21 @@ public static class CommunicationEndpoints
         group.MapPost("/password-reset/complete", CompletePasswordReset)
             .WithName("CompletePasswordReset")
             .WithSummary("Complete a single-use password reset token")
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .RequireRateLimiting("PasswordResetCommunication");
+
+        group.MapPost("/password-reset/validate", ValidatePasswordResetToken)
+            .WithName("ValidatePasswordResetToken")
+            .WithSummary("Validate whether a password reset token can still be used")
+            .AllowAnonymous()
+            .RequireRateLimiting("PasswordResetCommunication");
     }
 
     private static Task<IResult> SendIntakeEmail(
         Guid patientId,
         [FromBody] CommunicationDestinationRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] IIntakeInviteService inviteService,
-        [FromServices] ICommunicationService communicationService,
+        [FromServices] IIntakeCommunicationWorkflow workflow,
         [FromServices] IIdentityContextAccessor identityContext,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -62,8 +67,7 @@ public static class CommunicationEndpoints
             request,
             DeliveryChannel.Email,
             db,
-            inviteService,
-            communicationService,
+            workflow,
             identityContext,
             httpContext,
             cancellationToken);
@@ -72,8 +76,7 @@ public static class CommunicationEndpoints
         Guid patientId,
         [FromBody] CommunicationDestinationRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] IIntakeInviteService inviteService,
-        [FromServices] ICommunicationService communicationService,
+        [FromServices] IIntakeCommunicationWorkflow workflow,
         [FromServices] IIdentityContextAccessor identityContext,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -82,8 +85,7 @@ public static class CommunicationEndpoints
             request,
             DeliveryChannel.Sms,
             db,
-            inviteService,
-            communicationService,
+            workflow,
             identityContext,
             httpContext,
             cancellationToken);
@@ -93,8 +95,7 @@ public static class CommunicationEndpoints
         CommunicationDestinationRequest request,
         DeliveryChannel channel,
         ApplicationDbContext db,
-        IIntakeInviteService inviteService,
-        ICommunicationService communicationService,
+        IIntakeCommunicationWorkflow workflow,
         IIdentityContextAccessor identityContext,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -111,48 +112,30 @@ public static class CommunicationEndpoints
             return Results.NotFound(new { error = "No active intake form was found for this patient." });
         }
 
-        var recipient = ResolveRecipient(request, intake.Patient, channel);
-        if (string.IsNullOrWhiteSpace(recipient))
-        {
-            return Results.UnprocessableEntity(new
-            {
-                error = channel == DeliveryChannel.Email
-                    ? "No email address is available for this patient."
-                    : "No mobile number is available for this patient."
-            });
-        }
-
-        var invite = await inviteService.CreateInviteAsync(intake.Id, cancellationToken);
-        if (!invite.Success || string.IsNullOrWhiteSpace(invite.InviteUrl) || !invite.ExpiresAt.HasValue)
-        {
-            return Results.UnprocessableEntity(new { error = invite.Error ?? "Unable to create an intake invite link." });
-        }
-
-        var deliveryRequest = new IntakeLinkDeliveryRequest
+        var result = await workflow.SendInviteAsync(new PTDoc.Application.Intake.IntakeSendInviteRequest
         {
             IntakeId = intake.Id,
-            PatientId = patientId,
+            Channel = channel == DeliveryChannel.Email
+                ? PTDoc.Application.Intake.IntakeDeliveryChannel.Email
+                : PTDoc.Application.Intake.IntakeDeliveryChannel.Sms,
+            Destination = ResolveRecipient(request, intake.Patient, channel)
+        }, new IntakeCommunicationContext
+        {
             UserId = identityContext.TryGetCurrentUserId(),
-            Recipient = recipient,
-            InviteUrl = invite.InviteUrl,
-            ExpiresAtUtc = invite.ExpiresAt.Value,
             CorrelationId = httpContext.TraceIdentifier
-        };
+        }, cancellationToken);
 
-        var result = channel == DeliveryChannel.Email
-            ? await communicationService.SendIntakeLinkEmailAsync(deliveryRequest, cancellationToken)
-            : await communicationService.SendIntakeLinkSmsAsync(deliveryRequest, cancellationToken);
-
-        if (result.Status == DeliveryStatus.RateLimited)
+        if (!result.Success &&
+            string.Equals(result.ErrorMessage, "Intake delivery limit reached for this patient today.", StringComparison.Ordinal))
         {
             return Results.Json(
                 new { error = "Intake delivery limit reached for this patient today." },
                 statusCode: StatusCodes.Status429TooManyRequests);
         }
 
-        if (!result.Succeeded)
+        if (!result.Success)
         {
-            return Results.UnprocessableEntity(new { error = result.SafeErrorMessage ?? "Unable to send the intake link." });
+            return Results.UnprocessableEntity(new { error = result.ErrorMessage ?? "Unable to send the intake link." });
         }
 
         return Results.Ok(new
@@ -160,10 +143,19 @@ public static class CommunicationEndpoints
             patientId,
             intakeId = intake.Id,
             channel,
-            destinationMasked = MaskDestination(recipient),
+            destinationMasked = result.DestinationMasked,
             providerMessageId = result.ProviderMessageId,
-            sentAtUtc = result.SentAtUtc
+            sentAtUtc = result.SentAt
         });
+    }
+
+    private static async Task<IResult> ValidatePasswordResetToken(
+        [FromBody] PasswordResetTokenValidationRequest request,
+        [FromServices] IPasswordResetTokenService passwordResetTokenService,
+        CancellationToken cancellationToken)
+    {
+        var result = await passwordResetTokenService.ValidateTokenAsync(request, cancellationToken);
+        return Results.Ok(new { isValid = result.IsValid });
     }
 
     private static Task<IResult> SendPasswordResetEmail(
@@ -274,50 +266,4 @@ public static class CommunicationEndpoints
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-    private static string MaskDestination(string destination)
-    {
-        if (string.IsNullOrWhiteSpace(destination))
-        {
-            return string.Empty;
-        }
-
-        var trimmed = destination.Trim();
-        var atIndex = trimmed.IndexOf('@');
-        if (atIndex > 1)
-        {
-            return $"{trimmed[0]}***{trimmed[(atIndex - 1)..]}";
-        }
-
-        if (trimmed.Length <= 4)
-        {
-            return new string('*', trimmed.Length);
-        }
-
-        return $"{new string('*', trimmed.Length - 4)}{trimmed[^4..]}";
-    }
-}
-
-public sealed class CommunicationDestinationRequest
-{
-    public string? Recipient { get; init; }
-    public string? Destination { get; init; }
-    public string? Contact { get; init; }
-    public string? Email { get; init; }
-    public string? Phone { get; init; }
-    public string? PhoneNumber { get; init; }
-}
-
-public sealed class PasswordResetSendRequest
-{
-    public string? Recipient { get; init; }
-    public string? Contact { get; init; }
-    public string? Email { get; init; }
-    public string? Phone { get; init; }
-    public string? PhoneNumber { get; init; }
-}
-
-public sealed class PasswordResetCompleteRequest
-{
-    public string? Token { get; init; }
-    public string? NewPin { get; init; }
 }

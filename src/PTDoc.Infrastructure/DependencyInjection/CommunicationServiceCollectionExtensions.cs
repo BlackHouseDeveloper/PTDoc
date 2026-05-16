@@ -20,9 +20,12 @@ public static class CommunicationServiceCollectionExtensions
         ValidateConfiguration(options, environment);
 
         services.AddScoped<ICommunicationService, CommunicationService>();
+        services.AddScoped<IContactNormalizer, ContactNormalizer>();
+        services.AddScoped<IIntakeCommunicationWorkflow, IntakeCommunicationWorkflow>();
         services.AddScoped<IPasswordResetTokenService, PasswordResetTokenService>();
         services.AddScoped<IMessageTemplateRenderer, FileMessageTemplateRenderer>();
         services.AddScoped<ICommunicationAuditWriter, CommunicationAuditWriter>();
+        services.AddHostedService<CommunicationRetentionCleanupService>();
 
         if (IsNullSenderEnvironment(environment))
         {
@@ -52,6 +55,13 @@ public static class CommunicationServiceCollectionExtensions
         if (options.TokenExpiryMinutes.Intake <= 0)
         {
             throw new InvalidOperationException("Communication:TokenExpiryMinutes:Intake must be greater than zero.");
+        }
+
+        if (options.RateLimits.PasswordResetMaxPerWindow <= 0 ||
+            options.RateLimits.PasswordResetWindowMinutes <= 0 ||
+            options.RateLimits.IntakeMaxPerDay <= 0)
+        {
+            throw new InvalidOperationException("Communication:RateLimits values must be greater than zero.");
         }
 
         if (IsNullSenderEnvironment(environment))
@@ -91,6 +101,17 @@ public static class CommunicationServiceCollectionExtensions
             {
                 PasswordReset = ReadPositiveInt(configuration, $"{prefix}:TokenExpiryMinutes:PasswordReset", 30),
                 Intake = ReadPositiveInt(configuration, $"{prefix}:TokenExpiryMinutes:Intake", 10080)
+            },
+            Retention = new CommunicationRetentionOptions
+            {
+                ResetTokensDays = ReadPositiveInt(configuration, $"{prefix}:Retention:ResetTokensDays", 30),
+                DeliveryLogsDays = ReadPositiveInt(configuration, $"{prefix}:Retention:DeliveryLogsDays", 2190)
+            },
+            RateLimits = new CommunicationRateLimitOptions
+            {
+                PasswordResetMaxPerWindow = ReadPositiveInt(configuration, $"{prefix}:RateLimits:PasswordResetMaxPerWindow", 3),
+                PasswordResetWindowMinutes = ReadPositiveInt(configuration, $"{prefix}:RateLimits:PasswordResetWindowMinutes", 15),
+                IntakeMaxPerDay = ReadPositiveInt(configuration, $"{prefix}:RateLimits:IntakeMaxPerDay", 5)
             },
             Azure = new AzureCommunicationOptions
             {

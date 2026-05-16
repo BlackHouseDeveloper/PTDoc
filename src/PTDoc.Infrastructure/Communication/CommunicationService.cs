@@ -10,15 +10,12 @@ namespace PTDoc.Infrastructure.Communication;
 
 public sealed class CommunicationService : ICommunicationService
 {
-    private const int PasswordResetMaxPerWindow = 3;
-    private const int IntakeMaxPerDay = 5;
-    private static readonly TimeSpan PasswordResetWindow = TimeSpan.FromMinutes(15);
-
     private readonly ApplicationDbContext _db;
     private readonly IEmailSender _emailSender;
     private readonly ISmsSender _smsSender;
     private readonly IMessageTemplateRenderer _templateRenderer;
     private readonly ICommunicationAuditWriter _auditWriter;
+    private readonly IContactNormalizer _contactNormalizer;
     private readonly CommunicationOptions _options;
     private readonly ILogger<CommunicationService> _logger;
 
@@ -28,6 +25,7 @@ public sealed class CommunicationService : ICommunicationService
         ISmsSender smsSender,
         IMessageTemplateRenderer templateRenderer,
         ICommunicationAuditWriter auditWriter,
+        IContactNormalizer contactNormalizer,
         IOptions<CommunicationOptions> options,
         ILogger<CommunicationService> logger)
     {
@@ -36,6 +34,7 @@ public sealed class CommunicationService : ICommunicationService
         _smsSender = smsSender;
         _templateRenderer = templateRenderer;
         _auditWriter = auditWriter;
+        _contactNormalizer = contactNormalizer;
         _options = options.Value;
         _logger = logger;
     }
@@ -77,23 +76,25 @@ public sealed class CommunicationService : ICommunicationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var recipient = CommunicationText.NormalizeRecipient(request.Recipient);
-        if (string.IsNullOrWhiteSpace(recipient))
+        var normalization = _contactNormalizer.NormalizeRecipient(request.Recipient, channel);
+        if (!normalization.Succeeded)
         {
-            return ValidationFailure(channel, DeliveryPurpose.PasswordReset, "RecipientRequired", "Recipient is required.");
+            return ValidationFailure(channel, DeliveryPurpose.PasswordReset, "RecipientInvalid", normalization.SafeErrorMessage ?? "Recipient is invalid.");
         }
 
+        var recipient = normalization.NormalizedValue;
         if (await IsPasswordResetRateLimitedAsync(recipient, cancellationToken))
         {
             return await RateLimitedAsync(
-                recipient,
+                recipient: recipient,
+                clinicId: null,
                 patientId: null,
                 userId: null,
-                channel,
-                DeliveryPurpose.PasswordReset,
-                request.CorrelationId,
-                "PasswordResetRateLimit",
-                cancellationToken);
+                channel: channel,
+                purpose: DeliveryPurpose.PasswordReset,
+                correlationId: request.CorrelationId,
+                errorCode: "PasswordResetRateLimit",
+                cancellationToken: cancellationToken);
         }
 
         var user = await FindPasswordResetUserAsync(recipient, channel, request.UserId, cancellationToken);
@@ -109,14 +110,15 @@ public sealed class CommunicationService : ICommunicationService
                 Purpose = DeliveryPurpose.PasswordReset
             };
 
-            await AuditAsync(recipient, skipped, null, null, request.CorrelationId, cancellationToken);
+            await AuditAsync(recipient, skipped, clinicId: null, patientId: null, userId: null, request.CorrelationId, cancellationToken);
             _logger.LogInformation("Password reset request accepted with no matching account. Channel={Channel}", channel);
             return skipped;
         }
 
+        var now = DateTimeOffset.UtcNow;
         var token = CommunicationText.GenerateUrlSafeToken();
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(Math.Max(1, _options.TokenExpiryMinutes.PasswordReset));
-        _db.PasswordResetTokens.Add(new PasswordResetToken
+        var resetToken = new PasswordResetToken
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
@@ -124,9 +126,10 @@ public sealed class CommunicationService : ICommunicationService
             Channel = channel,
             RecipientHash = _auditWriter.HashRecipient(recipient),
             ExpiresAtUtc = expiresAt,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedAtUtc = now,
             CorrelationId = request.CorrelationId
-        });
+        };
+        _db.PasswordResetTokens.Add(resetToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         var link = CommunicationText.BuildUrl(_options.PublicBaseUrl, $"/reset-password?token={Uri.EscapeDataString(token)}");
@@ -137,31 +140,60 @@ public sealed class CommunicationService : ICommunicationService
         };
 
         DeliveryResult result;
-        if (channel == DeliveryChannel.Email)
+        try
         {
-            var htmlBody = await _templateRenderer.RenderAsync("password-reset-email.html", values, cancellationToken);
-            var textBody = $"PTDoc: Use this secure link to reset your password: {link}";
-            result = await _emailSender.SendEmailAsync(new EmailMessage
+            if (channel == DeliveryChannel.Email)
             {
-                ToAddress = recipient,
-                Subject = "Reset your PTDoc password",
-                PlainTextBody = textBody,
-                HtmlBody = htmlBody,
+                var htmlBody = await _templateRenderer.RenderAsync("password-reset-email.html", values, cancellationToken);
+                var textBody = $"PTDoc: Use this secure link to reset your password: {link}";
+                result = await _emailSender.SendEmailAsync(new EmailMessage
+                {
+                    ToAddress = recipient,
+                    Subject = "Reset your PTDoc password",
+                    PlainTextBody = textBody,
+                    HtmlBody = htmlBody,
+                    Purpose = DeliveryPurpose.PasswordReset
+                }, cancellationToken);
+            }
+            else
+            {
+                var body = await _templateRenderer.RenderAsync("password-reset-sms.txt", values, cancellationToken);
+                result = await _smsSender.SendSmsAsync(new SmsMessage
+                {
+                    ToNumber = recipient,
+                    Body = body,
+                    Purpose = DeliveryPurpose.PasswordReset
+                }, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Password reset delivery failed before provider acceptance. Channel={Channel}", channel);
+            result = new DeliveryResult
+            {
+                Succeeded = false,
+                Status = DeliveryStatus.Failed,
+                Provider = "InternalDeliveryException",
+                ErrorCode = "PasswordResetDeliveryException",
+                SafeErrorMessage = "We couldn't submit that request right now. Please try again.",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = channel,
                 Purpose = DeliveryPurpose.PasswordReset
-            }, cancellationToken);
+            };
+        }
+
+        if (result.Succeeded)
+        {
+            await RevokeExistingPasswordResetTokensAsync(user.Id, channel, resetToken.Id, DateTimeOffset.UtcNow, cancellationToken);
         }
         else
         {
-            var body = await _templateRenderer.RenderAsync("password-reset-sms.txt", values, cancellationToken);
-            result = await _smsSender.SendSmsAsync(new SmsMessage
-            {
-                ToNumber = recipient,
-                Body = body,
-                Purpose = DeliveryPurpose.PasswordReset
-            }, cancellationToken);
+            resetToken.RevokedAtUtc = DateTimeOffset.UtcNow;
+            resetToken.RevocationReason = "DeliveryFailed";
         }
 
-        await AuditAsync(recipient, result, null, user.Id, request.CorrelationId, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        await AuditAsync(recipient, result, user.ClinicId, null, user.Id, request.CorrelationId, cancellationToken);
         return result;
     }
 
@@ -172,12 +204,13 @@ public sealed class CommunicationService : ICommunicationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var recipient = CommunicationText.NormalizeRecipient(request.Recipient);
-        if (string.IsNullOrWhiteSpace(recipient))
+        var normalization = _contactNormalizer.NormalizeRecipient(request.Recipient, channel);
+        if (!normalization.Succeeded)
         {
-            return ValidationFailure(channel, DeliveryPurpose.IntakeLink, "RecipientRequired", "Recipient is required.");
+            return ValidationFailure(channel, DeliveryPurpose.IntakeLink, "RecipientInvalid", normalization.SafeErrorMessage ?? "Recipient is invalid.");
         }
 
+        var recipient = normalization.NormalizedValue;
         if (string.IsNullOrWhiteSpace(request.InviteUrl))
         {
             return ValidationFailure(channel, DeliveryPurpose.IntakeLink, "InviteLinkRequired", "Invite link is required.");
@@ -187,6 +220,7 @@ public sealed class CommunicationService : ICommunicationService
         {
             return await RateLimitedAsync(
                 recipient,
+                request.ClinicId,
                 request.PatientId,
                 request.UserId,
                 channel,
@@ -227,7 +261,7 @@ public sealed class CommunicationService : ICommunicationService
             }, cancellationToken);
         }
 
-        await AuditAsync(recipient, result, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
+        await AuditAsync(recipient, result, request.ClinicId, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
         return result;
     }
 
@@ -238,12 +272,13 @@ public sealed class CommunicationService : ICommunicationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var recipient = CommunicationText.NormalizeRecipient(request.Recipient);
-        if (string.IsNullOrWhiteSpace(recipient))
+        var normalization = _contactNormalizer.NormalizeRecipient(request.Recipient, channel);
+        if (!normalization.Succeeded)
         {
-            return ValidationFailure(channel, DeliveryPurpose.IntakeOtp, "RecipientRequired", "Recipient is required.");
+            return ValidationFailure(channel, DeliveryPurpose.IntakeOtp, "RecipientInvalid", normalization.SafeErrorMessage ?? "Recipient is invalid.");
         }
 
+        var recipient = normalization.NormalizedValue;
         if (string.IsNullOrWhiteSpace(request.OtpCode))
         {
             return ValidationFailure(channel, DeliveryPurpose.IntakeOtp, "OtpRequired", "Verification code is required.");
@@ -280,40 +315,42 @@ public sealed class CommunicationService : ICommunicationService
             }, cancellationToken);
         }
 
-        await AuditAsync(recipient, result, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
+        await AuditAsync(recipient, result, request.ClinicId, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
         return result;
     }
 
     private async Task<bool> IsPasswordResetRateLimitedAsync(string recipient, CancellationToken cancellationToken)
     {
         var recipientHash = _auditWriter.HashRecipient(recipient);
-        var windowStart = DateTimeOffset.UtcNow.Subtract(PasswordResetWindow);
+        var windowMinutes = Math.Max(1, _options.RateLimits.PasswordResetWindowMinutes);
+        var maxPerWindow = Math.Max(1, _options.RateLimits.PasswordResetMaxPerWindow);
+        var windowStart = DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(windowMinutes)).ToUnixTimeSeconds();
 
-        var createdAtValues = await _db.CommunicationDeliveryLogs
+        var count = await _db.CommunicationDeliveryLogs
             .AsNoTracking()
             .Where(log =>
                 log.Purpose == DeliveryPurpose.PasswordReset &&
                 log.RecipientHash == recipientHash &&
-                log.Status != DeliveryStatus.RateLimited)
-            .Select(log => log.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+                log.Status != DeliveryStatus.RateLimited &&
+                log.CreatedAtUnixSeconds >= windowStart)
+            .CountAsync(cancellationToken);
 
-        return createdAtValues.Count(createdAt => createdAt >= windowStart) >= PasswordResetMaxPerWindow;
+        return count >= maxPerWindow;
     }
 
     private async Task<bool> IsIntakeRateLimitedAsync(Guid patientId, CancellationToken cancellationToken)
     {
-        var dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
-        var createdAtValues = await _db.CommunicationDeliveryLogs
+        var dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+        var count = await _db.CommunicationDeliveryLogs
             .AsNoTracking()
             .Where(log =>
                 log.Purpose == DeliveryPurpose.IntakeLink &&
                 log.PatientId == patientId &&
-                log.Status != DeliveryStatus.RateLimited)
-            .Select(log => log.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+                log.Status != DeliveryStatus.RateLimited &&
+                log.CreatedAtUnixSeconds >= dayStart)
+            .CountAsync(cancellationToken);
 
-        return createdAtValues.Count(createdAt => createdAt >= dayStart) >= IntakeMaxPerDay;
+        return count >= Math.Max(1, _options.RateLimits.IntakeMaxPerDay);
     }
 
     private async Task<User?> FindPasswordResetUserAsync(
@@ -336,18 +373,76 @@ public sealed class CommunicationService : ICommunicationService
                 cancellationToken);
         }
 
-        var normalizedPhone = CommunicationText.NormalizePhone(recipient);
-        var candidates = await users
-            .Where(user => user.PhoneNumber != null)
+        var normalizedPhone = _contactNormalizer.NormalizePhone(recipient);
+        if (!normalizedPhone.Succeeded)
+        {
+            return null;
+        }
+
+        var directMatches = await users
+            .Where(user => user.NormalizedPhoneNumber == normalizedPhone.NormalizedValue)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        if (directMatches.Count > 1)
+        {
+            return null;
+        }
+
+        var legacyCandidates = await users
+            .Where(user => user.NormalizedPhoneNumber == null && user.PhoneNumber != null)
             .ToListAsync(cancellationToken);
 
-        return candidates.FirstOrDefault(user =>
-            user.PhoneNumber is string phone &&
-            CommunicationText.NormalizePhone(phone) == normalizedPhone);
+        var legacyMatches = legacyCandidates
+            .Where(user =>
+            {
+                if (user.PhoneNumber is not string phone)
+                {
+                    return false;
+                }
+
+                var existing = _contactNormalizer.NormalizePhone(phone);
+                return existing.Succeeded &&
+                    string.Equals(existing.NormalizedValue, normalizedPhone.NormalizedValue, StringComparison.Ordinal);
+            })
+            .Take(2)
+            .ToList();
+
+        var totalMatches = directMatches.Count + legacyMatches.Count;
+        if (totalMatches != 1)
+        {
+            return null;
+        }
+
+        return directMatches.Count == 1 ? directMatches[0] : legacyMatches[0];
+    }
+
+    private async Task RevokeExistingPasswordResetTokensAsync(
+        Guid userId,
+        DeliveryChannel channel,
+        Guid exceptTokenId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var activeTokens = await _db.PasswordResetTokens
+            .Where(token =>
+                token.UserId == userId &&
+                token.Id != exceptTokenId &&
+                token.Channel == channel &&
+                token.UsedAtUtc == null &&
+                token.RevokedAtUtc == null &&
+                token.ExpiresAtUtc > now)
+            .ToListAsync(cancellationToken);
+
+        foreach (var token in activeTokens)
+        {
+            token.RevokedAtUtc = now;
+            token.RevocationReason = "Superseded";
+        }
     }
 
     private async Task<DeliveryResult> RateLimitedAsync(
         string recipient,
+        Guid? clinicId,
         Guid? patientId,
         Guid? userId,
         DeliveryChannel channel,
@@ -368,7 +463,7 @@ public sealed class CommunicationService : ICommunicationService
             Purpose = purpose
         };
 
-        await AuditAsync(recipient, result, patientId, userId, correlationId, cancellationToken);
+        await AuditAsync(recipient, result, clinicId, patientId, userId, correlationId, cancellationToken);
         return result;
     }
 
@@ -392,12 +487,14 @@ public sealed class CommunicationService : ICommunicationService
     private Task AuditAsync(
         string recipient,
         DeliveryResult result,
+        Guid? clinicId,
         Guid? patientId,
         Guid? userId,
         string? correlationId,
         CancellationToken cancellationToken)
         => _auditWriter.WriteAsync(new CommunicationAuditWriteRequest
         {
+            ClinicId = clinicId,
             PatientId = patientId,
             UserId = userId,
             Purpose = result.Purpose,

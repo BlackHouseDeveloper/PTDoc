@@ -155,6 +155,136 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public async Task PasswordResetSms_DuplicateNormalizedPhone_FailsClosedWithoutSending()
+    {
+        await using var db = CreateDbContext();
+        var sharedPhone = "+15551234567";
+        db.Users.AddRange(
+            new User
+            {
+                Id = Guid.NewGuid(),
+                Username = "one",
+                PinHash = "hash",
+                FirstName = "One",
+                LastName = "User",
+                PhoneNumber = "(555) 123-4567",
+                NormalizedPhoneNumber = sharedPhone,
+                Role = "PT",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            },
+            new User
+            {
+                Id = Guid.NewGuid(),
+                Username = "two",
+                PinHash = "hash",
+                FirstName = "Two",
+                LastName = "User",
+                PhoneNumber = "5551234567",
+                NormalizedPhoneNumber = sharedPhone,
+                Role = "PT",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        await db.SaveChangesAsync();
+
+        var smsSender = new FakeSmsSender();
+        var service = CreateService(db, smsSender: smsSender);
+
+        var result = await service.SendPasswordResetSmsAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "555-123-4567"
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(DeliveryStatus.Skipped, result.Status);
+        Assert.Empty(smsSender.Messages);
+        Assert.Empty(await db.PasswordResetTokens.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PasswordResetEmail_NewTokenRevokesPreviousActiveToken()
+    {
+        await using var db = CreateDbContext();
+        db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-again",
+            PinHash = "hash",
+            FirstName = "Reset",
+            LastName = "Again",
+            Email = "reset-again@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db, emailSender: new FakeEmailSender());
+
+        await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest { Recipient = "reset-again@example.com" });
+        await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest { Recipient = "reset-again@example.com" });
+
+        var tokens = await db.PasswordResetTokens.OrderBy(token => token.CreatedAtUtc).ToListAsync();
+        Assert.Equal(2, tokens.Count);
+        Assert.NotNull(tokens[0].RevokedAtUtc);
+        Assert.Equal("Superseded", tokens[0].RevocationReason);
+        Assert.Null(tokens[1].RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task PasswordResetEmail_DeliveryFailureRevokesNewToken_AndKeepsPreviousTokenUsable()
+    {
+        await using var db = CreateDbContext();
+        db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-delivery-failure",
+            PinHash = "hash",
+            FirstName = "Reset",
+            LastName = "Failure",
+            Email = "reset-delivery-failure@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var firstService = CreateService(db, emailSender: new FakeEmailSender());
+        await firstService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "reset-delivery-failure@example.com"
+        });
+
+        var failingService = CreateService(db, emailSender: new FailingEmailSender());
+        var failed = await failingService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "reset-delivery-failure@example.com"
+        });
+
+        Assert.False(failed.Succeeded);
+        Assert.Equal(DeliveryStatus.Failed, failed.Status);
+
+        var tokens = await db.PasswordResetTokens.OrderBy(token => token.CreatedAtUtc).ToListAsync();
+        Assert.Equal(2, tokens.Count);
+        Assert.Null(tokens[0].RevokedAtUtc);
+        Assert.Null(tokens[0].RevocationReason);
+        Assert.NotNull(tokens[1].RevokedAtUtc);
+        Assert.Equal("DeliveryFailed", tokens[1].RevocationReason);
+    }
+
+    [Theory]
+    [InlineData("555-123-4567", "+15551234567")]
+    [InlineData("+1 (555) 123-4567", "+15551234567")]
+    public void ContactNormalizer_NormalizesUsPhoneToE164(string input, string expected)
+    {
+        var result = new ContactNormalizer().NormalizePhone(input);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(expected, result.NormalizedValue);
+    }
+
+    [Fact]
     public async Task NullProviders_AreRejectedInProduction()
     {
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
@@ -202,6 +332,15 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public async Task FileTemplateRenderer_RejectsUnresolvedPlaceholders()
+    {
+        var renderer = new FileMessageTemplateRenderer(NullLogger<FileMessageTemplateRenderer>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            renderer.RenderAsync("password-reset-email.html", new Dictionary<string, string>()));
+    }
+
+    [Fact]
     public void ProductionStartupValidation_FailsWhenAzureConfigurationIsMissing()
     {
         var configuration = new ConfigurationBuilder()
@@ -237,8 +376,8 @@ public sealed class CommunicationServiceTests
 
     private static CommunicationService CreateService(
         ApplicationDbContext db,
-        FakeEmailSender? emailSender = null,
-        FakeSmsSender? smsSender = null)
+        IEmailSender? emailSender = null,
+        ISmsSender? smsSender = null)
     {
         var options = Options.Create(new CommunicationOptions
         {
@@ -252,7 +391,8 @@ public sealed class CommunicationServiceTests
         });
 
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Development };
-        var auditWriter = new CommunicationAuditWriter(db, options, environment);
+        var contactNormalizer = new ContactNormalizer();
+        var auditWriter = new CommunicationAuditWriter(db, options, environment, contactNormalizer);
 
         return new CommunicationService(
             db,
@@ -260,6 +400,7 @@ public sealed class CommunicationServiceTests
             smsSender ?? new FakeSmsSender(),
             new FakeTemplateRenderer(),
             auditWriter,
+            contactNormalizer,
             options,
             NullLogger<CommunicationService>.Instance);
     }
@@ -302,6 +443,24 @@ public sealed class CommunicationServiceTests
                 Purpose = message.Purpose
             });
         }
+    }
+
+    private sealed class FailingEmailSender : IEmailSender
+    {
+        public Task<DeliveryResult> SendEmailAsync(
+            EmailMessage message,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(new DeliveryResult
+            {
+                Succeeded = false,
+                Status = DeliveryStatus.Failed,
+                Provider = "Fake",
+                ErrorCode = "FakeFailure",
+                SafeErrorMessage = "Delivery failed.",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = DeliveryChannel.Email,
+                Purpose = message.Purpose
+            });
     }
 
     public sealed class FakeSmsSender : ISmsSender

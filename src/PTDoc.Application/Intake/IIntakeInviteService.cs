@@ -9,11 +9,11 @@ public interface IIntakeInviteService
     /// <summary>Validates a signed invite token from the URL and issues a short-lived intake access token.</summary>
     Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default);
 
-    /// <summary>Sends a one-time passcode to the specified contact via the selected channel.</summary>
-    Task<bool> SendOtpAsync(string contact, OtpChannel channel, CancellationToken cancellationToken = default);
+    /// <summary>Sends a one-time passcode to the specified contact via the selected channel for a signed invite.</summary>
+    Task<bool> SendOtpAsync(string inviteToken, string contact, OtpChannel channel, CancellationToken cancellationToken = default);
 
-    /// <summary>Verifies the OTP and issues a short-lived intake access token bound to the session.</summary>
-    Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(string contact, string otpCode, CancellationToken cancellationToken = default);
+    /// <summary>Verifies the OTP and issues a short-lived intake access token bound to the signed invite.</summary>
+    Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(string inviteToken, string contact, OtpChannel channel, string otpCode, CancellationToken cancellationToken = default);
 
     /// <summary>Validates whether an existing intake session access token is still active.</summary>
     Task<bool> ValidateAccessTokenAsync(string accessToken, CancellationToken cancellationToken = default);

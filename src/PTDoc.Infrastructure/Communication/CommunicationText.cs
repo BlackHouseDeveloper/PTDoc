@@ -6,24 +6,6 @@ namespace PTDoc.Infrastructure.Communication;
 
 internal static class CommunicationText
 {
-    public static string NormalizeRecipient(string recipient)
-    {
-        if (string.IsNullOrWhiteSpace(recipient))
-        {
-            return string.Empty;
-        }
-
-        var trimmed = recipient.Trim();
-        return trimmed.Contains('@', StringComparison.Ordinal)
-            ? trimmed.ToLowerInvariant()
-            : NormalizePhone(trimmed);
-    }
-
-    public static string NormalizePhone(string value)
-        => string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new string(value.Where(char.IsDigit).ToArray());
-
     public static string GenerateUrlSafeToken()
     {
         var bytes = RandomNumberGenerator.GetBytes(32);

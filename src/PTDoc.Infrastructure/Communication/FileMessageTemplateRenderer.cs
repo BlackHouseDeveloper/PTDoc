@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Communication;
 
@@ -5,6 +6,8 @@ namespace PTDoc.Infrastructure.Communication;
 
 public sealed class FileMessageTemplateRenderer : IMessageTemplateRenderer
 {
+    private static readonly Regex UnresolvedPlaceholder = new(@"\{\{[A-Za-z0-9_.-]+\}\}", RegexOptions.Compiled);
+
     private readonly ILogger<FileMessageTemplateRenderer> _logger;
 
     public FileMessageTemplateRenderer(ILogger<FileMessageTemplateRenderer> logger)
@@ -38,6 +41,13 @@ public sealed class FileMessageTemplateRenderer : IMessageTemplateRenderer
                     ? CommunicationText.HtmlEncode(pair.Value ?? string.Empty)
                     : pair.Value ?? string.Empty,
                 StringComparison.Ordinal);
+        }
+
+        var unresolved = UnresolvedPlaceholder.Match(content);
+        if (unresolved.Success)
+        {
+            throw new InvalidOperationException(
+                $"Communication template '{templateName}' contains unresolved placeholder '{unresolved.Value}'.");
         }
 
         _logger.LogDebug("Rendered communication template {TemplateName}", templateName);

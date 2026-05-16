@@ -15,6 +15,8 @@ public class PasswordResetToken
     public DateTimeOffset ExpiresAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? UsedAtUtc { get; set; }
+    public DateTimeOffset? RevokedAtUtc { get; set; }
+    public string? RevocationReason { get; set; }
     public string? CorrelationId { get; set; }
 
     public User? User { get; set; }

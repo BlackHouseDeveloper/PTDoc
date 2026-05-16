@@ -13,15 +13,18 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
     private readonly ApplicationDbContext _db;
     private readonly CommunicationOptions _options;
     private readonly IHostEnvironment _environment;
+    private readonly IContactNormalizer _contactNormalizer;
 
     public CommunicationAuditWriter(
         ApplicationDbContext db,
         IOptions<CommunicationOptions> options,
-        IHostEnvironment environment)
+        IHostEnvironment environment,
+        IContactNormalizer contactNormalizer)
     {
         _db = db;
         _options = options.Value;
         _environment = environment;
+        _contactNormalizer = contactNormalizer;
     }
 
     public string HashRecipient(string recipient)
@@ -37,7 +40,10 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
             salt = "development-only-recipient-hash-salt";
         }
 
-        var normalized = CommunicationText.NormalizeRecipient(recipient);
+        var normalization = _contactNormalizer.NormalizeAnyRecipient(recipient);
+        var normalized = normalization.Succeeded
+            ? normalization.NormalizedValue
+            : recipient.Trim().ToLowerInvariant();
         var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(salt), Encoding.UTF8.GetBytes(normalized));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
@@ -49,6 +55,7 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
         var log = new CommunicationDeliveryLog
         {
             Id = Guid.NewGuid(),
+            ClinicId = request.ClinicId,
             PatientId = request.PatientId,
             UserId = request.UserId,
             Purpose = request.Purpose,
@@ -61,6 +68,7 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
             SafeErrorMessage = request.SafeErrorMessage,
             SentAtUtc = request.SentAtUtc,
             CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedAtUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             CorrelationId = request.CorrelationId,
             RetryCount = request.RetryCount
         };

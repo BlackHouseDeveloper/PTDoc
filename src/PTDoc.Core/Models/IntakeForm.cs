@@ -19,6 +19,7 @@ public class IntakeForm : ISyncTrackedEntity
 
     // Access control (for patient self-completion)
     public string AccessToken { get; set; } = string.Empty; // Hashed
+    public string? InviteToken { get; set; }
     public DateTime? ExpiresAt { get; set; }
 
     // Lock status

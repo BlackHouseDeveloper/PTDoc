@@ -9,6 +9,7 @@ namespace PTDoc.Core.Models;
 public class CommunicationDeliveryLog
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? ClinicId { get; set; }
     public Guid? PatientId { get; set; }
     public Guid? UserId { get; set; }
     public DeliveryPurpose Purpose { get; set; }
@@ -21,6 +22,7 @@ public class CommunicationDeliveryLog
     public string? SafeErrorMessage { get; set; }
     public DateTimeOffset SentAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
+    public long CreatedAtUnixSeconds { get; set; }
     public string? CorrelationId { get; set; }
     public int RetryCount { get; set; }
 }

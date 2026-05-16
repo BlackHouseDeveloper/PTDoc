@@ -156,9 +156,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CorrelationId")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAtUnixSeconds")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("TEXT");
@@ -209,6 +215,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
                     b.HasIndex("CorrelationId")
                         .HasFilter("CorrelationId IS NOT NULL");
 
@@ -223,7 +232,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId", "Purpose", "CreatedAtUtc")
                         .HasFilter("PatientId IS NOT NULL");
 
+                    b.HasIndex("PatientId", "Purpose", "CreatedAtUnixSeconds")
+                        .HasFilter("PatientId IS NOT NULL");
+
                     b.HasIndex("Purpose", "Channel", "CreatedAtUtc");
+
+                    b.HasIndex("Purpose", "Channel", "CreatedAtUnixSeconds");
+
+                    b.HasIndex("RecipientHash", "Purpose", "CreatedAtUnixSeconds");
 
                     b.ToTable("CommunicationDeliveryLogs");
                 });
@@ -512,6 +528,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("InviteToken")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsLocked")
                         .HasColumnType("INTEGER");
 
@@ -559,6 +579,82 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId");
 
                     b.ToTable("IntakeForms");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntakeOtpChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContactHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("ConsumedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailedVerifyCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("IntakeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastFailedVerifyAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SendCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("WindowStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("CorrelationId IS NOT NULL");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("IntakeId", "Channel", "ContactHash")
+                        .IsUnique();
+
+                    b.HasIndex("PatientId", "Channel", "UpdatedAtUtc");
+
+                    b.ToTable("IntakeOtpChallenges");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
@@ -958,6 +1054,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -1340,6 +1443,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NormalizedPhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PinHash")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -1369,6 +1476,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasFilter("Email IS NOT NULL");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("NormalizedPhoneNumber")
+                        .HasFilter("NormalizedPhoneNumber IS NOT NULL");
 
                     b.HasIndex("PhoneNumber")
                         .HasFilter("PhoneNumber IS NOT NULL");

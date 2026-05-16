@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Communication;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
@@ -78,7 +79,7 @@ public static class IntakeAccessEndpoints
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        var success = await inviteService.SendOtpAsync(request.Contact, request.Channel, cancellationToken);
+        var success = await inviteService.SendOtpAsync(request.InviteToken, request.Contact, request.Channel, cancellationToken);
         return Results.Ok(new SendIntakeOtpResponse { Success = success });
     }
 
@@ -87,7 +88,7 @@ public static class IntakeAccessEndpoints
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        var result = await inviteService.VerifyOtpAndIssueAccessTokenAsync(request.Contact, request.OtpCode, cancellationToken);
+        var result = await inviteService.VerifyOtpAndIssueAccessTokenAsync(request.InviteToken, request.Contact, request.Channel, request.OtpCode, cancellationToken);
         return Results.Ok(result);
     }
 
@@ -114,6 +115,7 @@ public static class IntakeAccessEndpoints
         HttpContext httpContext,
         [FromServices] ApplicationDbContext db,
         [FromServices] IOptions<IntakeInviteOptions> inviteOptions,
+        [FromServices] IContactNormalizer contactNormalizer,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
@@ -128,7 +130,7 @@ public static class IntakeAccessEndpoints
             return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
         }
 
-        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, intake);
+        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, contactNormalizer, intake);
         if (authorization is not null)
         {
             return authorization;
@@ -143,6 +145,7 @@ public static class IntakeAccessEndpoints
         HttpContext httpContext,
         [FromServices] ApplicationDbContext db,
         [FromServices] IOptions<IntakeInviteOptions> inviteOptions,
+        [FromServices] IContactNormalizer contactNormalizer,
         [FromServices] IIntakeReferenceDataCatalogService intakeReferenceData,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
@@ -156,7 +159,7 @@ public static class IntakeAccessEndpoints
             return Results.NotFound(new { error = $"Intake {id} not found." });
         }
 
-        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, intake);
+        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, contactNormalizer, intake);
         if (authorization is not null)
         {
             return authorization;
@@ -212,6 +215,7 @@ public static class IntakeAccessEndpoints
         HttpContext httpContext,
         [FromServices] ApplicationDbContext db,
         [FromServices] IOptions<IntakeInviteOptions> inviteOptions,
+        [FromServices] IContactNormalizer contactNormalizer,
         [FromServices] IAuditService auditService,
         [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
@@ -225,7 +229,7 @@ public static class IntakeAccessEndpoints
             return Results.NotFound(new { error = $"Intake {id} not found." });
         }
 
-        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, intake);
+        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, contactNormalizer, intake);
         if (authorization is not null)
         {
             return authorization;
@@ -269,6 +273,7 @@ public static class IntakeAccessEndpoints
     private static IResult? AuthorizePatientScope(
         HttpContext httpContext,
         IntakeInviteOptions options,
+        IContactNormalizer contactNormalizer,
         IntakeForm intake)
     {
         if (!TryReadAccessScope(httpContext, options, out var scope))
@@ -288,10 +293,15 @@ public static class IntakeAccessEndpoints
 
         if (!string.IsNullOrWhiteSpace(scope.Contact))
         {
-            var matchesEmail = string.Equals(scope.Contact, intake.Patient?.Email, StringComparison.OrdinalIgnoreCase);
-            var normalizedPhone = NormalizePhone(scope.Contact);
-            var matchesPhone = !string.IsNullOrWhiteSpace(normalizedPhone)
-                && string.Equals(normalizedPhone, NormalizePhone(intake.Patient?.Phone), StringComparison.Ordinal);
+            var scopeEmail = contactNormalizer.NormalizeEmail(scope.Contact);
+            var patientEmail = contactNormalizer.NormalizeEmail(intake.Patient?.Email);
+            var matchesEmail = scopeEmail.Succeeded && patientEmail.Succeeded &&
+                string.Equals(scopeEmail.NormalizedValue, patientEmail.NormalizedValue, StringComparison.Ordinal);
+
+            var scopePhone = contactNormalizer.NormalizePhone(scope.Contact);
+            var patientPhone = contactNormalizer.NormalizePhone(intake.Patient?.Phone);
+            var matchesPhone = scopePhone.Succeeded && patientPhone.Succeeded &&
+                string.Equals(scopePhone.NormalizedValue, patientPhone.NormalizedValue, StringComparison.Ordinal);
 
             if (!matchesEmail && !matchesPhone)
             {
@@ -354,16 +364,6 @@ public static class IntakeAccessEndpoints
 
     private static Guid? TryReadGuid(ClaimsPrincipal principal, string claimType)
         => Guid.TryParse(ReadClaimValue(principal, claimType), out var value) ? value : null;
-
-    private static string NormalizePhone(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        return new string(value.Where(char.IsDigit).ToArray());
-    }
 
     private readonly record struct IntakeAccessScope(Guid? IntakeId, Guid? PatientId, string? Contact);
 }
