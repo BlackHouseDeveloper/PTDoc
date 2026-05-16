@@ -53,7 +53,7 @@ public sealed class MauiUserService : IUserService
         try
         {
             logger.LogInformation("Attempting login for username: {Username}", username);
-            
+
             var tokens = await tokenService.LoginAsync(
                 new LoginRequest(username, password),
                 cancellationToken);
@@ -83,6 +83,24 @@ public sealed class MauiUserService : IUserService
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("External identity login is not available in the current MAUI flow.");
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> RequestPasswordResetAsync(
+        string contact,
+        string channel,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("Password reset delivery is not available in the current MAUI flow.");
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> CompletePasswordResetAsync(
+        string token,
+        string newPin,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("Password reset completion is not available in the current MAUI flow.");
         return Task.FromResult(false);
     }
 

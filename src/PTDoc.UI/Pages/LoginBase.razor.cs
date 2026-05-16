@@ -24,6 +24,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected AuthMode authMode = AuthMode.Login;
     protected readonly LoginModel loginModel = new();
     protected readonly SignUpModel signUpModel = new();
+    protected readonly ForgotPasswordModel forgotPasswordModel = new();
     protected List<ClinicSummary> clinics = new();
     protected List<RoleSummary> roles = new();
     protected string? errorMessage;
@@ -33,8 +34,23 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool isSubmitting;
     protected bool isPtaFieldsActive;
     protected bool showPendingConfirmation;
+    protected bool showPasswordResetConfirmation;
     protected bool isDarkTheme;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
+    protected string AuthPageTitle => authMode switch
+    {
+        AuthMode.SignUp => "Sign Up",
+        AuthMode.ForgotPassword => "Forgot PIN",
+        _ => "Login"
+    };
+    protected string AuthFailureTitle => authMode switch
+    {
+        AuthMode.SignUp => "Sign up failed",
+        AuthMode.ForgotPassword => "Reset request failed",
+        _ => "Login failed"
+    };
+    protected const string PasswordResetConfirmationMessage =
+        "If an account matches that contact method, a secure reset link has been sent.";
     protected string DateOfBirthInputValue => signUpModel.DateOfBirth?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
     protected string registrationConfirmationTitle = "Registration submitted";
     protected string registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
@@ -43,7 +59,8 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected enum AuthMode
     {
         Login,
-        SignUp
+        SignUp,
+        ForgotPassword
     }
 
     protected override void OnInitialized()
@@ -139,6 +156,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         authMode = mode;
         errorMessage = null;
         showPendingConfirmation = false;
+        showPasswordResetConfirmation = false;
         isPendingApprovalNotice = false;
         isExternalLoginRedirecting = false;
         registrationConfirmationTitle = "Registration submitted";
@@ -149,20 +167,24 @@ public abstract class LoginBase : ComponentBase, IDisposable
             ResetLoginModel();
             _pendingLoginFieldReset = true;
         }
-        else
+        else if (mode == AuthMode.SignUp)
         {
             ResetSignUpModel();
         }
+        else
+        {
+            ResetForgotPasswordModel();
+        }
 
         // Update URL without navigation
-        var targetUrl = mode == AuthMode.Login ? "/login" : "/signup";
+        var targetUrl = mode == AuthMode.SignUp ? "/signup" : "/login";
         Navigation.NavigateTo(targetUrl, forceLoad: false);
     }
 
     protected async Task HandleLogin()
     {
-        Logger.LogInformation("HandleLogin called - Username: {Username}, PIN: {Pin}", 
-            loginModel.Username, 
+        Logger.LogInformation("HandleLogin called - Username: {Username}, PIN: {Pin}",
+            loginModel.Username,
             loginModel.Pin?.Length > 0 ? "****" : "empty");
 
         if (string.IsNullOrWhiteSpace(loginModel.Username))
@@ -188,7 +210,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             StateHasChanged();
             return;
         }
-        
+
         isLoading = true;
         errorMessage = null;
         StateHasChanged();
@@ -199,7 +221,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
             var username = loginModel.Username.Trim();
 
-            Logger.LogInformation("Sending to LoginAsync - Username: {Username}, Password: {Password}", 
+            Logger.LogInformation("Sending to LoginAsync - Username: {Username}, Password: {Password}",
                 username, loginModel.Pin?.Length > 0 ? "****" : "empty");
 
             var success = await UserService.LoginAsync(username ?? string.Empty, loginModel.Pin ?? string.Empty, returnUrl);
@@ -311,6 +333,48 @@ public abstract class LoginBase : ComponentBase, IDisposable
         }
     }
 
+    protected async Task HandleForgotPassword()
+    {
+        if (string.IsNullOrWhiteSpace(forgotPasswordModel.Contact))
+        {
+            errorMessage = "Enter an email address or mobile number.";
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+        showPasswordResetConfirmation = false;
+        StateHasChanged();
+
+        try
+        {
+            var accepted = await UserService.RequestPasswordResetAsync(
+                forgotPasswordModel.Contact.Trim(),
+                forgotPasswordModel.Channel,
+                CancellationToken.None);
+
+            if (accepted)
+            {
+                ResetForgotPasswordModel();
+                showPasswordResetConfirmation = true;
+            }
+            else
+            {
+                errorMessage = "We couldn't submit that request right now. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Password reset request failed");
+            errorMessage = "We couldn't submit that request right now. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
     protected void OnRoleChanged(string roleKey)
     {
         isPtaFieldsActive = string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
@@ -398,6 +462,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
         isPtaFieldsActive = false;
     }
 
+    private void ResetForgotPasswordModel()
+    {
+        forgotPasswordModel.Contact = string.Empty;
+        forgotPasswordModel.Channel = "email";
+    }
+
     private async Task ResetLoginFieldsAsync()
     {
         try
@@ -460,6 +530,15 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public string LicenseNumber { get; set; } = string.Empty;
 
         public string LicenseState { get; set; } = string.Empty;
+    }
+
+    protected sealed class ForgotPasswordModel
+    {
+        [Required(ErrorMessage = "Email address or mobile number is required")]
+        public string Contact { get; set; } = string.Empty;
+
+        [Required]
+        public string Channel { get; set; } = "email";
     }
 
     protected static readonly List<(string Code, string Name)> UsStates = new()

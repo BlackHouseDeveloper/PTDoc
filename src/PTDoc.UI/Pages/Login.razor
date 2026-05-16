@@ -4,7 +4,7 @@
 @rendermode InteractiveServer
 @inherits LoginBase
 
-<PageTitle>@(authMode == AuthMode.Login ? "Login" : "Sign Up")</PageTitle>
+<PageTitle>@AuthPageTitle</PageTitle>
 
 
 <div class="auth-shell">
@@ -18,7 +18,7 @@
     <span class="theme-icon theme-icon-dark" aria-hidden="true"></span>
   </button>
   
-  <div class="auth-brand">PT Docs+</div>
+  <div class="auth-brand">PTDoc</div>
 
   <div class="auth-card" aria-live="polite">
     <header class="auth-card-header">
@@ -58,7 +58,7 @@
     @if (!string.IsNullOrEmpty(errorMessage))
     {
       <div class="auth-alert" role="alert">
-        <span class="auth-alert-title">@(authMode == AuthMode.Login ? "Login failed" : "Sign up failed")</span>
+        <span class="auth-alert-title">@AuthFailureTitle</span>
         <span>@errorMessage</span>
       </div>
     }
@@ -74,7 +74,7 @@
             <span class="auth-info-icon">ℹ️</span>
             <div class="auth-info-content">
               <strong>Single sign-on available</strong>
-              <p>You can sign in with your PT Docs+ credentials or continue with @UserService.IdentityProviderDisplayName.</p>
+              <p>You can sign in with your PTDoc credentials or continue with @UserService.IdentityProviderDisplayName.</p>
             </div>
           </div>
         }
@@ -105,7 +105,7 @@
         </div>
 
         <div class="auth-actions">
-          <button type="button" class="auth-link" disabled="@(isLoading || isExternalLoginRedirecting)">Forgot PIN?</button>
+          <button type="button" class="auth-link" disabled="@(isLoading || isExternalLoginRedirecting)" @onclick="() => SwitchMode(AuthMode.ForgotPassword)">Forgot PIN?</button>
         </div>
 
         <button type="submit" class="auth-primary" disabled="@(isLoading || isExternalLoginRedirecting)">
@@ -133,6 +133,66 @@
           </button>
         }
       </EditForm>
+    }
+    else if (authMode == AuthMode.ForgotPassword)
+    {
+      @if (showPasswordResetConfirmation)
+      {
+        <div class="auth-info-alert" role="status" aria-live="polite">
+          <span class="auth-info-icon">ℹ️</span>
+          <div class="auth-info-content">
+            <strong>Request received</strong>
+            <p>@PasswordResetConfirmationMessage</p>
+          </div>
+        </div>
+        <button type="button" class="auth-primary" @onclick="() => SwitchMode(AuthMode.Login)">
+          Return to Login
+        </button>
+      }
+      else
+      {
+        <EditForm FormName="ForgotPasswordForm" Model="forgotPasswordModel" OnValidSubmit="HandleForgotPassword" class="auth-form" aria-busy="@isLoading">
+          <DataAnnotationsValidator />
+
+          <div class="auth-field">
+            <label for="resetChannel">Send reset link by</label>
+            <InputSelect id="resetChannel"
+                         class="auth-input auth-select"
+                         @bind-Value="forgotPasswordModel.Channel">
+              <option value="email">Email</option>
+              <option value="sms">SMS</option>
+            </InputSelect>
+          </div>
+
+          <div class="auth-field">
+            <label for="resetContact">Email Address or Mobile Number</label>
+            <InputText id="resetContact"
+                       class="auth-input"
+                       placeholder="Enter your contact method"
+                       autocomplete="username"
+                       autocapitalize="none"
+                       autocorrect="off"
+                       spellcheck="false"
+                       @bind-Value="forgotPasswordModel.Contact" />
+            <ValidationMessage For="@(() => forgotPasswordModel.Contact)" class="auth-validation" />
+          </div>
+
+          <button type="submit" class="auth-primary" disabled="@isLoading">
+            @if (isLoading)
+            {
+              <span>Sending...</span>
+            }
+            else
+            {
+              <span>Send Secure Link</span>
+            }
+          </button>
+
+          <button type="button" class="auth-link" disabled="@isLoading" @onclick="() => SwitchMode(AuthMode.Login)">
+            Return to Login
+          </button>
+        </EditForm>
+      }
     }
     else
     {
