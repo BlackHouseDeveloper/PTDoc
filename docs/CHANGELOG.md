@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Agent workflow notes
+
+#### AGENTS.md now distinguishes helper-script vs API SQLite overrides and runtime diagnostics
+- **`AGENTS.md`** — Added the `PTDoc_DB_PATH` environment variable for `src/PTDoc.Api` so agent guidance no longer conflates the API database path with `PTDoc-Foundry.sh`’s `PFP_DB_PATH`, and added the authenticated `GET /diagnostics/runtime` command used for runtime parity and AI configuration checks. Reason: keep the agent-facing workflow notes aligned with the current README, development docs, and API/runtime diagnostics surface without broadening unrelated guidance.
+
 ### Changed - Clinic reference-data doc hygiene
 
 #### docs/clinicrefdata now makes runtime authority and archive status explicit
