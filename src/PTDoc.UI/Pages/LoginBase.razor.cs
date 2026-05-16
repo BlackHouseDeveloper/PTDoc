@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using PTDoc.Application.Auth;
@@ -77,6 +78,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     {
         returnUrl = ReturnUrlValidator.ExtractFromUri(Navigation.Uri);
         ApplyAuthStateFromUri(Navigation.Uri);
+        Navigation.LocationChanged += OnLocationChanged;
 
         // Subscribe to theme changes
         ThemeService.OnThemeChanged += OnThemeChanged;
@@ -152,6 +154,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
     {
         isDarkTheme = ThemeService.IsDarkMode;
         InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        ApplyAuthStateFromUri(args.Location);
+        _ = InvokeAsync(StateHasChanged);
     }
 
     protected void SwitchMode(AuthMode mode)
@@ -650,6 +658,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     public void Dispose()
     {
+        Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
     }
 }

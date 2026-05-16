@@ -48,7 +48,7 @@
     @if (isPendingApprovalNotice)
     {
       <div class="auth-info-alert" role="status" aria-live="polite">
-        <span class="auth-info-icon" aria-hidden="true">⏳</span>
+        <span class="auth-info-icon auth-icon-pending" aria-hidden="true"></span>
         <div class="auth-info-content">
           <strong>Account pending approval</strong>
           <p>Your registration is awaiting admin approval. You will be able to sign in once your clinic administrator activates your account.</p>
@@ -72,7 +72,7 @@
         @if (supportsExternalIdentityLogin)
         {
           <div class="auth-info-alert">
-            <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
+            <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
             <div class="auth-info-content">
               <strong>Single sign-on available</strong>
               <p>You can sign in with your PTDoc credentials or continue with @UserService.IdentityProviderDisplayName.</p>
@@ -140,7 +140,7 @@
       @if (showPasswordResetConfirmation)
       {
         <div class="auth-info-alert" role="status" aria-live="polite">
-          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
+          <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
           <div class="auth-info-content">
             <strong>Request received</strong>
             <p>@PasswordResetConfirmationMessage</p>
@@ -201,7 +201,7 @@
       @if (showPendingConfirmation)
       {
         <div class="auth-info-alert" role="status">
-          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
+          <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
           <div class="auth-info-content">
             <strong>@registrationConfirmationTitle</strong>
             <p>@registrationConfirmationMessage</p>
@@ -220,7 +220,7 @@
           <label for="fullName">
             Full Legal Name
             <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="Enter your full legal name (first and last name) exactly as it appears on your professional license">ⓘ</span>
+            <span class="auth-info-icon auth-icon-info" title="Enter your full legal name (first and last name) exactly as it appears on your professional license" aria-hidden="true"></span>
           </label>
           <InputText id="fullName"
                      class="auth-input"
@@ -234,7 +234,7 @@
           <label for="dateOfBirth">
             Date of Birth
             <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="You must be at least 18 years old to create an account">ⓘ</span>
+            <span class="auth-info-icon auth-icon-info" title="You must be at least 18 years old to create an account" aria-hidden="true"></span>
           </label>
           <input id="dateOfBirth"
                  type="date"
@@ -266,7 +266,7 @@
           <label for="roleKey">
             Role
             <span class="auth-required" aria-label="required">*</span>
-            <span class="auth-info-icon" title="Select your role for clinic onboarding">ⓘ</span>
+            <span class="auth-info-icon auth-icon-info" title="Select your role for clinic onboarding" aria-hidden="true"></span>
           </label>
           <InputSelect id="roleKey"
                        class="auth-input auth-select"
@@ -334,7 +334,7 @@
             <label for="licenseNumber">
               License Number
               <span class="auth-required" aria-label="required">*</span>
-              <span class="auth-info-icon" title="Enter your PT/PTA license number exactly as shown on your license">ⓘ</span>
+              <span class="auth-info-icon auth-icon-info" title="Enter your PT/PTA license number exactly as shown on your license" aria-hidden="true"></span>
             </label>
             <InputText id="licenseNumber"
                        class="auth-input"
@@ -347,7 +347,7 @@
             <label for="licenseState">
               License State
               <span class="auth-required" aria-label="required">*</span>
-              <span class="auth-info-icon" title="Select the U.S. state where your PT/PTA license was issued">ⓘ</span>
+              <span class="auth-info-icon auth-icon-info" title="Select the U.S. state where your PT/PTA license was issued" aria-hidden="true"></span>
             </label>
             <InputSelect id="licenseState"
                          class="auth-input auth-select"
@@ -363,7 +363,7 @@
         }
 
         <div class="auth-info-alert">
-          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
+          <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
           <div class="auth-info-content">
             <strong>Account Approval:</strong>
             <p>Your credentials will be generated after sign-up. PT and PTA registrations include license details for admin review before activation.</p>
@@ -390,7 +390,7 @@
   </div>
 
   <footer class="auth-footnote" aria-live="polite">
-    <span><span aria-hidden="true">🔒</span> HIPAA-compliant secure access</span>
+    <span><span class="auth-footnote-icon auth-icon-lock" aria-hidden="true"></span> HIPAA-compliant secure access</span>
     <span>Protected health information</span>
   </footer>
 </div>

@@ -72,4 +72,39 @@ public sealed class LoginBaseValidationTests
             validationResults,
             result => result.MemberNames.Contains("LicenseNumber", StringComparer.Ordinal));
     }
+
+    [Fact]
+    public void AuthPages_DoNotRenderDecorativeEmojiTextNodes()
+    {
+        var repoRoot = FindRepoRoot();
+        var loginMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/Login.razor"));
+        var resetMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/ResetPassword.razor"));
+        var combined = loginMarkup + resetMarkup;
+
+        Assert.DoesNotContain("\u2139\uFE0F", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain("\ud83d\udd12", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain("\u23F3", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain("\u24D8", combined, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WebHeadOutlet_IsInteractive_ForClientSideTitleUpdates()
+    {
+        var repoRoot = FindRepoRoot();
+        var appMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.Web/Components/App.razor"));
+
+        Assert.Contains("<HeadOutlet @rendermode=\"InteractiveServer\" />", appMarkup, StringComparison.Ordinal);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "PTDoc.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        return directory!.FullName;
+    }
 }
