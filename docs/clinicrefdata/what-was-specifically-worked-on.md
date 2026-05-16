@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for body-part workspace treatment focuses.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 Things to address by joint
 
 ## **Foot & Ankle**

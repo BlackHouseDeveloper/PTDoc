@@ -1,3 +1,7 @@
+> Role: Reference-only pelvic-floor worksheet retained for workspace limitation and goal traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 Pelvic Floor limitations/objectives/Goals
 
 #### **Mobility & Transfers**

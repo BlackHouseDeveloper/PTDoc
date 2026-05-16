@@ -48,11 +48,15 @@ PTDoc follows Robert C. Martin's Clean Architecture with strict dependency rules
 
 ### Reference Data Source Model
 
-Clinic reference markdown files under `docs/clinicrefdata/` are the human authoring source for clinical lookup code and description coverage. Runtime services do not parse those markdown files directly; they load embedded JSON mirrors owned by `PTDoc.Application/Data/`, such as `WorkspaceLookupReferenceData.json`, so API, UI, and MAUI callers share deterministic runtime assets.
+Clinic reference markdown files under `docs/clinicrefdata/` are governed by the status index in `docs/clinicrefdata/README.md`, which classifies each file as an authoring source, reference-only material, or archived history.
 
-Embedded runtime mirrors may include application-only lookup metadata that is not authored in markdown, including search terms and derived suggested defaults. For CPT lookup, the modifier option list mirrors the markdown modifier cheat sheet, while `defaultPtSuggestedModifiers` is app policy derived from the markdown's GP plan-of-care guidance.
+Lookup coverage is the one domain where markdown remains the canonical authoring source. `docs/clinicrefdata/ICD-10 codes.md` and `docs/clinicrefdata/Commonly used CPT codes and modifiers.md` are mirrored into `PTDoc.Application/Data/WorkspaceLookupReferenceData.json`, and the runtime lookup asset may add application-only metadata such as search terms or derived defaults. For CPT lookup, the modifier option list mirrors the markdown modifier cheat sheet, while `defaultPtSuggestedModifiers` is app policy derived from the markdown's GP plan-of-care guidance.
 
-Reference-data provenance paths must use canonical repo-relative `docs/clinicrefdata/...` strings. Cross-layer normalization helpers for these paths live in `PTDoc.Application.ReferenceData` so Infrastructure and Presentation can normalize provenance without violating Clean Architecture dependencies.
+Intake catalogs, workspace catalogs, and outcome-measure definitions are runtime-canonical after Branches 1-4. Their authoritative implementations live in runtime services or embedded assets such as `PTDoc.Infrastructure/ReferenceData/IntakeReferenceDataCatalogService.cs`, `PTDoc.Application/Data/IntakeSupplementalReferenceData.json`, `PTDoc.Application/Data/WorkspaceReferenceCatalog.json`, and `PTDoc.Application/Data/OutcomeMeasureReferenceData.json`. Clinic markdown files in those domains are retained as human traceability references unless the README explicitly marks them as authoring sources.
+
+`ReferenceDataProvenance.DocumentPath` is a repo-relative traceability pointer, not an authority signal by itself. Consumers must determine authority from the domain policy above and the `docs/clinicrefdata/README.md` classification. Archived clinic docs may still surface only when compatibility normalization remaps legacy persisted values to `docs/clinicrefdata/archive/...`; live runtime assets and services must not cite archived docs as active provenance.
+
+Cross-layer normalization helpers for clinic reference-data provenance live in `PTDoc.Application.ReferenceData` so Infrastructure and Presentation can normalize compatibility paths without violating Clean Architecture dependencies.
 
 ## Layer Details
 

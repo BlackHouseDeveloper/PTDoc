@@ -1,3 +1,7 @@
+> Role: Reference-only intake medication worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Infrastructure/ReferenceData/IntakeReferenceDataCatalogService.cs
+
 App List of Medications 
 
 ### **Top Prescribed Medications (Brand / Generic)**

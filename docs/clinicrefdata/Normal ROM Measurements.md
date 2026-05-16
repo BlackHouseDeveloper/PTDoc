@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for workspace normal ROM values.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 Normal ROM Measurements 
 
 ###  **Neck (Cervical Spine)**
@@ -119,4 +123,3 @@ Normal ROM Measurements
 * **Lateral Flexion (Side Bending)**: 0–25°
 
 * **Rotation**: 0–30°
-

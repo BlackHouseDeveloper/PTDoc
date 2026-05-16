@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Clinic reference-data doc hygiene
+
+#### docs/clinicrefdata now makes runtime authority and archive status explicit
+- **`docs/clinicrefdata/README.md`**, **`docs/clinicrefdata/archive/Exercise Table.md`**, **`docs/clinicrefdata/archive/Policies_and_Consent.md`**, **`docs/clinicrefdata/archive/Pelvic Floor functional limitations.md`**, **`docs/clinicrefdata/archive/limitations by body part.md`**, **`docs/clinicrefdata/*.md`**, **`docs/ARCHITECTURE.md`**, **`src/PTDoc.Application/ReferenceData/ReferenceDataProvenance.cs`** — Froze the canonical-source policy by domain, added a folder index that classifies every clinic reference doc as authoring source, reference-only, or archived, added parser-safe header notes to the active docs, moved clearly non-canonical clinic worksheets into `docs/clinicrefdata/archive/`, and documented that `ReferenceDataProvenance.DocumentPath` is a traceability pointer rather than a standalone authority signal. Reason: Branch 5 needs the folder itself to reveal which files matter to runtime behavior without relying on tribal knowledge.
+
 ### Changed - Reference-data lookup provenance cleanup
 
 #### Workspace ICD/CPT lookup assets now mirror clinic reference authoring docs with enforced provenance

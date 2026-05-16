@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for workspace joint-mobility and MMT grading.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 Norms for ROM and MMT
 
 |  Grade |  Descriptor |  Description |
@@ -28,4 +32,3 @@ Norms for ROM and MMT
 | 4 | Slightly hypermobile | Mildly excessive motion |
 | 5 | Considerably hypermobile | Significantly excessive motion |
 | 6 | Unstable | Pathological hypermobility or instability |
-

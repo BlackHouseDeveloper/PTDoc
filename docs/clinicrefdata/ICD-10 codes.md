@@ -1,3 +1,7 @@
+> Role: Canonical authoring source for ICD-10 lookup coverage.
+> Runtime-consumed directly: Yes (mirrored into embedded asset)
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceLookupReferenceData.json
+
 ICD-10 codes
 
 ### **General & Systemic**
