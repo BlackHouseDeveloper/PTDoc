@@ -1,6 +1,10 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Moq;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
@@ -17,6 +21,8 @@ namespace PTDoc.Tests.Intake;
 [Trait("Category", "CoreCi")]
 public sealed class JwtIntakeInviteServiceTests
 {
+    private const string SigningKey = "unit-test-intake-signing-key-that-is-well-over-thirty-two-chars";
+
     [Fact]
     public async Task CreateInviteAsync_ActiveInvite_IsIdempotent()
     {
@@ -119,6 +125,105 @@ public sealed class JwtIntakeInviteServiceTests
         var sent = await service.SendOtpAsync(ReadInviteToken(invite.InviteUrl!), "other@example.com", OtpChannel.Email);
 
         Assert.False(sent);
+        communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
+            It.IsAny<IntakeOtpDeliveryRequest>(),
+            It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData("not-a-jwt")]
+    [InlineData("not.a.jwt")]
+    public async Task InviteTokenValidation_MalformedToken_ReturnsSafeFailures(string inviteToken)
+    {
+        await using var db = CreateDbContext();
+        var communicationService = new Mock<ICommunicationService>();
+        var service = CreateService(db, communicationService: communicationService);
+
+        var validation = await service.ValidateInviteTokenAsync(inviteToken);
+        var sent = await service.SendOtpAsync(inviteToken, "patient@example.com", OtpChannel.Email);
+        var verified = await service.VerifyOtpAndIssueAccessTokenAsync(
+            inviteToken,
+            "patient@example.com",
+            OtpChannel.Email,
+            "123456");
+        var sessionValid = await service.ValidateAccessTokenAsync(inviteToken);
+        await service.RevokeAccessTokenAsync(inviteToken);
+
+        Assert.False(validation.IsValid);
+        Assert.False(sent);
+        Assert.False(verified.IsValid);
+        Assert.False(sessionValid);
+        communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
+            It.IsAny<IntakeOtpDeliveryRequest>(),
+            It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("invalid-signature")]
+    [InlineData("wrong-type")]
+    public async Task InviteTokenValidation_InvalidJwt_ReturnsSafeFailures(string tokenKind)
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        intake.AccessToken = "stored-secret-hash";
+        intake.ExpiresAt = DateTime.UtcNow.AddHours(1);
+        await db.SaveChangesAsync();
+
+        var inviteToken = tokenKind switch
+        {
+            "expired" => WriteJwt(
+                signingKey: SigningKey,
+                audience: "ptdoc_invite",
+                tokenType: "intake_invite",
+                expiresAt: DateTimeOffset.UtcNow.AddMinutes(-5),
+                claims:
+                [
+                    new Claim("intake_id", intake.Id.ToString()),
+                    new Claim("patient_id", intake.PatientId.ToString()),
+                    new Claim("invite_secret", "raw-secret")
+                ]),
+            "invalid-signature" => WriteJwt(
+                signingKey: "different-invalid-signing-key-that-is-well-over-thirty-two-chars",
+                audience: "ptdoc_invite",
+                tokenType: "intake_invite",
+                expiresAt: DateTimeOffset.UtcNow.AddMinutes(10),
+                claims:
+                [
+                    new Claim("intake_id", intake.Id.ToString()),
+                    new Claim("patient_id", intake.PatientId.ToString()),
+                    new Claim("invite_secret", "raw-secret")
+                ]),
+            "wrong-type" => WriteJwt(
+                signingKey: SigningKey,
+                audience: "ptdoc_invite",
+                tokenType: "intake_access",
+                expiresAt: DateTimeOffset.UtcNow.AddMinutes(10),
+                claims:
+                [
+                    new Claim("intake_id", intake.Id.ToString()),
+                    new Claim("patient_id", intake.PatientId.ToString()),
+                    new Claim("invite_secret", "raw-secret")
+                ]),
+            _ => throw new InvalidOperationException($"Unhandled token kind {tokenKind}.")
+        };
+
+        var communicationService = new Mock<ICommunicationService>();
+        var service = CreateService(db, communicationService: communicationService);
+
+        var validation = await service.ValidateInviteTokenAsync(inviteToken);
+        var sent = await service.SendOtpAsync(inviteToken, "patient@example.com", OtpChannel.Email);
+        var verified = await service.VerifyOtpAndIssueAccessTokenAsync(
+            inviteToken,
+            "patient@example.com",
+            OtpChannel.Email,
+            "123456");
+
+        Assert.False(validation.IsValid);
+        Assert.False(sent);
+        Assert.False(verified.IsValid);
         communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
             It.IsAny<IntakeOtpDeliveryRequest>(),
             It.IsAny<CancellationToken>()),
@@ -235,7 +340,7 @@ public sealed class JwtIntakeInviteServiceTests
         return new JwtIntakeInviteService(
             Options.Create(new IntakeInviteOptions
             {
-                SigningKey = "unit-test-intake-signing-key-that-is-well-over-thirty-two-chars",
+                SigningKey = SigningKey,
                 InviteExpiryMinutes = 1440,
                 AccessTokenExpiryMinutes = 120,
                 OtpExpiryMinutes = 10,
@@ -307,5 +412,31 @@ public sealed class JwtIntakeInviteServiceTests
             .First(part => part.StartsWith("invite=", StringComparison.OrdinalIgnoreCase));
 
         return Uri.UnescapeDataString(inviteQueryPart["invite=".Length..]);
+    }
+
+    private static string WriteJwt(
+        string signingKey,
+        string audience,
+        string tokenType,
+        DateTimeOffset expiresAt,
+        IEnumerable<Claim> claims)
+    {
+        var jwtClaims = new List<Claim>(claims)
+        {
+            new("typ", tokenType),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
+        };
+        var now = DateTimeOffset.UtcNow;
+        var jwt = new JwtSecurityToken(
+            issuer: "PTDoc.IntakeInvite",
+            audience: audience,
+            claims: jwtClaims,
+            notBefore: now.AddMinutes(-10).UtcDateTime,
+            expires: expiresAt.UtcDateTime,
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                SecurityAlgorithms.HmacSha256));
+
+        return new JwtSecurityTokenHandler().WriteToken(jwt);
     }
 }

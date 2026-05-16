@@ -150,16 +150,21 @@ public static class CommunicationEndpoints
     }
 
     private static async Task<IResult> ValidatePasswordResetToken(
-        [FromBody] PasswordResetTokenValidationRequest request,
+        [FromBody] PasswordResetTokenValidationRequest? request,
         [FromServices] IPasswordResetTokenService passwordResetTokenService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.Ok(new { isValid = false });
+        }
+
         var result = await passwordResetTokenService.ValidateTokenAsync(request, cancellationToken);
         return Results.Ok(new { isValid = result.IsValid });
     }
 
     private static Task<IResult> SendPasswordResetEmail(
-        [FromBody] PasswordResetSendRequest request,
+        [FromBody] PasswordResetSendRequest? request,
         [FromServices] ICommunicationService communicationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -171,7 +176,7 @@ public static class CommunicationEndpoints
             cancellationToken);
 
     private static Task<IResult> SendPasswordResetSms(
-        [FromBody] PasswordResetSendRequest request,
+        [FromBody] PasswordResetSendRequest? request,
         [FromServices] ICommunicationService communicationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -183,12 +188,17 @@ public static class CommunicationEndpoints
             cancellationToken);
 
     private static async Task<IResult> SendPasswordResetAsync(
-        PasswordResetSendRequest request,
+        PasswordResetSendRequest? request,
         DeliveryChannel channel,
         ICommunicationService communicationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.BadRequest(new { error = "A contact method is required." });
+        }
+
         var recipient = ResolveRecipient(request, channel);
         if (string.IsNullOrWhiteSpace(recipient))
         {
@@ -214,10 +224,15 @@ public static class CommunicationEndpoints
     }
 
     private static async Task<IResult> CompletePasswordReset(
-        [FromBody] PasswordResetCompleteRequest request,
+        [FromBody] PasswordResetCompleteRequest? request,
         [FromServices] IPasswordResetTokenService passwordResetTokenService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.BadRequest(new { error = "The reset link is invalid or expired." });
+        }
+
         var result = await passwordResetTokenService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = request.Token ?? string.Empty,

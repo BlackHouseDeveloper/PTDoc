@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -66,46 +67,71 @@ public static class IntakeAccessEndpoints
     }
 
     private static async Task<IResult> ValidateInvite(
-        [FromBody] ValidateIntakeInviteRequest request,
+        [FromBody] ValidateIntakeInviteRequest? request,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.Ok(new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired."));
+        }
+
         var result = await inviteService.ValidateInviteTokenAsync(request.InviteToken, cancellationToken);
         return Results.Ok(result);
     }
 
     private static async Task<IResult> SendOtp(
-        [FromBody] SendIntakeOtpRequest request,
+        [FromBody] SendIntakeOtpRequest? request,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.Ok(new SendIntakeOtpResponse { Success = false });
+        }
+
         var success = await inviteService.SendOtpAsync(request.InviteToken, request.Contact, request.Channel, cancellationToken);
         return Results.Ok(new SendIntakeOtpResponse { Success = success });
     }
 
     private static async Task<IResult> VerifyOtp(
-        [FromBody] VerifyIntakeOtpRequest request,
+        [FromBody] VerifyIntakeOtpRequest? request,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.Ok(new IntakeInviteResult(false, null, null, "Invalid or expired invite link."));
+        }
+
         var result = await inviteService.VerifyOtpAndIssueAccessTokenAsync(request.InviteToken, request.Contact, request.Channel, request.OtpCode, cancellationToken);
         return Results.Ok(result);
     }
 
     private static async Task<IResult> ValidateSession(
-        [FromBody] IntakeAccessTokenRequest request,
+        [FromBody] IntakeAccessTokenRequest? request,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.Ok(new IntakeAccessTokenValidationResponse { IsValid = false });
+        }
+
         var isValid = await inviteService.ValidateAccessTokenAsync(request.AccessToken, cancellationToken);
         return Results.Ok(new IntakeAccessTokenValidationResponse { IsValid = isValid });
     }
 
     private static async Task<IResult> RevokeSession(
-        [FromBody] IntakeAccessTokenRequest request,
+        [FromBody] IntakeAccessTokenRequest? request,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Results.NoContent();
+        }
+
         await inviteService.RevokeAccessTokenAsync(request.AccessToken, cancellationToken);
         return Results.NoContent();
     }
@@ -353,7 +379,7 @@ public static class IntakeAccessEndpoints
                 ReadClaimValue(principal, ContactClaim)?.Trim());
             return true;
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
             return false;
         }
@@ -364,6 +390,12 @@ public static class IntakeAccessEndpoints
 
     private static Guid? TryReadGuid(ClaimsPrincipal principal, string claimType)
         => Guid.TryParse(ReadClaimValue(principal, claimType), out var value) ? value : null;
+
+    private static bool IsExpectedTokenException(Exception ex)
+        => ex is SecurityTokenException
+            or ArgumentException
+            or FormatException
+            or JsonException;
 
     private readonly record struct IntakeAccessScope(Guid? IntakeId, Guid? PatientId, string? Contact);
 }

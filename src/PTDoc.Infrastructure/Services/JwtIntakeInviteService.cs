@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -169,8 +170,9 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             return IssueAccessToken(patientId: patientId, intakeId: intakeId);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
+            _logger.LogWarning(ex, "Intake invite token validation failed safe.");
             return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
         }
     }
@@ -354,8 +356,9 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             return Task.FromResult(principal.Identity?.IsAuthenticated == true);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
+            _logger.LogWarning(ex, "Intake access token validation failed safe.");
             return Task.FromResult(false);
         }
     }
@@ -367,15 +370,22 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
             return Task.CompletedTask;
         }
 
-        var handler = new JwtSecurityTokenHandler();
-        if (handler.CanReadToken(accessToken))
+        try
         {
-            var token = handler.ReadJwtToken(accessToken);
-            if (!string.IsNullOrWhiteSpace(token.Id))
+            var handler = new JwtSecurityTokenHandler();
+            if (handler.CanReadToken(accessToken))
             {
-                _revokedTokens[token.Id] = token.ValidTo;
-                PurgeExpiredRevocations();
+                var token = handler.ReadJwtToken(accessToken);
+                if (!string.IsNullOrWhiteSpace(token.Id))
+                {
+                    _revokedTokens[token.Id] = token.ValidTo;
+                    PurgeExpiredRevocations();
+                }
             }
+        }
+        catch (Exception ex) when (IsExpectedTokenException(ex))
+        {
+            _logger.LogWarning(ex, "Intake access token revocation ignored an invalid token.");
         }
 
         return Task.CompletedTask;
@@ -625,8 +635,9 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
                 normalizedContact.NormalizedValue,
                 null);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
+            _logger.LogWarning(ex, "Intake OTP invite context validation failed safe.");
             return OtpContextValidation.Fail("Invite link is invalid or has expired.");
         }
     }
@@ -786,6 +797,12 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
     private static Guid ReadGuidClaim(ClaimsPrincipal principal, string claimType)
         => Guid.TryParse(ReadClaimValue(principal, claimType), out var value) ? value : Guid.Empty;
+
+    private static bool IsExpectedTokenException(Exception ex)
+        => ex is SecurityTokenException
+            or ArgumentException
+            or FormatException
+            or JsonException;
 
     private static string NormalizePublicWebBaseUrl(string value)
     {

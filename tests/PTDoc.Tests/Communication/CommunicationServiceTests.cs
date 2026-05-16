@@ -5,6 +5,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Data.Sqlite;
 using PTDoc.Application.Communication;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
@@ -152,6 +153,110 @@ public sealed class CommunicationServiceTests
         Assert.Equal(PasswordResetCompletionStatus.AlreadyUsed, second.Status);
         Assert.NotEqual("old-hash", (await db.Users.SingleAsync()).PinHash);
         Assert.NotNull(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_ValidateToken_InvalidInputs_ReturnsFalse()
+    {
+        await using var db = CreateDbContext();
+        var resetService = new PasswordResetTokenService(db);
+
+        var blank = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest { Token = "" });
+        var unknown = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest { Token = "definitely-invalid" });
+        var oversized = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest { Token = new string('x', 4097) });
+
+        Assert.False(blank.IsValid);
+        Assert.False(unknown.IsValid);
+        Assert.False(oversized.IsValid);
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("used")]
+    [InlineData("revoked")]
+    public async Task PasswordResetTokenService_ValidateToken_InactiveTokens_ReturnsFalse(string state)
+    {
+        await using var db = CreateDbContext();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = $"reset-{state}",
+            PinHash = "old-hash",
+            FirstName = "Reset",
+            LastName = "User",
+            Email = $"reset-{state}@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+
+        var token = ExtractResetToken(emailSender);
+        var storedToken = await db.PasswordResetTokens.SingleAsync();
+        switch (state)
+        {
+            case "expired":
+                storedToken.ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+                break;
+            case "used":
+                storedToken.UsedAtUtc = DateTimeOffset.UtcNow;
+                break;
+            case "revoked":
+                storedToken.RevokedAtUtc = DateTimeOffset.UtcNow;
+                storedToken.RevocationReason = "TestRevocation";
+                break;
+        }
+        await db.SaveChangesAsync();
+
+        var resetService = new PasswordResetTokenService(db);
+        var validation = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest { Token = token });
+
+        Assert.False(validation.IsValid);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_ValidateToken_OldSchema_ReturnsFalse()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                CREATE TABLE PasswordResetTokens (
+                    Id TEXT NOT NULL PRIMARY KEY,
+                    UserId TEXT NOT NULL,
+                    TokenHash TEXT NOT NULL,
+                    Channel TEXT NOT NULL,
+                    RecipientHash TEXT NOT NULL,
+                    ExpiresAtUtc TEXT NOT NULL,
+                    CreatedAtUtc TEXT NOT NULL,
+                    UsedAtUtc TEXT NULL,
+                    CorrelationId TEXT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        var resetService = new PasswordResetTokenService(db);
+
+        var validation = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest
+        {
+            Token = "definitely-invalid"
+        });
+
+        Assert.False(validation.IsValid);
     }
 
     [Fact]
@@ -412,6 +517,19 @@ public sealed class CommunicationServiceTests
             .Options;
 
         return new ApplicationDbContext(options);
+    }
+
+    private static string ExtractResetToken(FakeEmailSender emailSender)
+    {
+        var link = emailSender.Messages.Single().PlainTextBody.Split(": ", StringSplitOptions.None).Last();
+        var token = new Uri(link).Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .Where(parts => parts.Length == 2)
+            .FirstOrDefault(parts => parts[0] == "token")?[1];
+
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        return Uri.UnescapeDataString(token!);
     }
 
     private sealed class FakeTemplateRenderer : IMessageTemplateRenderer
