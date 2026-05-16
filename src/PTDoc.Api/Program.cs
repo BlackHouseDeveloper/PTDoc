@@ -3,17 +3,20 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 using System.Text;
 using System.Text.Json;
 using PTDoc.Api.AI;
 using PTDoc.Api.Appointments;
 using PTDoc.Api.Auth;
+using PTDoc.Api.Communications;
 using PTDoc.Api.Compliance;
 using PTDoc.Api.Diagnostics;
 using PTDoc.Api.Health;
@@ -42,6 +45,7 @@ using PTDoc.Application.Sync;
 using PTDoc.AI.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
+using PTDoc.Infrastructure.DependencyInjection;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Integrations;
 using PTDoc.Infrastructure.Notes.Workspace;
@@ -86,6 +90,27 @@ if (!builder.Environment.IsEnvironment("Testing"))
 // Add HttpContextAccessor for identity context
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("PasswordResetCommunication", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(15),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "If an account matches that contact method, a secure reset link has been sent." },
+            cancellationToken);
+    };
+});
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
 
@@ -152,8 +177,7 @@ builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PT
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
 builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
 builder.Services.AddScoped<IFaxService, HumbleFaxService>();
-builder.Services.AddScoped<IEmailDeliveryService, SendGridEmailService>();
-builder.Services.AddScoped<ISmsDeliveryService, TwilioSmsService>();
+builder.Services.AddPTDocCommunication(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
 builder.Services.AddScoped<IIntakeService, IntakeService>();
@@ -650,6 +674,7 @@ if (autoMigrate)
     }
 }
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
 app.UseAuthorization();
@@ -702,6 +727,7 @@ app.MapPatientEndpoints(); // Sprint O: Patient CRUD
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapIntakeAccessEndpoints(); // Standalone patient invite validation, OTP, and patient access
 app.MapIntakeDeliveryEndpoints(); // Share-link, QR, email, and SMS intake delivery
+app.MapCommunicationEndpoints(); // Canonical ACS-backed email/SMS delivery endpoints
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
 app.MapObjectiveMetricEndpoints(); // Sprint O: ObjectiveMetric CRUD per note
 app.MapSyncEndpoints(); // Sync endpoints

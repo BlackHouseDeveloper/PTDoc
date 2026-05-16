@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Integrations;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Intake;
 using PTDoc.Infrastructure.Data;
 
@@ -16,7 +16,7 @@ namespace PTDoc.Infrastructure.Services;
 
 /// <summary>
 /// Production implementation of <see cref="IIntakeInviteService"/> that uses signed JWT invite links,
-/// short-lived access tokens, and shared outbound email/SMS delivery services.
+/// short-lived access tokens, and canonical outbound communication delivery.
 /// </summary>
 public sealed class JwtIntakeInviteService : IIntakeInviteService
 {
@@ -37,8 +37,7 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
     private readonly IntakeInviteOptions _options;
     private readonly ApplicationDbContext _db;
-    private readonly IEmailDeliveryService _emailDeliveryService;
-    private readonly ISmsDeliveryService _smsDeliveryService;
+    private readonly ICommunicationService _communicationService;
     private readonly IAuditService _auditService;
     private readonly ILogger<JwtIntakeInviteService> _logger;
 
@@ -50,15 +49,13 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
     public JwtIntakeInviteService(
         IOptions<IntakeInviteOptions> options,
         ApplicationDbContext db,
-        IEmailDeliveryService emailDeliveryService,
-        ISmsDeliveryService smsDeliveryService,
+        ICommunicationService communicationService,
         IAuditService auditService,
         ILogger<JwtIntakeInviteService> logger)
     {
         _options = options.Value;
         _db = db;
-        _emailDeliveryService = emailDeliveryService;
-        _smsDeliveryService = smsDeliveryService;
+        _communicationService = communicationService;
         _auditService = auditService;
         _logger = logger;
     }
@@ -287,27 +284,21 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         OtpChannel channel,
         CancellationToken cancellationToken)
     {
-        var message = $"Your PTDoc intake verification code is {otp}. It expires in {_options.OtpExpiryMinutes} minutes.";
+        var request = new IntakeOtpDeliveryRequest
+        {
+            Recipient = contact,
+            OtpCode = otp,
+            ExpiresInMinutes = _options.OtpExpiryMinutes
+        };
 
         if (channel == OtpChannel.Email)
         {
-            var result = await _emailDeliveryService.SendAsync(new EmailDeliveryRequest
-            {
-                ToAddress = contact,
-                Subject = "Your PTDoc intake verification code",
-                PlainTextBody = message
-            }, cancellationToken);
-
-            return (result.Success, "SendGrid", result.ProviderMessageId, result.ErrorMessage);
+            var result = await _communicationService.SendIntakeOtpEmailAsync(request, cancellationToken);
+            return (result.Succeeded, result.Provider ?? "Unknown", result.ProviderMessageId, result.SafeErrorMessage);
         }
 
-        var smsResult = await _smsDeliveryService.SendAsync(new SmsDeliveryRequest
-        {
-            ToNumber = contact,
-            Message = message
-        }, cancellationToken);
-
-        return (smsResult.Success, "Twilio", smsResult.ProviderMessageId, smsResult.ErrorMessage);
+        var smsResult = await _communicationService.SendIntakeOtpSmsAsync(request, cancellationToken);
+        return (smsResult.Succeeded, smsResult.Provider ?? "Unknown", smsResult.ProviderMessageId, smsResult.SafeErrorMessage);
     }
 
     private async Task LogOtpEventAsync(

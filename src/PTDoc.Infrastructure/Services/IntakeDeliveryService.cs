@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Integrations;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -18,21 +18,18 @@ public sealed class IntakeDeliveryService : IIntakeDeliveryService
 
     private readonly ApplicationDbContext _db;
     private readonly IIntakeInviteService _inviteService;
-    private readonly IEmailDeliveryService _emailDeliveryService;
-    private readonly ISmsDeliveryService _smsDeliveryService;
+    private readonly ICommunicationService _communicationService;
     private readonly IAuditService _auditService;
 
     public IntakeDeliveryService(
         ApplicationDbContext db,
         IIntakeInviteService inviteService,
-        IEmailDeliveryService emailDeliveryService,
-        ISmsDeliveryService smsDeliveryService,
+        ICommunicationService communicationService,
         IAuditService auditService)
     {
         _db = db;
         _inviteService = inviteService;
-        _emailDeliveryService = emailDeliveryService;
-        _smsDeliveryService = smsDeliveryService;
+        _communicationService = communicationService;
         _auditService = auditService;
     }
 
@@ -130,46 +127,23 @@ public sealed class IntakeDeliveryService : IIntakeDeliveryService
             };
         }
 
-        var clinicName = string.IsNullOrWhiteSpace(intake.Clinic?.Name) ? "PTDoc" : intake.Clinic.Name;
-        var patientName = string.IsNullOrWhiteSpace(intake.Patient?.FirstName)
-            ? "there"
-            : intake.Patient!.FirstName;
-        var plainTextBody = $"Hello {patientName}, please complete your PT intake using this secure link: {invite.InviteUrl}. The link expires on {invite.ExpiresAt.Value:MMMM d, yyyy h:mm tt} UTC.";
-        var htmlBody = $"<p>Hello {patientName},</p><p>Please complete your PT intake using this secure link:</p><p><a href=\"{invite.InviteUrl}\">{invite.InviteUrl}</a></p><p>This link expires on {invite.ExpiresAt.Value:MMMM d, yyyy h:mm tt} UTC.</p>";
-
-        string provider;
-        string? providerMessageId;
-        string? errorMessage;
-        bool success;
-
-        if (request.Channel == IntakeDeliveryChannel.Email)
+        var deliveryRequest = new IntakeLinkDeliveryRequest
         {
-            provider = "SendGrid";
-            var emailResult = await _emailDeliveryService.SendAsync(new EmailDeliveryRequest
-            {
-                ToAddress = destination,
-                Subject = $"{clinicName} intake form",
-                PlainTextBody = plainTextBody,
-                HtmlBody = htmlBody
-            }, cancellationToken);
+            IntakeId = intake.Id,
+            PatientId = intake.PatientId,
+            Recipient = destination,
+            InviteUrl = invite.InviteUrl,
+            ExpiresAtUtc = invite.ExpiresAt.Value
+        };
 
-            success = emailResult.Success;
-            providerMessageId = emailResult.ProviderMessageId;
-            errorMessage = emailResult.ErrorMessage;
-        }
-        else
-        {
-            provider = "Twilio";
-            var smsResult = await _smsDeliveryService.SendAsync(new SmsDeliveryRequest
-            {
-                ToNumber = destination,
-                Message = plainTextBody
-            }, cancellationToken);
+        var deliveryResult = request.Channel == IntakeDeliveryChannel.Email
+            ? await _communicationService.SendIntakeLinkEmailAsync(deliveryRequest, cancellationToken)
+            : await _communicationService.SendIntakeLinkSmsAsync(deliveryRequest, cancellationToken);
 
-            success = smsResult.Success;
-            providerMessageId = smsResult.ProviderMessageId;
-            errorMessage = smsResult.ErrorMessage;
-        }
+        var success = deliveryResult.Succeeded;
+        var provider = deliveryResult.Provider ?? "Unknown";
+        var providerMessageId = deliveryResult.ProviderMessageId;
+        var errorMessage = deliveryResult.SafeErrorMessage;
 
         var maskedDestination = MaskDestination(destination);
         await LogInviteEventAsync(
@@ -193,7 +167,7 @@ public sealed class IntakeDeliveryService : IIntakeDeliveryService
             Channel = request.Channel,
             DestinationMasked = maskedDestination,
             ProviderMessageId = providerMessageId,
-            SentAt = success ? DateTimeOffset.UtcNow : null,
+            SentAt = success ? deliveryResult.SentAtUtc : null,
             ExpiresAt = invite.ExpiresAt,
             ErrorMessage = errorMessage
         };
