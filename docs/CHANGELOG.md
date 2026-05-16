@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Progress tracking test stability
+
+#### Progress-tracking aggregation tests now use relative activity dates
+- **`tests/PTDoc.Tests/UI/ProgressTracking/ProgressTrackingAggregationServiceTests.cs`** — Replaced hard-coded April 2026 fixture dates with recent UTC-relative dates in the `LoadAsync` aggregation regressions so the tests continue exercising the default 30-day filter window instead of aging out as calendar time advances. Reason: the failing assertions were caused by stale test data, not by a runtime regression in `ProgressTrackingAggregationService`.
+
 ### Changed - Agent workflow notes
 
 #### AGENTS.md now distinguishes helper-script vs API SQLite overrides and runtime diagnostics
