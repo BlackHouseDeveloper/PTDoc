@@ -6,6 +6,8 @@ namespace PTDoc.Tests.ReferenceData;
 [Trait("Category", "CoreCi")]
 public sealed class ReferenceDataProvenanceNormalizerTests
 {
+    private const string ArchivedWorksheetPath = "docs/clinicrefdata/archive/limitations by body part.md";
+
     [Fact]
     public void NormalizeDocumentPath_PreservesNullAndEmpty()
     {
@@ -32,6 +34,15 @@ public sealed class ReferenceDataProvenanceNormalizerTests
     }
 
     [Fact]
+    public void NormalizeDocumentPath_CanonicalizesKnownClinicReferenceFilenameCasing()
+    {
+        Assert.Equal(
+            "docs/clinicrefdata/Commonly used CPT codes and modifiers.md",
+            ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(
+                " Docs/ClinicRefData/COMMONLY USED CPT CODES AND MODIFIERS.MD "));
+    }
+
+    [Fact]
     public void NormalizeDocumentPath_MapsKnownBareClinicReferenceFilename()
     {
         Assert.Equal(
@@ -46,6 +57,18 @@ public sealed class ReferenceDataProvenanceNormalizerTests
         Assert.Equal(
             "docs/clinicrefdata/ICD-10 codes.md",
             ReferenceDataProvenanceNormalizer.NormalizeDocumentPath("ICD-10 codes.md"));
+    }
+
+    [Theory]
+    [InlineData("limitations by body part.md")]
+    [InlineData(" docs/clinicrefdata/limitations by body part.md ")]
+    [InlineData(" Docs\\clinicrefdata\\LIMITATIONS BY BODY PART.MD ")]
+    [InlineData(" Docs/ClinicRefData/Archive/LIMITATIONS BY BODY PART.MD ")]
+    public void NormalizeDocumentPath_RemapArchivedClinicReferenceValuesToArchivePath(string rawValue)
+    {
+        Assert.Equal(
+            ArchivedWorksheetPath,
+            ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(rawValue));
     }
 
     [Fact]

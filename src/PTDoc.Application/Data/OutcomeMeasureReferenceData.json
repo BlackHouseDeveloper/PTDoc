@@ -3,7 +3,7 @@
   "provenance": {
     "documentPath": "docs/clinicrefdata/List of functional outcome measures.md",
     "version": "2026-04-10",
-    "notes": "Branch 2 supported typed outcome-measure registry."
+    "notes": "Clinic reference document remains a traceability reference; this runtime asset and registry are authoritative for supported outcome definitions."
   },
   "measures": [
     {

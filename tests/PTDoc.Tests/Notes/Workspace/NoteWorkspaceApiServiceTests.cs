@@ -1037,12 +1037,12 @@ public sealed class NoteWorkspaceApiServiceTests
             {
                 BodyPart = BodyPart.Shoulder,
                 FunctionalLimitations = CatalogAvailability.Available(
-                    "docs/clinicrefdata/limitations by body part.md",
+                    "Upper-extremity functional limitations now come from this workspace catalog asset; the archived clinic worksheet is historical reference only.",
                     new ReferenceDataProvenance
                     {
-                        DocumentPath = "docs/clinicrefdata/limitations by body part.md",
-                        Version = "2026-04-18",
-                        Notes = "Branch 2 upper-extremity functional limitations from the current temporary validated source."
+                        DocumentPath = "src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json",
+                        Version = "2026-04-23",
+                        Notes = "Branch 5 runtime-canonical upper-extremity functional limitations; archived clinic worksheet retained for historical reference only."
                     }),
                 GoalTemplates = CatalogAvailability.Missing(
                     "No validated upper-extremity goal source loaded; goal templates remain unavailable until a validated source exists."),
@@ -1062,7 +1062,10 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.Equal(BodyPart.Shoulder, catalog.BodyPart);
         Assert.True(catalog.FunctionalLimitations.IsAvailable);
-        Assert.Equal("docs/clinicrefdata/limitations by body part.md", catalog.FunctionalLimitations.Provenance?.DocumentPath);
+        Assert.Equal(
+            "Upper-extremity functional limitations now come from this workspace catalog asset; the archived clinic worksheet is historical reference only.",
+            catalog.FunctionalLimitations.Notes);
+        Assert.Equal("src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json", catalog.FunctionalLimitations.Provenance?.DocumentPath);
         Assert.False(catalog.GoalTemplates.IsAvailable);
         Assert.Null(catalog.GoalTemplates.Provenance);
         Assert.Equal("ADLs", Assert.Single(catalog.FunctionalLimitationCategories).Name);
@@ -1107,6 +1110,36 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal(["CQ", "GP", "KX"], entry.ModifierOptions.OrderBy(value => value).ToArray());
         Assert.Equal(["GP"], entry.SuggestedModifiers);
         Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", entry.ModifierSource);
+    }
+
+    [Fact]
+    public async Task SearchCptAsync_NormalizesArchivedLegacyClinicReferencePaths()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new[]
+            {
+                new CodeLookupEntry
+                {
+                    Code = "97110",
+                    Description = "Therapeutic exercise",
+                    Source = "Docs/ClinicRefData/EXERCISE TABLE.MD",
+                    Provenance = new ReferenceDataProvenance
+                    {
+                        DocumentPath = "Docs/ClinicRefData/LIMITATIONS BY BODY PART.MD",
+                        Version = "2026-04-23"
+                    },
+                    ModifierSource = "Docs/ClinicRefData/Archive/LIMITATIONS BY BODY PART.MD"
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+        var entry = Assert.Single(await service.SearchCptAsync("97110", 10));
+
+        Assert.Equal("docs/clinicrefdata/archive/Exercise Table.md", entry.Source);
+        Assert.Equal("docs/clinicrefdata/archive/limitations by body part.md", entry.Provenance?.DocumentPath);
+        Assert.Equal("docs/clinicrefdata/archive/limitations by body part.md", entry.ModifierSource);
     }
 
     [Fact]
