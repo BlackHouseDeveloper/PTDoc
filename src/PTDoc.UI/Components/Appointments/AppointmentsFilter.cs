@@ -12,8 +12,8 @@ public class AppointmentsFilter
     /// <summary>
     /// Checks if any filters are active.
     /// </summary>
-    public bool HasActiveFilters => 
-        SelectedAppointmentTypes.Any() || 
-        SelectedIntakeStatuses.Any() || 
+    public bool HasActiveFilters =>
+        SelectedAppointmentTypes.Any() ||
+        SelectedIntakeStatuses.Any() ||
         SelectedAppointmentStatuses.Any();
 }

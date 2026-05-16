@@ -12,7 +12,7 @@ public class PatientProfileVm
     public string? PhoneNumber { get; set; }
     public string? Address { get; set; }
     public List<string> FlagsAndComorbidities { get; set; } = new();
-    
+
     // Clinical Info
     public string? PrimaryDiagnosis { get; set; }
     public string? SecondaryDiagnosis { get; set; }

@@ -17,7 +17,7 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
     private readonly ILogger<MauiAuthenticationStateProvider> logger;
 
     public MauiAuthenticationStateProvider(
-        ITokenStore tokenStore, 
+        ITokenStore tokenStore,
         ITokenService tokenService,
         ILogger<MauiAuthenticationStateProvider> logger)
     {

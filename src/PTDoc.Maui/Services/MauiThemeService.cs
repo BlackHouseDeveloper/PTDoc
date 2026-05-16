@@ -38,7 +38,7 @@ public class MauiThemeService : IThemeService
             // Apply theme to WebView DOM
             var themeString = _currentTheme == ThemeMode.Dark ? "dark" : "light";
             await _jsRuntime.InvokeVoidAsync("ptdocTheme.setTheme", themeString);
-            
+
             OnThemeChanged?.Invoke();
         }
         catch (Exception ex)
@@ -59,10 +59,10 @@ public class MauiThemeService : IThemeService
             // Toggle theme
             var newThemeString = await _jsRuntime.InvokeAsync<string>("ptdocTheme.toggle");
             _currentTheme = newThemeString == "dark" ? ThemeMode.Dark : ThemeMode.Light;
-            
+
             // Persist to MAUI Preferences
             Preferences.Set(THEME_PREFERENCE_KEY, newThemeString);
-            
+
             OnThemeChanged?.Invoke();
         }
         catch (Exception ex)
@@ -79,13 +79,13 @@ public class MauiThemeService : IThemeService
         try
         {
             var themeString = theme == ThemeMode.Dark ? "dark" : "light";
-            
+
             // Apply to WebView DOM
             await _jsRuntime.InvokeVoidAsync("ptdocTheme.setTheme", themeString);
-            
+
             // Persist to MAUI Preferences
             Preferences.Set(THEME_PREFERENCE_KEY, themeString);
-            
+
             _currentTheme = theme;
             OnThemeChanged?.Invoke();
         }
