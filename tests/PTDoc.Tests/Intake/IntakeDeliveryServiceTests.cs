@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
-using PTDoc.Application.Integrations;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Intake;
+using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -32,8 +33,7 @@ public sealed class IntakeDeliveryServiceTests
         var service = new IntakeDeliveryService(
             db,
             inviteService.Object,
-            Mock.Of<IEmailDeliveryService>(),
-            Mock.Of<ISmsDeliveryService>(),
+            Mock.Of<ICommunicationService>(),
             auditService);
 
         var bundle = await service.GetDeliveryBundleAsync(intake.Id);
@@ -67,22 +67,28 @@ public sealed class IntakeDeliveryServiceTests
                 DateTimeOffset.UtcNow.AddHours(4),
                 null));
 
-        var emailService = new Mock<IEmailDeliveryService>();
-        emailService
-            .Setup(service => service.SendAsync(It.IsAny<EmailDeliveryRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmailDeliveryResult
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService
+            .Setup(service => service.SendIntakeLinkEmailAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult
             {
-                Success = true,
-                ProviderMessageId = "sendgrid-message-123"
+                Succeeded = true,
+                Status = DeliveryStatus.Sent,
+                Provider = "AzureCommunicationServices",
+                ProviderMessageId = "acs-message-123",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = DeliveryChannel.Email,
+                Purpose = DeliveryPurpose.IntakeLink
             });
 
-        var smsService = new Mock<ISmsDeliveryService>(MockBehavior.Strict);
+        communicationService
+            .Setup(service => service.SendIntakeLinkSmsAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .Throws(new InvalidOperationException("SMS should not be called."));
 
         var service = new IntakeDeliveryService(
             db,
             inviteService.Object,
-            emailService.Object,
-            smsService.Object,
+            communicationService.Object,
             auditService);
 
         var sendResult = await service.SendInviteAsync(new IntakeSendInviteRequest
@@ -93,14 +99,18 @@ public sealed class IntakeDeliveryServiceTests
 
         Assert.True(sendResult.Success);
         Assert.Equal("p***t@example.com", sendResult.DestinationMasked);
-        Assert.Equal("sendgrid-message-123", sendResult.ProviderMessageId);
-        emailService.Verify(service => service.SendAsync(
-            It.Is<EmailDeliveryRequest>(request =>
-                request.ToAddress == "patient@example.com" &&
-                request.Subject.Contains("intake form", StringComparison.OrdinalIgnoreCase)),
+        Assert.Equal("acs-message-123", sendResult.ProviderMessageId);
+        communicationService.Verify(service => service.SendIntakeLinkEmailAsync(
+            It.Is<IntakeLinkDeliveryRequest>(request =>
+                request.Recipient == "patient@example.com" &&
+                request.PatientId == intake.PatientId &&
+                request.InviteUrl.Contains("invite=test-token", StringComparison.Ordinal)),
             It.IsAny<CancellationToken>()),
             Times.Once);
-        smsService.VerifyNoOtherCalls();
+        communicationService.Verify(service => service.SendIntakeLinkSmsAsync(
+            It.IsAny<IntakeLinkDeliveryRequest>(),
+            It.IsAny<CancellationToken>()),
+            Times.Never);
 
         var status = await service.GetDeliveryStatusAsync(intake.Id);
         Assert.True(status.InviteActive);

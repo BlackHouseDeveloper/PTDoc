@@ -74,12 +74,14 @@ public sealed class WebUserServiceTests
         bool externalIdentityEnabled)
     {
         var signupApiClient = new SignupApiClient(new Mock<System.Net.Http.IHttpClientFactory>().Object);
+        var passwordResetApiClient = new PasswordResetApiClient(new Mock<System.Net.Http.IHttpClientFactory>().Object);
 
         return new WebUserService(
             jsRuntime,
             NullLogger<WebUserService>.Instance,
             navigationManager,
             signupApiClient,
+            passwordResetApiClient,
             Options.Create(new EntraExternalIdOptions
             {
                 Enabled = externalIdentityEnabled,

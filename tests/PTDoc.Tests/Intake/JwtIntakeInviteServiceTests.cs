@@ -2,9 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Integrations;
 using PTDoc.Application.Intake;
+using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
@@ -61,29 +62,40 @@ public sealed class JwtIntakeInviteServiceTests
     public async Task SendOtpAsync_Email_UsesSharedEmailProvider_And_AuditsMaskedDestination()
     {
         await using var db = CreateDbContext();
-        var emailService = new Mock<IEmailDeliveryService>();
-        emailService
-            .Setup(service => service.SendAsync(It.IsAny<EmailDeliveryRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EmailDeliveryResult
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService
+            .Setup(service => service.SendIntakeOtpEmailAsync(It.IsAny<IntakeOtpDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult
             {
-                Success = true,
-                ProviderMessageId = "sendgrid-otp"
+                Succeeded = true,
+                Status = DeliveryStatus.Sent,
+                Provider = "AzureCommunicationServices",
+                ProviderMessageId = "acs-email-otp",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = DeliveryChannel.Email,
+                Purpose = DeliveryPurpose.IntakeOtp
             });
 
-        var smsService = new Mock<ISmsDeliveryService>(MockBehavior.Strict);
+        communicationService
+            .Setup(service => service.SendIntakeOtpSmsAsync(It.IsAny<IntakeOtpDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .Throws(new InvalidOperationException("SMS should not be called."));
+
         var auditService = new AuditService(db);
-        var service = CreateService(db, emailService: emailService, smsService: smsService, auditService: auditService);
+        var service = CreateService(db, communicationService: communicationService, auditService: auditService);
 
         var sent = await service.SendOtpAsync("patient@example.com", OtpChannel.Email);
 
         Assert.True(sent);
-        emailService.Verify(service => service.SendAsync(
-            It.Is<EmailDeliveryRequest>(request =>
-                request.ToAddress == "patient@example.com" &&
-                request.Subject.Contains("verification code", StringComparison.OrdinalIgnoreCase)),
+        communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
+            It.Is<IntakeOtpDeliveryRequest>(request =>
+                request.Recipient == "patient@example.com" &&
+                request.OtpCode.Length == 6),
             It.IsAny<CancellationToken>()),
             Times.Once);
-        smsService.VerifyNoOtherCalls();
+        communicationService.Verify(service => service.SendIntakeOtpSmsAsync(
+            It.IsAny<IntakeOtpDeliveryRequest>(),
+            It.IsAny<CancellationToken>()),
+            Times.Never);
 
         var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "IntakeOtpDelivered");
         Assert.DoesNotContain("patient@example.com", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
@@ -92,8 +104,7 @@ public sealed class JwtIntakeInviteServiceTests
 
     private static JwtIntakeInviteService CreateService(
         ApplicationDbContext db,
-        Mock<IEmailDeliveryService>? emailService = null,
-        Mock<ISmsDeliveryService>? smsService = null,
+        Mock<ICommunicationService>? communicationService = null,
         IAuditService? auditService = null)
     {
         return new JwtIntakeInviteService(
@@ -106,8 +117,7 @@ public sealed class JwtIntakeInviteServiceTests
                 PublicWebBaseUrl = "http://localhost"
             }),
             db,
-            (emailService ?? new Mock<IEmailDeliveryService>()).Object,
-            (smsService ?? new Mock<ISmsDeliveryService>()).Object,
+            (communicationService ?? new Mock<ICommunicationService>()).Object,
             auditService ?? Mock.Of<IAuditService>(),
             Mock.Of<ILogger<JwtIntakeInviteService>>());
     }
