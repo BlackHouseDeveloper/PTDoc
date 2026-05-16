@@ -1,3 +1,7 @@
+> Role: Reference-only intake living-situation worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/IntakeSupplementalReferenceData.json
+
 Living situation 
 
 ### **Living Situations**

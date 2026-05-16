@@ -49,6 +49,20 @@ public sealed partial class WorkspaceLookupReferenceDataParityTests
             asset.DefaultCptModifierOptions.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
+    [Theory]
+    [InlineData("ICD-10 codes.md")]
+    [InlineData("Commonly used CPT codes and modifiers.md")]
+    public void LookupMarkdownFiles_StartWithParserSafeBlockquotePreamble(string fileName)
+    {
+        var root = FindRepoRoot();
+        var lines = File.ReadLines(Path.Combine(root, "docs", "clinicrefdata", fileName))
+            .Take(3)
+            .ToArray();
+
+        Assert.Equal(3, lines.Length);
+        Assert.All(lines, line => Assert.StartsWith("> ", line));
+    }
+
     private static WorkspaceLookupReferenceDataAsset LoadAsset(string root)
     {
         var assetPath = Path.Combine(root, "src", "PTDoc.Application", "Data", "WorkspaceLookupReferenceData.json");

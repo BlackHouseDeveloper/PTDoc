@@ -1,3 +1,9 @@
+> Status: Archived reference
+> Runtime-consumed directly: No
+> Superseded by: src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs
+
+Historical content preserved below for reference only.
+
 Exercise Table
 
 **Predictive text feature**
@@ -101,4 +107,3 @@ Exercise Table
 **CPT Breakdown (Phase I):**
 
 * **97110 – Therapeutic Exercise: 9 min**
-

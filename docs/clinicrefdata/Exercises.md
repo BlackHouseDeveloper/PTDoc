@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for workspace suggested exercise options.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 ## Exercises Separated by body part
 
 ### **Neck**

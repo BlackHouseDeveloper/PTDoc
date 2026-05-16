@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for workspace tender-muscle options.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 ### **Muscles TTP**
 
 ### 

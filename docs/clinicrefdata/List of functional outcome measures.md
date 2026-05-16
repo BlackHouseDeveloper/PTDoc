@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for supported outcome-measure coverage.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/OutcomeMeasureReferenceData.json
+
 List of functional outcome measures
 
 ###  **Neck / Cervical Spine**
@@ -133,4 +137,3 @@ List of functional outcome measures
 * **PSFS** – Useful across all conditions
 
 * **NPRS/VAS** – For subjective pain reporting
-

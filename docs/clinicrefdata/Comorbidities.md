@@ -1,3 +1,7 @@
+> Role: Reference-only intake comorbidity worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/IntakeSupplementalReferenceData.json
+
 Comorbidities 
 
 ### **Common Comorbidities (In No Particular Order)**
@@ -40,4 +44,4 @@ Comorbidities
 
 19. Cancer (e.g., breast, prostate, colon)
 
-20. Dementia / Alzheimer’s 
+20. Dementia / Alzheimer’s

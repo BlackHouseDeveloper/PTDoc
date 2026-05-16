@@ -51,6 +51,17 @@ public class OutcomeMeasureRegistryTests
     }
 
     [Fact]
+    public void GetAllMeasures_DefaultProvenanceNotesClarifyRuntimeAuthority()
+    {
+        var definition = _registry.GetDefinition(OutcomeMeasureType.OswestryDisabilityIndex);
+        var provenance = Assert.IsType<PTDoc.Application.ReferenceData.ReferenceDataProvenance>(definition.Provenance);
+
+        Assert.Equal("docs/clinicrefdata/List of functional outcome measures.md", provenance.DocumentPath);
+        Assert.Contains("traceability reference", provenance.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("runtime asset", provenance.Notes, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void GetSelectableMeasures_ExcludesHistoricalOnlyVas_AndIncludesQuickDash()
     {
         var measures = _registry.GetSelectableMeasures();

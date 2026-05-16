@@ -1,3 +1,9 @@
+> Status: Archived reference
+> Runtime-consumed directly: No
+> Superseded by: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
+Historical content preserved below for reference only.
+
 **Pelvic Floor functional limitations** 
 
 **Urinary incontinence** — inability to control urine, leading to leakage during activities like coughing, sneezing, or exercise

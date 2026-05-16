@@ -1,6 +1,10 @@
+> Role: Reference-only lower-extremity worksheet retained for workspace limitation and goal traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 LE limitations/objectives/Goals
 
-### 
+###
 
 ### **Mobility & Transfers**
 
@@ -506,4 +510,4 @@ LE limitations/objectives/Goals
 
 * ### Unable to tolerate long school day without increased symptoms
 
-### 
+###

@@ -1,6 +1,8 @@
----
-title: "[]{#_9g1qk1fmeii2 .anchor}Policies and consent forms"
----
+> Status: Archived reference
+> Runtime-consumed directly: No
+> Superseded by: src/PTDoc.Application/Intake/IntakeConsentPacket.cs
+
+Historical content preserved below for reference only.
 
 Policies and consent forms
 

@@ -1,3 +1,7 @@
+> Role: Reference-only intake pain-descriptor worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Infrastructure/ReferenceData/IntakeReferenceDataCatalogService.cs
+
 ### **App Pain Quality Descriptors**
 
 * **Sharp**
@@ -39,4 +43,3 @@
 * **Cutting**
 
 * **Pounding**
-
