@@ -1,6 +1,9 @@
 namespace PTDoc.Maui.Auth;
 
+using System.Net.Http.Json;
+using System.Net.Http;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
@@ -11,6 +14,7 @@ public sealed class MauiUserService : IUserService
 {
     private readonly ITokenService tokenService;
     private readonly ITokenStore tokenStore;
+    private readonly IHttpClientFactory httpClientFactory;
     private readonly MauiAuthenticationStateProvider authStateProvider;
     private readonly ILogger<MauiUserService> logger;
 
@@ -19,11 +23,13 @@ public sealed class MauiUserService : IUserService
     public MauiUserService(
         ITokenService tokenService,
         ITokenStore tokenStore,
+        IHttpClientFactory httpClientFactory,
         AuthenticationStateProvider authStateProvider,
         ILogger<MauiUserService> logger)
     {
         this.tokenService = tokenService;
         this.tokenStore = tokenStore;
+        this.httpClientFactory = httpClientFactory;
         this.authStateProvider = (MauiAuthenticationStateProvider)authStateProvider;
         this.logger = logger;
     }
@@ -52,7 +58,7 @@ public sealed class MauiUserService : IUserService
     {
         try
         {
-            logger.LogInformation("Attempting login for username: {Username}", username);
+            logger.LogDebug("Attempting MAUI login.");
 
             var tokens = await tokenService.LoginAsync(
                 new LoginRequest(username, password),
@@ -86,22 +92,58 @@ public sealed class MauiUserService : IUserService
         return Task.FromResult(false);
     }
 
-    public Task<bool> RequestPasswordResetAsync(
+    public async Task<bool> RequestPasswordResetAsync(
         string contact,
         string channel,
         CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Password reset delivery is not available in the current MAUI flow.");
-        return Task.FromResult(false);
+        var client = httpClientFactory.CreateClient("ApiClient");
+        var endpoint = string.Equals(channel, "sms", StringComparison.OrdinalIgnoreCase)
+            ? "/api/communications/password-reset/send-sms"
+            : "/api/communications/password-reset/send-email";
+
+        using var response = await client.PostAsJsonAsync(endpoint, new { recipient = contact }, cancellationToken);
+        return response.IsSuccessStatusCode;
     }
 
-    public Task<bool> CompletePasswordResetAsync(
+    public async Task<bool> CompletePasswordResetAsync(
         string token,
         string newPin,
         CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Password reset completion is not available in the current MAUI flow.");
-        return Task.FromResult(false);
+        var client = httpClientFactory.CreateClient("ApiClient");
+        using var response = await client.PostAsJsonAsync(
+            "/api/communications/password-reset/complete",
+            new { token, newPin },
+            cancellationToken);
+
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ValidatePasswordResetTokenAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var client = httpClientFactory.CreateClient("ApiClient");
+        using var response = await client.PostAsJsonAsync(
+            "/api/communications/password-reset/validate",
+            new { token },
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        try
+        {
+            var payload = await response.Content.ReadFromJsonAsync<PasswordResetTokenValidationResponse>(cancellationToken: cancellationToken);
+            return payload?.IsValid == true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     public Task<RegistrationResult> RegisterAsync(
@@ -186,5 +228,10 @@ public sealed class MauiUserService : IUserService
         await tokenStore.SaveAsync(refreshed, cancellationToken);
         await authStateProvider.NotifyUserAuthenticationAsync(refreshed);
         return true;
+    }
+
+    private sealed class PasswordResetTokenValidationResponse
+    {
+        public bool IsValid { get; set; }
     }
 }

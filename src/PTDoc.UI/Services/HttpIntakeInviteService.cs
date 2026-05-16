@@ -43,12 +43,17 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
             ?? new IntakeInviteResult(false, null, null, "Invite validation payload was empty.");
     }
 
-    public async Task<bool> SendOtpAsync(string contact, OtpChannel channel, CancellationToken cancellationToken = default)
+    public async Task<bool> SendOtpAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/send-otp",
             new SendIntakeOtpRequest
             {
+                InviteToken = inviteToken,
                 Contact = contact,
                 Channel = channel
             },
@@ -59,13 +64,20 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
         return payload?.Success == true;
     }
 
-    public async Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(string contact, string otpCode, CancellationToken cancellationToken = default)
+    public async Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        string otpCode,
+        CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/verify-otp",
             new VerifyIntakeOtpRequest
             {
+                InviteToken = inviteToken,
                 Contact = contact,
+                Channel = channel,
                 OtpCode = otpCode
             },
             cancellationToken);

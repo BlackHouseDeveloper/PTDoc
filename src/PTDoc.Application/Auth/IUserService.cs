@@ -97,6 +97,13 @@ namespace PTDoc.Application.Auth
           CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Checks whether a password or PIN reset token can still be used.
+        /// </summary>
+        Task<bool> ValidatePasswordResetTokenAsync(
+          string token,
+          CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Registers a new user with the provided information.
         /// </summary>
         /// <param name="fullName">The user's full legal name.</param>

@@ -124,6 +124,21 @@ public sealed class WebUserService : IUserService
         }
     }
 
+    public async Task<bool> ValidatePasswordResetTokenAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await passwordResetApiClient.ValidateAsync(token, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Password reset token validation failed");
+            return false;
+        }
+    }
+
     public async Task<RegistrationResult> RegisterAsync(
         string fullName,
         string email,

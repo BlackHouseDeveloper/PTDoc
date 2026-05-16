@@ -27,7 +27,7 @@
             <div class="intake-access-gate__card">
                 <h1 class="intake-access-gate__title">Verify Your Identity</h1>
                 <p class="intake-access-gate__subtitle">
-                    Enter your phone number or email address to receive a one-time access code.
+                    Enter the contact method associated with your secure invite to receive a one-time access code.
                 </p>
 
                 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -158,6 +158,7 @@
 
     private GateState _gateState = GateState.Checking;
     private string _contact = string.Empty;
+    private string _inviteToken = string.Empty;
     private OtpChannel _otpChannel = OtpChannel.Sms;
     private string _otpCode = string.Empty;
     private string? _errorMessage;
@@ -200,6 +201,7 @@
             var inviteToken = GetQueryParam(NavigationManager.Uri, "invite");
             if (!string.IsNullOrEmpty(inviteToken))
             {
+                _inviteToken = inviteToken;
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
                 if (result.IsValid && result.AccessToken is not null)
                 {
@@ -212,9 +214,15 @@
                     _gateState = GateState.Authorized;
                     return;
                 }
+
+                _errorMessage = result.Error ?? "The secure invite link is invalid or expired.";
             }
 
             // 3. No valid token found — prompt identity verification.
+            if (string.IsNullOrWhiteSpace(_inviteToken))
+            {
+                _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+            }
             _gateState = GateState.RequestContact;
         }
         catch (Exception ex)
@@ -231,7 +239,7 @@
 
         try
         {
-            var sent = await InviteService.SendOtpAsync(_contact, _otpChannel);
+            var sent = await InviteService.SendOtpAsync(_inviteToken, _contact, _otpChannel);
             if (sent)
             {
                 _otpCode = string.Empty;
@@ -260,7 +268,7 @@
 
         try
         {
-            var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_contact, _otpCode);
+            var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_inviteToken, _contact, _otpChannel, _otpCode);
             if (result.IsValid && result.AccessToken is not null)
             {
                 var token = new IntakeSessionToken(

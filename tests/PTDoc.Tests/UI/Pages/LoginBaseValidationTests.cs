@@ -8,6 +8,36 @@ namespace PTDoc.Tests.UI.Pages;
 public sealed class LoginBaseValidationTests
 {
     [Theory]
+    [InlineData("email", "", "Email address is required.")]
+    [InlineData("email", "not-an-email", "Enter a valid email address.")]
+    [InlineData("sms", "", "Mobile number is required.")]
+    [InlineData("sms", "123", "Enter a valid mobile number.")]
+    public void ForgotPasswordModel_UsesChannelSpecificValidation(
+        string channel,
+        string contact,
+        string expectedMessage)
+    {
+        var forgotPasswordModelType = typeof(LoginBase).GetNestedType("ForgotPasswordModel", BindingFlags.NonPublic);
+        Assert.NotNull(forgotPasswordModelType);
+
+        var forgotPasswordModel = Activator.CreateInstance(forgotPasswordModelType!);
+        Assert.NotNull(forgotPasswordModel);
+
+        forgotPasswordModelType!.GetProperty("Channel")!.SetValue(forgotPasswordModel, channel);
+        forgotPasswordModelType.GetProperty("Contact")!.SetValue(forgotPasswordModel, contact);
+
+        var validationResults = new List<ValidationResult>();
+        var isValid = Validator.TryValidateObject(
+            forgotPasswordModel!,
+            new ValidationContext(forgotPasswordModel!),
+            validationResults,
+            validateAllProperties: true);
+
+        Assert.False(isValid);
+        Assert.Contains(validationResults, result => result.ErrorMessage == expectedMessage);
+    }
+
+    [Theory]
     [InlineData("Owner")]
     [InlineData("FrontDesk")]
     [InlineData("Billing")]

@@ -1,5 +1,6 @@
 @page "/login"
 @page "/signup"
+@page "/forgot-password"
 @layout AuthLayout
 @rendermode InteractiveServer
 @inherits LoginBase
@@ -47,7 +48,7 @@
     @if (isPendingApprovalNotice)
     {
       <div class="auth-info-alert" role="status" aria-live="polite">
-        <span class="auth-info-icon">⏳</span>
+        <span class="auth-info-icon" aria-hidden="true">⏳</span>
         <div class="auth-info-content">
           <strong>Account pending approval</strong>
           <p>Your registration is awaiting admin approval. You will be able to sign in once your clinic administrator activates your account.</p>
@@ -71,7 +72,7 @@
         @if (supportsExternalIdentityLogin)
         {
           <div class="auth-info-alert">
-            <span class="auth-info-icon">ℹ️</span>
+            <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
             <div class="auth-info-content">
               <strong>Single sign-on available</strong>
               <p>You can sign in with your PTDoc credentials or continue with @UserService.IdentityProviderDisplayName.</p>
@@ -139,7 +140,7 @@
       @if (showPasswordResetConfirmation)
       {
         <div class="auth-info-alert" role="status" aria-live="polite">
-          <span class="auth-info-icon">ℹ️</span>
+          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
           <div class="auth-info-content">
             <strong>Request received</strong>
             <p>@PasswordResetConfirmationMessage</p>
@@ -151,25 +152,26 @@
       }
       else
       {
-        <EditForm FormName="ForgotPasswordForm" Model="forgotPasswordModel" OnValidSubmit="HandleForgotPassword" class="auth-form" aria-busy="@isLoading">
+        <EditForm @key="forgotPasswordFormKey" FormName="ForgotPasswordForm" Model="forgotPasswordModel" OnValidSubmit="HandleForgotPassword" class="auth-form" aria-busy="@isLoading">
           <DataAnnotationsValidator />
 
           <div class="auth-field">
             <label for="resetChannel">Send reset link by</label>
             <InputSelect id="resetChannel"
                          class="auth-input auth-select"
-                         @bind-Value="forgotPasswordModel.Channel">
+                         @bind-Value="forgotPasswordModel.Channel"
+                         @bind-Value:after="OnForgotPasswordChannelChangedAfterBind">
               <option value="email">Email</option>
               <option value="sms">SMS</option>
             </InputSelect>
           </div>
 
           <div class="auth-field">
-            <label for="resetContact">Email Address or Mobile Number</label>
+            <label for="resetContact">@ForgotContactLabel</label>
             <InputText id="resetContact"
                        class="auth-input"
-                       placeholder="Enter your contact method"
-                       autocomplete="username"
+                       placeholder="@ForgotContactPlaceholder"
+                       autocomplete="@ForgotContactAutocomplete"
                        autocapitalize="none"
                        autocorrect="off"
                        spellcheck="false"
@@ -199,7 +201,7 @@
       @if (showPendingConfirmation)
       {
         <div class="auth-info-alert" role="status">
-          <span class="auth-info-icon">ℹ️</span>
+          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
           <div class="auth-info-content">
             <strong>@registrationConfirmationTitle</strong>
             <p>@registrationConfirmationMessage</p>
@@ -361,7 +363,7 @@
         }
 
         <div class="auth-info-alert">
-          <span class="auth-info-icon">ℹ️</span>
+          <span class="auth-info-icon" aria-hidden="true">ℹ️</span>
           <div class="auth-info-content">
             <strong>Account Approval:</strong>
             <p>Your credentials will be generated after sign-up. PT and PTA registrations include license details for admin review before activation.</p>
@@ -388,7 +390,7 @@
   </div>
 
   <footer class="auth-footnote" aria-live="polite">
-    <span>🔒 HIPAA-compliant secure access</span>
+    <span><span aria-hidden="true">🔒</span> HIPAA-compliant secure access</span>
     <span>Protected health information</span>
   </footer>
 </div>
