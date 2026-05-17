@@ -68,7 +68,7 @@
 
                 <button class="intake-access-gate__btn intake-access-gate__btn--primary"
                         @onclick="RequestOtpAsync"
-                        disabled="@(_isBusy || string.IsNullOrWhiteSpace(_contact))">
+                        disabled="@(!CanRequestOtp)">
                     @if (_isBusy)
                     {
                         <span>Sending&hellip;</span>
@@ -165,6 +165,11 @@
     private bool _isBusy;
     private System.Threading.Timer? _expiryTimer;
 
+    private bool CanRequestOtp =>
+        !_isBusy &&
+        !string.IsNullOrWhiteSpace(_contact) &&
+        !string.IsNullOrWhiteSpace(_inviteToken);
+
     protected override async Task OnInitializedAsync()
     {
         await CheckAccessAsync();
@@ -235,6 +240,19 @@
     private async Task RequestOtpAsync()
     {
         _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_inviteToken))
+        {
+            _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_contact))
+        {
+            _errorMessage = "Enter the contact method associated with your secure invite.";
+            return;
+        }
+
         _isBusy = true;
 
         try
@@ -299,6 +317,12 @@
     {
         _errorMessage = null;
         _otpCode = string.Empty;
+        _inviteToken = GetQueryParam(NavigationManager.Uri, "invite") ?? _inviteToken;
+        if (string.IsNullOrWhiteSpace(_inviteToken))
+        {
+            _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+        }
+
         _gateState = GateState.RequestContact;
     }
 

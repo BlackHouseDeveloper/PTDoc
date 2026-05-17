@@ -123,7 +123,7 @@ public static class CommunicationServiceCollectionExtensions
     }
 
     private static int ReadPositiveInt(IConfiguration configuration, string key, int fallback)
-        => int.TryParse(configuration[key], out var value) ? value : fallback;
+        => int.TryParse(configuration[key], out var value) && value > 0 ? value : fallback;
 
     private static bool IsNullSenderEnvironment(IHostEnvironment environment)
         => environment.IsDevelopment() || environment.IsEnvironment("Testing");

@@ -484,6 +484,39 @@ public sealed class CommunicationServiceTests
         Assert.Contains("Communication:Azure:ConnectionString", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CommunicationRegistration_UsesFallbacksForNonPositiveIntegerConfiguration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Communication:TokenExpiryMinutes:PasswordReset"] = "0",
+                ["Communication:TokenExpiryMinutes:Intake"] = "-10",
+                ["Communication:Retention:ResetTokensDays"] = "0",
+                ["Communication:Retention:DeliveryLogsDays"] = "-1",
+                ["Communication:RateLimits:PasswordResetMaxPerWindow"] = "0",
+                ["Communication:RateLimits:PasswordResetWindowMinutes"] = "-15",
+                ["Communication:RateLimits:IntakeMaxPerDay"] = "-5"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        var environment = new TestHostEnvironment { EnvironmentName = Environments.Development };
+
+        services.AddPTDocCommunication(configuration, environment);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<CommunicationOptions>>().Value;
+
+        Assert.Equal(30, options.TokenExpiryMinutes.PasswordReset);
+        Assert.Equal(10080, options.TokenExpiryMinutes.Intake);
+        Assert.Equal(30, options.Retention.ResetTokensDays);
+        Assert.Equal(2190, options.Retention.DeliveryLogsDays);
+        Assert.Equal(3, options.RateLimits.PasswordResetMaxPerWindow);
+        Assert.Equal(15, options.RateLimits.PasswordResetWindowMinutes);
+        Assert.Equal(5, options.RateLimits.IntakeMaxPerDay);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
