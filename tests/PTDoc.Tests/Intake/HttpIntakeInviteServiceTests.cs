@@ -77,6 +77,70 @@ public sealed class HttpIntakeInviteServiceTests
     }
 
     [Fact]
+    public async Task SendOtpAsync_PostsNumericChannelAndMapsResponse()
+    {
+        HttpRequestMessage? capturedRequest = null;
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return StubHttpMessageHandler.JsonResponse("""{"success":false}""");
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.SendOtpAsync("invite-token", "patient@example.com", OtpChannel.Email);
+
+        Assert.False(result);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(HttpMethod.Post, capturedRequest!.Method);
+        Assert.Equal("/api/v1/intake/access/send-otp", capturedRequest.RequestUri!.AbsolutePath);
+
+        using var document = JsonDocument.Parse(await capturedRequest.Content!.ReadAsStringAsync());
+        Assert.Equal("invite-token", document.RootElement.GetProperty("inviteToken").GetString());
+        Assert.Equal("patient@example.com", document.RootElement.GetProperty("contact").GetString());
+        Assert.Equal((int)OtpChannel.Email, document.RootElement.GetProperty("channel").GetInt32());
+    }
+
+    [Fact]
+    public async Task VerifyOtpAndIssueAccessTokenAsync_PostsNumericChannelAndMapsResponse()
+    {
+        HttpRequestMessage? capturedRequest = null;
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return StubHttpMessageHandler.JsonResponse("""
+            {
+              "isValid": false,
+              "accessToken": null,
+              "expiresAt": null,
+              "error": "Invite link is invalid or has expired."
+            }
+            """);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.VerifyOtpAndIssueAccessTokenAsync(
+            "invite-token",
+            "+15550100000",
+            OtpChannel.Sms,
+            "123456");
+
+        Assert.False(result.IsValid);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(HttpMethod.Post, capturedRequest!.Method);
+        Assert.Equal("/api/v1/intake/access/verify-otp", capturedRequest.RequestUri!.AbsolutePath);
+
+        using var document = JsonDocument.Parse(await capturedRequest.Content!.ReadAsStringAsync());
+        Assert.Equal("invite-token", document.RootElement.GetProperty("inviteToken").GetString());
+        Assert.Equal("+15550100000", document.RootElement.GetProperty("contact").GetString());
+        Assert.Equal((int)OtpChannel.Sms, document.RootElement.GetProperty("channel").GetInt32());
+        Assert.Equal("123456", document.RootElement.GetProperty("otpCode").GetString());
+    }
+
+    [Fact]
     public async Task CreateInviteAsync_OnApiFailure_MapsErrorPayload()
     {
         var intakeId = Guid.NewGuid();

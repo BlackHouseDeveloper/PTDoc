@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -150,55 +152,73 @@ public static class CommunicationEndpoints
     }
 
     private static async Task<IResult> ValidatePasswordResetToken(
-        [FromBody] PasswordResetTokenValidationRequest? request,
+        HttpContext httpContext,
         [FromServices] IPasswordResetTokenService passwordResetTokenService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "ValidatePasswordResetToken",
+            cancellationToken);
+        if (document is null)
         {
             return Results.Ok(new { isValid = false });
         }
 
+        var request = new PasswordResetTokenValidationRequest
+        {
+            Token = ReadStringProperty(document.RootElement, "token") ?? string.Empty
+        };
         var result = await passwordResetTokenService.ValidateTokenAsync(request, cancellationToken);
         return Results.Ok(new { isValid = result.IsValid });
     }
 
     private static Task<IResult> SendPasswordResetEmail(
-        [FromBody] PasswordResetSendRequest? request,
         [FromServices] ICommunicationService communicationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
         => SendPasswordResetAsync(
-            request,
+            httpContext,
+            "SendPasswordResetEmail",
             DeliveryChannel.Email,
             communicationService,
-            httpContext,
             cancellationToken);
 
     private static Task<IResult> SendPasswordResetSms(
-        [FromBody] PasswordResetSendRequest? request,
         [FromServices] ICommunicationService communicationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
         => SendPasswordResetAsync(
-            request,
+            httpContext,
+            "SendPasswordResetSms",
             DeliveryChannel.Sms,
             communicationService,
-            httpContext,
             cancellationToken);
 
     private static async Task<IResult> SendPasswordResetAsync(
-        PasswordResetSendRequest? request,
+        HttpContext httpContext,
+        string endpointName,
         DeliveryChannel channel,
         ICommunicationService communicationService,
-        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            endpointName,
+            cancellationToken);
+        if (document is null)
         {
             return Results.BadRequest(new { error = "A contact method is required." });
         }
 
+        var request = new PasswordResetSendRequest
+        {
+            Recipient = ReadStringProperty(document.RootElement, "recipient"),
+            Contact = ReadStringProperty(document.RootElement, "contact"),
+            Email = ReadStringProperty(document.RootElement, "email"),
+            PhoneNumber = ReadStringProperty(document.RootElement, "phoneNumber"),
+            Phone = ReadStringProperty(document.RootElement, "phone")
+        };
         var recipient = ResolveRecipient(request, channel);
         if (string.IsNullOrWhiteSpace(recipient))
         {
@@ -224,19 +244,23 @@ public static class CommunicationEndpoints
     }
 
     private static async Task<IResult> CompletePasswordReset(
-        [FromBody] PasswordResetCompleteRequest? request,
+        HttpContext httpContext,
         [FromServices] IPasswordResetTokenService passwordResetTokenService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "CompletePasswordReset",
+            cancellationToken);
+        if (document is null)
         {
             return Results.BadRequest(new { error = "The reset link is invalid or expired." });
         }
 
         var result = await passwordResetTokenService.ResetPinAsync(new PasswordResetCompletionRequest
         {
-            Token = request.Token ?? string.Empty,
-            NewPin = request.NewPin ?? string.Empty
+            Token = ReadStringProperty(document.RootElement, "token") ?? string.Empty,
+            NewPin = ReadStringProperty(document.RootElement, "newPin") ?? string.Empty
         }, cancellationToken);
 
         if (result.Succeeded)
@@ -277,6 +301,20 @@ public static class CommunicationEndpoints
             request.Contact,
             channel == DeliveryChannel.Email ? request.Email : request.PhoneNumber,
             channel == DeliveryChannel.Email ? null : request.Phone)?.Trim() ?? string.Empty;
+
+    private static string? ReadStringProperty(JsonElement root, string propertyName)
+    {
+        foreach (var candidate in root.EnumerateObject())
+        {
+            if (string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase) &&
+                candidate.Value.ValueKind == JsonValueKind.String)
+            {
+                return candidate.Value.GetString();
+            }
+        }
+
+        return null;
+    }
 
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

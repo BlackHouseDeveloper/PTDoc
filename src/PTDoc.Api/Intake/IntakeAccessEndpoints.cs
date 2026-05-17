@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Communication;
 using PTDoc.Application.DTOs;
@@ -67,72 +68,117 @@ public static class IntakeAccessEndpoints
     }
 
     private static async Task<IResult> ValidateInvite(
-        [FromBody] ValidateIntakeInviteRequest? request,
+        HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "ValidateIntakeInvite",
+            cancellationToken);
+        if (document is null ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "inviteToken")))
         {
             return Results.Ok(new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired."));
         }
 
-        var result = await inviteService.ValidateInviteTokenAsync(request.InviteToken, cancellationToken);
+        var result = await inviteService.ValidateInviteTokenAsync(
+            ReadStringProperty(document.RootElement, "inviteToken")!,
+            cancellationToken);
         return Results.Ok(result);
     }
 
     private static async Task<IResult> SendOtp(
-        [FromBody] SendIntakeOtpRequest? request,
+        HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "SendIntakeOtp",
+            cancellationToken);
+        if (document is null ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "inviteToken")) ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "contact")) ||
+            !TryReadOtpChannel(document.RootElement, out var channel))
         {
             return Results.Ok(new SendIntakeOtpResponse { Success = false });
         }
 
-        var success = await inviteService.SendOtpAsync(request.InviteToken, request.Contact, request.Channel, cancellationToken);
+        var success = await inviteService.SendOtpAsync(
+            ReadStringProperty(document.RootElement, "inviteToken")!,
+            ReadStringProperty(document.RootElement, "contact")!,
+            channel,
+            cancellationToken);
         return Results.Ok(new SendIntakeOtpResponse { Success = success });
     }
 
     private static async Task<IResult> VerifyOtp(
-        [FromBody] VerifyIntakeOtpRequest? request,
+        HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "VerifyIntakeOtp",
+            cancellationToken);
+        if (document is null ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "inviteToken")) ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "contact")) ||
+            string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "otpCode")) ||
+            !TryReadOtpChannel(document.RootElement, out var channel))
         {
             return Results.Ok(new IntakeInviteResult(false, null, null, "Invalid or expired invite link."));
         }
 
-        var result = await inviteService.VerifyOtpAndIssueAccessTokenAsync(request.InviteToken, request.Contact, request.Channel, request.OtpCode, cancellationToken);
+        var result = await inviteService.VerifyOtpAndIssueAccessTokenAsync(
+            ReadStringProperty(document.RootElement, "inviteToken")!,
+            ReadStringProperty(document.RootElement, "contact")!,
+            channel,
+            ReadStringProperty(document.RootElement, "otpCode")!,
+            cancellationToken);
         return Results.Ok(result);
     }
 
     private static async Task<IResult> ValidateSession(
-        [FromBody] IntakeAccessTokenRequest? request,
+        HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "ValidateIntakeAccessSession",
+            cancellationToken);
+        var accessToken = document is null
+            ? null
+            : ReadStringProperty(document.RootElement, "accessToken");
+        if (string.IsNullOrWhiteSpace(accessToken))
         {
             return Results.Ok(new IntakeAccessTokenValidationResponse { IsValid = false });
         }
 
-        var isValid = await inviteService.ValidateAccessTokenAsync(request.AccessToken, cancellationToken);
+        var isValid = await inviteService.ValidateAccessTokenAsync(accessToken, cancellationToken);
         return Results.Ok(new IntakeAccessTokenValidationResponse { IsValid = isValid });
     }
 
     private static async Task<IResult> RevokeSession(
-        [FromBody] IntakeAccessTokenRequest? request,
+        HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
         CancellationToken cancellationToken)
     {
-        if (request is null)
+        using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
+            httpContext,
+            "RevokeIntakeAccessSession",
+            cancellationToken);
+        var accessToken = document is null
+            ? null
+            : ReadStringProperty(document.RootElement, "accessToken");
+        if (string.IsNullOrWhiteSpace(accessToken))
         {
             return Results.NoContent();
         }
 
-        await inviteService.RevokeAccessTokenAsync(request.AccessToken, cancellationToken);
+        await inviteService.RevokeAccessTokenAsync(accessToken, cancellationToken);
         return Results.NoContent();
     }
 
@@ -383,6 +429,80 @@ public static class IntakeAccessEndpoints
         {
             return false;
         }
+    }
+
+    private static string? ReadStringProperty(JsonElement root, string propertyName)
+    {
+        if (!TryGetProperty(root, propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return property.GetString();
+    }
+
+    private static bool TryReadOtpChannel(JsonElement root, out OtpChannel channel)
+    {
+        channel = default;
+
+        if (!TryGetProperty(root, "channel", out var property))
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt32(out var channelValue))
+        {
+            return TryMapOtpChannel(channelValue, out channel);
+        }
+
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var channelText = property.GetString()?.Trim();
+        if (string.Equals(channelText, "email", StringComparison.OrdinalIgnoreCase))
+        {
+            channel = OtpChannel.Email;
+            return true;
+        }
+
+        if (string.Equals(channelText, "sms", StringComparison.OrdinalIgnoreCase))
+        {
+            channel = OtpChannel.Sms;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMapOtpChannel(int channelValue, out OtpChannel channel)
+    {
+        channel = channelValue switch
+        {
+            0 => OtpChannel.Sms,
+            1 => OtpChannel.Email,
+            _ => default
+        };
+
+        return channelValue is 0 or 1;
+    }
+
+    private static bool TryGetProperty(JsonElement root, string propertyName, out JsonElement property)
+    {
+        foreach (var candidate in root.EnumerateObject())
+        {
+            if (string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                property = candidate.Value;
+                return true;
+            }
+        }
+
+        property = default;
+        return false;
     }
 
     private static string? ReadClaimValue(ClaimsPrincipal principal, string claimType)

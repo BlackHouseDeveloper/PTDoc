@@ -61,11 +61,15 @@ Password reset sends remain enumeration-safe: public send endpoints return the s
 
 Reset tokens are activated only after provider acceptance. If email/SMS delivery fails or throws before acceptance, the newly created token is revoked with a delivery-failure reason and prior usable tokens for that user/channel remain usable. This prevents a transient provider outage from invalidating an existing reset link while leaving a new valid link that the user never received.
 
+Anonymous password-reset request bodies fail closed. Malformed JSON, non-object JSON, or unreadable bodies return the same safe validation/contact/invalid-link responses as other invalid anonymous inputs and must not surface internal parsing details.
+
 The reset UI should validate the token before accepting a new PIN and show an invalid-link state for missing, expired, used, or revoked tokens.
 
 ## Intake OTP Requirements
 
 Intake OTP delivery requires the signed invite token plus a contact and channel. The server validates that the invite is active and that the normalized contact matches the invited patient for the selected channel before sending a code. OTP state, send counters, and failed verification counters are durable in `IntakeOtpChallenges`; they are keyed by intake, channel, and hashed normalized contact.
+
+Standalone intake access request bodies fail closed for malformed JSON and invalid request shapes. OTP `channel` accepts the numeric enum values `0`/`1` and the case-insensitive string values `Sms`/`SMS`/`Email`; unknown channel values return the same safe anonymous failure response as invalid invite context.
 
 OTP verification consumes the matching challenge with a conditional database update before issuing an intake access token. Concurrent verification attempts for the same valid code can produce only one access token. Failed provider delivery immediately expires and consumes the generated challenge, so a code that was not accepted for delivery cannot be used later.
 
