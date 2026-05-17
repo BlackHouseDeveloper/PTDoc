@@ -534,8 +534,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("InviteToken")
-                        .HasMaxLength(4096)
-                        .HasColumnType("nvarchar(4096)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsLocked")
                         .HasColumnType("bit");

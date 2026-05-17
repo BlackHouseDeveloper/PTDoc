@@ -24,9 +24,7 @@ public sealed class NullSmsSender : ISmsSender
     {
         EnsureAllowed();
 
-        _logger.LogInformation(
-            "Null SMS delivery accepted. Purpose={Purpose}",
-            message.Purpose);
+        _logger.LogInformation("Null SMS delivery accepted.");
 
         return Task.FromResult(new DeliveryResult
         {

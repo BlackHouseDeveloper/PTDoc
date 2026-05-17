@@ -24,9 +24,7 @@ public sealed class NullEmailSender : IEmailSender
     {
         EnsureAllowed();
 
-        _logger.LogInformation(
-            "Null email delivery accepted. Purpose={Purpose}",
-            message.Purpose);
+        _logger.LogInformation("Null email delivery accepted.");
 
         return Task.FromResult(new DeliveryResult
         {

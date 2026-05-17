@@ -253,7 +253,7 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OTP delivery failed before provider acceptance. Channel={Channel}", channel);
+            _logger.LogWarning(ex, "OTP delivery failed before provider acceptance.");
             delivery = (false, "InternalDeliveryException", null, "Unable to send a verification code right now.");
         }
 

@@ -23,8 +23,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "InviteToken",
                 table: "IntakeForms",
-                type: "nvarchar(4096)",
-                maxLength: 4096,
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTimeOffset>(

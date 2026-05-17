@@ -168,7 +168,15 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
             entity.Property(e => e.AccessToken).HasMaxLength(256).IsRequired();
-            entity.Property(e => e.InviteToken).HasMaxLength(4096);
+            var inviteTokenProperty = entity.Property(e => e.InviteToken);
+            if (Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                inviteTokenProperty.HasColumnType("nvarchar(max)");
+            }
+            else
+            {
+                inviteTokenProperty.HasMaxLength(4096);
+            }
 
             // Sprint O: TDD §5.2 IntakeResponse contract fields
             entity.Property(e => e.PainMapData).IsRequired();

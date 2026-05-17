@@ -111,7 +111,7 @@ public sealed class CommunicationService : ICommunicationService
             };
 
             await AuditAsync(recipient, skipped, clinicId: null, patientId: null, userId: null, request.CorrelationId, cancellationToken);
-            _logger.LogInformation("Password reset request accepted with no matching account. Channel={Channel}", channel);
+            _logger.LogInformation("Password reset request accepted with no matching account.");
             return skipped;
         }
 
@@ -168,7 +168,7 @@ public sealed class CommunicationService : ICommunicationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Password reset delivery failed before provider acceptance. Channel={Channel}", channel);
+            _logger.LogWarning(ex, "Password reset delivery failed before provider acceptance.");
             result = new DeliveryResult
             {
                 Succeeded = false,
