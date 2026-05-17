@@ -292,6 +292,9 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/daily-notes/check-medical-necessity",         AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/daily-notes/eval-carry-forward/{patientId:guid}", AuthorizationPolicies.NoteRead),
 
+        // ── Dashboard (Dashboard/DashboardEndpoints.cs) ──────────────────────
+        new("GET", "/api/v1/dashboard/alerts", AuthorizationPolicies.ClinicalStaff),
+
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/runtime", AuthorizationPolicies.AdminOnly),

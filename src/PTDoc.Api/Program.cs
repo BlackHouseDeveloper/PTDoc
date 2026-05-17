@@ -19,6 +19,7 @@ using PTDoc.Api.Appointments;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Communications;
 using PTDoc.Api.Compliance;
+using PTDoc.Api.Dashboard;
 using PTDoc.Api.Diagnostics;
 using PTDoc.Api.Health;
 using PTDoc.Api.Identity;
@@ -754,6 +755,7 @@ app.MapIntegrationEndpoints(); // External integrations (Payment, Fax, HEP)
 app.MapPdfEndpoints(); // PDF export with signatures and Medicare compliance
 app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
+app.MapDashboardEndpoints(); // Live clinical dashboard alerts
 app.MapNotificationEndpoints(); // In-app notification center
 app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
 app.MapIcd10Endpoints(); // ICD-10 code search (bundled)

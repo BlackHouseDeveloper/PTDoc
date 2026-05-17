@@ -110,18 +110,147 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.DoesNotContain(patients, patient => patient.Id == lockedOnlyPatient.Id);
     }
 
-    private static Patient CreatePatient(string firstName, string lastName, Guid modifiedByUserId) => new()
+    [Fact]
+    public async Task DashboardAlerts_Returns_LiveClinicalAlerts_AndExcludesResolvedItems()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+
+        var today = DateTime.UtcNow.Date;
+        var duePatient = CreatePatient("Nora", "DueToday", clinician.Id, medicalRecordNumber: "ALRT-DUE");
+        var signedPatient = CreatePatient("Simon", "Signed", clinician.Id, medicalRecordNumber: "ALRT-SIGNED");
+        var unsignedPatient = CreatePatient("Uma", "Unsigned", clinician.Id, medicalRecordNumber: "ALRT-UNSIGNED");
+        var cosignPatient = CreatePatient("Peter", "PendingCosign", clinician.Id, medicalRecordNumber: "ALRT-COSIGN");
+        var intakePatient = CreatePatient("Ian", "Intake", clinician.Id, medicalRecordNumber: "ALRT-INTAKE");
+        var archivedPatient = CreatePatient("Ada", "Archived", clinician.Id, medicalRecordNumber: "ALRT-ARCHIVED", isArchived: true);
+        var cancelledPatient = CreatePatient("Casey", "Cancelled", clinician.Id, medicalRecordNumber: "ALRT-CANCELLED");
+        var lockedIntakePatient = CreatePatient("Lena", "LockedIntake", clinician.Id, medicalRecordNumber: "ALRT-LOCKED");
+        var submittedIntakePatient = CreatePatient("Sam", "SubmittedIntake", clinician.Id, medicalRecordNumber: "ALRT-SUBMITTED");
+
+        var dueAppointment = CreateAppointment(duePatient.Id, clinician.Id, today.AddHours(9), AppointmentStatus.Completed);
+        var signedAppointment = CreateAppointment(signedPatient.Id, clinician.Id, today.AddHours(10), AppointmentStatus.Completed);
+        var unsignedAppointment = CreateAppointment(unsignedPatient.Id, clinician.Id, today.AddHours(11), AppointmentStatus.Completed);
+        var archivedAppointment = CreateAppointment(archivedPatient.Id, clinician.Id, today.AddHours(12), AppointmentStatus.Completed);
+        var cancelledAppointment = CreateAppointment(cancelledPatient.Id, clinician.Id, today.AddHours(13), AppointmentStatus.Cancelled);
+
+        var signedNote = CreateClinicalNote(
+            signedPatient.Id,
+            clinician.Id,
+            signedAppointment.Id,
+            NoteStatus.Signed,
+            today.AddHours(10),
+            today.AddHours(10));
+        var unsignedNote = CreateClinicalNote(
+            unsignedPatient.Id,
+            clinician.Id,
+            unsignedAppointment.Id,
+            NoteStatus.Draft,
+            today.AddDays(-1).AddHours(11),
+            today.AddHours(11));
+        var addendum = CreateClinicalNote(
+            duePatient.Id,
+            clinician.Id,
+            dueAppointment.Id,
+            NoteStatus.Draft,
+            today,
+            today,
+            isAddendum: true);
+        var pendingCoSignNote = CreateClinicalNote(
+            cosignPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.PendingCoSign,
+            today,
+            today);
+
+        db.Patients.AddRange(
+            duePatient,
+            signedPatient,
+            unsignedPatient,
+            cosignPatient,
+            intakePatient,
+            archivedPatient,
+            cancelledPatient,
+            lockedIntakePatient,
+            submittedIntakePatient);
+        db.Appointments.AddRange(
+            dueAppointment,
+            signedAppointment,
+            unsignedAppointment,
+            archivedAppointment,
+            cancelledAppointment);
+        db.ClinicalNotes.AddRange(signedNote, unsignedNote, addendum, pendingCoSignNote);
+        db.IntakeForms.AddRange(
+            CreateIntakeForm(intakePatient.Id, clinician.Id, isLocked: false, lastModifiedUtc: today.AddDays(-2)),
+            CreateIntakeForm(lockedIntakePatient.Id, clinician.Id, isLocked: true, lastModifiedUtc: today.AddDays(-2)),
+            CreateIntakeForm(submittedIntakePatient.Id, clinician.Id, isLocked: false, submittedAt: today.AddHours(8), lastModifiedUtc: today.AddDays(-2)));
+
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var response = await client.GetAsync("/api/v1/dashboard/alerts?take=50");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<DashboardAlertsResponse>();
+        Assert.NotNull(body);
+
+        var alerts = body!.Alerts;
+        var dueAlert = Assert.Single(alerts, alert => alert.Id == $"notesDueToday:{dueAppointment.Id:N}");
+        Assert.Equal("notesDueToday", dueAlert.Kind);
+        Assert.Equal("high", dueAlert.Priority);
+        Assert.Equal(duePatient.Id, dueAlert.PatientId);
+        Assert.Equal("ALRT-DUE", dueAlert.PatientMedicalRecordNumber);
+        Assert.Equal($"/patient/{duePatient.Id:D}/new-note", dueAlert.TargetUrl);
+        Assert.Equal("Start", dueAlert.ActionLabel);
+
+        var unsignedAlert = Assert.Single(alerts, alert => alert.Id == $"unsignedNote:{unsignedNote.Id:N}");
+        Assert.Equal("unsignedNote", unsignedAlert.Kind);
+        Assert.Equal($"/patient/{unsignedPatient.Id:D}/note/{unsignedNote.Id:D}", unsignedAlert.TargetUrl);
+
+        var coSignAlert = Assert.Single(alerts, alert => alert.Id == $"unsignedNote:{pendingCoSignNote.Id:N}");
+        Assert.Equal("Co-sign Needed", coSignAlert.Title);
+        Assert.Equal("Review", coSignAlert.ActionLabel);
+
+        var intakeAlert = Assert.Single(alerts, alert => alert.PatientId == intakePatient.Id);
+        Assert.Equal(intakePatient.Id, intakeAlert.PatientId);
+        Assert.Equal($"/intake/{intakePatient.Id:D}", intakeAlert.TargetUrl);
+        Assert.Equal("Open Intake", intakeAlert.ActionLabel);
+
+        Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{signedAppointment.Id:N}");
+        Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{unsignedAppointment.Id:N}");
+        Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{archivedAppointment.Id:N}");
+        Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{cancelledAppointment.Id:N}");
+        Assert.DoesNotContain(alerts, alert => alert.PatientId == lockedIntakePatient.Id);
+        Assert.DoesNotContain(alerts, alert => alert.PatientId == submittedIntakePatient.Id);
+        Assert.DoesNotContain(alerts, alert => alert.Id == $"unsignedNote:{addendum.Id:N}");
+    }
+
+    private static Patient CreatePatient(
+        string firstName,
+        string lastName,
+        Guid modifiedByUserId,
+        string? medicalRecordNumber = null,
+        bool isArchived = false) => new()
     {
         Id = Guid.NewGuid(),
         FirstName = firstName,
         LastName = lastName,
+        MedicalRecordNumber = medicalRecordNumber,
+        IsArchived = isArchived,
         DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc),
         LastModifiedUtc = DateTime.UtcNow,
         ModifiedByUserId = modifiedByUserId,
         SyncState = SyncState.Pending
     };
 
-    private static IntakeForm CreateIntakeForm(Guid patientId, Guid modifiedByUserId, bool isLocked) => new()
+    private static IntakeForm CreateIntakeForm(
+        Guid patientId,
+        Guid modifiedByUserId,
+        bool isLocked,
+        DateTime? submittedAt = null,
+        DateTime? lastModifiedUtc = null) => new()
     {
         Id = Guid.NewGuid(),
         PatientId = patientId,
@@ -131,8 +260,54 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         ResponseJson = "{}",
         PainMapData = "{}",
         Consents = "{}",
-        LastModifiedUtc = DateTime.UtcNow,
+        SubmittedAt = submittedAt,
+        LastModifiedUtc = lastModifiedUtc ?? DateTime.UtcNow,
         ModifiedByUserId = modifiedByUserId,
         SyncState = SyncState.Pending
+    };
+
+    private static Appointment CreateAppointment(
+        Guid patientId,
+        Guid clinicianId,
+        DateTime startTimeUtc,
+        AppointmentStatus status) => new()
+    {
+        Id = Guid.NewGuid(),
+        PatientId = patientId,
+        ClinicalId = clinicianId,
+        StartTimeUtc = startTimeUtc,
+        EndTimeUtc = startTimeUtc.AddMinutes(45),
+        AppointmentType = AppointmentType.FollowUp,
+        Status = status,
+        LastModifiedUtc = DateTime.UtcNow,
+        ModifiedByUserId = clinicianId,
+        SyncState = SyncState.Pending
+    };
+
+    private static ClinicalNote CreateClinicalNote(
+        Guid patientId,
+        Guid modifiedByUserId,
+        Guid? appointmentId,
+        NoteStatus status,
+        DateTime dateOfService,
+        DateTime lastModifiedUtc,
+        bool isAddendum = false) => new()
+    {
+        Id = Guid.NewGuid(),
+        PatientId = patientId,
+        AppointmentId = appointmentId,
+        IsAddendum = isAddendum,
+        NoteType = NoteType.Daily,
+        NoteStatus = status,
+        ContentJson = "{}",
+        CptCodesJson = "[]",
+        DateOfService = dateOfService,
+        CreatedUtc = lastModifiedUtc,
+        LastModifiedUtc = lastModifiedUtc,
+        ModifiedByUserId = modifiedByUserId,
+        SyncState = SyncState.Pending,
+        SignatureHash = status == NoteStatus.Signed ? "signed-test-note" : null,
+        SignedUtc = status == NoteStatus.Signed ? lastModifiedUtc : null,
+        SignedByUserId = status == NoteStatus.Signed ? modifiedByUserId : null
     };
 }

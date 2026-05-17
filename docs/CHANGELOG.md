@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Dashboard clinical alert cards
+
+- **`src/PTDoc.Api/Dashboard/DashboardEndpoints.cs`**, **`src/PTDoc.Application/DTOs/DashboardAlertDtos.cs`**, **`src/PTDoc.UI/Services/IDashboardAlertService.cs`**, **`src/PTDoc.UI/Components/Dashboard/NotificationsSection.razor*`**, **`src/PTDoc.UI/Pages/Dashboard.razor`**, **`tests/PTDoc.Tests/Integration/DashboardApiIntegrationTests.cs`**, **`tests/PTDoc.Tests/UI/Dashboard/*DashboardAlert*Tests.cs`**, **`tests/PTDoc.Tests/UI/Dashboard/NotificationsSectionTests.cs`**, **`tests/PTDoc.Tests/Security/AuthorizationCoverageTests.cs`** — Added a clinical dashboard alerts API and Figma-aligned alert cards for notes due today, incomplete intakes, and unsigned notes, with navigate-only actions, session-only dismissal, collapsible rendering, shared web/MAUI client service registration, and focused API/UI/client regressions. Reason: the dashboard notification card now needs live clinical workflow data without changing the existing notification center behavior.
+
 ### Added - ACS-only communication delivery
 
 - **`src/PTDoc.Application/Communication/*`**, **`src/PTDoc.Infrastructure/Communication/*`**, **`src/PTDoc.Infrastructure/DependencyInjection/CommunicationServiceCollectionExtensions.cs`**, **`src/PTDoc.Api/Communications/CommunicationEndpoints.cs`**, **`src/PTDoc.UI/Pages/Login.razor`**, **`src/PTDoc.UI/Pages/LoginBase.razor.cs`**, **`src/PTDoc.UI/Pages/ResetPassword.razor`**, **`src/PTDoc.Web/Auth/PasswordResetApiClient.cs`**, **`docs/COMMUNICATIONS.md`** — Added canonical PTDoc email/SMS orchestration using Azure Communication Services only, null senders for non-production, HIPAA-conscious templates, generic forgot-PIN/password-reset delivery, single-use reset-token completion, intake link and OTP delivery through `ICommunicationService`, hashed delivery audit logging, recipient/patient rate limits, and ACS setup guidance. Reason: communication delivery needs one provider path, testable abstractions, and no PHI/raw-contact persistence.
