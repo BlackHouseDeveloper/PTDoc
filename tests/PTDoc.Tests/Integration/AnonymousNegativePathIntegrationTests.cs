@@ -69,6 +69,24 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
         Assert.Equal(PasswordResetMessage, await ReadStringPropertyAsync(response, "message"));
     }
 
+    [Fact]
+    public async Task PasswordResetRateLimit_UsesForwardedClientIpPartition()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+
+        for (var i = 0; i < 30; i++)
+        {
+            using var response = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.10");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        using var rateLimitedResponse = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.10");
+        Assert.Equal(HttpStatusCode.TooManyRequests, rateLimitedResponse.StatusCode);
+
+        using var distinctClientResponse = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.11");
+        Assert.Equal(HttpStatusCode.OK, distinctClientResponse.StatusCode);
+    }
+
     [Theory]
     [InlineData("{")]
     [InlineData("[]")]
@@ -188,6 +206,19 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
 
     private static StringContent Json(string body)
         => new(body, Encoding.UTF8, "application/json");
+
+    private static async Task<HttpResponseMessage> PostPasswordResetValidateWithForwardedForAsync(
+        HttpClient client,
+        string forwardedFor)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/communications/password-reset/validate")
+        {
+            Content = Json("""{"token":"definitely-invalid"}""")
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+        return await client.SendAsync(request);
+    }
 
     private static async Task<bool> ReadBooleanPropertyAsync(HttpResponseMessage response, string propertyName)
     {

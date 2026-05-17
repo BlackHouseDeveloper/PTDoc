@@ -23,6 +23,8 @@ Communication__Azure__SmsFromPhoneNumber=+15550100000
 
 Startup outside Development and Testing fails when the recipient hash salt, ACS connection string, sender email, or SMS number is missing. Development and Testing use null senders by default.
 
+`PTDoc.Api` enables forwarded-header processing by default outside Development before communication rate limiting runs. Hosted deployments behind Azure App Service, Front Door, or another reverse proxy should leave `ForwardedHeaders:Enabled` enabled so password-reset rate-limit partitions use the nearest forwarded client IP instead of collapsing every user onto the proxy address.
+
 ## ACS Email Setup
 
 1. Create or select an Azure Communication Services resource.

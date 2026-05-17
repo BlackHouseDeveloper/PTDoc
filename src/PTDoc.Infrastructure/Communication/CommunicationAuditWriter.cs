@@ -52,6 +52,7 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
         CommunicationAuditWriteRequest request,
         CancellationToken cancellationToken = default)
     {
+        var now = DateTimeOffset.UtcNow;
         var log = new CommunicationDeliveryLog
         {
             Id = Guid.NewGuid(),
@@ -67,8 +68,8 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
             ErrorCode = request.ErrorCode,
             SafeErrorMessage = request.SafeErrorMessage,
             SentAtUtc = request.SentAtUtc,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            CreatedAtUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            CreatedAtUtc = now,
+            CreatedAtUnixSeconds = now.ToUnixTimeSeconds(),
             CorrelationId = request.CorrelationId,
             RetryCount = request.RetryCount
         };

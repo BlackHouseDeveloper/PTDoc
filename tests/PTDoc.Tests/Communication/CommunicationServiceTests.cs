@@ -48,6 +48,8 @@ public sealed class CommunicationServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Single(emailSender.Messages);
+        Assert.Equal("Reset your PTDoc PIN", emailSender.Messages[0].Subject);
+        Assert.Contains("reset your PIN", emailSender.Messages[0].PlainTextBody, StringComparison.Ordinal);
         Assert.Contains("/reset-password?token=", emailSender.Messages[0].PlainTextBody, StringComparison.Ordinal);
 
         var token = await db.PasswordResetTokens.SingleAsync();
@@ -58,6 +60,7 @@ public sealed class CommunicationServiceTests
         var log = await db.CommunicationDeliveryLogs.SingleAsync();
         Assert.Equal(DeliveryPurpose.PasswordReset, log.Purpose);
         Assert.Equal(DeliveryChannel.Email, log.Channel);
+        Assert.Equal(log.CreatedAtUtc.ToUnixTimeSeconds(), log.CreatedAtUnixSeconds);
         Assert.NotEqual("clinician@example.com", log.RecipientHash);
         Assert.DoesNotContain("clinician@example.com", log.RecipientHash, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("clinician@example.com", log.ProviderMessageId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
@@ -443,6 +446,20 @@ public sealed class CommunicationServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             renderer.RenderAsync("password-reset-email.html", new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void PasswordResetTemplates_UsePinTerminology()
+    {
+        var repoRoot = FindRepoRoot();
+        var templateDirectory = Path.Combine(repoRoot, "src", "PTDoc.Infrastructure", "Communication", "Templates");
+        var emailTemplate = File.ReadAllText(Path.Combine(templateDirectory, "password-reset-email.html"));
+        var smsTemplate = File.ReadAllText(Path.Combine(templateDirectory, "password-reset-sms.txt"));
+
+        Assert.Contains("Reset your PTDoc PIN", emailTemplate, StringComparison.Ordinal);
+        Assert.Contains("reset your PIN", smsTemplate, StringComparison.Ordinal);
+        Assert.DoesNotContain("password", emailTemplate, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("password", smsTemplate, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

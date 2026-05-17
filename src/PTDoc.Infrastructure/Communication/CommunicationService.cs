@@ -145,11 +145,11 @@ public sealed class CommunicationService : ICommunicationService
             if (channel == DeliveryChannel.Email)
             {
                 var htmlBody = await _templateRenderer.RenderAsync("password-reset-email.html", values, cancellationToken);
-                var textBody = $"PTDoc: Use this secure link to reset your password: {link}";
+                var textBody = $"PTDoc: Use this secure link to reset your PIN: {link}";
                 result = await _emailSender.SendEmailAsync(new EmailMessage
                 {
                     ToAddress = recipient,
-                    Subject = "Reset your PTDoc password",
+                    Subject = "Reset your PTDoc PIN",
                     PlainTextBody = textBody,
                     HtmlBody = htmlBody,
                     Purpose = DeliveryPurpose.PasswordReset

@@ -1,5 +1,6 @@
 namespace PTDoc.Web.Auth;
 
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -22,12 +23,12 @@ public sealed class PasswordResetApiClient
             ? "/api/communications/password-reset/send-sms"
             : "/api/communications/password-reset/send-email";
 
-        var response = await client.PostAsJsonAsync(
+        using var response = await client.PostAsJsonAsync(
             endpoint,
             new { recipient = contact },
             cancellationToken);
 
-        return response.IsSuccessStatusCode;
+        return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.TooManyRequests;
     }
 
     public async Task<bool> CompleteAsync(
@@ -36,7 +37,7 @@ public sealed class PasswordResetApiClient
         CancellationToken cancellationToken = default)
     {
         var client = _httpClientFactory.CreateClient("PTDocAuthApi");
-        var response = await client.PostAsJsonAsync(
+        using var response = await client.PostAsJsonAsync(
             "/api/communications/password-reset/complete",
             new { token, newPin },
             cancellationToken);
@@ -49,7 +50,7 @@ public sealed class PasswordResetApiClient
         CancellationToken cancellationToken = default)
     {
         var client = _httpClientFactory.CreateClient("PTDocAuthApi");
-        var response = await client.PostAsJsonAsync(
+        using var response = await client.PostAsJsonAsync(
             "/api/communications/password-reset/validate",
             new { token },
             cancellationToken);

@@ -1,9 +1,9 @@
 namespace PTDoc.Maui.Auth;
 
-using System.Net.Http.Json;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
@@ -97,13 +97,21 @@ public sealed class MauiUserService : IUserService
         string channel,
         CancellationToken cancellationToken = default)
     {
-        var client = httpClientFactory.CreateClient("ApiClient");
-        var endpoint = string.Equals(channel, "sms", StringComparison.OrdinalIgnoreCase)
-            ? "/api/communications/password-reset/send-sms"
-            : "/api/communications/password-reset/send-email";
+        try
+        {
+            var client = httpClientFactory.CreateClient("ApiClient");
+            var endpoint = string.Equals(channel, "sms", StringComparison.OrdinalIgnoreCase)
+                ? "/api/communications/password-reset/send-sms"
+                : "/api/communications/password-reset/send-email";
 
-        using var response = await client.PostAsJsonAsync(endpoint, new { recipient = contact }, cancellationToken);
-        return response.IsSuccessStatusCode;
+            using var response = await client.PostAsJsonAsync(endpoint, new { recipient = contact }, cancellationToken);
+            return IsAcceptedPasswordResetRequest(response);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI password reset request failed.");
+            return false;
+        }
     }
 
     public async Task<bool> CompletePasswordResetAsync(
@@ -111,40 +119,52 @@ public sealed class MauiUserService : IUserService
         string newPin,
         CancellationToken cancellationToken = default)
     {
-        var client = httpClientFactory.CreateClient("ApiClient");
-        using var response = await client.PostAsJsonAsync(
-            "/api/communications/password-reset/complete",
-            new { token, newPin },
-            cancellationToken);
+        try
+        {
+            var client = httpClientFactory.CreateClient("ApiClient");
+            using var response = await client.PostAsJsonAsync(
+                "/api/communications/password-reset/complete",
+                new { token, newPin },
+                cancellationToken);
 
-        return response.IsSuccessStatusCode;
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI password reset completion failed.");
+            return false;
+        }
     }
 
     public async Task<bool> ValidatePasswordResetTokenAsync(
         string token,
         CancellationToken cancellationToken = default)
     {
-        var client = httpClientFactory.CreateClient("ApiClient");
-        using var response = await client.PostAsJsonAsync(
-            "/api/communications/password-reset/validate",
-            new { token },
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return false;
-        }
-
         try
         {
+            var client = httpClientFactory.CreateClient("ApiClient");
+            using var response = await client.PostAsJsonAsync(
+                "/api/communications/password-reset/validate",
+                new { token },
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
             var payload = await response.Content.ReadFromJsonAsync<PasswordResetTokenValidationResponse>(cancellationToken: cancellationToken);
             return payload?.IsValid == true;
         }
-        catch (JsonException)
+        catch (Exception ex)
         {
+            logger.LogWarning(ex, "MAUI password reset token validation failed.");
             return false;
         }
     }
+
+    private static bool IsAcceptedPasswordResetRequest(HttpResponseMessage response) =>
+        response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.TooManyRequests;
 
     public Task<RegistrationResult> RegisterAsync(
         string fullName,

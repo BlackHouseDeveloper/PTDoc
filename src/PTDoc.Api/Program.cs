@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Data.Sqlite;
@@ -63,6 +64,8 @@ var builder = WebApplication.CreateBuilder(args);
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
 var legacyApiAuthEnabled = builder.Configuration.GetValue<bool?>("Auth:LegacyApiAuthEnabled") ?? true;
 var intakeInviteOptions = builder.Configuration.GetSection(IntakeInviteOptions.SectionName).Get<IntakeInviteOptions>() ?? new IntakeInviteOptions();
+var forwardedHeadersEnabled = builder.Configuration.GetValue<bool?>("ForwardedHeaders:Enabled")
+    ?? !builder.Environment.IsDevelopment();
 
 if (!builder.Environment.IsDevelopment() &&
     AzureRuntimeConfigurationValidator.RequiresAzureOpenAiConfiguration(builder.Configuration))
@@ -90,6 +93,19 @@ if (!builder.Environment.IsEnvironment("Testing"))
 // Add HttpContextAccessor for identity context
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+if (forwardedHeadersEnabled)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+
+        // Azure App Service/front-door style hosting uses platform-managed proxy IPs.
+        // Trust the nearest forwarded hop so per-client rate-limit partitions do not collapse to the proxy IP.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("PasswordResetCommunication", httpContext =>
@@ -667,6 +683,11 @@ if (autoMigrate)
     {
         await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
     }
+}
+
+if (forwardedHeadersEnabled)
+{
+    app.UseForwardedHeaders();
 }
 
 app.UseRateLimiter();
