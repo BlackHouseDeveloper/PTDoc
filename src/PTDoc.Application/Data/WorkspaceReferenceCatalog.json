@@ -578,11 +578,11 @@
       ],
       "functionalLimitations": {
         "isAvailable": true,
-        "notes": "docs/clinicrefdata/limitations by body part.md",
+        "notes": "Upper-extremity functional limitations now come from this workspace catalog asset; the archived clinic worksheet is historical reference only.",
         "provenance": {
-          "documentPath": "docs/clinicrefdata/limitations by body part.md",
-          "version": "2026-04-18",
-          "notes": "Branch 2 upper-extremity functional limitations from the current temporary validated source."
+          "documentPath": "src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json",
+          "version": "2026-04-23",
+          "notes": "Branch 5 runtime-canonical upper-extremity functional limitations; archived clinic worksheet retained for historical reference only."
         },
         "categories": [
           {

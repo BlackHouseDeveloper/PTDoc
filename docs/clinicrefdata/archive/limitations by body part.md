@@ -1,3 +1,9 @@
+> Status: Archived reference
+> Runtime-consumed directly: No
+> Superseded by: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
+Historical content preserved below for reference only.
+
 # UE Limitations
 
 UE limitations
@@ -885,4 +891,3 @@ LE limitations/objectives/Goals
 **Inability to tolerate tight clothing or certain postures** — due to pain or pressure
 
 **Impaired respiratory function** — due to altered breathing patterns secondary to pelvic floor dysfunction
-

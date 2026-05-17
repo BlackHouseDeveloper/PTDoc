@@ -18,7 +18,7 @@ public sealed class ProgressTrackingAggregationServiceTests
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
-        var olderNoteUtc = DateTime.UtcNow.Date.AddDays(-10).AddHours(14);
+        var olderNoteUtc = DateTime.UtcNow.Date.AddDays(-7).AddHours(14);
         var newerAppointmentUtc = olderNoteUtc.AddDays(3);
 
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
@@ -150,7 +150,7 @@ public sealed class ProgressTrackingAggregationServiceTests
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
-        var dateOfService = DateTime.UtcNow.Date.AddDays(-5);
+        var dateOfService = DateTime.UtcNow.Date.AddDays(-4);
 
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
         var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);

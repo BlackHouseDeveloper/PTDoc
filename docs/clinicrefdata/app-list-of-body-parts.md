@@ -1,3 +1,7 @@
+> Role: Reference-only intake body-part worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Infrastructure/ReferenceData/IntakeReferenceDataCatalogService.cs
+
 App List of body parts
 
 ### **Head & Neck**
@@ -123,4 +127,3 @@ App List of body parts
 * Coordination and motor planning
 
 * Circulatory and lymphatic regions
-

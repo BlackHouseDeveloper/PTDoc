@@ -1,3 +1,7 @@
+> Role: Reference-only intake assistive-device worksheet retained for human traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/IntakeSupplementalReferenceData.json
+
 Assistive Devices Separated by body part
 
 ### **Neck**
@@ -145,4 +149,3 @@ Assistive Devices Separated by body part
 * Shower chair or transfer bench
 
 * Grab bars and railings
-

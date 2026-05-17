@@ -1,3 +1,7 @@
+> Role: Reference-only cervical worksheet retained for workspace limitation and goal traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 C-spine limitations/objective/Goals
 
 ### **Self-Care / ADLs (Activities of Daily Living)**

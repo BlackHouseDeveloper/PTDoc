@@ -9,7 +9,9 @@ namespace PTDoc.Tests.Notes.Workspace;
 [Trait("Category", "CoreCi")]
 public sealed class WorkspaceReferenceCatalogServiceTests
 {
-    private const string UpperExtremityFunctionalLimitationsSource = "docs/clinicrefdata/limitations by body part.md";
+    private const string UpperExtremityFunctionalLimitationsSource = "src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json";
+    private const string UpperExtremityFunctionalLimitationsNote =
+        "Upper-extremity functional limitations now come from this workspace catalog asset; the archived clinic worksheet is historical reference only.";
     private const string LowerExtremitySource = "docs/clinicrefdata/LE limitations_objectives_Goals.md";
     private const string CervicalSource = "docs/clinicrefdata/C-spine limitations_objective_Goals.md";
     private const string LumbarSource = "docs/clinicrefdata/LBP limitations_object_smart goals.md";
@@ -33,7 +35,7 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         Assert.True(catalog.OutcomeMeasures.IsAvailable);
         Assert.True(catalog.NormalRangeOfMotion.IsAvailable);
         Assert.True(catalog.TreatmentFocuses.IsAvailable);
-        Assert.Equal(UpperExtremityFunctionalLimitationsSource, catalog.FunctionalLimitations.Notes);
+        Assert.Equal(UpperExtremityFunctionalLimitationsNote, catalog.FunctionalLimitations.Notes);
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, catalog.FunctionalLimitations.Provenance?.DocumentPath);
         Assert.Equal(SpecialTestsSource, catalog.SpecialTests.Provenance?.DocumentPath);
         Assert.Equal("Outcome registry fallback", catalog.OutcomeMeasures.Notes);
@@ -60,6 +62,7 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         var catalog = _catalogs.GetBodyRegionCatalog(BodyPart.Elbow);
 
         Assert.True(catalog.FunctionalLimitations.IsAvailable);
+        Assert.Equal(UpperExtremityFunctionalLimitationsNote, catalog.FunctionalLimitations.Notes);
         Assert.Equal(UpperExtremityFunctionalLimitationsSource, catalog.FunctionalLimitations.Provenance?.DocumentPath);
         Assert.False(catalog.GoalTemplates.IsAvailable);
         Assert.Null(catalog.GoalTemplates.Provenance);

@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for workspace special-test options.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 List of commonly used Special test
 
 ###  **Cervical Spine**
@@ -133,4 +137,3 @@ List of commonly used Special test
 * **Homan’s Sign** – DVT (not highly reliable)
 
 * **Windlass Test** – Plantar fasciitis
-

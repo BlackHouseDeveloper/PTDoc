@@ -1,3 +1,7 @@
+> Role: Reference-only lumbar worksheet retained for workspace limitation and goal traceability.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 LBP limitations/object/smart goals
 
 ### **Mobility & Movement**
@@ -119,4 +123,3 @@ LBP limitations/object/smart goals
 * Unable to maintain previous level of independence or lifestyle
 
 * Unable to maintain safe gait due to fall risk or altered movement
-

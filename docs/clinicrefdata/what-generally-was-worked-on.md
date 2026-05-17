@@ -1,3 +1,7 @@
+> Role: Reference-only worksheet for shared workspace treatment interventions.
+> Runtime-consumed directly: No
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json
+
 Things to address in PT
 
 ###  **Mobility & Motion**
@@ -109,5 +113,4 @@ Things to address in PT
 * **Neurological Rehab** – stroke, balance disorders, post-concussion
 
 * **Pediatric Milestone Development** – gross motor coordination
-
 

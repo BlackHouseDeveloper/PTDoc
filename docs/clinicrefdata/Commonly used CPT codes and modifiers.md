@@ -1,3 +1,7 @@
+> Role: Canonical authoring source for CPT lookup coverage and modifier options.
+> Runtime-consumed directly: Yes (mirrored into embedded asset)
+> Runtime authority: src/PTDoc.Application/Data/WorkspaceLookupReferenceData.json
+
 Commonly used CPT codes
 
 ### **Therapeutic Procedures (Time-Based, 15-minute units)**

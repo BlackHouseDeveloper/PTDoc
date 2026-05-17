@@ -60,6 +60,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 ## Repo-Specific Environment Variables
 
 - `PFP_DB_PATH`: overrides the SQLite database path used by `PTDoc-Foundry.sh`.
+- `PTDoc_DB_PATH`: overrides the SQLite database path used by `src/PTDoc.Api`; use it when the API should target the same database file that `PTDoc-Foundry.sh --seed` created.
 - `API_URL`: overrides the API URL used by `run-ptdoc.sh` and defaults to `http://localhost:5170`.
 - `SKIP_API`: if set, `run-ptdoc.sh` will not auto-start the API.
 - `SKIP_SECRET_SETUP`: if set, `run-ptdoc.sh` will not auto-run `setup-dev-secrets.sh` when API startup fails because signing keys are missing.
@@ -81,6 +82,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Liveness check: `curl http://localhost:5170/health/live`
 - Readiness check: `curl http://localhost:5170/health/ready`
 - Authenticated DB diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db`
+- Authenticated runtime diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/runtime`
 - Inspect the active EF Core context wiring: `EF_PROVIDER=sqlite dotnet ef dbcontext info -p src/PTDoc.Infrastructure -s src/PTDoc.Api`
 - Detect SQLite model drift: `EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api`
 - Secret-policy tracked-file scan: `python3 .github/scripts/scan_secret_policy.py`
