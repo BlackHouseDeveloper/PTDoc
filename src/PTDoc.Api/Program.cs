@@ -10,6 +10,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
+using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using System.Text;
@@ -65,8 +66,7 @@ var builder = WebApplication.CreateBuilder(args);
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
 var legacyApiAuthEnabled = builder.Configuration.GetValue<bool?>("Auth:LegacyApiAuthEnabled") ?? true;
 var intakeInviteOptions = builder.Configuration.GetSection(IntakeInviteOptions.SectionName).Get<IntakeInviteOptions>() ?? new IntakeInviteOptions();
-var forwardedHeadersEnabled = builder.Configuration.GetValue<bool?>("ForwardedHeaders:Enabled")
-    ?? !builder.Environment.IsDevelopment();
+var forwardedHeadersEnabled = builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled");
 
 if (!builder.Environment.IsDevelopment() &&
     AzureRuntimeConfigurationValidator.RequiresAzureOpenAiConfiguration(builder.Configuration))
@@ -97,15 +97,7 @@ builder.Services.AddMemoryCache();
 if (forwardedHeadersEnabled)
 {
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    {
-        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-        options.ForwardLimit = 1;
-
-        // Azure App Service/front-door style hosting uses platform-managed proxy IPs.
-        // Trust the nearest forwarded hop so per-client rate-limit partitions do not collapse to the proxy IP.
-        options.KnownNetworks.Clear();
-        options.KnownProxies.Clear();
-    });
+        ConfigureForwardedHeaders(builder.Configuration, builder.Environment, options));
 }
 builder.Services.AddRateLimiter(options =>
 {
@@ -764,6 +756,102 @@ app.MapNoteWorkspaceV2Endpoints(); // Typed eval/reeval/progress workspace API
 
 
 app.Run();
+
+static void ConfigureForwardedHeaders(
+    IConfiguration configuration,
+    IHostEnvironment environment,
+    ForwardedHeadersOptions options)
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = Math.Max(1, configuration.GetValue<int?>("ForwardedHeaders:ForwardLimit") ?? 1);
+
+    var knownProxyValues = ReadStringList(configuration, "ForwardedHeaders:KnownProxies").ToList();
+    var knownNetworkValues = ReadStringList(configuration, "ForwardedHeaders:KnownNetworks").ToList();
+    var hasExplicitTrustConfiguration = knownProxyValues.Count > 0 || knownNetworkValues.Count > 0;
+    var isLocalEnvironment = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+
+    if (!isLocalEnvironment && !hasExplicitTrustConfiguration)
+    {
+        throw new InvalidOperationException(
+            "ForwardedHeaders:Enabled requires ForwardedHeaders:KnownProxies or ForwardedHeaders:KnownNetworks outside Development and Testing.");
+    }
+
+    if (!hasExplicitTrustConfiguration)
+    {
+        // Preserve ASP.NET Core's loopback-only defaults for local/test hosts.
+        return;
+    }
+
+    options.KnownProxies.Clear();
+    options.KnownNetworks.Clear();
+
+    foreach (var proxy in knownProxyValues)
+    {
+        if (!IPAddress.TryParse(proxy, out var proxyAddress))
+        {
+            throw new InvalidOperationException($"ForwardedHeaders:KnownProxies contains invalid IP address '{proxy}'.");
+        }
+
+        if (!isLocalEnvironment &&
+            (IPAddress.Any.Equals(proxyAddress) || IPAddress.IPv6Any.Equals(proxyAddress)))
+        {
+            throw new InvalidOperationException("ForwardedHeaders:KnownProxies must not trust wildcard addresses outside Development and Testing.");
+        }
+
+        options.KnownProxies.Add(proxyAddress);
+    }
+
+    foreach (var network in knownNetworkValues)
+    {
+        options.KnownNetworks.Add(ParseKnownNetwork(network, isLocalEnvironment));
+    }
+}
+
+static IEnumerable<string> ReadStringList(IConfiguration configuration, string key)
+{
+    var values = configuration
+        .GetSection(key)
+        .GetChildren()
+        .Select(child => child.Value)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .ToList();
+
+    if (values.Count > 0)
+    {
+        return values;
+    }
+
+    var raw = configuration[key];
+    return string.IsNullOrWhiteSpace(raw)
+        ? Array.Empty<string>()
+        : raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string value, bool isLocalEnvironment)
+{
+    var separator = value.LastIndexOf('/');
+    if (separator <= 0 ||
+        separator == value.Length - 1 ||
+        !IPAddress.TryParse(value[..separator], out var prefix) ||
+        !int.TryParse(value[(separator + 1)..], out var prefixLength))
+    {
+        throw new InvalidOperationException($"ForwardedHeaders:KnownNetworks contains invalid CIDR network '{value}'.");
+    }
+
+    var maxPrefixLength = prefix.GetAddressBytes().Length == 4 ? 32 : 128;
+    if (prefixLength < 0 || prefixLength > maxPrefixLength)
+    {
+        throw new InvalidOperationException($"ForwardedHeaders:KnownNetworks contains invalid prefix length in '{value}'.");
+    }
+
+    if (!isLocalEnvironment && prefixLength == 0)
+    {
+        throw new InvalidOperationException("ForwardedHeaders:KnownNetworks must not trust all clients outside Development and Testing.");
+    }
+
+    return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength);
+}
 
 static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)
 {

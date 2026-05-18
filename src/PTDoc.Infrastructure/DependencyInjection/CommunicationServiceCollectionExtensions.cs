@@ -15,7 +15,7 @@ public static class CommunicationServiceCollectionExtensions
         IConfiguration configuration,
         IHostEnvironment environment)
     {
-        var options = LoadOptions(configuration);
+        var options = LoadOptions(configuration, environment);
         services.AddSingleton(Options.Create(options));
         ValidateConfiguration(options, environment);
 
@@ -45,7 +45,7 @@ public static class CommunicationServiceCollectionExtensions
         CommunicationOptions options,
         IHostEnvironment environment)
     {
-        CommunicationText.NormalizePublicBaseUrl(options.PublicBaseUrl);
+        var normalizedPublicBaseUrl = CommunicationText.NormalizePublicBaseUrl(options.PublicBaseUrl);
 
         if (options.TokenExpiryMinutes.PasswordReset <= 0)
         {
@@ -69,6 +69,11 @@ public static class CommunicationServiceCollectionExtensions
             return;
         }
 
+        if (IsLoopbackUrl(normalizedPublicBaseUrl))
+        {
+            throw new InvalidOperationException("Communication:PublicBaseUrl must be an explicit non-loopback URL outside Development and Testing.");
+        }
+
         if (string.IsNullOrWhiteSpace(options.RecipientHashSalt))
         {
             throw new InvalidOperationException("Communication:RecipientHashSalt must be configured outside Development and Testing.");
@@ -90,12 +95,13 @@ public static class CommunicationServiceCollectionExtensions
         }
     }
 
-    private static CommunicationOptions LoadOptions(IConfiguration configuration)
+    private static CommunicationOptions LoadOptions(IConfiguration configuration, IHostEnvironment environment)
     {
         var prefix = CommunicationOptions.SectionName;
         return new CommunicationOptions
         {
-            PublicBaseUrl = configuration[$"{prefix}:PublicBaseUrl"] ?? "http://localhost:5000",
+            PublicBaseUrl = configuration[$"{prefix}:PublicBaseUrl"] ??
+                (IsNullSenderEnvironment(environment) ? "http://localhost:5000" : string.Empty),
             RecipientHashSalt = configuration[$"{prefix}:RecipientHashSalt"] ?? string.Empty,
             TokenExpiryMinutes = new TokenExpiryOptions
             {
@@ -124,6 +130,9 @@ public static class CommunicationServiceCollectionExtensions
 
     private static int ReadPositiveInt(IConfiguration configuration, string key, int fallback)
         => int.TryParse(configuration[key], out var value) && value > 0 ? value : fallback;
+
+    private static bool IsLoopbackUrl(string value)
+        => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.IsLoopback;
 
     private static bool IsNullSenderEnvironment(IHostEnvironment environment)
         => environment.IsDevelopment() || environment.IsEnvironment("Testing");

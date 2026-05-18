@@ -1866,6 +1866,9 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["Communication:RecipientHashSalt"] = "integration-test-recipient-hash-salt",
                 ["Communication:TokenExpiryMinutes:PasswordReset"] = "30",
                 ["Communication:TokenExpiryMinutes:Intake"] = "10080",
+                ["ForwardedHeaders:Enabled"] = "true",
+                ["ForwardedHeaders:KnownNetworks:0"] = "0.0.0.0/0",
+                ["ForwardedHeaders:KnownNetworks:1"] = "::/0",
                 // Dummy values that satisfy non-null guards without triggering Azure calls
                 ["AzureBlobStorage:ConnectionString"] = "UseDevelopmentStorage=true",
                 ["AzureOpenAi:Endpoint"] = "https://test.openai.azure.com/",

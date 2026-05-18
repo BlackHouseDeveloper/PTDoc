@@ -485,6 +485,51 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public void ProductionStartupValidation_FailsWhenPublicBaseUrlIsMissing()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Communication:RecipientHashSalt"] = "production-salt",
+                ["Communication:Azure:ConnectionString"] = "endpoint=https://example.communication.azure.com/;accesskey=test",
+                ["Communication:Azure:EmailFromAddress"] = "no-reply@ptdoc.com",
+                ["Communication:Azure:SmsFromPhoneNumber"] = "+15550100000"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddPTDocCommunication(configuration, environment));
+
+        Assert.Contains("Communication:PublicBaseUrl is not configured.", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionStartupValidation_FailsWhenPublicBaseUrlIsLoopback()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Communication:PublicBaseUrl"] = "http://localhost:5000",
+                ["Communication:RecipientHashSalt"] = "production-salt",
+                ["Communication:Azure:ConnectionString"] = "endpoint=https://example.communication.azure.com/;accesskey=test",
+                ["Communication:Azure:EmailFromAddress"] = "no-reply@ptdoc.com",
+                ["Communication:Azure:SmsFromPhoneNumber"] = "+15550100000"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddPTDocCommunication(configuration, environment));
+
+        Assert.Contains("Communication:PublicBaseUrl must be an explicit non-loopback URL", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CommunicationRegistration_UsesFallbacksForNonPositiveIntegerConfiguration()
     {
         var configuration = new ConfigurationBuilder()

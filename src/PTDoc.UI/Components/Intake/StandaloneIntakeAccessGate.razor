@@ -206,7 +206,6 @@
             var inviteToken = GetQueryParam(NavigationManager.Uri, "invite");
             if (!string.IsNullOrEmpty(inviteToken))
             {
-                _inviteToken = inviteToken;
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
                 if (result.IsValid && result.AccessToken is not null)
                 {
@@ -220,6 +219,7 @@
                     return;
                 }
 
+                _inviteToken = string.Empty;
                 _errorMessage = result.Error ?? "The secure invite link is invalid or expired.";
             }
 
