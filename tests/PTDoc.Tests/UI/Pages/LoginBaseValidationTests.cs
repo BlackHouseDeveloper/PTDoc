@@ -89,6 +89,25 @@ public sealed class LoginBaseValidationTests
     }
 
     [Fact]
+    public void SignUpGuidance_IsExposedThroughAssociatedHelperText()
+    {
+        var repoRoot = FindRepoRoot();
+        var loginMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/Login.razor"));
+
+        AssertFieldHelp(loginMarkup, "fullName", "fullName-help", "Enter your full legal name");
+        AssertFieldHelp(loginMarkup, "dateOfBirth", "dateOfBirth-help", "You must be at least 18 years old");
+        AssertFieldHelp(loginMarkup, "roleKey", "roleKey-help", "Select your role for clinic onboarding");
+        AssertFieldHelp(loginMarkup, "licenseNumber", "licenseNumber-help", "Enter your PT/PTA license number");
+        AssertFieldHelp(loginMarkup, "licenseState", "licenseState-help", "Select the U.S. state");
+
+        Assert.DoesNotContain("title=\"Enter your full legal name", loginMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("title=\"You must be at least 18", loginMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("title=\"Select your role", loginMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("title=\"Enter your PT/PTA license", loginMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("title=\"Select the U.S. state", loginMarkup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WebHeadOutlet_IsInteractive_ForClientSideTitleUpdates()
     {
         var repoRoot = FindRepoRoot();
@@ -102,6 +121,18 @@ public sealed class LoginBaseValidationTests
         var attributes = headOutlet.Groups["attributes"].Value;
         Assert.Contains("@rendermode", attributes, StringComparison.Ordinal);
         Assert.Contains("InteractiveServer", attributes, StringComparison.Ordinal);
+    }
+
+    private static void AssertFieldHelp(
+        string markup,
+        string fieldId,
+        string helpId,
+        string expectedHelpText)
+    {
+        Assert.Contains($"id=\"{fieldId}\"", markup, StringComparison.Ordinal);
+        Assert.Contains($"aria-describedby=\"{helpId}\"", markup, StringComparison.Ordinal);
+        Assert.Contains($"id=\"{helpId}\"", markup, StringComparison.Ordinal);
+        Assert.Contains(expectedHelpText, markup, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()
