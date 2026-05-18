@@ -9,7 +9,7 @@
 @inject IIntakeService IntakeService
 @inject IAppointmentService AppointmentService
 @inject INoteService NoteService
-@inject INotificationCenterService NotificationCenterService
+@inject IDashboardAlertService DashboardAlertService
 @inject IToastService ToastService
 @inject ILogger<Dashboard> Logger
 @rendermode InteractiveServer
@@ -118,8 +118,7 @@
                                  Drafts="@_draftNotes"
                                  Unsigned="@_unsignedNotesNeedingSignature"
                                  Intakes="@_incompleteIntakes" />
-                <NotificationsSection Notifications="@_notificationItems"
-                                      UrgentCount="@_urgentNotificationCount" />
+                <NotificationsSection Alerts="@_dashboardAlerts" />
             </div>
 
             <!-- Right Column: Supplemental Cards -->
@@ -166,10 +165,9 @@
     private int _draftNotes;
     private int _unsignedNotesNeedingSignature;
     private int _incompleteIntakes;
-    private int _urgentNotificationCount;
     private List<NoteListItemApiResponse> _recentNotes = [];
     private List<RecentActivity> _recentActivities = [];
-    private List<NotificationCenterItem> _notificationItems = [];
+    private List<DashboardAlertItemResponse> _dashboardAlerts = [];
     private List<SendIntakeModal.PatientOption> availablePatients = new();
     private bool HasDashboardContent =>
         _patientsToday > 0 ||
@@ -181,7 +179,7 @@
         _incompleteIntakes > 0 ||
         _recentNotes.Count > 0 ||
         _recentActivities.Count > 0 ||
-        _notificationItems.Count > 0;
+        _dashboardAlerts.Count > 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -229,9 +227,9 @@
             var today = DateTime.UtcNow.Date;
             var notesTask = NoteService.GetNotesAsync(take: 50);
             var appointmentsTask = AppointmentService.GetOverviewAsync(today, today.AddDays(1).AddTicks(-1));
-            var notificationsTask = NotificationCenterService.GetStateAsync();
+            var alertsTask = DashboardAlertService.GetAlertsAsync(take: 10);
 
-            await Task.WhenAll(notesTask, appointmentsTask, notificationsTask);
+            await Task.WhenAll(notesTask, appointmentsTask, alertsTask);
 
             var notes = (await notesTask)
                 .OrderByDescending(note => note.LastModifiedUtc)
@@ -239,12 +237,11 @@
             var appointments = (await appointmentsTask).Appointments
                 .OrderBy(appointment => appointment.StartTimeUtc)
                 .ToList();
-            var notifications = (await notificationsTask).Notifications
-                .OrderByDescending(notification => notification.Timestamp)
-                .ToList();
+            var alertsResponse = await alertsTask;
+            var alerts = alertsResponse.Alerts.ToList();
 
             _recentNotes = [.. await EnrichRecentNotesAsync(notes.Take(5).ToList())];
-            _notificationItems = [.. notifications.Take(4)];
+            _dashboardAlerts = alerts;
 
             var unsignedNotes = notes.Where(note => !note.IsSigned).ToList();
             _patientsToday = appointments
@@ -252,14 +249,11 @@
                 .Distinct()
                 .Count();
             _appointmentsToday = appointments.Count;
-            _notesDue = unsignedNotes.Count(note => note.DateOfService.Date == today);
-            _pendingItems = notifications.Count(notification => !notification.IsRead);
+            _notesDue = alerts.Count(alert => string.Equals(alert.Kind, "notesDueToday", StringComparison.Ordinal));
+            _pendingItems = alerts.Count;
             _draftNotes = unsignedNotes.Count;
-            _unsignedNotesNeedingSignature = unsignedNotes.Count(note => note.DateOfService.Date < today);
-            _incompleteIntakes = notifications.Count(notification =>
-                !notification.IsRead &&
-                string.Equals(notification.Type, "intake", StringComparison.OrdinalIgnoreCase));
-            _urgentNotificationCount = notifications.Count(notification => notification.IsUrgent && !notification.IsRead);
+            _unsignedNotesNeedingSignature = alerts.Count(alert => string.Equals(alert.Kind, "unsignedNote", StringComparison.Ordinal));
+            _incompleteIntakes = alerts.Count(alert => string.Equals(alert.Kind, "incompleteIntake", StringComparison.Ordinal));
             _hasLoadedDashboard = true;
         }
         catch (Exception ex)

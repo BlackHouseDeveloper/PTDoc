@@ -31,37 +31,37 @@ public enum ExportFormat
 public class ExportDraftState
 {
     public ExportTab SelectedTab { get; set; } = ExportTab.SoapNotes;
-    
+
     public ExportFormat SelectedFormat { get; set; } = ExportFormat.PDF;
-    
+
     // Filter state
     public DateTime? DateRangeStart { get; set; }
     public DateTime? DateRangeEnd { get; set; }
     public List<string> SelectedPatientIds { get; set; } = new();
     public List<string> SelectedProviderIds { get; set; } = new();
-    
+
     // SOAP Notes specific filters
     public List<string> SelectedNoteTypes { get; set; } = new();
-    
+
     // Patient Data specific filters
     public List<string> SelectedDataTypes { get; set; } = new();
-    
+
     // Appointments specific filters
     public List<string> SelectedApptStatuses { get; set; } = new();
-    
+
     // Reports specific filters
     public List<string> SelectedReportTypes { get; set; } = new();
-    
+
     // Export options
     public bool IsPasswordProtected { get; set; } = false;
     public string PasswordValue { get; set; } = string.Empty;
-    
+
     // Preview state
     public bool HasGeneratedPreview { get; set; } = false;
     public int? RecordCount { get; set; }
     public bool IsLoadingPreview { get; set; } = false;
     public bool IsDownloading { get; set; } = false;
-    
+
     /// <summary>
     /// Reset all filter selections and options (called on tab switch)
     /// </summary>
@@ -75,11 +75,11 @@ public class ExportDraftState
         SelectedDataTypes.Clear();
         SelectedApptStatuses.Clear();
         SelectedReportTypes.Clear();
-        
+
         SelectedFormat = ExportFormat.PDF;
         IsPasswordProtected = false;
         PasswordValue = string.Empty;
-        
+
         HasGeneratedPreview = false;
         RecordCount = null;
         IsLoadingPreview = false;

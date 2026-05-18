@@ -74,7 +74,7 @@ public class GlobalHeaderBase : ComponentBase, IDisposable
         }
 
         var success = await SyncService.SyncNowAsync();
-        
+
         // Optionally show toast notification based on success
         // This can be implemented when toast/notification service is added
     }

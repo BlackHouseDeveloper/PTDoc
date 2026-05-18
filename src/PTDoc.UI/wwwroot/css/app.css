@@ -493,7 +493,38 @@ h1:focus {
 .auth-info-icon {
     color: var(--muted-foreground);
     margin-left: var(--spacing-1);
-    font-size: var(--text-sm);
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 1rem;
+    display: inline-block;
+    background-color: currentColor;
+    vertical-align: -0.125em;
+}
+
+.auth-icon-info {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg%20viewBox%3D%270%200%2024%2024%27%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%3E%3Cpath%20fill%3D%27black%27%20d%3D%27M11%2010h2v8h-2v-8Zm1-8a10%2010%200%201%200%200%2020%2010%2010%200%200%200%200-20Zm0%2018a8%208%200%201%201%200-16%208%208%200%200%201%200%2016Zm-1-13h2v2h-2V7Z%27/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg%20viewBox%3D%270%200%2024%2024%27%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%3E%3Cpath%20fill%3D%27black%27%20d%3D%27M11%2010h2v8h-2v-8Zm1-8a10%2010%200%201%200%200%2020%2010%2010%200%200%200%200-20Zm0%2018a8%208%200%201%201%200-16%208%208%200%200%201%200%2016Zm-1-13h2v2h-2V7Z%27/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.auth-icon-pending {
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    background: transparent;
+}
+
+.auth-footnote-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    display: inline-block;
+    margin-right: var(--spacing-1);
+    background-color: currentColor;
+    vertical-align: -0.125em;
+}
+
+.auth-icon-lock {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg%20viewBox%3D%270%200%2024%2024%27%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%3E%3Cpath%20fill%3D%27black%27%20d%3D%27M7%2010V8a5%205%200%200%201%2010%200v2h1a2%202%200%200%201%202%202v8a2%202%200%200%201-2%202H6a2%202%200%200%201-2-2v-8a2%202%200%200%201%202-2h1Zm2%200h6V8a3%203%200%201%200-6%200v2Zm3%204a2%202%200%200%200-1%203.73V19h2v-1.27A2%202%200%200%200%2012%2014Z%27/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg%20viewBox%3D%270%200%2024%2024%27%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%3E%3Cpath%20fill%3D%27black%27%20d%3D%27M7%2010V8a5%205%200%200%201%2010%200v2h1a2%202%200%200%201%202%202v8a2%202%200%200%201-2%202H6a2%202%200%200%201-2-2v-8a2%202%200%200%201%202-2h1Zm2%200h6V8a3%203%200%201%200-6%200v2Zm3%204a2%202%200%200%200-1%203.73V19h2v-1.27A2%202%200%200%200%2012%2014Z%27/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .auth-info-alert {

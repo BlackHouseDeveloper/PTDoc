@@ -80,6 +80,30 @@ namespace PTDoc.Application.Auth
           CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Requests a password or PIN reset delivery through the configured communication service.
+        /// The response must not reveal whether the account exists.
+        /// </summary>
+        Task<bool> RequestPasswordResetAsync(
+          string contact,
+          string channel,
+          CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Completes a password or PIN reset from a secure single-use token.
+        /// </summary>
+        Task<bool> CompletePasswordResetAsync(
+          string token,
+          string newPin,
+          CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Checks whether a password or PIN reset token can still be used.
+        /// </summary>
+        Task<bool> ValidatePasswordResetTokenAsync(
+          string token,
+          CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Registers a new user with the provided information.
         /// </summary>
         /// <param name="fullName">The user's full legal name.</param>

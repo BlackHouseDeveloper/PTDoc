@@ -1,88 +1,171 @@
-@using PTDoc.UI.Services
+@using PTDoc.Application.DTOs
 @inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
-@* Notifications & Alerts Section *@
-
-<div class="notifications-section">
-    <div class="notifications-card">
-        <div class="notifications-header">
-            <div class="notifications-header-left">
-                <svg class="section-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<section class="dashboard-alerts" aria-labelledby="dashboard-alerts-title" data-testid="dashboard-alerts">
+    <div class="dashboard-alerts__card">
+        <div class="dashboard-alerts__header">
+            <div class="dashboard-alerts__heading">
+                <svg class="dashboard-alerts__bell" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M15 6.66667C15 5.34058 14.4732 4.06881 13.5355 3.13113C12.5979 2.19345 11.3261 1.66667 10 1.66667C8.67392 1.66667 7.40215 2.19345 6.46447 3.13113C5.52678 4.06881 5 5.34058 5 6.66667C5 12.5 2.5 14.1667 2.5 14.1667H17.5C17.5 14.1667 15 12.5 15 6.66667Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M11.4417 17.5C11.2952 17.7526 11.0849 17.9622 10.8319 18.108C10.5788 18.2537 10.2918 18.3304 10 18.3304C9.70819 18.3304 9.42116 18.2537 9.16808 18.108C8.91501 17.9622 8.70475 17.7526 8.55833 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <h2 class="notifications-title">Notifications & Alerts</h2>
-                <span class="urgent-badge">@UrgentCount Urgent</span>
+                <h2 id="dashboard-alerts-title" class="dashboard-alerts__title">Notifications & Alerts</h2>
+                <span class="dashboard-alerts__urgent-badge" data-testid="dashboard-alerts-urgent-count">@VisibleUrgentCount Urgent</span>
             </div>
+            <button type="button"
+                    class="dashboard-alerts__collapse"
+                    aria-label="@(_isCollapsed ? "Expand alerts" : "Collapse alerts")"
+                    aria-expanded="@(!_isCollapsed)"
+                    @onclick="ToggleCollapsed">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="@(_isCollapsed ? "M5 7.5L10 12.5L15 7.5" : "M5 12.5L10 7.5L15 12.5")" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
         </div>
-        <div class="notifications-content">
-            @if (Notifications.Count == 0)
-            {
-                <div class="empty-state">
-                    <p class="empty-state-text">No new notifications</p>
-                </div>
-            }
-            else
-            {
-                <div class="activity-list">
-                    @foreach (var notification in Notifications)
-                    {
-                        <div class="activity-item">
-                            <div class="activity-indicator" style="background: @(notification.IsUrgent ? "var(--destructive)" : "var(--info)")"></div>
-                            <div class="activity-content">
-                                <p class="activity-text">
-                                    <strong>@notification.Title</strong>
-                                    @if (!string.IsNullOrWhiteSpace(notification.Message))
+
+        @if (!_isCollapsed)
+        {
+            <div class="dashboard-alerts__content">
+                @if (VisibleAlerts.Count == 0)
+                {
+                    <div class="dashboard-alerts__empty" role="status" data-testid="dashboard-alerts-empty">
+                        <p>No active clinical alerts</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="dashboard-alerts__list" role="list">
+                        @foreach (var alert in VisibleAlerts)
+                        {
+                            <article class="@BuildAlertClass(alert)"
+                                     role="listitem"
+                                     data-testid="dashboard-alert-card"
+                                     data-alert-kind="@alert.Kind">
+                                <div class="dashboard-alert-card__icon" aria-hidden="true">
+                                    @RenderAlertIcon(alert.Kind)
+                                </div>
+
+                                <div class="dashboard-alert-card__body">
+                                    <div class="dashboard-alert-card__title-row">
+                                        <h3>@alert.Title</h3>
+                                        <span class="@BuildPriorityClass(alert.Priority)">@FormatPriority(alert.Priority)</span>
+                                    </div>
+                                    <p class="dashboard-alert-card__message">@alert.Message</p>
+                                    <div class="dashboard-alert-card__meta">
+                                        <strong>@alert.PatientName</strong>
+                                        <span>ID: @DisplayPatientIdentifier(alert)</span>
+                                        @if (alert.DueDateUtc.HasValue)
+                                        {
+                                            <span class="dashboard-alert-card__due">@FormatDueDate(alert.DueDateUtc.Value)</span>
+                                        }
+                                        <time datetime="@alert.Timestamp.ToString("O")">@FormatTimestamp(alert.Timestamp)</time>
+                                    </div>
+                                </div>
+
+                                <div class="dashboard-alert-card__actions">
+                                    @if (!string.IsNullOrWhiteSpace(alert.TargetUrl))
                                     {
-                                        <text> @notification.Message</text>
+                                        <button type="button"
+                                                class="@BuildActionClass(alert)"
+                                                aria-label="@($"{alert.ActionLabel} for {alert.PatientName}")"
+                                                @onclick="() => NavigateToAlert(alert)">
+                                            @RenderActionIcon(alert.ActionLabel)
+                                            <span>@alert.ActionLabel</span>
+                                        </button>
                                     }
-                                </p>
-                                <span class="activity-time">@FormatTimestamp(notification.Timestamp)</span>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(ResolveNavigationTarget(notification)))
-                            {
-                                <button type="button"
-                                        class="view-all-link"
-                                        aria-label="@($"Open {notification.Title}")"
-                                        @onclick="() => HandleNotificationClick(notification)">
-                                    Open
-                                </button>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-        </div>
+                                    <button type="button"
+                                            class="dashboard-alert-card__dismiss"
+                                            aria-label="@($"Dismiss {alert.Title} for {alert.PatientName}")"
+                                            @onclick="() => DismissAlert(alert.Id)">
+                                        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            <path d="M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+        }
     </div>
-</div>
+</section>
 
 @code {
-    [Parameter] public int UrgentCount { get; set; }
-    [Parameter] public IReadOnlyList<NotificationCenterItem> Notifications { get; set; } = Array.Empty<NotificationCenterItem>();
+    [Parameter] public IReadOnlyList<DashboardAlertItemResponse> Alerts { get; set; } = Array.Empty<DashboardAlertItemResponse>();
 
-    private void HandleNotificationClick(NotificationCenterItem notification)
+    private readonly HashSet<string> _dismissedAlertIds = new(StringComparer.Ordinal);
+    private bool _isCollapsed;
+
+    private List<DashboardAlertItemResponse> VisibleAlerts =>
+        Alerts.Where(alert => !_dismissedAlertIds.Contains(alert.Id)).ToList();
+
+    private int VisibleUrgentCount => VisibleAlerts.Count(alert => alert.IsUrgent);
+
+    protected override void OnParametersSet()
     {
-        var target = ResolveNavigationTarget(notification);
-        if (!string.IsNullOrWhiteSpace(target))
+        var activeAlertIds = Alerts.Select(alert => alert.Id).ToHashSet(StringComparer.Ordinal);
+        _dismissedAlertIds.RemoveWhere(id => !activeAlertIds.Contains(id));
+    }
+
+    private void ToggleCollapsed()
+    {
+        _isCollapsed = !_isCollapsed;
+    }
+
+    private void DismissAlert(string alertId)
+    {
+        if (!string.IsNullOrWhiteSpace(alertId))
         {
-            Navigation.NavigateTo(target);
+            _dismissedAlertIds.Add(alertId);
         }
     }
 
-    private static string? ResolveNavigationTarget(NotificationCenterItem notification)
+    private void NavigateToAlert(DashboardAlertItemResponse alert)
     {
-        if (!string.IsNullOrWhiteSpace(notification.TargetUrl))
+        if (!string.IsNullOrWhiteSpace(alert.TargetUrl))
         {
-            return notification.TargetUrl;
+            Navigation.NavigateTo(alert.TargetUrl);
         }
-
-        return notification.Type.ToLowerInvariant() switch
-        {
-            "note" => "/notes",
-            "appointment" => "/appointments",
-            _ => null
-        };
     }
+
+    private static string BuildAlertClass(DashboardAlertItemResponse alert) =>
+        $"dashboard-alert-card dashboard-alert-card--{NormalizeCssToken(alert.Kind)} dashboard-alert-card--priority-{NormalizeCssToken(alert.Priority)}";
+
+    private static string BuildPriorityClass(string priority) =>
+        $"dashboard-alert-card__priority dashboard-alert-card__priority--{NormalizeCssToken(priority)}";
+
+    private static string BuildActionClass(DashboardAlertItemResponse alert)
+    {
+        var isStartAction = string.Equals(alert.ActionLabel, "Start", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(alert.ActionLabel, "Review", StringComparison.OrdinalIgnoreCase);
+
+        return isStartAction
+            ? "dashboard-alert-card__action dashboard-alert-card__action--primary"
+            : "dashboard-alert-card__action";
+    }
+
+    private static string NormalizeCssToken(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "unknown"
+            : value.Replace(" ", "-", StringComparison.Ordinal).ToLowerInvariant();
+
+    private static string FormatPriority(string priority) => priority switch
+    {
+        "high" => "High Priority",
+        "medium" => "Medium",
+        "low" => "Low",
+        _ => "Priority"
+    };
+
+    private static string DisplayPatientIdentifier(DashboardAlertItemResponse alert) =>
+        !string.IsNullOrWhiteSpace(alert.PatientMedicalRecordNumber)
+            ? alert.PatientMedicalRecordNumber
+            : alert.PatientId.ToString("N")[..8];
+
+    private static string FormatDueDate(DateTime dueDateUtc) =>
+        $"Due: {dueDateUtc:MMM d, yyyy}";
 
     private static string FormatTimestamp(DateTimeOffset timestamp)
     {
@@ -104,4 +187,56 @@
 
         return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
     }
+
+    private static RenderFragment RenderAlertIcon(string kind) => builder =>
+    {
+        var sequence = 0;
+        var path = kind switch
+        {
+            "incompleteIntake" => "M7 3H6C5.44772 3 5 3.44772 5 4V5M7 3C7 2.44772 7.44772 2 8 2H12C12.5523 2 13 2.44772 13 3M7 3H13M13 3H14C14.5523 3 15 3.44772 15 4V5M5 5H15M5 5H4C3.44772 5 3 5.44772 3 6V17C3 17.5523 3.44772 18 4 18H16C16.5523 18 17 17.5523 17 17V6C17 5.44772 16.5523 5 16 5H15M7 9H13M7 13H13",
+            "notesDueToday" => "M10 3L18 17H2L10 3ZM10 8V11M10 14H10.01",
+            _ => "M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18ZM10 5V10L13 12"
+        };
+
+        builder.OpenElement(sequence++, "svg");
+        builder.AddAttribute(sequence++, "viewBox", "0 0 20 20");
+        builder.AddAttribute(sequence++, "width", "28");
+        builder.AddAttribute(sequence++, "height", "28");
+        builder.AddAttribute(sequence++, "fill", "none");
+        builder.AddAttribute(sequence++, "xmlns", "http://www.w3.org/2000/svg");
+        builder.AddAttribute(sequence++, "aria-hidden", "true");
+        builder.OpenElement(sequence++, "path");
+        builder.AddAttribute(sequence++, "d", path);
+        builder.AddAttribute(sequence++, "stroke", "currentColor");
+        builder.AddAttribute(sequence++, "stroke-width", "2");
+        builder.AddAttribute(sequence++, "stroke-linecap", "round");
+        builder.AddAttribute(sequence++, "stroke-linejoin", "round");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private static RenderFragment RenderActionIcon(string actionLabel) => builder =>
+    {
+        var sequence = 0;
+        var path = string.Equals(actionLabel, "Start", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(actionLabel, "Review", StringComparison.OrdinalIgnoreCase)
+                ? "M10 4V16M4 10H16"
+                : "M18 2L9 11M18 2L12 18L9 11L2 8L18 2Z";
+
+        builder.OpenElement(sequence++, "svg");
+        builder.AddAttribute(sequence++, "viewBox", "0 0 20 20");
+        builder.AddAttribute(sequence++, "width", "20");
+        builder.AddAttribute(sequence++, "height", "20");
+        builder.AddAttribute(sequence++, "fill", "none");
+        builder.AddAttribute(sequence++, "xmlns", "http://www.w3.org/2000/svg");
+        builder.AddAttribute(sequence++, "aria-hidden", "true");
+        builder.OpenElement(sequence++, "path");
+        builder.AddAttribute(sequence++, "d", path);
+        builder.AddAttribute(sequence++, "stroke", "currentColor");
+        builder.AddAttribute(sequence++, "stroke-width", "2");
+        builder.AddAttribute(sequence++, "stroke-linecap", "round");
+        builder.AddAttribute(sequence++, "stroke-linejoin", "round");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
 }

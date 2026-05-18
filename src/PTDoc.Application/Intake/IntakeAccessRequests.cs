@@ -7,6 +7,7 @@ public sealed class ValidateIntakeInviteRequest
 
 public sealed class SendIntakeOtpRequest
 {
+    public string InviteToken { get; set; } = string.Empty;
     public string Contact { get; set; } = string.Empty;
     public OtpChannel Channel { get; set; }
 }
@@ -18,7 +19,9 @@ public sealed class SendIntakeOtpResponse
 
 public sealed class VerifyIntakeOtpRequest
 {
+    public string InviteToken { get; set; } = string.Empty;
     public string Contact { get; set; } = string.Empty;
+    public OtpChannel Channel { get; set; }
     public string OtpCode { get; set; } = string.Empty;
 }
 

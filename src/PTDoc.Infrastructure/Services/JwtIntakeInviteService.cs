@@ -3,20 +3,23 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PTDoc.Application.Compliance;
-using PTDoc.Application.Integrations;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Intake;
+using PTDoc.Core.Communication;
+using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Services;
 
 /// <summary>
 /// Production implementation of <see cref="IIntakeInviteService"/> that uses signed JWT invite links,
-/// short-lived access tokens, and shared outbound email/SMS delivery services.
+/// short-lived access tokens, and canonical outbound communication delivery.
 /// </summary>
 public sealed class JwtIntakeInviteService : IIntakeInviteService
 {
@@ -37,28 +40,25 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
     private readonly IntakeInviteOptions _options;
     private readonly ApplicationDbContext _db;
-    private readonly IEmailDeliveryService _emailDeliveryService;
-    private readonly ISmsDeliveryService _smsDeliveryService;
+    private readonly ICommunicationService _communicationService;
+    private readonly IContactNormalizer _contactNormalizer;
     private readonly IAuditService _auditService;
     private readonly ILogger<JwtIntakeInviteService> _logger;
 
-    private readonly ConcurrentDictionary<string, (string OtpHash, DateTimeOffset Expiry)> _pendingOtps = new();
-    private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset WindowStart)> _otpSendRates = new();
-    private readonly ConcurrentDictionary<string, (int FailCount, DateTimeOffset LastAttempt)> _verifyFailures = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new();
 
     public JwtIntakeInviteService(
         IOptions<IntakeInviteOptions> options,
         ApplicationDbContext db,
-        IEmailDeliveryService emailDeliveryService,
-        ISmsDeliveryService smsDeliveryService,
+        ICommunicationService communicationService,
+        IContactNormalizer contactNormalizer,
         IAuditService auditService,
         ILogger<JwtIntakeInviteService> logger)
     {
         _options = options.Value;
         _db = db;
-        _emailDeliveryService = emailDeliveryService;
-        _smsDeliveryService = smsDeliveryService;
+        _communicationService = communicationService;
+        _contactNormalizer = contactNormalizer;
         _auditService = auditService;
         _logger = logger;
     }
@@ -85,12 +85,26 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         }
 
         var now = DateTimeOffset.UtcNow;
+        var baseUrl = NormalizePublicWebBaseUrl(_options.PublicWebBaseUrl);
+        if (!string.IsNullOrWhiteSpace(intake.InviteToken) &&
+            intake.ExpiresAt.HasValue &&
+            intake.ExpiresAt.Value > now.UtcDateTime &&
+            !string.IsNullOrWhiteSpace(intake.AccessToken))
+        {
+            return new IntakeInviteLinkResult(
+                true,
+                intake.Id,
+                intake.PatientId,
+                BuildInviteUrl(baseUrl, intake.PatientId, intake.InviteToken),
+                new DateTimeOffset(DateTime.SpecifyKind(intake.ExpiresAt.Value, DateTimeKind.Utc)),
+                null);
+        }
+
         var expiry = now.AddMinutes(Math.Max(1, _options.InviteExpiryMinutes));
         var rawSecret = GenerateInviteSecret();
 
         intake.AccessToken = HashInviteSecret(rawSecret);
         intake.ExpiresAt = expiry.UtcDateTime;
-        await _db.SaveChangesAsync(cancellationToken);
 
         var token = WriteJwt(
             audience: InviteAudience,
@@ -103,8 +117,10 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
                 new Claim(InviteSecretClaim, rawSecret)
             ]);
 
-        var baseUrl = NormalizePublicWebBaseUrl(_options.PublicWebBaseUrl);
-        var inviteUrl = $"{baseUrl}/intake/{intake.PatientId:D}?mode=patient&invite={Uri.EscapeDataString(token)}";
+        intake.InviteToken = token;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var inviteUrl = BuildInviteUrl(baseUrl, intake.PatientId, token);
 
         return new IntakeInviteLinkResult(true, intake.Id, intake.PatientId, inviteUrl, expiry, null);
     }
@@ -154,46 +170,96 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             return IssueAccessToken(patientId: patientId, intakeId: intakeId);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
+            _logger.LogWarning(ex, "Intake invite token validation failed safe.");
             return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
         }
     }
 
-    public async Task<bool> SendOtpAsync(string contact, OtpChannel channel, CancellationToken cancellationToken = default)
+    public async Task<bool> SendOtpAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(contact))
+        var validation = await ValidateInviteOtpContextAsync(inviteToken, contact, channel, cancellationToken);
+        if (!validation.Success)
         {
             return false;
         }
 
-        var normalizedContact = contact.Trim();
+        var normalizedContact = validation.NormalizedContact;
+        var deliveryChannel = ToDeliveryChannel(channel);
         var now = DateTimeOffset.UtcNow;
-        var rateEntry = _otpSendRates.GetOrAdd(normalizedContact, _ => (0, now));
+        var contactHash = HashOtpContact(validation.IntakeId, deliveryChannel, normalizedContact);
+        var challenge = await _db.IntakeOtpChallenges
+            .FirstOrDefaultAsync(item =>
+                item.IntakeId == validation.IntakeId &&
+                item.Channel == deliveryChannel &&
+                item.ContactHash == contactHash,
+                cancellationToken);
 
-        if (now - rateEntry.WindowStart < OtpRateLimitWindow)
+        if (challenge is not null && now - challenge.WindowStartUtc < OtpRateLimitWindow)
         {
-            if (rateEntry.Count >= MaxOtpRequestsPerWindow)
+            if (challenge.SendCount >= MaxOtpRequestsPerWindow)
             {
                 await LogOtpEventAsync("IntakeOtpDeliveryFailed", channel, normalizedContact, success: false, provider: null, providerMessageId: null, error: "RateLimitExceeded", cancellationToken);
                 _logger.LogWarning("OTP send rate limit exceeded for intake contact.");
                 return false;
             }
 
-            _otpSendRates[normalizedContact] = (rateEntry.Count + 1, rateEntry.WindowStart);
+            challenge.SendCount += 1;
         }
         else
         {
-            _otpSendRates[normalizedContact] = (1, now);
+            challenge ??= new IntakeOtpChallenge
+            {
+                Id = Guid.NewGuid(),
+                IntakeId = validation.IntakeId,
+                PatientId = validation.PatientId,
+                ClinicId = validation.ClinicId,
+                Channel = deliveryChannel,
+                ContactHash = contactHash,
+                CreatedAtUtc = now,
+                CorrelationId = null
+            };
+
+            challenge.WindowStartUtc = now;
+            challenge.SendCount = 1;
         }
 
         var otp = GenerateOtp();
-        _pendingOtps[normalizedContact] = (HashOtp(otp), now.AddMinutes(_options.OtpExpiryMinutes));
-        _verifyFailures.TryRemove(normalizedContact, out _);
+        challenge.PatientId = validation.PatientId;
+        challenge.ClinicId = validation.ClinicId;
+        challenge.OtpHash = HashOtp(otp);
+        challenge.ExpiresAtUtc = now.AddMinutes(_options.OtpExpiryMinutes);
+        challenge.UpdatedAtUtc = now;
+        challenge.FailedVerifyCount = 0;
+        challenge.LastFailedVerifyAtUtc = null;
+        challenge.ConsumedAtUtc = null;
 
-        var delivery = await DeliverOtpAsync(normalizedContact, otp, channel, cancellationToken);
+        if (_db.Entry(challenge).State == EntityState.Detached)
+        {
+            _db.IntakeOtpChallenges.Add(challenge);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        (bool Success, string Provider, string? ProviderMessageId, string? ErrorMessage) delivery;
+        try
+        {
+            delivery = await DeliverOtpAsync(normalizedContact, otp, channel, validation.PatientId, validation.ClinicId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OTP delivery failed before provider acceptance.");
+            delivery = (false, "InternalDeliveryException", null, "Unable to send a verification code right now.");
+        }
+
         if (!delivery.Success)
         {
+            await MarkOtpChallengeDeliveryFailedAsync(challenge, cancellationToken);
             await LogOtpEventAsync("IntakeOtpDeliveryFailed", channel, normalizedContact, success: false, provider: delivery.Provider, providerMessageId: delivery.ProviderMessageId, error: delivery.ErrorMessage, cancellationToken);
             return false;
         }
@@ -203,36 +269,72 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
     }
 
     public Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(
+        string inviteToken,
         string contact,
+        OtpChannel channel,
         string otpCode,
         CancellationToken cancellationToken = default)
+        => VerifyOtpAndIssueAccessTokenCoreAsync(inviteToken, contact, channel, otpCode, cancellationToken);
+
+    private async Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenCoreAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        string otpCode,
+        CancellationToken cancellationToken)
     {
-        var normalizedContact = contact?.Trim() ?? string.Empty;
-
-        if (_verifyFailures.TryGetValue(normalizedContact, out var failure) && failure.FailCount >= MaxFailedVerifyAttempts)
+        var validation = await ValidateInviteOtpContextAsync(inviteToken, contact, channel, cancellationToken);
+        if (!validation.Success)
         {
-            return Task.FromResult(new IntakeInviteResult(false, null, null, "Too many incorrect attempts. Please request a new code."));
+            return new IntakeInviteResult(false, null, null, validation.Error ?? "Invalid or expired invite link.");
         }
 
-        if (!_pendingOtps.TryGetValue(normalizedContact, out var pending) || pending.Expiry < DateTimeOffset.UtcNow)
+        var normalizedContact = validation.NormalizedContact;
+        var deliveryChannel = ToDeliveryChannel(channel);
+        var contactHash = HashOtpContact(validation.IntakeId, deliveryChannel, normalizedContact);
+        var challenge = await _db.IntakeOtpChallenges
+            .FirstOrDefaultAsync(item =>
+                item.IntakeId == validation.IntakeId &&
+                item.Channel == deliveryChannel &&
+                item.ContactHash == contactHash,
+                cancellationToken);
+
+        if (challenge is not null && challenge.FailedVerifyCount >= MaxFailedVerifyAttempts)
         {
-            return Task.FromResult(new IntakeInviteResult(false, null, null, "Invalid or expired code."));
+            return new IntakeInviteResult(false, null, null, "Too many incorrect attempts. Please request a new code.");
         }
 
-        if (!VerifyOtp(otpCode, pending.OtpHash))
+        if (challenge is null || challenge.ConsumedAtUtc.HasValue || challenge.ExpiresAtUtc < DateTimeOffset.UtcNow)
         {
-            _verifyFailures.AddOrUpdate(
-                normalizedContact,
-                _ => (1, DateTimeOffset.UtcNow),
-                (_, previous) => (previous.FailCount + 1, DateTimeOffset.UtcNow));
-
-            return Task.FromResult(new IntakeInviteResult(false, null, null, "Incorrect code. Please try again."));
+            return new IntakeInviteResult(false, null, null, "Invalid or expired code.");
         }
 
-        _pendingOtps.TryRemove(normalizedContact, out _);
-        _verifyFailures.TryRemove(normalizedContact, out _);
+        if (!VerifyOtp(otpCode, challenge.OtpHash))
+        {
+            await IncrementOtpFailureAsync(
+                validation.IntakeId,
+                deliveryChannel,
+                contactHash,
+                challenge.OtpHash,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
 
-        return Task.FromResult(IssueAccessToken(contact: normalizedContact));
+            return new IntakeInviteResult(false, null, null, "Incorrect code. Please try again.");
+        }
+
+        var consumed = await TryConsumeOtpChallengeAsync(
+            validation.IntakeId,
+            deliveryChannel,
+            contactHash,
+            challenge.OtpHash,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        if (!consumed)
+        {
+            return new IntakeInviteResult(false, null, null, "Invalid or expired code.");
+        }
+
+        return IssueAccessToken(patientId: validation.PatientId, intakeId: validation.IntakeId, contact: normalizedContact);
     }
 
     public Task<bool> ValidateAccessTokenAsync(string accessToken, CancellationToken cancellationToken = default)
@@ -254,8 +356,9 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             return Task.FromResult(principal.Identity?.IsAuthenticated == true);
         }
-        catch (SecurityTokenException)
+        catch (Exception ex) when (IsExpectedTokenException(ex))
         {
+            _logger.LogWarning(ex, "Intake access token validation failed safe.");
             return Task.FromResult(false);
         }
     }
@@ -267,47 +370,303 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
             return Task.CompletedTask;
         }
 
-        var handler = new JwtSecurityTokenHandler();
-        if (handler.CanReadToken(accessToken))
+        try
         {
-            var token = handler.ReadJwtToken(accessToken);
-            if (!string.IsNullOrWhiteSpace(token.Id))
+            var handler = new JwtSecurityTokenHandler();
+            if (handler.CanReadToken(accessToken))
             {
-                _revokedTokens[token.Id] = token.ValidTo;
-                PurgeExpiredRevocations();
+                var token = handler.ReadJwtToken(accessToken);
+                if (!string.IsNullOrWhiteSpace(token.Id))
+                {
+                    _revokedTokens[token.Id] = token.ValidTo;
+                    PurgeExpiredRevocations();
+                }
             }
+        }
+        catch (Exception ex) when (IsExpectedTokenException(ex))
+        {
+            _logger.LogWarning(ex, "Intake access token revocation ignored an invalid token.");
         }
 
         return Task.CompletedTask;
+    }
+
+    private async Task<bool> TryConsumeOtpChallengeAsync(
+        Guid intakeId,
+        DeliveryChannel channel,
+        string contactHash,
+        string otpHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsRelational())
+        {
+            var sql = BuildOtpConsumeSql();
+            var updated = await _db.Database.ExecuteSqlRawAsync(
+                sql,
+                [
+                    now,
+                    intakeId,
+                    channel.ToString(),
+                    contactHash,
+                    otpHash,
+                    MaxFailedVerifyAttempts
+                ],
+                cancellationToken);
+
+            return updated == 1;
+        }
+
+        var challenge = await _db.IntakeOtpChallenges
+            .FirstOrDefaultAsync(item =>
+                item.IntakeId == intakeId &&
+                item.Channel == channel &&
+                item.ContactHash == contactHash &&
+                item.OtpHash == otpHash,
+                cancellationToken);
+
+        if (challenge is null ||
+            challenge.ConsumedAtUtc.HasValue ||
+            challenge.ExpiresAtUtc < now ||
+            challenge.FailedVerifyCount >= MaxFailedVerifyAttempts)
+        {
+            return false;
+        }
+
+        challenge.ConsumedAtUtc = now;
+        challenge.UpdatedAtUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task IncrementOtpFailureAsync(
+        Guid intakeId,
+        DeliveryChannel channel,
+        string contactHash,
+        string otpHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsRelational())
+        {
+            var sql = BuildOtpFailureIncrementSql();
+            await _db.Database.ExecuteSqlRawAsync(
+                sql,
+                [
+                    now,
+                    intakeId,
+                    channel.ToString(),
+                    contactHash,
+                    otpHash,
+                    MaxFailedVerifyAttempts
+                ],
+                cancellationToken);
+            return;
+        }
+
+        var challenge = await _db.IntakeOtpChallenges
+            .FirstOrDefaultAsync(item =>
+                item.IntakeId == intakeId &&
+                item.Channel == channel &&
+                item.ContactHash == contactHash &&
+                item.OtpHash == otpHash &&
+                item.ConsumedAtUtc == null &&
+                item.ExpiresAtUtc >= now &&
+                item.FailedVerifyCount < MaxFailedVerifyAttempts,
+                cancellationToken);
+
+        if (challenge is null)
+        {
+            return;
+        }
+
+        challenge.FailedVerifyCount += 1;
+        challenge.LastFailedVerifyAtUtc = now;
+        challenge.UpdatedAtUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task MarkOtpChallengeDeliveryFailedAsync(
+        IntakeOtpChallenge challenge,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        challenge.ConsumedAtUtc = now;
+        challenge.ExpiresAtUtc = now;
+        challenge.UpdatedAtUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private string BuildOtpConsumeSql()
+    {
+        var names = SqlNames(_db.Database.ProviderName);
+        return "UPDATE " + names.Table + " " +
+            "SET " + names.ConsumedAtUtc + " = {0}, " + names.UpdatedAtUtc + " = {0} " +
+            "WHERE " + names.IntakeId + " = {1} " +
+            "AND " + names.Channel + " = {2} " +
+            "AND " + names.ContactHash + " = {3} " +
+            "AND " + names.OtpHash + " = {4} " +
+            "AND " + names.ConsumedAtUtc + " IS NULL " +
+            "AND " + names.FailedVerifyCount + " < {5}";
+    }
+
+    private string BuildOtpFailureIncrementSql()
+    {
+        var names = SqlNames(_db.Database.ProviderName);
+        return "UPDATE " + names.Table + " " +
+            "SET " + names.FailedVerifyCount + " = " + names.FailedVerifyCount + " + 1, " +
+            names.LastFailedVerifyAtUtc + " = {0}, " +
+            names.UpdatedAtUtc + " = {0} " +
+            "WHERE " + names.IntakeId + " = {1} " +
+            "AND " + names.Channel + " = {2} " +
+            "AND " + names.ContactHash + " = {3} " +
+            "AND " + names.OtpHash + " = {4} " +
+            "AND " + names.ConsumedAtUtc + " IS NULL " +
+            "AND " + names.FailedVerifyCount + " < {5}";
+    }
+
+    private static OtpSqlNames SqlNames(string? providerName)
+    {
+        if (providerName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return new(
+                "[IntakeOtpChallenges]",
+                "[IntakeId]",
+                "[Channel]",
+                "[ContactHash]",
+                "[OtpHash]",
+                "[ConsumedAtUtc]",
+                "[ExpiresAtUtc]",
+                "[FailedVerifyCount]",
+                "[LastFailedVerifyAtUtc]",
+                "[UpdatedAtUtc]");
+        }
+
+        return new(
+            "\"IntakeOtpChallenges\"",
+            "\"IntakeId\"",
+            "\"Channel\"",
+            "\"ContactHash\"",
+            "\"OtpHash\"",
+            "\"ConsumedAtUtc\"",
+            "\"ExpiresAtUtc\"",
+            "\"FailedVerifyCount\"",
+            "\"LastFailedVerifyAtUtc\"",
+            "\"UpdatedAtUtc\"");
+    }
+
+    private async Task<OtpContextValidation> ValidateInviteOtpContextAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(inviteToken))
+        {
+            return OtpContextValidation.Fail("A valid invite link is required before sending a code.");
+        }
+
+        if (channel is not (OtpChannel.Email or OtpChannel.Sms))
+        {
+            return OtpContextValidation.Fail("Choose email or SMS delivery.");
+        }
+
+        var normalizedContact = channel == OtpChannel.Email
+            ? _contactNormalizer.NormalizeEmail(contact)
+            : _contactNormalizer.NormalizePhone(contact);
+
+        if (!normalizedContact.Succeeded)
+        {
+            return OtpContextValidation.Fail(normalizedContact.SafeErrorMessage ?? "Enter a valid contact method.");
+        }
+
+        try
+        {
+            var principal = ValidateJwt(inviteToken, InviteAudience, InviteTypeClaim, out _);
+            var intakeId = ReadGuidClaim(principal, IntakeIdClaim);
+            var patientId = ReadGuidClaim(principal, PatientIdClaim);
+            var rawSecret = ReadClaimValue(principal, InviteSecretClaim);
+
+            if (intakeId == Guid.Empty || patientId == Guid.Empty || string.IsNullOrWhiteSpace(rawSecret))
+            {
+                return OtpContextValidation.Fail("Invite link is invalid or has expired.");
+            }
+
+            var intake = await _db.IntakeForms
+                .Include(form => form.Patient)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(form => form.Id == intakeId, cancellationToken);
+
+            if (intake is null || intake.PatientId != patientId || intake.Patient is null)
+            {
+                return OtpContextValidation.Fail("Invite link is invalid or has expired.");
+            }
+
+            if (intake.IsLocked || intake.SubmittedAt.HasValue)
+            {
+                return OtpContextValidation.Fail("This intake has already been submitted.");
+            }
+
+            if (intake.ExpiresAt.HasValue && intake.ExpiresAt.Value < DateTime.UtcNow)
+            {
+                return OtpContextValidation.Fail("Invite link is invalid or has expired.");
+            }
+
+            if (!VerifyInviteSecret(rawSecret, intake.AccessToken))
+            {
+                return OtpContextValidation.Fail("Invite link is invalid or has expired.");
+            }
+
+            var expectedContact = channel == OtpChannel.Email
+                ? _contactNormalizer.NormalizeEmail(intake.Patient.Email)
+                : _contactNormalizer.NormalizePhone(intake.Patient.Phone);
+
+            if (!expectedContact.Succeeded ||
+                !string.Equals(expectedContact.NormalizedValue, normalizedContact.NormalizedValue, StringComparison.Ordinal))
+            {
+                return OtpContextValidation.Fail("Unable to send a code for that contact method.");
+            }
+
+            return new OtpContextValidation(
+                true,
+                intake.Id,
+                intake.PatientId,
+                intake.ClinicId,
+                normalizedContact.NormalizedValue,
+                null);
+        }
+        catch (Exception ex) when (IsExpectedTokenException(ex))
+        {
+            _logger.LogWarning(ex, "Intake OTP invite context validation failed safe.");
+            return OtpContextValidation.Fail("Invite link is invalid or has expired.");
+        }
     }
 
     private async Task<(bool Success, string Provider, string? ProviderMessageId, string? ErrorMessage)> DeliverOtpAsync(
         string contact,
         string otp,
         OtpChannel channel,
+        Guid patientId,
+        Guid? clinicId,
         CancellationToken cancellationToken)
     {
-        var message = $"Your PTDoc intake verification code is {otp}. It expires in {_options.OtpExpiryMinutes} minutes.";
+        var request = new IntakeOtpDeliveryRequest
+        {
+            PatientId = patientId,
+            ClinicId = clinicId,
+            Recipient = contact,
+            OtpCode = otp,
+            ExpiresInMinutes = _options.OtpExpiryMinutes
+        };
 
         if (channel == OtpChannel.Email)
         {
-            var result = await _emailDeliveryService.SendAsync(new EmailDeliveryRequest
-            {
-                ToAddress = contact,
-                Subject = "Your PTDoc intake verification code",
-                PlainTextBody = message
-            }, cancellationToken);
-
-            return (result.Success, "SendGrid", result.ProviderMessageId, result.ErrorMessage);
+            var result = await _communicationService.SendIntakeOtpEmailAsync(request, cancellationToken);
+            return (result.Succeeded, result.Provider ?? "Unknown", result.ProviderMessageId, result.SafeErrorMessage);
         }
 
-        var smsResult = await _smsDeliveryService.SendAsync(new SmsDeliveryRequest
-        {
-            ToNumber = contact,
-            Message = message
-        }, cancellationToken);
-
-        return (smsResult.Success, "Twilio", smsResult.ProviderMessageId, smsResult.ErrorMessage);
+        var smsResult = await _communicationService.SendIntakeOtpSmsAsync(request, cancellationToken);
+        return (smsResult.Succeeded, smsResult.Provider ?? "Unknown", smsResult.ProviderMessageId, smsResult.SafeErrorMessage);
     }
 
     private async Task LogOtpEventAsync(
@@ -439,6 +798,12 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
     private static Guid ReadGuidClaim(ClaimsPrincipal principal, string claimType)
         => Guid.TryParse(ReadClaimValue(principal, claimType), out var value) ? value : Guid.Empty;
 
+    private static bool IsExpectedTokenException(Exception ex)
+        => ex is SecurityTokenException
+            or ArgumentException
+            or FormatException
+            or JsonException;
+
     private static string NormalizePublicWebBaseUrl(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -467,6 +832,9 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
         return trimmed;
     }
+
+    private static string BuildInviteUrl(string baseUrl, Guid patientId, string token)
+        => $"{baseUrl}/intake/{patientId:D}?mode=patient&invite={Uri.EscapeDataString(token)}";
 
     private static string GenerateInviteSecret()
         => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -504,6 +872,14 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         return Convert.ToBase64String(hash);
     }
 
+    private string HashOtpContact(Guid intakeId, DeliveryChannel channel, string normalizedContact)
+    {
+        var keyBytes = Encoding.UTF8.GetBytes(_options.SigningKey);
+        var value = $"{intakeId:N}|{channel}|{normalizedContact}";
+        var hash = HMACSHA256.HashData(keyBytes, Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
     private bool VerifyOtp(string candidate, string storedHash)
     {
         var candidateHash = HashOtp(candidate);
@@ -533,4 +909,31 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
         return $"{new string('*', trimmed.Length - 4)}{trimmed[^4..]}";
     }
+
+    private static DeliveryChannel ToDeliveryChannel(OtpChannel channel)
+        => channel == OtpChannel.Email ? DeliveryChannel.Email : DeliveryChannel.Sms;
+
+    private readonly record struct OtpContextValidation(
+        bool Success,
+        Guid IntakeId,
+        Guid PatientId,
+        Guid? ClinicId,
+        string NormalizedContact,
+        string? Error)
+    {
+        public static OtpContextValidation Fail(string error)
+            => new(false, Guid.Empty, Guid.Empty, null, string.Empty, error);
+    }
+
+    private readonly record struct OtpSqlNames(
+        string Table,
+        string IntakeId,
+        string Channel,
+        string ContactHash,
+        string OtpHash,
+        string ConsumedAtUtc,
+        string ExpiresAtUtc,
+        string FailedVerifyCount,
+        string LastFailedVerifyAtUtc,
+        string UpdatedAtUtc);
 }

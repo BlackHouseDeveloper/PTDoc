@@ -279,11 +279,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 Channel = IntakeDeliveryChannel.Email,
                 Destination = "updated.patient@example.com"
             }));
+        var sendContent = await sendResponse.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.OK, sendResponse.StatusCode);
+        Assert.True(sendResponse.StatusCode == HttpStatusCode.OK, sendContent);
 
         var result = JsonSerializer.Deserialize<IntakeDeliverySendResult>(
-            await sendResponse.Content.ReadAsStringAsync(),
+            sendContent,
             JsonOpts);
         Assert.NotNull(result);
         Assert.True(result!.Success);
@@ -1861,6 +1862,13 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["IntakeInvite:SigningKey"] = "integration-test-intake-invite-key-do-not-use-in-prod-64-chars!",
                 ["IntakeInvite:PublicWebBaseUrl"] = "http://localhost",
                 ["IntakeInvite:InviteExpiryMinutes"] = "1440",
+                ["Communication:PublicBaseUrl"] = "http://localhost",
+                ["Communication:RecipientHashSalt"] = "integration-test-recipient-hash-salt",
+                ["Communication:TokenExpiryMinutes:PasswordReset"] = "30",
+                ["Communication:TokenExpiryMinutes:Intake"] = "10080",
+                ["ForwardedHeaders:Enabled"] = "true",
+                ["ForwardedHeaders:KnownNetworks:0"] = "0.0.0.0/0",
+                ["ForwardedHeaders:KnownNetworks:1"] = "::/0",
                 // Dummy values that satisfy non-null guards without triggering Azure calls
                 ["AzureBlobStorage:ConnectionString"] = "UseDevelopmentStorage=true",
                 ["AzureOpenAi:Endpoint"] = "https://test.openai.azure.com/",
@@ -1930,26 +1938,6 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                     };
                 });
             ReplaceWithInstance(services, pdfRendererMock.Object);
-
-            var emailDeliveryMock = new Mock<IEmailDeliveryService>();
-            emailDeliveryMock
-                .Setup(service => service.SendAsync(It.IsAny<EmailDeliveryRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new EmailDeliveryResult
-                {
-                    Success = true,
-                    ProviderMessageId = "sendgrid-test-message"
-                });
-            ReplaceWithInstance(services, emailDeliveryMock.Object);
-
-            var smsDeliveryMock = new Mock<ISmsDeliveryService>();
-            smsDeliveryMock
-                .Setup(service => service.SendAsync(It.IsAny<SmsDeliveryRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new SmsDeliveryResult
-                {
-                    Success = true,
-                    ProviderMessageId = "twilio-test-message"
-                });
-            ReplaceWithInstance(services, smsDeliveryMock.Object);
 
             // ── Replace ITenantContextAccessor with a null-returning stub ────────────
             // This prevents HttpTenantContextAccessor from throwing when there's no

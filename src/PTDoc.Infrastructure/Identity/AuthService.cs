@@ -158,7 +158,7 @@ public class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during authentication for user {Username}", normalizedIdentifier);
+            _logger.LogError(ex, "Error during authentication.");
             throw;
         }
     }
@@ -191,7 +191,7 @@ public class AuthService : IAuthService
             session.RevokedAt = now;
             await _context.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Session expired due to inactivity for user {Username}", session.User.Username);
+            _logger.LogInformation("Session expired due to inactivity for user {UserId}", session.UserId);
             return null;
         }
 

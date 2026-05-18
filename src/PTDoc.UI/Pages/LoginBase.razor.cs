@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using PTDoc.Application.Auth;
@@ -24,6 +25,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected AuthMode authMode = AuthMode.Login;
     protected readonly LoginModel loginModel = new();
     protected readonly SignUpModel signUpModel = new();
+    protected readonly ForgotPasswordModel forgotPasswordModel = new();
     protected List<ClinicSummary> clinics = new();
     protected List<RoleSummary> roles = new();
     protected string? errorMessage;
@@ -33,9 +35,34 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool isSubmitting;
     protected bool isPtaFieldsActive;
     protected bool showPendingConfirmation;
+    protected bool showPasswordResetConfirmation;
     protected bool isDarkTheme;
+    protected int forgotPasswordFormKey;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
+    protected string AuthPageTitle => authMode switch
+    {
+        AuthMode.SignUp => "Sign Up",
+        AuthMode.ForgotPassword => "Forgot PIN",
+        _ => "Login"
+    };
+    protected string AuthFailureTitle => authMode switch
+    {
+        AuthMode.SignUp => "Sign up failed",
+        AuthMode.ForgotPassword => "Reset request failed",
+        _ => "Login failed"
+    };
+    protected const string PasswordResetConfirmationMessage =
+        "If an account matches that contact method, a secure reset link has been sent.";
     protected string DateOfBirthInputValue => signUpModel.DateOfBirth?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+    protected string ForgotContactLabel => string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase)
+        ? "Mobile Number"
+        : "Email Address";
+    protected string ForgotContactPlaceholder => string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase)
+        ? "Enter your mobile number"
+        : "Enter your email address";
+    protected string ForgotContactAutocomplete => string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase)
+        ? "tel"
+        : "email";
     protected string registrationConfirmationTitle = "Registration submitted";
     protected string registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
     private bool _pendingLoginFieldReset;
@@ -43,13 +70,15 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected enum AuthMode
     {
         Login,
-        SignUp
+        SignUp,
+        ForgotPassword
     }
 
     protected override void OnInitialized()
     {
         returnUrl = ReturnUrlValidator.ExtractFromUri(Navigation.Uri);
         ApplyAuthStateFromUri(Navigation.Uri);
+        Navigation.LocationChanged += OnLocationChanged;
 
         // Subscribe to theme changes
         ThemeService.OnThemeChanged += OnThemeChanged;
@@ -127,6 +156,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        ApplyAuthStateFromUri(args.Location);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     protected void SwitchMode(AuthMode mode)
     {
         if (mode == AuthMode.SignUp && !UserService.SupportsSelfServiceRegistration)
@@ -139,6 +174,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         authMode = mode;
         errorMessage = null;
         showPendingConfirmation = false;
+        showPasswordResetConfirmation = false;
         isPendingApprovalNotice = false;
         isExternalLoginRedirecting = false;
         registrationConfirmationTitle = "Registration submitted";
@@ -149,21 +185,28 @@ public abstract class LoginBase : ComponentBase, IDisposable
             ResetLoginModel();
             _pendingLoginFieldReset = true;
         }
-        else
+        else if (mode == AuthMode.SignUp)
         {
             ResetSignUpModel();
         }
+        else
+        {
+            ResetForgotPasswordModel();
+        }
 
         // Update URL without navigation
-        var targetUrl = mode == AuthMode.Login ? "/login" : "/signup";
+        var targetUrl = mode switch
+        {
+            AuthMode.SignUp => "/signup",
+            AuthMode.ForgotPassword => "/forgot-password",
+            _ => "/login"
+        };
         Navigation.NavigateTo(targetUrl, forceLoad: false);
     }
 
     protected async Task HandleLogin()
     {
-        Logger.LogInformation("HandleLogin called - Username: {Username}, PIN: {Pin}", 
-            loginModel.Username, 
-            loginModel.Pin?.Length > 0 ? "****" : "empty");
+        Logger.LogDebug("HandleLogin submitted.");
 
         if (string.IsNullOrWhiteSpace(loginModel.Username))
         {
@@ -188,7 +231,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             StateHasChanged();
             return;
         }
-        
+
         isLoading = true;
         errorMessage = null;
         StateHasChanged();
@@ -198,9 +241,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
             await Task.Delay(200);
 
             var username = loginModel.Username.Trim();
-
-            Logger.LogInformation("Sending to LoginAsync - Username: {Username}, Password: {Password}", 
-                username, loginModel.Pin?.Length > 0 ? "****" : "empty");
 
             var success = await UserService.LoginAsync(username ?? string.Empty, loginModel.Pin ?? string.Empty, returnUrl);
 
@@ -275,7 +315,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
             if (result.IsPending || result.Succeeded)
             {
-                Logger.LogInformation("Sign up successful for {Email}", signUpModel.Email);
+                Logger.LogInformation("Sign up completed successfully.");
                 registrationConfirmationTitle = result.IsPending ? "Registration submitted" : "Account created";
                 registrationConfirmationMessage = result.IsPending
                     ? "Your account is pending admin approval. You can sign in once your clinic administrator activates access."
@@ -311,6 +351,74 @@ public abstract class LoginBase : ComponentBase, IDisposable
         }
     }
 
+    protected async Task HandleForgotPassword()
+    {
+        if (string.IsNullOrWhiteSpace(forgotPasswordModel.Contact))
+        {
+            errorMessage = string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase)
+                ? "Enter a mobile number."
+                : "Enter an email address.";
+            return;
+        }
+
+        if (string.Equals(forgotPasswordModel.Channel, "email", StringComparison.OrdinalIgnoreCase) &&
+            !forgotPasswordModel.Contact.Contains('@', StringComparison.Ordinal))
+        {
+            errorMessage = "Enter a valid email address.";
+            return;
+        }
+
+        if (string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase))
+        {
+            var digits = new string(forgotPasswordModel.Contact.Where(char.IsDigit).ToArray());
+            if (digits.Length is not (10 or 11))
+            {
+                errorMessage = "Enter a valid mobile number.";
+                return;
+            }
+        }
+
+        if (!string.Equals(forgotPasswordModel.Channel, "email", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = "Choose email or SMS delivery.";
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+        showPasswordResetConfirmation = false;
+        StateHasChanged();
+
+        try
+        {
+            var accepted = await UserService.RequestPasswordResetAsync(
+                forgotPasswordModel.Contact.Trim(),
+                forgotPasswordModel.Channel,
+                CancellationToken.None);
+
+            if (accepted)
+            {
+                ResetForgotPasswordModel();
+                showPasswordResetConfirmation = true;
+            }
+            else
+            {
+                errorMessage = "We couldn't submit that request right now. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Password reset request failed");
+            errorMessage = "We couldn't submit that request right now. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
     protected void OnRoleChanged(string roleKey)
     {
         isPtaFieldsActive = string.Equals(roleKey, "PT", StringComparison.OrdinalIgnoreCase)
@@ -326,6 +434,16 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected Task OnRoleChangedAfterBind()
     {
         OnRoleChanged(signUpModel.RoleKey);
+        return Task.CompletedTask;
+    }
+
+    protected Task OnForgotPasswordChannelChangedAfterBind()
+    {
+        forgotPasswordModel.Contact = string.Empty;
+        errorMessage = null;
+        showPasswordResetConfirmation = false;
+        forgotPasswordFormKey++;
+        StateHasChanged();
         return Task.CompletedTask;
     }
 
@@ -369,12 +487,18 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         authMode = uri.Contains("/signup", StringComparison.OrdinalIgnoreCase)
             ? AuthMode.SignUp
-            : AuthMode.Login;
+            : uri.Contains("/forgot-password", StringComparison.OrdinalIgnoreCase)
+                ? AuthMode.ForgotPassword
+                : AuthMode.Login;
 
         if (authMode == AuthMode.Login)
         {
             ResetLoginModel();
             _pendingLoginFieldReset = true;
+        }
+        else if (authMode == AuthMode.ForgotPassword)
+        {
+            ResetForgotPasswordModel();
         }
     }
 
@@ -396,6 +520,13 @@ public abstract class LoginBase : ComponentBase, IDisposable
         signUpModel.LicenseNumber = string.Empty;
         signUpModel.LicenseState = string.Empty;
         isPtaFieldsActive = false;
+    }
+
+    private void ResetForgotPasswordModel()
+    {
+        forgotPasswordModel.Contact = string.Empty;
+        forgotPasswordModel.Channel = "email";
+        forgotPasswordFormKey++;
     }
 
     private async Task ResetLoginFieldsAsync()
@@ -462,6 +593,52 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public string LicenseState { get; set; } = string.Empty;
     }
 
+    protected sealed class ForgotPasswordModel : IValidatableObject
+    {
+        public string Contact { get; set; } = string.Empty;
+
+        [Required]
+        public string Channel { get; set; } = "email";
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (string.Equals(Channel, "sms", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(Contact))
+                {
+                    yield return new ValidationResult("Mobile number is required.", [nameof(Contact)]);
+                    yield break;
+                }
+
+                var digits = new string(Contact.Where(char.IsDigit).ToArray());
+                if (digits.Length is not (10 or 11))
+                {
+                    yield return new ValidationResult("Enter a valid mobile number.", [nameof(Contact)]);
+                }
+
+                yield break;
+            }
+
+            if (string.Equals(Channel, "email", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(Contact))
+                {
+                    yield return new ValidationResult("Email address is required.", [nameof(Contact)]);
+                    yield break;
+                }
+
+                if (!Contact.Contains('@', StringComparison.Ordinal))
+                {
+                    yield return new ValidationResult("Enter a valid email address.", [nameof(Contact)]);
+                }
+
+                yield break;
+            }
+
+            yield return new ValidationResult("Choose email or SMS delivery.", [nameof(Channel)]);
+        }
+    }
+
     protected static readonly List<(string Code, string Name)> UsStates = new()
     {
         ("AL", "Alabama"), ("AK", "Alaska"), ("AZ", "Arizona"), ("AR", "Arkansas"),
@@ -481,6 +658,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     public void Dispose()
     {
+        Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
     }
 }

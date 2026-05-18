@@ -27,7 +27,7 @@
             <div class="intake-access-gate__card">
                 <h1 class="intake-access-gate__title">Verify Your Identity</h1>
                 <p class="intake-access-gate__subtitle">
-                    Enter your phone number or email address to receive a one-time access code.
+                    Enter the contact method associated with your secure invite to receive a one-time access code.
                 </p>
 
                 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -68,7 +68,7 @@
 
                 <button class="intake-access-gate__btn intake-access-gate__btn--primary"
                         @onclick="RequestOtpAsync"
-                        disabled="@(_isBusy || string.IsNullOrWhiteSpace(_contact))">
+                        disabled="@(!CanRequestOtp)">
                     @if (_isBusy)
                     {
                         <span>Sending&hellip;</span>
@@ -158,11 +158,17 @@
 
     private GateState _gateState = GateState.Checking;
     private string _contact = string.Empty;
+    private string _inviteToken = string.Empty;
     private OtpChannel _otpChannel = OtpChannel.Sms;
     private string _otpCode = string.Empty;
     private string? _errorMessage;
     private bool _isBusy;
     private System.Threading.Timer? _expiryTimer;
+
+    private bool CanRequestOtp =>
+        !_isBusy &&
+        !string.IsNullOrWhiteSpace(_contact) &&
+        !string.IsNullOrWhiteSpace(_inviteToken);
 
     protected override async Task OnInitializedAsync()
     {
@@ -203,6 +209,7 @@
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
                 if (result.IsValid && result.AccessToken is not null)
                 {
+                    _inviteToken = inviteToken;
                     var token = new IntakeSessionToken(
                         result.AccessToken,
                         result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
@@ -212,9 +219,16 @@
                     _gateState = GateState.Authorized;
                     return;
                 }
+
+                _inviteToken = string.Empty;
+                _errorMessage = result.Error ?? "The secure invite link is invalid or expired.";
             }
 
             // 3. No valid token found — prompt identity verification.
+            if (string.IsNullOrWhiteSpace(_inviteToken) && string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+            }
             _gateState = GateState.RequestContact;
         }
         catch (Exception ex)
@@ -227,11 +241,24 @@
     private async Task RequestOtpAsync()
     {
         _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_inviteToken))
+        {
+            _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_contact))
+        {
+            _errorMessage = "Enter the contact method associated with your secure invite.";
+            return;
+        }
+
         _isBusy = true;
 
         try
         {
-            var sent = await InviteService.SendOtpAsync(_contact, _otpChannel);
+            var sent = await InviteService.SendOtpAsync(_inviteToken, _contact, _otpChannel);
             if (sent)
             {
                 _otpCode = string.Empty;
@@ -260,7 +287,7 @@
 
         try
         {
-            var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_contact, _otpCode);
+            var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_inviteToken, _contact, _otpChannel, _otpCode);
             if (result.IsValid && result.AccessToken is not null)
             {
                 var token = new IntakeSessionToken(
@@ -291,6 +318,12 @@
     {
         _errorMessage = null;
         _otpCode = string.Empty;
+        _inviteToken = GetQueryParam(NavigationManager.Uri, "invite") ?? _inviteToken;
+        if (string.IsNullOrWhiteSpace(_inviteToken))
+        {
+            _errorMessage = "Use the secure invite link from your clinic to request an access code.";
+        }
+
         _gateState = GateState.RequestContact;
     }
 

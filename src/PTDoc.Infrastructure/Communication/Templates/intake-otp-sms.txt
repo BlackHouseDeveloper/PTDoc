@@ -1,0 +1,1 @@
+Your PTDoc intake verification code is {{Code}}. It expires in {{ExpiresMinutes}} minutes.

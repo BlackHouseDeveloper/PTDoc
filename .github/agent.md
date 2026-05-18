@@ -106,4 +106,18 @@ The `changelog-required.yml` workflow enforces this rule at the PR level:
 
 ---
 
-*This rule is enforced by: `AGENT-CHANGELOG-001` | Last Updated: April 2026*
+## Release Branching Guidance
+
+### Rule ID: AGENT-RELEASE-001
+
+Agents must follow the branching and deployment model in `docs/CI.md`.
+
+- Keep `main` as the production-ready branch.
+- Do not create a long-lived `production` or `prod` branch only to represent the deployed application.
+- Use short-lived `release/vX.Y.Z` branches only for specific release preparation.
+- Identify production deployments with immutable release tags such as `v1.0.0`.
+- If a deployment provider requires a production branch, document the exception and require branch protection at least as strict as `main`.
+
+---
+
+*These rules are enforced by: `AGENT-CHANGELOG-001`, `AGENT-RELEASE-001` | Last Updated: May 2026*

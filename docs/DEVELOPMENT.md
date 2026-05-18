@@ -85,6 +85,14 @@ dotnet run --project src/PTDoc.Api --urls http://localhost:5170
    gh pr create --title "Add Patient Intake Form" --body "Implements #123"
    ```
 
+### Release Preparation Workflow
+
+- Keep `main` as the production-ready branch; do not create a long-lived `production` or `prod` branch just to represent the deployed application.
+- Create a short-lived `release/vX.Y.Z` branch from `main` only when preparing a specific release.
+- Use the release branch for final stabilization, release notes, migration review, and deployment rehearsal.
+- Merge accepted release fixes back into `main`, and into `develop` if it is active.
+- Create an immutable tag such as `v1.0.0` from the approved release commit and deploy production from that tag.
+
 ### Testing Workflow
 
 ```bash

@@ -42,6 +42,10 @@ $intakeKeyBytes = New-Object byte[] 32
 $rng.GetBytes($intakeKeyBytes)
 $intakeKey = [Convert]::ToBase64String($intakeKeyBytes)
 
+$communicationHashSaltBytes = New-Object byte[] 64
+$rng.GetBytes($communicationHashSaltBytes)
+$communicationHashSalt = [Convert]::ToBase64String($communicationHashSaltBytes)
+
 $rng.Dispose()
 
 # --- Store in user-secrets (output suppressed to prevent accidental logging) ---
@@ -57,11 +61,17 @@ Write-Host "Setting IntakeInvite:SigningKey for PTDoc.Web..."
 dotnet user-secrets set "IntakeInvite:SigningKey" $intakeKey --project $WebProject | Out-Null
 Write-Host "✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Web" -ForegroundColor Green
 
+Write-Host "Setting Communication:RecipientHashSalt for PTDoc.Api..."
+dotnet user-secrets set "Communication:RecipientHashSalt" $communicationHashSalt --project $ApiProject | Out-Null
+Write-Host "✓ Communication:RecipientHashSalt stored in user-secrets for PTDoc.Api" -ForegroundColor Green
+
 # --- Clear secret variables immediately ---
 $jwtKey = $null
 $intakeKey = $null
+$communicationHashSalt = $null
 [System.Array]::Clear($jwtKeyBytes, 0, $jwtKeyBytes.Length)
 [System.Array]::Clear($intakeKeyBytes, 0, $intakeKeyBytes.Length)
+[System.Array]::Clear($communicationHashSaltBytes, 0, $communicationHashSaltBytes.Length)
 
 Write-Host ""
 Write-Host "✅ Dev secrets configured successfully!" -ForegroundColor Green

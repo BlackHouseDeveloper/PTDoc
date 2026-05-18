@@ -17,18 +17,21 @@ public sealed class WebUserService : IUserService
     private readonly NavigationManager navigationManager;
     private readonly EntraExternalIdOptions entraExternalIdOptions;
     private readonly SignupApiClient signupApiClient;
+    private readonly PasswordResetApiClient passwordResetApiClient;
 
     public WebUserService(
         IJSRuntime jsRuntime,
         ILogger<WebUserService> logger,
         NavigationManager navigationManager,
         SignupApiClient signupApiClient,
+        PasswordResetApiClient passwordResetApiClient,
         IOptions<EntraExternalIdOptions> entraExternalIdOptions)
     {
         this.jsRuntime = jsRuntime;
         this.logger = logger;
         this.navigationManager = navigationManager;
         this.signupApiClient = signupApiClient;
+        this.passwordResetApiClient = passwordResetApiClient;
         this.entraExternalIdOptions = entraExternalIdOptions.Value;
     }
 
@@ -87,6 +90,53 @@ public sealed class WebUserService : IUserService
         var encodedReturnUrl = Uri.EscapeDataString(effectiveReturnUrl);
         navigationManager.NavigateTo($"{ExternalLoginPath}?returnUrl={encodedReturnUrl}", forceLoad: true);
         return Task.FromResult(true);
+    }
+
+    public async Task<bool> RequestPasswordResetAsync(
+        string contact,
+        string channel,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await passwordResetApiClient.RequestAsync(contact, channel, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Password reset request failed");
+            return false;
+        }
+    }
+
+    public async Task<bool> CompletePasswordResetAsync(
+        string token,
+        string newPin,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await passwordResetApiClient.CompleteAsync(token, newPin, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Password reset completion failed");
+            return false;
+        }
+    }
+
+    public async Task<bool> ValidatePasswordResetTokenAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await passwordResetApiClient.ValidateAsync(token, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Password reset token validation failed");
+            return false;
+        }
     }
 
     public async Task<RegistrationResult> RegisterAsync(

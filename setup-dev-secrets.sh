@@ -44,6 +44,7 @@ fi
 # --- Generate secrets (no output to prevent accidental logging) ---
 JWT_KEY=$(openssl rand -base64 64)
 INTAKE_KEY=$(openssl rand -base64 32)
+COMMUNICATION_HASH_SALT=$(openssl rand -base64 64)
 
 # --- Store in user-secrets (never printed) ---
 echo "Setting Jwt:SigningKey for PTDoc.Api..."
@@ -58,9 +59,14 @@ echo "Setting IntakeInvite:SigningKey for PTDoc.Web..."
 dotnet user-secrets set "IntakeInvite:SigningKey" "$INTAKE_KEY" --project "$WEB_PROJECT" >/dev/null
 echo -e "${GREEN}✓ IntakeInvite:SigningKey stored in user-secrets for PTDoc.Web${NC}"
 
+echo "Setting Communication:RecipientHashSalt for PTDoc.Api..."
+dotnet user-secrets set "Communication:RecipientHashSalt" "$COMMUNICATION_HASH_SALT" --project "$API_PROJECT" >/dev/null
+echo -e "${GREEN}✓ Communication:RecipientHashSalt stored in user-secrets for PTDoc.Api${NC}"
+
 # --- Unset variables immediately ---
 unset JWT_KEY
 unset INTAKE_KEY
+unset COMMUNICATION_HASH_SALT
 
 echo ""
 echo -e "${GREEN}✅ Dev secrets configured successfully!${NC}"

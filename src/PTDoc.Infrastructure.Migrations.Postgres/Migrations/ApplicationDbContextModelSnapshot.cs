@@ -150,6 +150,105 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.CommunicationDeliveryLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("CreatedAtUnixSeconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("PatientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SafeErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("\"ClinicId\" IS NOT NULL");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("\"CorrelationId\" IS NOT NULL");
+
+                    b.HasIndex("PatientId")
+                        .HasFilter("\"PatientId\" IS NOT NULL");
+
+                    b.HasIndex("RecipientHash");
+
+                    b.HasIndex("UserId")
+                        .HasFilter("\"UserId\" IS NOT NULL");
+
+                    b.HasIndex("PatientId", "Purpose", "CreatedAtUtc")
+                        .HasFilter("\"PatientId\" IS NOT NULL");
+
+                    b.HasIndex("PatientId", "Purpose", "CreatedAtUnixSeconds")
+                        .HasFilter("\"PatientId\" IS NOT NULL");
+
+                    b.HasIndex("Purpose", "Channel", "CreatedAtUtc");
+
+                    b.HasIndex("Purpose", "Channel", "CreatedAtUnixSeconds");
+
+                    b.HasIndex("RecipientHash", "Purpose", "CreatedAtUnixSeconds");
+
+                    b.ToTable("CommunicationDeliveryLogs");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
                 {
                     b.Property<Guid>("Id")
@@ -434,6 +533,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InviteToken")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
                     b.Property<bool>("IsLocked")
                         .HasColumnType("boolean");
 
@@ -481,6 +584,34 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId");
 
                     b.ToTable("IntakeForms");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntakeOtpChallenge", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<string>("Channel").IsRequired().HasMaxLength(20).HasColumnType("character varying(20)");
+                    b.Property<Guid?>("ClinicId").HasColumnType("uuid");
+                    b.Property<string>("ContactHash").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)");
+                    b.Property<DateTimeOffset?>("ConsumedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<string>("CorrelationId").HasMaxLength(100).HasColumnType("character varying(100)");
+                    b.Property<DateTimeOffset>("CreatedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset>("ExpiresAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<int>("FailedVerifyCount").HasColumnType("integer");
+                    b.Property<Guid>("IntakeId").HasColumnType("uuid");
+                    b.Property<DateTimeOffset?>("LastFailedVerifyAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<string>("OtpHash").IsRequired().HasMaxLength(128).HasColumnType("character varying(128)");
+                    b.Property<Guid>("PatientId").HasColumnType("uuid");
+                    b.Property<int>("SendCount").HasColumnType("integer");
+                    b.Property<DateTimeOffset>("UpdatedAtUtc").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset>("WindowStartUtc").HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+                    b.HasIndex("ClinicId").HasFilter("\"ClinicId\" IS NOT NULL");
+                    b.HasIndex("CorrelationId").HasFilter("\"CorrelationId\" IS NOT NULL");
+                    b.HasIndex("ExpiresAtUtc");
+                    b.HasIndex("IntakeId", "Channel", "ContactHash").IsUnique();
+                    b.HasIndex("PatientId", "Channel", "UpdatedAtUtc");
+                    b.ToTable("IntakeOtpChallenges");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
@@ -854,6 +985,65 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("PatientGoals");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("UsedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("\"CorrelationId\" IS NOT NULL");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientHash", "CreatedAtUtc");
+
+                    b.HasIndex("UserId", "ExpiresAtUtc");
+
+                    b.ToTable("PasswordResetTokens");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1215,6 +1405,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("NormalizedPhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1235,6 +1433,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasFilter("\"Email\" IS NOT NULL");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("NormalizedPhoneNumber")
+                        .HasFilter("\"NormalizedPhoneNumber\" IS NOT NULL");
+
+                    b.HasIndex("PhoneNumber")
+                        .HasFilter("\"PhoneNumber\" IS NOT NULL");
 
                     b.HasIndex("Username")
                         .IsUnique();
@@ -1522,6 +1726,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

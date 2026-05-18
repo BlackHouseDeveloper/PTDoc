@@ -17,7 +17,7 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
     private readonly ILogger<MauiAuthenticationStateProvider> logger;
 
     public MauiAuthenticationStateProvider(
-        ITokenStore tokenStore, 
+        ITokenStore tokenStore,
         ITokenService tokenService,
         ILogger<MauiAuthenticationStateProvider> logger)
     {
@@ -65,7 +65,7 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
             }
 
             var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
-            logger.LogInformation("User authenticated: {Username}", principal.Identity?.Name ?? "Unknown");
+            logger.LogInformation("Stored authentication tokens are valid.");
             return new AuthenticationState(principal);
         }
         catch (Exception ex)

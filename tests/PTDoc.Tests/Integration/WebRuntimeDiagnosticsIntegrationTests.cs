@@ -79,6 +79,18 @@ public sealed class WebRuntimeDiagnosticsIntegrationTests
     }
 
     [Fact]
+    public void ReverseProxyConfiguration_ForwardsApiCatchAllRoute_ToApiCluster()
+    {
+        var repoRoot = FindRepoRoot();
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Web", "appsettings.json"))
+            .Build();
+
+        Assert.Equal("apiCluster", configuration["ReverseProxy:Routes:apiRoute:ClusterId"]);
+        Assert.Equal("/api/{**catch-all}", configuration["ReverseProxy:Routes:apiRoute:Match:Path"]);
+    }
+
+    [Fact]
     public async Task RuntimeDiagnostics_ForNonAdmin_ReturnsForbidden()
     {
         await using var factory = new PTDocWebFactory();
@@ -129,6 +141,18 @@ public sealed class WebRuntimeDiagnosticsIntegrationTests
             client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeader, role);
             return client;
         }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "PTDoc.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        return directory!.FullName;
     }
 
     private sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>

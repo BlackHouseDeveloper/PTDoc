@@ -278,6 +278,10 @@ We welcome contributions to PTDoc! Our enterprise-grade development environment 
 7. **Test Thoroughly**: Run `dotnet test` and verify all platforms build
 8. **Submit PR**: Include clear description and reference any related issues
 
+### Release Branching
+
+`main` is the production-ready branch. Use short-lived `release/vX.Y.Z` branches only for specific release preparation and deploy production from immutable release tags such as `v1.0.0`. Do not create a permanent `production` or `prod` branch unless the hosting platform requires branch-based production deployment and that exception is documented.
+
 ### Enterprise Development Standards
 
 - **Code Style**: Auto-enforced via MCP workflows with StyleCop and Roslynator

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Communication;
 
 namespace PTDoc.Infrastructure.Data;
 
@@ -41,6 +42,9 @@ public class ApplicationDbContext : DbContext
 
     // System entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<CommunicationDeliveryLog> CommunicationDeliveryLogs => Set<CommunicationDeliveryLog>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<IntakeOtpChallenge> IntakeOtpChallenges => Set<IntakeOtpChallenge>();
     public DbSet<Signature> Signatures => Set<Signature>();
     public DbSet<RuleOverride> RuleOverrides => Set<RuleOverride>();
     public DbSet<ComplianceSettings> ComplianceSettings => Set<ComplianceSettings>();
@@ -164,6 +168,15 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
             entity.Property(e => e.AccessToken).HasMaxLength(256).IsRequired();
+            var inviteTokenProperty = entity.Property(e => e.InviteToken);
+            if (Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                inviteTokenProperty.HasColumnType("nvarchar(max)");
+            }
+            else
+            {
+                inviteTokenProperty.HasMaxLength(4096);
+            }
 
             // Sprint O: TDD §5.2 IntakeResponse contract fields
             entity.Property(e => e.PainMapData).IsRequired();
@@ -176,6 +189,8 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Username).IsUnique();
             entity.HasIndex(e => e.Email).IsUnique().HasFilter(IsNotNullFilter("Email"));
+            entity.HasIndex(e => e.PhoneNumber).HasFilter(IsNotNullFilter("PhoneNumber"));
+            entity.HasIndex(e => e.NormalizedPhoneNumber).HasFilter(IsNotNullFilter("NormalizedPhoneNumber"));
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Username).HasMaxLength(100).IsRequired();
@@ -183,6 +198,8 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.FirstName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.LastName).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Email).HasMaxLength(255);
+            entity.Property(e => e.PhoneNumber).HasMaxLength(30);
+            entity.Property(e => e.NormalizedPhoneNumber).HasMaxLength(20);
             entity.Property(e => e.Role).HasMaxLength(50).IsRequired();
             entity.Property(e => e.LicenseNumber).HasMaxLength(50);
             entity.Property(e => e.LicenseState).HasMaxLength(2);
@@ -251,6 +268,66 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.CorrelationId).HasMaxLength(100).IsRequired();
             entity.Property(e => e.MetadataJson).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+        });
+
+        modelBuilder.Entity<CommunicationDeliveryLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.PatientId).HasFilter(IsNotNullFilter("PatientId"));
+            entity.HasIndex(e => e.UserId).HasFilter(IsNotNullFilter("UserId"));
+            entity.HasIndex(e => e.RecipientHash);
+            entity.HasIndex(e => new { e.Purpose, e.Channel, e.CreatedAtUtc });
+            entity.HasIndex(e => new { e.Purpose, e.Channel, e.CreatedAtUnixSeconds });
+            entity.HasIndex(e => new { e.RecipientHash, e.Purpose, e.CreatedAtUnixSeconds });
+            entity.HasIndex(e => new { e.PatientId, e.Purpose, e.CreatedAtUtc }).HasFilter(IsNotNullFilter("PatientId"));
+            entity.HasIndex(e => new { e.PatientId, e.Purpose, e.CreatedAtUnixSeconds }).HasFilter(IsNotNullFilter("PatientId"));
+            entity.HasIndex(e => e.CorrelationId).HasFilter(IsNotNullFilter("CorrelationId"));
+
+            entity.Property(e => e.Purpose).HasConversion<string>().HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Channel).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(50).IsRequired();
+            entity.Property(e => e.RecipientHash).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.Provider).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ProviderMessageId).HasMaxLength(200);
+            entity.Property(e => e.ErrorCode).HasMaxLength(100);
+            entity.Property(e => e.SafeErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.CorrelationId).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.ExpiresAtUtc });
+            entity.HasIndex(e => new { e.RecipientHash, e.CreatedAtUtc });
+            entity.HasIndex(e => e.CorrelationId).HasFilter(IsNotNullFilter("CorrelationId"));
+
+            entity.Property(e => e.TokenHash).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.Channel).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(e => e.RecipientHash).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.RevocationReason).HasMaxLength(100);
+            entity.Property(e => e.CorrelationId).HasMaxLength(100);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntakeOtpChallenge>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntakeId, e.Channel, e.ContactHash }).IsUnique();
+            entity.HasIndex(e => new { e.PatientId, e.Channel, e.UpdatedAtUtc });
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => e.ExpiresAtUtc);
+            entity.HasIndex(e => e.CorrelationId).HasFilter(IsNotNullFilter("CorrelationId"));
+
+            entity.Property(e => e.Channel).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ContactHash).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.OtpHash).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.CorrelationId).HasMaxLength(100);
         });
 
         modelBuilder.Entity<Signature>(entity =>
@@ -624,6 +701,7 @@ public class ApplicationDbContext : DbContext
 
     private void NormalizeTrackedUsers()
     {
+        var contactNormalizer = new ContactNormalizer();
         foreach (var entry in ChangeTracker.Entries<User>())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified))
@@ -633,6 +711,10 @@ public class ApplicationDbContext : DbContext
 
             entry.Entity.Username = NormalizeUsername(entry.Entity.Username);
             entry.Entity.Email = NormalizeEmail(entry.Entity.Email);
+            var normalizedPhone = contactNormalizer.NormalizePhone(entry.Entity.PhoneNumber);
+            entry.Entity.NormalizedPhoneNumber = normalizedPhone.Succeeded
+                ? normalizedPhone.NormalizedValue
+                : null;
         }
     }
 

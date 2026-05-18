@@ -32,6 +32,7 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<SignupApiClient>();
+builder.Services.AddScoped<PasswordResetApiClient>();
 builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, HttpSyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
@@ -48,6 +49,7 @@ builder.Services.AddScoped<IPatientService, PatientApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();
 builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
+builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
 builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
