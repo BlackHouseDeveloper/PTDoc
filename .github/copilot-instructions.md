@@ -136,6 +136,7 @@ These documents supersede any general .NET/Blazor framework knowledge when there
 - **[docs/CI.md](../docs/CI.md)** - CI principles, build standards, secrets in CI, branching strategy, migration validation (Sprint F)
   - **Use when:** Modifying workflows, understanding CI behavior, adding CI secrets, branching/deployment
   - **Skip when:** Local-only development with no CI impact
+  - **Release branching:** `main` is production-ready, `release/vX.Y.Z` branches are short-lived release-prep branches, and production deployments should be identified by immutable release tags such as `v1.0.0`; do not create a long-lived `production` or `prod` branch unless a documented hosting constraint requires it.
 
 ### Observability & Operational Diagnostics (Sprint F)
 - **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** — *Observability & Health Monitoring* section
@@ -525,6 +526,17 @@ Before starting any new work, verify the last committed change has a changelog e
 
 The `no-changelog` label may bypass the CI gate **only** for non-user-visible changes (CI-config-only fixes, pure reformats). It must **never** be used to skip changelog entries for substantive code changes.
 
+### Release Branching Rule
+
+> **Rule ID: AGENT-RELEASE-001 — Follow `docs/CI.md` for production branching and release tagging.**
+> Full specification: [`.github/agent.md`](agent.md)
+
+- Keep `main` as the production-ready branch.
+- Use short-lived `release/vX.Y.Z` branches only for specific release preparation.
+- Do not create a long-lived `production` or `prod` branch only to represent the deployed application.
+- Identify production deployments with immutable release tags such as `v1.0.0`.
+- Document and protect any hosting-provider exception that requires branch-based production deployment.
+
 ### Prohibited AI Actions
 
 The AI must **never**:
@@ -552,6 +564,6 @@ For every task, follow this flow:
 
 ---
 
-**Last Updated:** April 2026 (Sprint I: added AGENT-CHANGELOG-001 mandatory changelog enforcement rule; `.github/agent.md` created as agent behavioral contract)  
+**Last Updated:** May 2026 (added AGENT-RELEASE-001 release branching guidance; Sprint I added AGENT-CHANGELOG-001 mandatory changelog enforcement rule)  
 **Framework:** .NET 8.0 | **Platforms:** Web, iOS, Android, macOS  
 **Healthcare:** HIPAA-conscious design required

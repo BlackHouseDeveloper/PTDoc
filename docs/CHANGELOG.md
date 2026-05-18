@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### AGENTS.md now distinguishes helper-script vs API SQLite overrides and runtime diagnostics
 - **`AGENTS.md`** — Added the `PTDoc_DB_PATH` environment variable for `src/PTDoc.Api` so agent guidance no longer conflates the API database path with `PTDoc-Foundry.sh`’s `PFP_DB_PATH`, and added the authenticated `GET /diagnostics/runtime` command used for runtime parity and AI configuration checks. Reason: keep the agent-facing workflow notes aligned with the current README, development docs, and API/runtime diagnostics surface without broadening unrelated guidance.
+- **`docs/CI.md`**, **`docs/DEVELOPMENT.md`**, **`README.md`**, **`AGENTS.md`**, **`.github/agent.md`**, **`.github/copilot-instructions.md`** — Documented the release-branching model that keeps `main` production-ready, reserves short-lived `release/vX.Y.Z` branches for specific release preparation, and uses immutable release tags such as `v1.0.0` as the production deployment source. Reason: prevent a permanent `production`/`prod` branch from becoming a competing release truth unless a documented hosting constraint requires one.
 
 ### Changed - Clinic reference-data doc hygiene
 

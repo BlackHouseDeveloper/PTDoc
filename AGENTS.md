@@ -10,6 +10,14 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
 - Update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) at the end of every repository-changing session before handing off. If no entry is needed, state that explicitly.
 
+## Release Branching
+
+- Treat [`docs/CI.md`](docs/CI.md) as the source of truth for branching and deployment.
+- Keep `main` as the production-ready branch; do not create a long-lived `production` or `prod` branch just to represent the deployed application.
+- Use short-lived `release/vX.Y.Z` branches only for specific release preparation.
+- Production deployments should be identified by immutable release tags such as `v1.0.0`, not by moving branches.
+- If a hosting provider requires branch-based production deployment, document the exception and apply protection rules at least as strict as `main`.
+
 ## Documentation Order
 
 When repo docs conflict with generic framework habits, follow repo docs in this order:

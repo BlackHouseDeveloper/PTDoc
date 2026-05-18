@@ -591,21 +591,32 @@ dotnet list PTDoc.sln package --include-transitive | grep License
 ### Branch Model
 
 ```
-main (production)
+main (production-ready)
   ├── develop (integration)
   │   ├── feature/patient-intake
   │   ├── feature/appointment-scheduling
   │   └── bugfix/auth-token-refresh
+  ├── release/v1.0.0 (release preparation)
   └── hotfix/critical-security-patch
+
+release tag v1.0.0 (production deployment source)
 ```
 
 **Branch Types:**
-- `main` - Production-ready code
+- `main` - Production-ready code and the source for release branches/tags
 - `develop` - Integration branch for next release
 - `feature/*` - New features
 - `bugfix/*` - Bug fixes
 - `hotfix/*` - Critical production fixes
-- `release/*` - Release preparation
+- `release/*` - Short-lived, version-specific release preparation
+
+### Release Branching Rules
+
+- Keep `main` as the canonical production-ready line. Do not create a long-lived `production` or `prod` branch only to represent the released application.
+- Create `release/vX.Y.Z` branches only when preparing a specific release that needs final stabilization, release notes, migration review, or hotfix validation before tagging.
+- Deploy production from an immutable release tag such as `v1.0.0`, created from the approved release commit. Tags, not moving branches, identify exactly what version is in production.
+- Merge release fixes back into `main`, and into `develop` if that integration branch is active, before tagging or immediately after the release is accepted.
+- If a hosting provider requires branch-based production deployment, document that exception in the deployment runbook and protect that branch with rules at least as strict as `main`.
 
 ### Branch Protection Rules (Future)
 
