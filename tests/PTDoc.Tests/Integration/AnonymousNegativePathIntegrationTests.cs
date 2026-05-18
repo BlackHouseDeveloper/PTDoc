@@ -72,19 +72,31 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
     [Fact]
     public async Task PasswordResetRateLimit_UsesForwardedClientIpPartition()
     {
-        using var client = _factory.CreateUnauthenticatedClient();
-
-        for (var i = 0; i < 30; i++)
+        var factory = new PtDocApiFactory();
+        try
         {
-            using var response = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.10");
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            await factory.InitializeAsync();
+            using var client = factory.CreateUnauthenticatedClient();
+            var subnet = Random.Shared.Next(0, 255);
+            var limitedClientIp = $"198.51.{subnet}.10";
+            var distinctClientIp = $"198.51.{subnet}.11";
+
+            for (var i = 0; i < 30; i++)
+            {
+                using var response = await PostPasswordResetValidateWithForwardedForAsync(client, limitedClientIp);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+
+            using var rateLimitedResponse = await PostPasswordResetValidateWithForwardedForAsync(client, limitedClientIp);
+            Assert.Equal(HttpStatusCode.TooManyRequests, rateLimitedResponse.StatusCode);
+
+            using var distinctClientResponse = await PostPasswordResetValidateWithForwardedForAsync(client, distinctClientIp);
+            Assert.Equal(HttpStatusCode.OK, distinctClientResponse.StatusCode);
         }
-
-        using var rateLimitedResponse = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.10");
-        Assert.Equal(HttpStatusCode.TooManyRequests, rateLimitedResponse.StatusCode);
-
-        using var distinctClientResponse = await PostPasswordResetValidateWithForwardedForAsync(client, "198.51.100.11");
-        Assert.Equal(HttpStatusCode.OK, distinctClientResponse.StatusCode);
+        finally
+        {
+            await factory.DisposeAsync();
+        }
     }
 
     [Theory]

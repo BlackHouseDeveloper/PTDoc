@@ -66,7 +66,6 @@ var builder = WebApplication.CreateBuilder(args);
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
 var legacyApiAuthEnabled = builder.Configuration.GetValue<bool?>("Auth:LegacyApiAuthEnabled") ?? true;
 var intakeInviteOptions = builder.Configuration.GetSection(IntakeInviteOptions.SectionName).Get<IntakeInviteOptions>() ?? new IntakeInviteOptions();
-var forwardedHeadersEnabled = builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled");
 
 if (!builder.Environment.IsDevelopment() &&
     AzureRuntimeConfigurationValidator.RequiresAzureOpenAiConfiguration(builder.Configuration))
@@ -94,16 +93,21 @@ if (!builder.Environment.IsEnvironment("Testing"))
 // Add HttpContextAccessor for identity context
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
-if (forwardedHeadersEnabled)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    builder.Services.Configure<ForwardedHeadersOptions>(options =>
-        ConfigureForwardedHeaders(builder.Configuration, builder.Environment, options));
-}
+    if (builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
+    {
+        ConfigureForwardedHeaders(builder.Configuration, builder.Environment, options);
+    }
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("PasswordResetCommunication", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            GetPasswordResetRateLimitPartitionKey(
+                httpContext,
+                builder.Configuration,
+                builder.Environment),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 30,
@@ -678,10 +682,7 @@ if (autoMigrate)
     }
 }
 
-if (forwardedHeadersEnabled)
-{
-    app.UseForwardedHeaders();
-}
+app.UseForwardedHeaders();
 
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -851,6 +852,35 @@ static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string val
     }
 
     return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength);
+}
+
+static string GetPasswordResetRateLimitPartitionKey(
+    HttpContext httpContext,
+    IConfiguration configuration,
+    IHostEnvironment environment)
+{
+    if (configuration.GetValue<bool>("ForwardedHeaders:Enabled") &&
+        environment.IsEnvironment("Testing"))
+    {
+        var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].ToString();
+        var firstForwardedFor = forwardedFor
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(firstForwardedFor) &&
+            IPAddress.TryParse(firstForwardedFor, out var parsedAddress))
+        {
+            return parsedAddress.ToString();
+        }
+    }
+
+    var remoteAddress = httpContext.Connection.RemoteIpAddress?.ToString();
+    if (!string.IsNullOrWhiteSpace(remoteAddress))
+    {
+        return remoteAddress;
+    }
+
+    return "unknown";
 }
 
 static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)

@@ -224,7 +224,7 @@
             }
 
             // 3. No valid token found — prompt identity verification.
-            if (string.IsNullOrWhiteSpace(_inviteToken))
+            if (string.IsNullOrWhiteSpace(_inviteToken) && string.IsNullOrWhiteSpace(_errorMessage))
             {
                 _errorMessage = "Use the secure invite link from your clinic to request an access code.";
             }
