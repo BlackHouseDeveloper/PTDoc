@@ -233,17 +233,17 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Guid modifiedByUserId,
         string? medicalRecordNumber = null,
         bool isArchived = false) => new()
-    {
-        Id = Guid.NewGuid(),
-        FirstName = firstName,
-        LastName = lastName,
-        MedicalRecordNumber = medicalRecordNumber,
-        IsArchived = isArchived,
-        DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-        LastModifiedUtc = DateTime.UtcNow,
-        ModifiedByUserId = modifiedByUserId,
-        SyncState = SyncState.Pending
-    };
+        {
+            Id = Guid.NewGuid(),
+            FirstName = firstName,
+            LastName = lastName,
+            MedicalRecordNumber = medicalRecordNumber,
+            IsArchived = isArchived,
+            DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = modifiedByUserId,
+            SyncState = SyncState.Pending
+        };
 
     private static IntakeForm CreateIntakeForm(
         Guid patientId,
@@ -251,38 +251,38 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         bool isLocked,
         DateTime? submittedAt = null,
         DateTime? lastModifiedUtc = null) => new()
-    {
-        Id = Guid.NewGuid(),
-        PatientId = patientId,
-        TemplateVersion = "1.0",
-        AccessToken = Guid.NewGuid().ToString("N"),
-        IsLocked = isLocked,
-        ResponseJson = "{}",
-        PainMapData = "{}",
-        Consents = "{}",
-        SubmittedAt = submittedAt,
-        LastModifiedUtc = lastModifiedUtc ?? DateTime.UtcNow,
-        ModifiedByUserId = modifiedByUserId,
-        SyncState = SyncState.Pending
-    };
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            TemplateVersion = "1.0",
+            AccessToken = Guid.NewGuid().ToString("N"),
+            IsLocked = isLocked,
+            ResponseJson = "{}",
+            PainMapData = "{}",
+            Consents = "{}",
+            SubmittedAt = submittedAt,
+            LastModifiedUtc = lastModifiedUtc ?? DateTime.UtcNow,
+            ModifiedByUserId = modifiedByUserId,
+            SyncState = SyncState.Pending
+        };
 
     private static Appointment CreateAppointment(
         Guid patientId,
         Guid clinicianId,
         DateTime startTimeUtc,
         AppointmentStatus status) => new()
-    {
-        Id = Guid.NewGuid(),
-        PatientId = patientId,
-        ClinicalId = clinicianId,
-        StartTimeUtc = startTimeUtc,
-        EndTimeUtc = startTimeUtc.AddMinutes(45),
-        AppointmentType = AppointmentType.FollowUp,
-        Status = status,
-        LastModifiedUtc = DateTime.UtcNow,
-        ModifiedByUserId = clinicianId,
-        SyncState = SyncState.Pending
-    };
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            ClinicalId = clinicianId,
+            StartTimeUtc = startTimeUtc,
+            EndTimeUtc = startTimeUtc.AddMinutes(45),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = status,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        };
 
     private static ClinicalNote CreateClinicalNote(
         Guid patientId,
@@ -292,22 +292,22 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         DateTime dateOfService,
         DateTime lastModifiedUtc,
         bool isAddendum = false) => new()
-    {
-        Id = Guid.NewGuid(),
-        PatientId = patientId,
-        AppointmentId = appointmentId,
-        IsAddendum = isAddendum,
-        NoteType = NoteType.Daily,
-        NoteStatus = status,
-        ContentJson = "{}",
-        CptCodesJson = "[]",
-        DateOfService = dateOfService,
-        CreatedUtc = lastModifiedUtc,
-        LastModifiedUtc = lastModifiedUtc,
-        ModifiedByUserId = modifiedByUserId,
-        SyncState = SyncState.Pending,
-        SignatureHash = status == NoteStatus.Signed ? "signed-test-note" : null,
-        SignedUtc = status == NoteStatus.Signed ? lastModifiedUtc : null,
-        SignedByUserId = status == NoteStatus.Signed ? modifiedByUserId : null
-    };
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patientId,
+            AppointmentId = appointmentId,
+            IsAddendum = isAddendum,
+            NoteType = NoteType.Daily,
+            NoteStatus = status,
+            ContentJson = "{}",
+            CptCodesJson = "[]",
+            DateOfService = dateOfService,
+            CreatedUtc = lastModifiedUtc,
+            LastModifiedUtc = lastModifiedUtc,
+            ModifiedByUserId = modifiedByUserId,
+            SyncState = SyncState.Pending,
+            SignatureHash = status == NoteStatus.Signed ? "signed-test-note" : null,
+            SignedUtc = status == NoteStatus.Signed ? lastModifiedUtc : null,
+            SignedByUserId = status == NoteStatus.Signed ? modifiedByUserId : null
+        };
 }
