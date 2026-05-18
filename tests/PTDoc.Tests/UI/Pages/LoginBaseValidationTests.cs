@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using PTDoc.UI.Pages;
 
 namespace PTDoc.Tests.UI.Pages;
@@ -92,8 +93,15 @@ public sealed class LoginBaseValidationTests
     {
         var repoRoot = FindRepoRoot();
         var appMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.Web/Components/App.razor"));
+        var headOutlet = Regex.Match(
+            appMarkup,
+            @"<\s*HeadOutlet\b(?<attributes>[^>]*)>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-        Assert.Contains("<HeadOutlet @rendermode=\"InteractiveServer\" />", appMarkup, StringComparison.Ordinal);
+        Assert.True(headOutlet.Success, "App.razor should render a HeadOutlet component.");
+        var attributes = headOutlet.Groups["attributes"].Value;
+        Assert.Contains("@rendermode", attributes, StringComparison.Ordinal);
+        Assert.Contains("InteractiveServer", attributes, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

@@ -209,6 +209,7 @@
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
                 if (result.IsValid && result.AccessToken is not null)
                 {
+                    _inviteToken = inviteToken;
                     var token = new IntakeSessionToken(
                         result.AccessToken,
                         result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
