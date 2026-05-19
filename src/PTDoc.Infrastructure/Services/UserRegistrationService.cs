@@ -191,7 +191,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
             {
                 registrationQuery = registrationQuery.Where(row =>
                     !row.User.IsActive
-                    && row.LastDecision != RegistrationRejectedEventType);
+                    && row.LastDecision == null);
             }
             else if (string.Equals(normalizedStatus, "Approved", StringComparison.OrdinalIgnoreCase))
             {

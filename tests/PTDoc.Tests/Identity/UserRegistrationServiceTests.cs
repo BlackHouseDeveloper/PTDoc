@@ -301,6 +301,66 @@ public class UserRegistrationServiceTests
     }
 
     [Fact]
+    public async Task GetPendingRegistrationsAsync_PendingStatus_ExcludesPriorDecisionRows()
+    {
+        await using var context = CreateInMemoryContext();
+        var clinic = new Clinic { Name = "North Clinic", Slug = "north", IsActive = true };
+        context.Clinics.Add(clinic);
+
+        var pendingUser = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "pending-filter",
+            PinHash = "hash",
+            FirstName = "Pending",
+            LastName = "Filter",
+            Email = "pending-filter@clinic.com",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Role = "PT",
+            ClinicId = clinic.Id,
+            LicenseNumber = "PT-1000",
+            LicenseState = "CA",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+        var approvedDecisionUser = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "approved-decision-filter",
+            PinHash = "hash",
+            FirstName = "Approved",
+            LastName = "Decision",
+            Email = "approved-decision@clinic.com",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Role = "PT",
+            ClinicId = clinic.Id,
+            LicenseNumber = "PT-2000",
+            LicenseState = "CA",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+        };
+
+        context.Users.AddRange(pendingUser, approvedDecisionUser);
+        context.AuditLogs.Add(new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow,
+            EventType = "RegistrationApproved",
+            EntityType = nameof(User),
+            EntityId = approvedDecisionUser.Id,
+            UserId = Guid.NewGuid(),
+            CorrelationId = Guid.NewGuid().ToString("N")
+        });
+        await context.SaveChangesAsync();
+
+        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+
+        var page = await sut.GetPendingRegistrationsAsync(new PendingRegistrationsQuery(null, "Pending", null, null, null, null, null));
+
+        Assert.Contains(page.Items, item => item.Email == "pending-filter@clinic.com");
+        Assert.DoesNotContain(page.Items, item => item.Email == "approved-decision@clinic.com");
+    }
+
+    [Fact]
     public async Task UpdatePendingRegistrationAsync_Persists_Admin_Edits_And_Audits_Field_Names()
     {
         await using var context = CreateInMemoryContext();

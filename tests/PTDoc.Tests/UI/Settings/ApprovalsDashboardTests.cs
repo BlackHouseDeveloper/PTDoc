@@ -38,6 +38,42 @@ public sealed class ApprovalsDashboardTests : TestContext
         });
     }
 
+    [Fact]
+    public void ReviewAction_OpensPersistedDetailState_WithoutFakeTimelineOrAdminNotes()
+    {
+        var service = new FakeAdminApprovalService();
+        Services.AddSingleton<IAdminApprovalService>(service);
+
+        var cut = RenderComponent<ApprovalsDashboard>();
+        cut.WaitForAssertion(() => Assert.Contains("Alex Queue", cut.Markup, StringComparison.Ordinal));
+
+        cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Review", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(1, service.DetailRequestCount);
+            Assert.Contains("Request Detail", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("alex.queue@example.com", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Audit history is not available in this release", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Reviewer notes are disabled", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Manual QA note", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Seeded timeline", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
+    public void DefaultPendingTab_RequestsPendingStatusInsteadOfAll()
+    {
+        var service = new FakeAdminApprovalService();
+        Services.AddSingleton<IAdminApprovalService>(service);
+
+        RenderComponent<ApprovalsDashboard>();
+
+        Assert.Equal("Pending", service.LastQuery?.Status);
+    }
+
     private sealed class FakeAdminApprovalService : IAdminApprovalService
     {
         private static readonly PendingUserSummary PendingUser = new(
@@ -55,8 +91,13 @@ public sealed class ApprovalsDashboardTests : TestContext
             null,
             null);
 
+        public int DetailRequestCount { get; private set; }
+
+        public AdminApprovalQuery? LastQuery { get; private set; }
+
         public Task<AdminApprovalPage> GetPendingAsync(AdminApprovalQuery query, CancellationToken cancellationToken = default)
         {
+            LastQuery = query;
             var items = string.Equals(query.Search, "qa_frontdesk", StringComparison.OrdinalIgnoreCase)
                 ? Array.Empty<PendingUserSummary>()
                 : [PendingUser];
@@ -65,7 +106,25 @@ public sealed class ApprovalsDashboardTests : TestContext
         }
 
         public Task<PendingUserDetail?> GetPendingDetailAsync(Guid userId, CancellationToken cancellationToken = default)
-            => Task.FromResult<PendingUserDetail?>(null);
+        {
+            DetailRequestCount++;
+            return Task.FromResult<PendingUserDetail?>(new PendingUserDetail(
+                PendingUser.Id,
+                "alex.queue",
+                PendingUser.FullName,
+                PendingUser.Email,
+                new DateTime(1990, 1, 1),
+                PendingUser.Status,
+                PendingUser.RoleKey,
+                PendingUser.ClinicId,
+                PendingUser.ClinicName,
+                PendingUser.RequestedAtUtc,
+                PendingUser.CredentialsComplete,
+                PendingUser.MissingFields,
+                PendingUser.LicenseNumber,
+                PendingUser.LicenseState,
+                PendingUser.ReviewedBy));
+        }
 
         public Task<AdminApprovalUpdateResult> UpdateAsync(Guid userId, AdminRegistrationUpdateRequest request, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();

@@ -368,14 +368,14 @@
                 </section>
             }
 
-            <section class="detail-group" aria-label="Audit timeline placeholder">
+            <section class="detail-group" aria-label="Audit timeline unavailable">
                 <h3>Audit / History Timeline</h3>
-                <div class="placeholder-box">Timeline events will appear here once backend audit APIs are connected.</div>
+                <div class="placeholder-box">Audit history is not available in this release because no persisted audit timeline API is connected.</div>
             </section>
 
-            <section class="detail-group" aria-label="Admin notes placeholder">
+            <section class="detail-group" aria-label="Admin notes unavailable">
                 <h3>Admin Notes</h3>
-                <textarea rows="3" placeholder="Add reviewer notes (placeholder only)"></textarea>
+                <div class="placeholder-box">Reviewer notes are disabled until notes can be saved and audited by the backend.</div>
             </section>
 
             <footer class="detail-actions">
@@ -388,7 +388,7 @@
                 <button type="button" class="btn btn-outline-danger" disabled="@(!CanManageSelectedRequest)" @onclick="OpenRejectConfirmation">Reject</button>
                 <button type="button" class="btn btn-outline" disabled="@(!CanManageSelectedRequest)" @onclick="OpenOnHoldConfirmation">On Hold</button>
                 <button type="button" class="btn btn-outline" disabled="@(!CanManageSelectedRequest)" @onclick="OpenCancelConfirmation">Cancel Request</button>
-                <button type="button" class="btn btn-outline" disabled>Revoke Invite</button>
+                <button type="button" class="btn btn-outline" disabled title="Invite revocation is not implemented in this release.">Revoke Invite unavailable</button>
             </footer>
 
             @if (!string.IsNullOrWhiteSpace(actionFeedback))
@@ -711,9 +711,9 @@
 
         try
         {
-            var effectiveStatus = selectedStatusTab == DefaultStatusTab
-                ? statusFilter
-                : selectedStatusTab;
+            var effectiveStatus = string.Equals(statusFilter, DefaultStatusFilter, StringComparison.Ordinal)
+                ? selectedStatusTab
+                : statusFilter;
 
             var response = await AdminApprovalService.GetPendingAsync(new AdminApprovalQuery(
                 Search: searchQuery,
