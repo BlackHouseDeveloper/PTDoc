@@ -152,6 +152,14 @@
     background: var(--background);
 }
 
+.form-input--invalid {
+    border-color: var(--destructive);
+}
+
+.form-input--invalid:focus {
+    outline-color: var(--destructive);
+}
+
 .form-input::placeholder {
     color: var(--muted-foreground);
 }
@@ -173,6 +181,33 @@
     background: color-mix(in srgb, var(--destructive) 12%, var(--background));
     color: var(--destructive);
     border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border));
+}
+
+.validation-summary {
+    border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--destructive) 12%, var(--background));
+    color: var(--destructive);
+    padding: var(--spacing-3);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.validation-summary p {
+    margin: 0 0 var(--spacing-2);
+    font-weight: var(--font-weight-medium);
+}
+
+.validation-summary ul {
+    margin: 0;
+    padding-left: var(--spacing-5);
+}
+
+.field-validation-error {
+    margin: 0;
+    color: var(--destructive);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
 }
 
 /* Modal Footer (Buttons Container) */

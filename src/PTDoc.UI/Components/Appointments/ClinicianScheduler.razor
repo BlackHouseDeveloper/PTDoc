@@ -4,7 +4,12 @@
 @* Clinician Scheduler Component *@
 
 <div class="clinician-scheduler">
-    <div class="scheduler-viewport">
+    <p id="scheduler-scroll-hint" class="scheduler-scroll-hint">Scroll sideways to view more clinicians.</p>
+    <div class="scheduler-viewport"
+         tabindex="0"
+         role="region"
+         aria-label="Appointment schedule"
+         aria-describedby="scheduler-scroll-hint">
         <div class="scheduler-grid @(View == AppointmentsView.Week ? "week-view" : "")">
             @* Time Column *@
             <div class="time-column">

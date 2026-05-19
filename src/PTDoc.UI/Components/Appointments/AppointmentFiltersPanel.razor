@@ -2,10 +2,16 @@
 
 <div class="filters-panel">
     <div class="filters-header">
-        <label class="filter-label">Appointment Type</label>
-        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("appointmentType"))">
+        <label id="appointment-type-filter-label" class="filter-label">Appointment Type</label>
+        <button type="button"
+                class="filter-dropdown-btn"
+                aria-haspopup="true"
+                aria-expanded="@AriaExpanded("appointmentType")"
+                aria-controls="appointment-type-filter-options"
+                aria-labelledby="appointment-type-filter-label"
+                @onclick="@(() => ToggleDropdown("appointmentType"))">
             <span>@GetAppointmentTypeLabel()</span>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </button>
@@ -13,7 +19,7 @@
 
     @if (openDropdown == "appointmentType")
     {
-        <div class="filter-dropdown">
+        <div id="appointment-type-filter-options" class="filter-dropdown" role="group" aria-labelledby="appointment-type-filter-label">
             @foreach (var type in AppointmentTypes)
             {
                 <label class="filter-option">
@@ -27,10 +33,16 @@
     }
 
     <div class="filters-header">
-        <label class="filter-label">Intake Status</label>
-        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("intakeStatus"))">
+        <label id="intake-status-filter-label" class="filter-label">Intake Status</label>
+        <button type="button"
+                class="filter-dropdown-btn"
+                aria-haspopup="true"
+                aria-expanded="@AriaExpanded("intakeStatus")"
+                aria-controls="intake-status-filter-options"
+                aria-labelledby="intake-status-filter-label"
+                @onclick="@(() => ToggleDropdown("intakeStatus"))">
             <span>@GetIntakeStatusLabel()</span>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </button>
@@ -38,7 +50,7 @@
 
     @if (openDropdown == "intakeStatus")
     {
-        <div class="filter-dropdown">
+        <div id="intake-status-filter-options" class="filter-dropdown" role="group" aria-labelledby="intake-status-filter-label">
             @foreach (var status in IntakeStatuses)
             {
                 <label class="filter-option">
@@ -52,10 +64,16 @@
     }
 
     <div class="filters-header">
-        <label class="filter-label">Status</label>
-        <button type="button" class="filter-dropdown-btn" @onclick="@(() => ToggleDropdown("status"))">
+        <label id="appointment-status-filter-label" class="filter-label">Status</label>
+        <button type="button"
+                class="filter-dropdown-btn"
+                aria-haspopup="true"
+                aria-expanded="@AriaExpanded("status")"
+                aria-controls="appointment-status-filter-options"
+                aria-labelledby="appointment-status-filter-label"
+                @onclick="@(() => ToggleDropdown("status"))">
             <span>@GetStatusLabel()</span>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </button>
@@ -63,7 +81,7 @@
 
     @if (openDropdown == "status")
     {
-        <div class="filter-dropdown">
+        <div id="appointment-status-filter-options" class="filter-dropdown" role="group" aria-labelledby="appointment-status-filter-label">
             @foreach (var status in AppointmentStatuses)
             {
                 <label class="filter-option">
@@ -113,6 +131,10 @@
     {
         openDropdown = openDropdown == dropdown ? null : dropdown;
     }
+
+    private bool IsDropdownOpen(string dropdown) => string.Equals(openDropdown, dropdown, StringComparison.Ordinal);
+
+    private string AriaExpanded(string dropdown) => IsDropdownOpen(dropdown) ? "true" : "false";
 
     private async Task ToggleAppointmentType(string type, bool isChecked)
     {

@@ -4,12 +4,26 @@
     min-width: 0;
 }
 
+.scheduler-scroll-hint {
+    display: none;
+    margin: 0 0 var(--spacing-2);
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}
+
 .scheduler-viewport {
     flex: 1;
     min-height: 0;
     min-width: 0;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
+}
+
+.scheduler-viewport:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .scheduler-grid {
@@ -246,6 +260,10 @@
         /* Parent height is auto in stacked mode; use intrinsic height to avoid collapse. */
         height: auto;
         min-height: 24rem;
+    }
+
+    .scheduler-scroll-hint {
+        display: block;
     }
 
     .scheduler-viewport {

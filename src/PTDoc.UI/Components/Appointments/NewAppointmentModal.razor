@@ -20,17 +20,31 @@
             </div>
 
             <!-- Modal Body -->
-            <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+            <form class="modal-body" novalidate @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                @if (validationErrors.Count > 0)
+                {
+                    <div class="validation-summary" role="alert" aria-live="assertive">
+                        <p>Review required appointment details.</p>
+                        <ul>
+                            @foreach (var error in validationErrors.Values)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
                 <!-- Patient Selection -->
                 <div class="form-field">
                     <label for="patient" class="form-label">Patient <span class="required">*</span></label>
                     <select 
                         id="patient" 
-                        class="form-input" 
+                        class="@GetInputClass(nameof(PatientId))"
                         @bind="PatientId"
                         @ref="firstInputRef"
-                        required 
-                        aria-required="true">
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(PatientId))"
+                        aria-describedby="@GetFieldDescriptionId(nameof(PatientId))">
                         @if (GetPatientOptions().Count == 0)
                         {
                             <option value="">No patients available</option>
@@ -44,6 +58,7 @@
                             }
                         }
                     </select>
+                    @RenderFieldError(nameof(PatientId))
                 </div>
 
                 <!-- Appointment Type -->
@@ -51,16 +66,19 @@
                     <label for="appointmentType" class="form-label">Appointment Type <span class="required">*</span></label>
                     <select 
                         id="appointmentType" 
-                        class="form-input" 
+                        class="@GetInputClass(nameof(AppointmentType))"
                         @bind="AppointmentType"
-                        required 
-                        aria-required="true">
+                        @ref="appointmentTypeInputRef"
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(AppointmentType))"
+                        aria-describedby="@GetFieldDescriptionId(nameof(AppointmentType))">
                         <option value="">Select type...</option>
                         <option value="Initial Evaluation">Initial Evaluation</option>
                         <option value="Follow Up">Follow Up</option>
                         <option value="Re-Evaluation">Re-Evaluation</option>
                         <option value="Discharge">Discharge</option>
                     </select>
+                    @RenderFieldError(nameof(AppointmentType))
                 </div>
 
                 <!-- Date & Time Row -->
@@ -68,22 +86,28 @@
                     <div class="form-field">
                         <label for="appointmentDate" class="form-label">Date <span class="required">*</span></label>
                         <input 
-                            id="appointmentDate" 
-                            type="date" 
-                            class="form-input" 
-                            @bind="AppointmentDate"
-                            required 
-                            aria-required="true" />
+                        id="appointmentDate"
+                        type="date"
+                        class="@GetInputClass(nameof(AppointmentDate))"
+                        @bind="AppointmentDate"
+                        @ref="appointmentDateInputRef"
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(AppointmentDate))"
+                        aria-describedby="@GetFieldDescriptionId(nameof(AppointmentDate))" />
+                        @RenderFieldError(nameof(AppointmentDate))
                     </div>
                     <div class="form-field">
                         <label for="appointmentTime" class="form-label">Time <span class="required">*</span></label>
                         <input 
                             id="appointmentTime" 
                             type="time" 
-                            class="form-input" 
+                            class="@GetInputClass(nameof(AppointmentTimeInput))"
                             @bind="AppointmentTimeInput"
-                            required 
-                            aria-required="true" />
+                            @ref="appointmentTimeInputRef"
+                            aria-required="true"
+                            aria-invalid="@AriaInvalid(nameof(AppointmentTimeInput))"
+                            aria-describedby="@GetFieldDescriptionId(nameof(AppointmentTimeInput))" />
+                        @RenderFieldError(nameof(AppointmentTimeInput))
                     </div>
                 </div>
 
@@ -92,15 +116,18 @@
                     <label for="duration" class="form-label">Duration (minutes) <span class="required">*</span></label>
                     <select 
                         id="duration" 
-                        class="form-input" 
+                        class="@GetInputClass(nameof(DurationMinutes))"
                         @bind="DurationMinutes"
-                        required 
-                        aria-required="true">
+                        @ref="durationInputRef"
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(DurationMinutes))"
+                        aria-describedby="@GetFieldDescriptionId(nameof(DurationMinutes))">
                         <option value="30">30 minutes</option>
                         <option value="45">45 minutes</option>
                         <option value="60">60 minutes</option>
                         <option value="90">90 minutes</option>
                     </select>
+                    @RenderFieldError(nameof(DurationMinutes))
                 </div>
 
                 <!-- Clinician Selection -->
@@ -108,10 +135,12 @@
                     <label for="clinician" class="form-label">Clinician <span class="required">*</span></label>
                     <select 
                         id="clinician" 
-                        class="form-input" 
+                        class="@GetInputClass(nameof(ClinicianId))"
                         @bind="ClinicianId"
-                        required 
-                        aria-required="true">
+                        @ref="clinicianInputRef"
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(ClinicianId))"
+                        aria-describedby="@GetFieldDescriptionId(nameof(ClinicianId))">
                         @if (GetClinicianOptions().Count == 0)
                         {
                             <option value="">No clinicians available</option>
@@ -125,6 +154,7 @@
                             }
                         }
                     </select>
+                    @RenderFieldError(nameof(ClinicianId))
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(submitFeedbackMessage))
@@ -199,6 +229,11 @@
     public List<ClinicianOption> AvailableClinicians { get; set; } = new();
 
     private ElementReference firstInputRef;
+    private ElementReference appointmentTypeInputRef;
+    private ElementReference appointmentDateInputRef;
+    private ElementReference appointmentTimeInputRef;
+    private ElementReference durationInputRef;
+    private ElementReference clinicianInputRef;
     private ElementReference modalContainerRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<NewAppointmentModal>? dotNetRef;
@@ -214,6 +249,7 @@
     private string Notes { get; set; } = string.Empty;
     private string? submitFeedbackMessage;
     private bool isSubmitting;
+    private readonly Dictionary<string, string> validationErrors = new(StringComparer.Ordinal);
 
     protected override void OnParametersSet()
     {
@@ -300,16 +336,11 @@
         }
 
         submitFeedbackMessage = null;
+        validationErrors.Clear();
 
-        if (string.IsNullOrWhiteSpace(PatientId))
+        if (!ValidateForm())
         {
-            submitFeedbackMessage = "Select a patient before scheduling the appointment.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(ClinicianId))
-        {
-            submitFeedbackMessage = "Select a clinician before scheduling the appointment.";
+            await FocusFirstInvalidFieldAsync();
             return;
         }
 
@@ -352,6 +383,82 @@
         }
 
         submitFeedbackMessage ??= "Unable to save the appointment. Review the details and try again.";
+    }
+
+    private bool ValidateForm()
+    {
+        validationErrors.Clear();
+
+        if (string.IsNullOrWhiteSpace(PatientId))
+        {
+            validationErrors[nameof(PatientId)] = "Select a patient.";
+        }
+
+        if (string.IsNullOrWhiteSpace(AppointmentType))
+        {
+            validationErrors[nameof(AppointmentType)] = "Select an appointment type.";
+        }
+
+        if (!AppointmentDate.HasValue)
+        {
+            validationErrors[nameof(AppointmentDate)] = "Select an appointment date.";
+        }
+
+        if (!AppointmentTimeInput.HasValue)
+        {
+            validationErrors[nameof(AppointmentTimeInput)] = "Select an appointment time.";
+        }
+
+        if (DurationMinutes <= 0)
+        {
+            validationErrors[nameof(DurationMinutes)] = "Select a valid duration.";
+        }
+
+        if (string.IsNullOrWhiteSpace(ClinicianId))
+        {
+            validationErrors[nameof(ClinicianId)] = "Select a clinician.";
+        }
+
+        return validationErrors.Count == 0;
+    }
+
+    private async Task FocusFirstInvalidFieldAsync()
+    {
+        if (validationErrors.Count == 0)
+        {
+            return;
+        }
+
+        var firstInvalidField = validationErrors.Keys.First();
+
+        try
+        {
+            switch (firstInvalidField)
+            {
+                case nameof(PatientId):
+                    await firstInputRef.FocusAsync();
+                    break;
+                case nameof(AppointmentType):
+                    await appointmentTypeInputRef.FocusAsync();
+                    break;
+                case nameof(AppointmentDate):
+                    await appointmentDateInputRef.FocusAsync();
+                    break;
+                case nameof(AppointmentTimeInput):
+                    await appointmentTimeInputRef.FocusAsync();
+                    break;
+                case nameof(DurationMinutes):
+                    await durationInputRef.FocusAsync();
+                    break;
+                case nameof(ClinicianId):
+                    await clinicianInputRef.FocusAsync();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Appointment validation focus failed: {ex.Message}");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -414,6 +521,7 @@
             DurationMinutes = 45;
             ClinicianId = string.Empty;
             Notes = string.Empty;
+            validationErrors.Clear();
             return;
         }
 
@@ -424,5 +532,33 @@
         DurationMinutes = initialValues.DurationMinutes;
         ClinicianId = initialValues.ClinicianId;
         Notes = initialValues.Notes;
+        validationErrors.Clear();
     }
+
+    private bool HasValidationError(string fieldName) => validationErrors.ContainsKey(fieldName);
+
+    private string AriaInvalid(string fieldName) => HasValidationError(fieldName) ? "true" : "false";
+
+    private string GetInputClass(string fieldName) =>
+        HasValidationError(fieldName) ? "form-input form-input--invalid" : "form-input";
+
+    private string? GetFieldDescriptionId(string fieldName) =>
+        HasValidationError(fieldName) ? GetFieldErrorId(fieldName) : null;
+
+    private string GetFieldErrorId(string fieldName) => $"new-appointment-{fieldName}-error";
+
+    private RenderFragment RenderFieldError(string fieldName) => builder =>
+    {
+        if (!validationErrors.TryGetValue(fieldName, out var message))
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "p");
+        builder.AddAttribute(1, "id", GetFieldErrorId(fieldName));
+        builder.AddAttribute(2, "class", "field-validation-error");
+        builder.AddAttribute(3, "role", "alert");
+        builder.AddContent(4, message);
+        builder.CloseElement();
+    };
 }
