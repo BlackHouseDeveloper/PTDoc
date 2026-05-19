@@ -73,6 +73,7 @@ jobs:
     - name: Publish test results
       uses: dorny/test-reporter@v1
       if: always()
+      continue-on-error: true
       with:
         name: Test Results
         path: '**/test-results.trx'

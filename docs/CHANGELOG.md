@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Core CI reporter resiliency
+
+- **`.github/workflows/ci-core.yml`** — Made the non-critical `dorny/test-reporter` publishing step continue on error so a transient GitHub check-run API timeout does not fail an otherwise successful Core CI build/test job. Reason: PR #109's Linux Core workflow passed build, format, and 946 CoreCi tests, then failed only while creating the secondary test-results check run with `HttpError: Connect Timeout Error`.
+
 ### Fixed - Local SQLite startup recovery
 
 - **`.gitignore`**, **`src/PTDoc.Api/Data/SqliteDatabaseStartupGuard.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Development.json`**, **`tests/PTDoc.Tests/Integration/SqliteDatabaseStartupGuardTests.cs`**, **`docs/TROUBLESHOOTING.md`** — Added a Development-oriented plain-SQLite startup guard that runs an integrity check before EF migrations, creates timestamped healthy startup backups, quarantines malformed database files, restores the newest healthy backup when available, ignores generated `.db-backups/` artifacts, and falls back to a fresh local database when no valid backup exists. Reason: repeated local `SQLite Error 11: database disk image is malformed` failures should recover safely without manual DB deletion while avoiding automatic production/SQLCipher file replacement.
