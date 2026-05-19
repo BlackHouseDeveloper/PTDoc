@@ -13,7 +13,7 @@ internal static class SqliteDatabaseStartupGuard
 {
     private const string HealthyBackupPrefix = "healthy";
     private const string CorruptBackupPrefix = "corrupt";
-    private static readonly string[] SidecarSuffixes = [ "-wal", "-shm", "-journal" ];
+    private static readonly string[] SidecarSuffixes = ["-wal", "-shm", "-journal"];
 
     public static void EnsureUsableDatabase(
         string dbPath,
