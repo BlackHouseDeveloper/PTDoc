@@ -301,7 +301,7 @@ public class UserRegistrationServiceTests
     }
 
     [Fact]
-    public async Task GetPendingRegistrationsAsync_PendingStatus_ExcludesPriorDecisionRows()
+    public async Task GetPendingRegistrationsAsync_PendingStatus_IncludesActionableInactiveRequests()
     {
         await using var context = CreateInMemoryContext();
         var clinic = new Clinic { Name = "North Clinic", Slug = "north", IsActive = true };
@@ -323,33 +323,17 @@ public class UserRegistrationServiceTests
             IsActive = false,
             CreatedAt = DateTime.UtcNow
         };
-        var approvedDecisionUser = new User
-        {
-            Id = Guid.NewGuid(),
-            Username = "approved-decision-filter",
-            PinHash = "hash",
-            FirstName = "Approved",
-            LastName = "Decision",
-            Email = "approved-decision@clinic.com",
-            DateOfBirth = new DateTime(1990, 1, 1),
-            Role = "PT",
-            ClinicId = clinic.Id,
-            LicenseNumber = "PT-2000",
-            LicenseState = "CA",
-            IsActive = false,
-            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
-        };
+        var onHoldDecisionUser = CreatePendingDecisionUser("on-hold-decision-filter", "OnHold", "on-hold-decision@clinic.com", clinic.Id);
+        var cancelledDecisionUser = CreatePendingDecisionUser("cancelled-decision-filter", "Cancelled", "cancelled-decision@clinic.com", clinic.Id);
+        var approvedDecisionUser = CreatePendingDecisionUser("approved-decision-filter", "Approved", "approved-decision@clinic.com", clinic.Id);
+        var rejectedDecisionUser = CreatePendingDecisionUser("rejected-decision-filter", "Rejected", "rejected-decision@clinic.com", clinic.Id);
 
-        context.Users.AddRange(pendingUser, approvedDecisionUser);
-        context.AuditLogs.Add(new AuditLog
-        {
-            TimestampUtc = DateTime.UtcNow,
-            EventType = "RegistrationApproved",
-            EntityType = nameof(User),
-            EntityId = approvedDecisionUser.Id,
-            UserId = Guid.NewGuid(),
-            CorrelationId = Guid.NewGuid().ToString("N")
-        });
+        context.Users.AddRange(pendingUser, onHoldDecisionUser, cancelledDecisionUser, approvedDecisionUser, rejectedDecisionUser);
+        context.AuditLogs.AddRange(
+            CreateRegistrationDecisionLog(onHoldDecisionUser.Id, "RegistrationOnHold"),
+            CreateRegistrationDecisionLog(cancelledDecisionUser.Id, "RegistrationCancelled"),
+            CreateRegistrationDecisionLog(approvedDecisionUser.Id, "RegistrationApproved"),
+            CreateRegistrationDecisionLog(rejectedDecisionUser.Id, "RegistrationRejected"));
         await context.SaveChangesAsync();
 
         var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
@@ -357,7 +341,43 @@ public class UserRegistrationServiceTests
         var page = await sut.GetPendingRegistrationsAsync(new PendingRegistrationsQuery(null, "Pending", null, null, null, null, null));
 
         Assert.Contains(page.Items, item => item.Email == "pending-filter@clinic.com");
+        Assert.Contains(page.Items, item => item.Email == "on-hold-decision@clinic.com");
+        Assert.Contains(page.Items, item => item.Email == "cancelled-decision@clinic.com");
         Assert.DoesNotContain(page.Items, item => item.Email == "approved-decision@clinic.com");
+        Assert.DoesNotContain(page.Items, item => item.Email == "rejected-decision@clinic.com");
+    }
+
+    private static User CreatePendingDecisionUser(string username, string firstName, string email, Guid clinicId)
+    {
+        return new User
+        {
+            Id = Guid.NewGuid(),
+            Username = username,
+            PinHash = "hash",
+            FirstName = firstName,
+            LastName = "Decision",
+            Email = email,
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Role = "PT",
+            ClinicId = clinicId,
+            LicenseNumber = "PT-2000",
+            LicenseState = "CA",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+        };
+    }
+
+    private static AuditLog CreateRegistrationDecisionLog(Guid userId, string eventType)
+    {
+        return new AuditLog
+        {
+            TimestampUtc = DateTime.UtcNow,
+            EventType = eventType,
+            EntityType = nameof(User),
+            EntityId = userId,
+            UserId = Guid.NewGuid(),
+            CorrelationId = Guid.NewGuid().ToString("N")
+        };
     }
 
     [Fact]

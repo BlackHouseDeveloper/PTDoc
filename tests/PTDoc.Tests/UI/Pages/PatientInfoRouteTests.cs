@@ -26,7 +26,24 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
-    public void MissingPatientInfoId_ShowsPatientNotFoundRecoveryState()
+    public void MissingPatientInfoId_RedirectsToPatients()
+    {
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, "   "));
+
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        Assert.EndsWith("/patients", navigation.Uri, StringComparison.Ordinal);
+        patientService.Verify(
+            service => service.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void UnknownPatientId_ShowsPatientNotFoundRecoveryState()
     {
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         patientService
