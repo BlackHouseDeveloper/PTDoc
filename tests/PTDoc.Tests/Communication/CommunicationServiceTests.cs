@@ -68,6 +68,62 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public async Task PasswordResetEmail_UnknownContact_AuditsSkippedRequestWithoutCreatingToken()
+    {
+        await using var db = CreateDbContext();
+        var emailSender = new FakeEmailSender();
+        var service = CreateService(db, emailSender: emailSender);
+
+        var result = await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "unknown-reset@example.com",
+            CorrelationId = "corr-unknown"
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(DeliveryStatus.Skipped, result.Status);
+        Assert.Empty(emailSender.Messages);
+        Assert.Empty(await db.PasswordResetTokens.ToListAsync());
+
+        var log = await db.CommunicationDeliveryLogs.SingleAsync();
+        Assert.Equal(DeliveryPurpose.PasswordReset, log.Purpose);
+        Assert.Equal(DeliveryStatus.Skipped, log.Status);
+        Assert.Null(log.UserId);
+        Assert.Equal("corr-unknown", log.CorrelationId);
+        Assert.DoesNotContain("unknown-reset@example.com", log.RecipientHash, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PasswordResetEmail_IsRecipientRateLimitedAfterConfiguredWindow()
+    {
+        await using var db = CreateDbContext();
+        var service = CreateService(db, emailSender: new FakeEmailSender());
+
+        for (var i = 0; i < 3; i++)
+        {
+            var accepted = await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+            {
+                Recipient = "unknown-limited@example.com"
+            });
+
+            Assert.True(accepted.Succeeded);
+            Assert.Equal(DeliveryStatus.Skipped, accepted.Status);
+        }
+
+        var limited = await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "unknown-limited@example.com"
+        });
+
+        Assert.False(limited.Succeeded);
+        Assert.Equal(DeliveryStatus.RateLimited, limited.Status);
+        Assert.Equal(4, await db.CommunicationDeliveryLogs.CountAsync());
+        Assert.Contains(
+            await db.CommunicationDeliveryLogs.ToListAsync(),
+            log => log.Purpose == DeliveryPurpose.PasswordReset && log.Status == DeliveryStatus.RateLimited);
+    }
+
+    [Fact]
     public async Task IntakeSms_IsRateLimitedAfterFivePatientSendsPerDay()
     {
         await using var db = CreateDbContext();

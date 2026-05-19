@@ -25,7 +25,7 @@
         <p class="editable-text-area__hint">@Hint</p>
     }
 
-    @if (ShowValidation)
+    @if (ShowValidation && !IsReadOnly)
     {
         <p class="editable-text-area__error">@ValidationMessage</p>
     }

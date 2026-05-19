@@ -1,0 +1,49 @@
+.not-found-page {
+    min-height: calc(100vh - 140px);
+    display: grid;
+    place-items: center;
+    padding: var(--spacing-6);
+}
+
+.not-found-page__panel {
+    width: min(100%, 560px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+}
+
+.not-found-page__eyebrow,
+.not-found-page h1,
+.not-found-page p {
+    margin: 0;
+}
+
+.not-found-page__eyebrow {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0;
+}
+
+.not-found-page h1 {
+    color: var(--foreground);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-semibold);
+}
+
+.not-found-page p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.not-found-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+}

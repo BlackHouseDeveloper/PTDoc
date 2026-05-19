@@ -12,6 +12,38 @@
     flex: 1;
 }
 
+.appointments-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    margin: var(--spacing-6);
+    padding: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.appointments-state h2,
+.appointments-state p {
+    margin: 0;
+}
+
+.appointments-state h2 {
+    color: var(--foreground);
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-semibold);
+}
+
+.appointments-state p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.appointments-state button {
+    align-self: flex-start;
+}
+
 @media (max-width: 1199px) {
     .appointments-content {
         flex-direction: column;

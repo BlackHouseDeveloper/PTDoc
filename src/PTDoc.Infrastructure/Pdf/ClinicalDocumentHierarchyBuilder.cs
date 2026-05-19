@@ -530,14 +530,16 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
     private static ClinicalDocumentNode BuildGoalsSection(ExportDocumentContext context)
     {
-        var rows = context.WorkspacePayload?.Assessment.Goals
+        IReadOnlyList<WorkspaceGoalEntryV2> goals = context.WorkspacePayload?.Assessment.Goals ?? [];
+        var rows = goals
             .Select(goal => Row(
                 FormatGoalType(goal.Timeframe),
                 goal.Description,
                 goal.Status.ToString()))
-            .ToList() ?? [];
+            .ToList();
 
         return Section("Goals", ClinicalDocumentSourceKind.Note,
+            Paragraph("Goal Summary", BuildGoalSummary(goals)),
             TableNode("Goals Table", ClinicalDocumentSourceKind.Note,
                 columns:
                 [
@@ -546,6 +548,11 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     Column("goalStatus", "Goal Status")
                 ],
                 rows: rows));
+    }
+
+    private static string BuildGoalSummary(IReadOnlyList<WorkspaceGoalEntryV2> goals)
+    {
+        return JoinList(goals.Select(goal => goal.Description));
     }
 
     private static ClinicalDocumentNode BuildCertificationSection(NoteExportDto noteData)
@@ -1498,12 +1505,15 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     ? TryDeserialize<DailyNoteContentDto>(noteData.ContentJson)
                     : null,
                 EvaluationContent = noteData.NoteType == NoteType.Evaluation
+                    && workspacePayload is null
                     ? TryDeserialize<EvaluationContent>(noteData.ContentJson)
                     : null,
                 ProgressContent = noteData.NoteType == NoteType.ProgressNote
+                    && workspacePayload is null
                     ? TryDeserialize<ProgressNoteContent>(noteData.ContentJson)
                     : null,
                 DischargeContent = noteData.NoteType == NoteType.Discharge
+                    && workspacePayload is null
                     ? TryDeserialize<DischargeContent>(noteData.ContentJson)
                     : null,
                 CptCodes = ParseCptCodes(noteData.CptCodesJson),

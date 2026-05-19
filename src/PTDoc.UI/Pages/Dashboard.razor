@@ -216,6 +216,7 @@
     private async Task LoadDashboardSnapshotAsync()
     {
         _isDashboardLoading = true;
+        _isRecentActivityLoading = true;
         _dashboardLoadFailed = false;
         _dashboardErrorMessage = null;
         _recentActivityLoadFailed = false;
@@ -255,6 +256,7 @@
             _unsignedNotesNeedingSignature = alerts.Count(alert => string.Equals(alert.Kind, "unsignedNote", StringComparison.Ordinal));
             _incompleteIntakes = alerts.Count(alert => string.Equals(alert.Kind, "incompleteIntake", StringComparison.Ordinal));
             _hasLoadedDashboard = true;
+            _isDashboardLoading = false;
         }
         catch (Exception ex)
         {
@@ -262,13 +264,13 @@
             _dashboardErrorMessage = ToUserFacingDashboardError(ex, "The dashboard could not be loaded right now.");
             Logger.LogWarning(ex, "[Dashboard] Error loading dashboard snapshot");
             _isDashboardLoading = false;
+            _isRecentActivityLoading = false;
             StateHasChanged();
             return;
         }
 
-        await LoadRecentActivityAsync();
-        _isDashboardLoading = false;
         StateHasChanged();
+        _ = InvokeAsync(() => LoadRecentActivityAsync(force: true));
     }
 
     private async Task RetryRecentActivityAsync()
@@ -344,26 +346,34 @@
         isSendIntakeModalOpen = true;
     }
 
-    private async Task HandlePatientSubmit(AddPatientModal.PatientFormData formData)
+    private async Task<bool> HandlePatientSubmit(AddPatientModal.PatientFormData formData)
     {
+        if (!formData.DateOfBirth.HasValue)
+        {
+            ToastService.ShowError("Date of birth is required.");
+            return false;
+        }
+
         try
         {
             var request = new PTDoc.Application.DTOs.CreatePatientRequest
             {
                 FirstName = formData.FirstName,
                 LastName = formData.LastName,
-                DateOfBirth = formData.DateOfBirth ?? DateTime.Today,
+                DateOfBirth = formData.DateOfBirth.Value,
                 Email = formData.Email,
                 Phone = formData.PhoneNumber
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
             await RetryDashboardAsync();
+            return true;
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "[Dashboard] Error creating patient");
             ToastService.ShowError(ToUserFacingDashboardError(ex, "Failed to create patient. Please try again."));
+            return false;
         }
     }
 

@@ -7,9 +7,11 @@
 @using PTDoc.Application.DTOs
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes.Models
+@using System.Security.Claims
 @using System.Text.Json
 @inject INoteService NoteService
 @inject IToastService ToastService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
 
 <PageTitle>Clinical Notes - PTDoc</PageTitle>
@@ -71,11 +73,14 @@
     private List<NoteListItemVm> notesNeedingAttention = new();
     private List<NoteListItemVm> regularRecentNotes = new();
     private CancellationTokenSource _cts = new();
+    private ClaimsPrincipal _user = new(new ClaimsIdentity());
 
     private static DateTime RecentCutoff => DateTime.UtcNow.Date.AddDays(-30);
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _user = authState.User;
         await LoadNotesAsync();
         BuildFilterOptions();
         ApplyFilters();
@@ -101,7 +106,7 @@
         }
     }
 
-    private static NoteListItemVm ToVm(NoteListItemApiResponse dto)
+    private NoteListItemVm ToVm(NoteListItemApiResponse dto)
     {
         string[] cptCodes;
         try
@@ -129,8 +134,59 @@
             CptCodes = cptCodes,
             AttentionReason = GetAttentionReason(noteStatus),
             IsUnsigned = !dto.IsSigned,
-            IsPendingCoSign = noteStatus == NoteStatus.PendingCoSign
+            IsPendingCoSign = noteStatus == NoteStatus.PendingCoSign,
+            CanEdit = CanEditNote(noteStatus, dto.NoteType),
+            CanDownloadPdf = CanDownloadPdf(),
+            ReadOnlyReason = GetReadOnlyReason(noteStatus, dto.NoteType)
         };
+    }
+
+    private bool CanEditNote(NoteStatus noteStatus, string noteType)
+    {
+        if (noteStatus != NoteStatus.Draft)
+        {
+            return false;
+        }
+
+        if (_user.IsInRole(Roles.PT))
+        {
+            return true;
+        }
+
+        return _user.IsInRole(Roles.PTA)
+            && noteType.Contains("Daily", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CanDownloadPdf()
+    {
+        return _user.IsInRole(Roles.PT)
+            || _user.IsInRole(Roles.PTA)
+            || _user.IsInRole(Roles.Admin);
+    }
+
+    private string? GetReadOnlyReason(NoteStatus noteStatus, string noteType)
+    {
+        if (CanEditNote(noteStatus, noteType))
+        {
+            return null;
+        }
+
+        if (_user.IsInRole(Roles.Admin) || _user.IsInRole(Roles.Owner) || _user.IsInRole(Roles.Billing))
+        {
+            return "Read-only";
+        }
+
+        if (noteStatus == NoteStatus.Signed)
+        {
+            return "Signed";
+        }
+
+        if (noteStatus == NoteStatus.PendingCoSign)
+        {
+            return "Co-sign pending";
+        }
+
+        return "View only";
     }
 
     private static string GetDisplayStatus(NoteStatus noteStatus, bool isSigned) => noteStatus switch
@@ -260,6 +316,12 @@
 
     private void HandleDownloadPdf(NoteListItemVm note)
     {
+        if (!note.CanDownloadPdf)
+        {
+            ToastService.ShowWarning("Your role does not have permission to export note PDFs.");
+            return;
+        }
+
         // PDF export is handled in the note workspace. Navigate there to download.
         NavigateToNoteWorkspace(note);
     }

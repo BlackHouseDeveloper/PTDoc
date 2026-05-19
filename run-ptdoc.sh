@@ -235,7 +235,7 @@ case "$choice" in
     echo ""
     start_api
     echo ""
-    dotnet run --project "$WEB_CSPROJ"
+    ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}" dotnet run --project "$WEB_CSPROJ"
     ;;
   2)
     echo "${BLUE}Building and launching Android...${RESET}"

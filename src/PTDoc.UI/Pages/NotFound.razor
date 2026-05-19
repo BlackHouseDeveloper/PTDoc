@@ -1,0 +1,33 @@
+@page "/not-found"
+@page "/{*Path}"
+@attribute [AllowAnonymous]
+@rendermode InteractiveServer
+@inject NavigationManager NavigationManager
+
+<PageTitle>Page Not Found - PTDoc</PageTitle>
+
+<section class="not-found-page" aria-labelledby="not-found-title">
+    <div class="not-found-page__panel">
+        <p class="not-found-page__eyebrow">404</p>
+        <h1 id="not-found-title">Page not found</h1>
+        <p>The page you requested is not available in PTDoc. Use the main navigation or return to the dashboard.</p>
+        <div class="not-found-page__actions">
+            <button type="button" class="btn btn-primary" @onclick="GoToDashboard">Dashboard</button>
+            <button type="button" class="btn btn-outline" @onclick="GoToPatients">Patients</button>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Path { get; set; }
+
+    private void GoToDashboard()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    private void GoToPatients()
+    {
+        NavigationManager.NavigateTo("/patients");
+    }
+}

@@ -17,13 +17,18 @@ using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 using System.Security.Claims;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseStaticWebAssets();
+
 var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOptions.SectionName).Get<EntraExternalIdOptions>() ?? new EntraExternalIdOptions();
 
 // Add services to the container.
@@ -209,6 +214,18 @@ app.Use(async (context, next) =>
 });
 
 app.UseStaticFiles();
+UsePTDocStaticAssetFallbacks(app);
+
+app.Use(async (context, next) =>
+{
+    if (IsStaticAssetRequest(context.Request.Path))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -452,6 +469,266 @@ static string? GetAssemblyMetadata(Assembly assembly, string key)
     return assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))
         ?.Value;
+}
+
+static void UsePTDocStaticAssetFallbacks(WebApplication app)
+{
+    var repositoryRoot = ResolveRepositoryRoot(app.Environment.ContentRootPath);
+    var webProjectRoot = repositoryRoot is null
+        ? app.Environment.ContentRootPath
+        : Path.Combine(repositoryRoot, "src", "PTDoc.Web");
+    var uiProjectRoot = repositoryRoot is null
+        ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "PTDoc.UI"))
+        : Path.Combine(repositoryRoot, "src", "PTDoc.UI");
+    var webRoot = Path.Combine(webProjectRoot, "wwwroot");
+    var uiStaticRootPaths = new List<string>
+    {
+        Path.Combine(uiProjectRoot, "wwwroot")
+    };
+    var webScopedCssRootPaths = new List<string>();
+
+    // Development source runs and WebApplicationFactory tests need scoped CSS from intermediate
+    // build output. Published/non-development hosts should rely on static web assets instead.
+    if (app.Environment.IsDevelopment())
+    {
+        uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "projectbundle"));
+        uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Release", "net8.0", "scopedcss", "projectbundle"));
+        webScopedCssRootPaths.Add(Path.Combine(webProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "bundle"));
+        webScopedCssRootPaths.Add(Path.Combine(webProjectRoot, "obj", "Release", "net8.0", "scopedcss", "bundle"));
+    }
+
+    var uiStaticRoots = ResolveExistingDirectoryPaths(uiStaticRootPaths);
+    var webScopedCssRoots = ResolveExistingDirectoryPaths(webScopedCssRootPaths);
+
+    var webRootFileProviders = ResolveExistingDirectories([webRoot]);
+
+    if (webRootFileProviders.Count > 0)
+    {
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new CompositeFileProvider(webRootFileProviders)
+        });
+    }
+
+    var uiFileProviders = ResolveExistingDirectories(
+        uiStaticRoots);
+
+    if (uiFileProviders.Count > 0)
+    {
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            RequestPath = "/_content/PTDoc.UI",
+            FileProvider = new CompositeFileProvider(uiFileProviders)
+        });
+    }
+
+    var webScopedCssFileProviders = ResolveExistingDirectories(
+        webScopedCssRoots);
+
+    if (webScopedCssFileProviders.Count > 0)
+    {
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new CompositeFileProvider(webScopedCssFileProviders)
+        });
+    }
+
+    app.Use(async (context, next) =>
+    {
+        if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+        {
+            await next();
+            return;
+        }
+
+        var assetPath = ResolveStaticAssetPhysicalPath(
+            context.Request.Path,
+            webRoot,
+            uiStaticRoots,
+            webScopedCssRoots);
+
+        if (assetPath is null)
+        {
+            await next();
+            return;
+        }
+
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
+        if (!contentTypeProvider.TryGetContentType(assetPath, out var contentType))
+        {
+            contentType = "application/octet-stream";
+        }
+
+        context.Response.ContentType = contentType;
+
+        if (HttpMethods.IsHead(context.Request.Method))
+        {
+            return;
+        }
+
+        await context.Response.SendFileAsync(assetPath);
+    });
+}
+
+static string? ResolveRepositoryRoot(string contentRootPath)
+{
+    foreach (var startPath in new[]
+             {
+                 contentRootPath,
+                 AppContext.BaseDirectory,
+                 Directory.GetCurrentDirectory(),
+                 Path.GetDirectoryName(typeof(PTDoc.Web.Components.App).Assembly.Location),
+                 Path.GetDirectoryName(typeof(PTDoc.UI.Components.Routes).Assembly.Location)
+             })
+    {
+        if (string.IsNullOrWhiteSpace(startPath))
+        {
+            continue;
+        }
+
+        var directory = new DirectoryInfo(Path.GetFullPath(startPath));
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "src", "PTDoc.Web", "PTDoc.Web.csproj"))
+                && File.Exists(Path.Combine(directory.FullName, "src", "PTDoc.UI", "PTDoc.UI.csproj")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+    }
+
+    return null;
+}
+
+static List<IFileProvider> ResolveExistingDirectories(IEnumerable<string> paths)
+{
+    var fileProviders = new List<IFileProvider>();
+
+    foreach (var path in paths)
+    {
+        if (Directory.Exists(path))
+        {
+            fileProviders.Add(new PhysicalFileProvider(path));
+        }
+    }
+
+    return fileProviders;
+}
+
+static List<string> ResolveExistingDirectoryPaths(IEnumerable<string> paths)
+{
+    var existingPaths = new List<string>();
+
+    foreach (var path in paths)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+        {
+            existingPaths.Add(fullPath);
+        }
+    }
+
+    return existingPaths;
+}
+
+static string? ResolveStaticAssetPhysicalPath(
+    PathString path,
+    string webRoot,
+    IReadOnlyList<string> uiStaticRoots,
+    IReadOnlyList<string> webScopedCssRoots)
+{
+    if (!path.HasValue || path.Value is null)
+    {
+        return null;
+    }
+
+    var value = path.Value;
+
+    if (value.StartsWith("/_content/PTDoc.UI/", StringComparison.OrdinalIgnoreCase))
+    {
+        return ResolveExistingFile(uiStaticRoots, value["/_content/PTDoc.UI/".Length..]);
+    }
+
+    if (string.Equals(value, "/PTDoc.Web.styles.css", StringComparison.OrdinalIgnoreCase))
+    {
+        return ResolveExistingFile(webScopedCssRoots, "PTDoc.Web.styles.css");
+    }
+
+    if (value.StartsWith("/js/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/css/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/favicon.", StringComparison.OrdinalIgnoreCase))
+    {
+        return ResolveExistingFile([webRoot], value.TrimStart('/'));
+    }
+
+    return null;
+}
+
+static string? ResolveExistingFile(IEnumerable<string> roots, string relativePath)
+{
+    foreach (var root in roots)
+    {
+        var rootPath = Path.GetFullPath(root);
+        if (!Directory.Exists(rootPath))
+        {
+            continue;
+        }
+
+        var candidatePath = Path.GetFullPath(Path.Combine(rootPath, relativePath));
+        if (!candidatePath.StartsWith(rootPath + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !string.Equals(candidatePath, rootPath, StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        if (File.Exists(candidatePath))
+        {
+            return candidatePath;
+        }
+    }
+
+    return null;
+}
+
+static bool IsStaticAssetRequest(PathString path)
+{
+    if (!path.HasValue)
+    {
+        return false;
+    }
+
+    var value = path.Value;
+    if (value is null)
+    {
+        return false;
+    }
+
+    if (value.StartsWith("/_framework/", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    if (value.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/auth/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/diagnostics/", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    if (value.StartsWith("/_content/PTDoc.UI/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/js/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/css/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/favicon.", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "/PTDoc.Web.styles.css", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)

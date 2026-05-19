@@ -1,10 +1,11 @@
+@using System.ComponentModel.DataAnnotations
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
 @if (IsOpen)
 {
     <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
-        <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog" 
+        <div id="@modalId" class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog"
              aria-labelledby="modal-title" aria-describedby="modal-description" aria-modal="true">
             
             <!-- Modal Header -->
@@ -20,7 +21,20 @@
             </div>
 
             <!-- Modal Body -->
-            <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+            <form class="modal-body" novalidate @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                @if (ValidationErrors.Count > 0)
+                {
+                    <div id="@ValidationSummaryId" class="form-error form-validation-summary" role="alert" aria-live="assertive">
+                        <strong>Review required patient details.</strong>
+                        <ul>
+                            @foreach (var error in ValidationErrors.Values)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
                 <!-- First Name & Last Name Row -->
                 <div class="form-row">
                     <div class="form-field">
@@ -33,7 +47,13 @@
                             @bind="FirstName"
                             @ref="firstInputRef"
                             required 
-                            aria-required="true" />
+                            aria-required="true"
+                            aria-invalid="@AriaInvalid(nameof(FirstName))"
+                            aria-describedby="@GetFieldDescribedBy(nameof(FirstName))" />
+                        @if (TryGetFieldError(nameof(FirstName), out var firstNameError))
+                        {
+                            <p id="@GetFieldErrorId(nameof(FirstName))" class="field-error" role="alert">@firstNameError</p>
+                        }
                     </div>
                     <div class="form-field">
                         <label for="lastName" class="form-label">Last Name <span class="required">*</span></label>
@@ -44,7 +64,13 @@
                             placeholder="Doe"
                             @bind="LastName"
                             required 
-                            aria-required="true" />
+                            aria-required="true"
+                            aria-invalid="@AriaInvalid(nameof(LastName))"
+                            aria-describedby="@GetFieldDescribedBy(nameof(LastName))" />
+                        @if (TryGetFieldError(nameof(LastName), out var lastNameError))
+                        {
+                            <p id="@GetFieldErrorId(nameof(LastName))" class="field-error" role="alert">@lastNameError</p>
+                        }
                     </div>
                 </div>
 
@@ -58,7 +84,13 @@
                         placeholder="john.doe@example.com"
                         @bind="Email"
                         required 
-                        aria-required="true" />
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(Email))"
+                        aria-describedby="@GetFieldDescribedBy(nameof(Email))" />
+                    @if (TryGetFieldError(nameof(Email), out var emailError))
+                    {
+                        <p id="@GetFieldErrorId(nameof(Email))" class="field-error" role="alert">@emailError</p>
+                    }
                 </div>
 
                 <!-- Phone Number -->
@@ -74,13 +106,26 @@
 
                 <!-- Date of Birth -->
                 <div class="form-field">
-                    <label for="dob" class="form-label">Date of Birth</label>
+                    <label for="dob" class="form-label">Date of Birth <span class="required">*</span></label>
                     <input 
                         id="dob" 
                         type="date" 
                         class="form-input" 
-                        @bind="DateOfBirth" />
+                        @bind="DateOfBirth"
+                        required
+                        aria-required="true"
+                        aria-invalid="@AriaInvalid(nameof(DateOfBirth))"
+                        aria-describedby="@GetFieldDescribedBy(nameof(DateOfBirth))" />
+                    @if (TryGetFieldError(nameof(DateOfBirth), out var dateOfBirthError))
+                    {
+                        <p id="@GetFieldErrorId(nameof(DateOfBirth))" class="field-error" role="alert">@dateOfBirthError</p>
+                    }
                 </div>
+
+                @if (!string.IsNullOrWhiteSpace(SubmitError))
+                {
+                    <div class="form-error" role="alert">@SubmitError</div>
+                }
 
                 <!-- Info Box -->
                 <div class="info-box" role="note">
@@ -89,21 +134,21 @@
 
                 <!-- Modal Footer (Buttons) -->
                 <div class="modal-footer">
-                    <button type="button" class="btn-cancel" @onclick="Close">
+                    <button type="button" class="btn-cancel" @onclick="Close" disabled="@IsSubmitting">
                         Cancel
                     </button>
-                    <button type="submit" class="btn-primary">
+                    <button type="submit" class="btn-primary" disabled="@IsSubmitting" aria-busy="@IsSubmitting">
                         <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
                         </svg>
-                        Add Patient
+                        @(IsSubmitting ? "Adding..." : "Add Patient")
                     </button>
                 </div>
             </form>
 
             <!-- Close Button -->
-            <button type="button" class="modal-close" @onclick="Close" aria-label="Close modal">
+            <button type="button" class="modal-close" @onclick="Close" aria-label="Close modal" disabled="@IsSubmitting">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -120,19 +165,24 @@
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
-    public EventCallback<PatientFormData> OnSubmit { get; set; }
+    public Func<PatientFormData, Task<bool>>? OnSubmit { get; set; }
 
     private ElementReference firstInputRef;
     private ElementReference modalContainerRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<AddPatientModal>? dotNetRef;
     private string modalId = $"modal-{Guid.NewGuid():N}";
+    private string ValidationSummaryId => $"{modalId}-validation-summary";
 
     private string FirstName { get; set; } = string.Empty;
     private string LastName { get; set; } = string.Empty;
     private string Email { get; set; } = string.Empty;
     private string PhoneNumber { get; set; } = string.Empty;
     private DateTime? DateOfBirth { get; set; }
+    private string? SubmitError { get; set; }
+    private bool IsSubmitting { get; set; }
+    private Dictionary<string, string> ValidationErrors { get; } = new(StringComparer.Ordinal);
+    private static readonly EmailAddressAttribute EmailValidator = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -193,6 +243,11 @@
 
     private async Task Close()
     {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
         IsOpen = false;
         await IsOpenChanged.InvokeAsync(false);
         
@@ -202,6 +257,8 @@
         Email = string.Empty;
         PhoneNumber = string.Empty;
         DateOfBirth = null;
+        SubmitError = null;
+        ValidationErrors.Clear();
     }
 
     private void HandleOverlayClick()
@@ -212,17 +269,99 @@
 
     private async Task HandleSubmit()
     {
+        SubmitError = null;
+        ValidationErrors.Clear();
+
+        ValidateRequiredFields();
+        if (ValidationErrors.Count > 0)
+        {
+            return;
+        }
+
+        if (OnSubmit is null)
+        {
+            SubmitError = "Patient creation is not available right now.";
+            return;
+        }
+
         var formData = new PatientFormData
         {
-            FirstName = FirstName,
-            LastName = LastName,
-            Email = Email,
-            PhoneNumber = PhoneNumber,
+            FirstName = FirstName.Trim(),
+            LastName = LastName.Trim(),
+            Email = Email.Trim(),
+            PhoneNumber = PhoneNumber.Trim(),
             DateOfBirth = DateOfBirth
         };
 
-        await OnSubmit.InvokeAsync(formData);
-        await Close();
+        IsSubmitting = true;
+        try
+        {
+            var succeeded = await OnSubmit.Invoke(formData);
+            if (succeeded)
+            {
+                IsSubmitting = false;
+                await Close();
+                return;
+            }
+
+            SubmitError = "The patient was not created. Review the details and try again.";
+        }
+        catch (Exception ex)
+        {
+            SubmitError = string.IsNullOrWhiteSpace(ex.Message)
+                ? "The patient was not created. Review the details and try again."
+                : ex.Message;
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private void ValidateRequiredFields()
+    {
+        if (string.IsNullOrWhiteSpace(FirstName))
+        {
+            ValidationErrors[nameof(FirstName)] = "First name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(LastName))
+        {
+            ValidationErrors[nameof(LastName)] = "Last name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            ValidationErrors[nameof(Email)] = "Email address is required.";
+        }
+        else if (!EmailValidator.IsValid(Email.Trim()))
+        {
+            ValidationErrors[nameof(Email)] = "Enter a valid email address.";
+        }
+
+        if (!DateOfBirth.HasValue)
+        {
+            ValidationErrors[nameof(DateOfBirth)] = "Date of birth is required.";
+        }
+    }
+
+    private bool TryGetFieldError(string fieldName, out string error)
+        => ValidationErrors.TryGetValue(fieldName, out error!);
+
+    private string AriaInvalid(string fieldName)
+        => ValidationErrors.ContainsKey(fieldName) ? "true" : "false";
+
+    private string GetFieldErrorId(string fieldName)
+        => $"{modalId}-{fieldName.ToLowerInvariant()}-error";
+
+    private string? GetFieldDescribedBy(string fieldName)
+    {
+        if (!ValidationErrors.ContainsKey(fieldName))
+        {
+            return null;
+        }
+
+        return $"{ValidationSummaryId} {GetFieldErrorId(fieldName)}";
     }
 
     public async ValueTask DisposeAsync()

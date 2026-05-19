@@ -21,6 +21,10 @@
     overflow-x: hidden;
 }
 
+.sidebar-backdrop {
+    display: none;
+}
+
 main {
     flex: 1;
     overflow-y: auto;
@@ -48,6 +52,16 @@ main {
     .sidebar.open {
         transform: translateX(0);
         box-shadow: var(--shadow-xl);
+    }
+
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 69px 0 0 0;
+        display: block;
+        border: 0;
+        background: var(--modal-overlay-bg);
+        z-index: calc(var(--z-sidebar) - 1);
+        cursor: pointer;
     }
 
     main {

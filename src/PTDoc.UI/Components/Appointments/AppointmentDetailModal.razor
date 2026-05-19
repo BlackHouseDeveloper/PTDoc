@@ -103,23 +103,19 @@
                     <div class="appointment-detail-modal__quick-actions-grid">
                         <button type="button"
                                 class="@GetContextualQuickActionClass()"
-                                @onclick="HandleContextualActionRequested">
-                            @if (Appointment.IsEvaluationAppointment)
-                            {
-                                <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-                                    <path d="M6.5 5.5L10.5 8L6.5 10.5V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                                </svg>
-                            }
-                            else
-                            {
-                                <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M13 4.5L6.8125 10.6875L3 6.875" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                                    <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-                                </svg>
-                            }
-                            <span>@GetContextualQuickActionLabel()</span>
+                                @onclick="HandleStartVisitRequested"
+                                disabled="@(!CanStartVisit)"
+                                aria-describedby="@GetStartVisitDescriptionId()">
+                            @RenderStartVisitIcon()
+                            <span>Start Visit</span>
                         </button>
+
+                        @if (!CanStartVisit)
+                        {
+                            <p id="@StartVisitDisabledReasonId" class="appointment-detail-modal__quick-action-reason">
+                                Check in the patient before starting the visit.
+                            </p>
+                        }
 
                         <button type="button"
                                 class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
@@ -154,22 +150,11 @@
 
                 <button type="button"
                         class="appointment-detail-modal__footer-button appointment-detail-modal__footer-button--primary"
-                        @onclick="HandlePrimaryActionRequested">
-                    @if (Appointment.IsEvaluationAppointment)
-                    {
-                        <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-                            <path d="M6.5 5.5L10.5 8L6.5 10.5V5.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                        </svg>
-                    }
-                    else
-                    {
-                        <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M13 4.5L6.8125 10.6875L3 6.875" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
-                        </svg>
-                    }
-                    <span>@GetPrimaryActionLabel()</span>
+                        @onclick="HandleStartVisitRequested"
+                        disabled="@(!CanStartVisit)"
+                        aria-describedby="@GetStartVisitDescriptionId()">
+                    @RenderStartVisitIcon()
+                    <span>Start Visit</span>
                 </button>
             </div>
         </div>
@@ -251,37 +236,49 @@
             ? OnActionRequested.InvokeAsync(actionName)
             : Task.CompletedTask;
 
-    private Task HandleContextualActionRequested() => HandleActionRequested(GetContextualActionName());
+    private bool CanStartVisit =>
+        string.Equals(Appointment?.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase);
+
+    private string StartVisitDisabledReasonId => $"{modalId}-start-visit-reason";
+
+    private string? GetStartVisitDescriptionId() => CanStartVisit ? null : StartVisitDisabledReasonId;
+
+    private Task HandleStartVisitRequested() => HandleActionRequested("start-visit");
 
     private Task HandleSendReminderRequested() => HandleActionRequested("send-reminder");
 
     private Task HandleRescheduleRequested() => HandleActionRequested("reschedule");
 
-    private Task HandlePrimaryActionRequested() => HandleActionRequested(GetPrimaryActionName());
-
-    private string GetPrimaryActionLabel() =>
-        Appointment?.IsEvaluationAppointment == true ? "Start Session Note" : "Check In Patient";
-
-    private string GetPrimaryActionName() =>
-        Appointment?.IsEvaluationAppointment == true ? "start-session-note" : "check-in-patient";
-
-    private string GetContextualQuickActionLabel() =>
-        Appointment?.IsEvaluationAppointment == true ? "Start Note" : "Check In";
-
-    private string GetContextualActionName() =>
-        Appointment?.IsEvaluationAppointment == true ? "start-note" : "check-in";
-
     private string GetContextualQuickActionClass()
     {
-        var baseClass = "appointment-detail-modal__quick-action";
-
-        if (Appointment?.IsEvaluationAppointment == true)
-        {
-            return $"{baseClass} appointment-detail-modal__quick-action--outlined";
-        }
-
-        return $"{baseClass} appointment-detail-modal__quick-action--text";
+        return "appointment-detail-modal__quick-action appointment-detail-modal__quick-action--outlined";
     }
+
+    private RenderFragment RenderStartVisitIcon() => builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "class", "appointment-detail-modal__button-icon");
+        builder.AddAttribute(2, "width", "16");
+        builder.AddAttribute(3, "height", "16");
+        builder.AddAttribute(4, "viewBox", "0 0 16 16");
+        builder.AddAttribute(5, "fill", "none");
+        builder.AddAttribute(6, "xmlns", "http://www.w3.org/2000/svg");
+        builder.AddAttribute(7, "aria-hidden", "true");
+        builder.OpenElement(8, "circle");
+        builder.AddAttribute(9, "cx", "8");
+        builder.AddAttribute(10, "cy", "8");
+        builder.AddAttribute(11, "r", "6.25");
+        builder.AddAttribute(12, "stroke", "currentColor");
+        builder.AddAttribute(13, "stroke-width", "1.5");
+        builder.CloseElement();
+        builder.OpenElement(14, "path");
+        builder.AddAttribute(15, "d", "M6.5 5.5L10.5 8L6.5 10.5V5.5Z");
+        builder.AddAttribute(16, "stroke", "currentColor");
+        builder.AddAttribute(17, "stroke-width", "1.5");
+        builder.AddAttribute(18, "stroke-linejoin", "round");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
 
     private string GetNotesText() =>
         string.IsNullOrWhiteSpace(Appointment?.Notes)

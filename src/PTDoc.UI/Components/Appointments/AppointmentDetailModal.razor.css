@@ -275,6 +275,31 @@
     transform: translateY(-1px);
 }
 
+.appointment-detail-modal__quick-action:disabled,
+.appointment-detail-modal__footer-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+    transform: none;
+    box-shadow: none;
+    filter: none;
+}
+
+.appointment-detail-modal__quick-action:disabled:hover,
+.appointment-detail-modal__footer-button:disabled:hover {
+    transform: none;
+    box-shadow: none;
+    filter: none;
+}
+
+.appointment-detail-modal__quick-action-reason {
+    grid-column: 1 / -1;
+    margin: calc(-1 * var(--spacing-1)) 0 0;
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}
+
 .appointment-detail-modal__quick-action--outlined {
     border-color: rgba(var(--primary-rgb), 0.45);
     color: var(--primary);
