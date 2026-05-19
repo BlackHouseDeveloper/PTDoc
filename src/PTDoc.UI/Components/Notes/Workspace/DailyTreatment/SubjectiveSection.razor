@@ -68,7 +68,7 @@
                            disabled="@IsReadOnly"
                            @bind="_painLocation"
                            @bind:event="oninput" />
-                    @if (string.IsNullOrWhiteSpace(_painLocation))
+                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_painLocation))
                     {
                         <p class="daily-subjective__validation">Pain location is required.</p>
                     }
@@ -140,7 +140,7 @@
                         <option>Fair (50-69%)</option>
                         <option>Poor (&lt;50%)</option>
                     </select>
-                    @if (string.IsNullOrWhiteSpace(_homeExerciseAdherence))
+                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_homeExerciseAdherence))
                     {
                         <p class="daily-subjective__validation">Adherence level is required.</p>
                     }

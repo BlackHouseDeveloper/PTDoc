@@ -80,7 +80,7 @@ else
             </div>
         }
 
-        @if (_blockingValidationMessages.Count > 0)
+        @if (!IsWorkspaceReadOnly && _blockingValidationMessages.Count > 0)
         {
             <div class="note-workspace__alert note-workspace__alert--error" role="alert" data-testid="note-workspace-blocking-errors">
                 <strong>Blocking errors</strong>
@@ -93,7 +93,7 @@ else
             </div>
         }
 
-        @if (_warningValidationMessages.Count > 0)
+        @if (!IsWorkspaceReadOnly && _warningValidationMessages.Count > 0)
         {
             <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-warnings">
                 <strong>Warnings</strong>
