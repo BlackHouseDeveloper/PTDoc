@@ -154,6 +154,43 @@
     background: var(--muted);
 }
 
+.field-error,
+.form-error {
+    margin: 0;
+    color: var(--destructive);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}
+
+.form-error {
+    border: 1px solid var(--destructive);
+    border-radius: var(--radius-md);
+    background: var(--destructive-background, var(--card));
+    padding: var(--spacing-3);
+}
+
+.form-validation-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.form-validation-summary strong {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.form-validation-summary ul {
+    margin: 0;
+    padding-left: var(--spacing-5);
+}
+
+.form-input[aria-invalid="true"] {
+    border-color: var(--destructive);
+}
+
 /* Date Input Specific Styling */
 .form-input[type="date"] {
     appearance: none;
@@ -219,6 +256,15 @@
 .btn-cancel:hover {
     background: var(--muted);
     border-color: var(--ring);
+}
+
+.btn-cancel:disabled,
+.btn-primary:disabled,
+.modal-close:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
 }
 
 .btn-cancel:focus-visible {

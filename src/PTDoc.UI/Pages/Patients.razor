@@ -113,26 +113,34 @@
         isAddPatientModalOpen = true;
     }
 
-    private async Task HandleAddPatient(AddPatientModal.PatientFormData formData)
+    private async Task<bool> HandleAddPatient(AddPatientModal.PatientFormData formData)
     {
+        if (!formData.DateOfBirth.HasValue)
+        {
+            ToastService.ShowError("Date of birth is required.");
+            return false;
+        }
+
         try
         {
             var request = new PTDoc.Application.DTOs.CreatePatientRequest
             {
                 FirstName = formData.FirstName,
                 LastName = formData.LastName,
-                DateOfBirth = formData.DateOfBirth ?? DateTime.Today,
+                DateOfBirth = formData.DateOfBirth.Value,
                 Email = formData.Email,
                 Phone = formData.PhoneNumber
             };
             await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"{formData.FirstName} {formData.LastName} added.");
             await LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
+            return true;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Patients] Error creating patient: {ex.Message}");
             ToastService.ShowError("Failed to add patient. Please try again.");
+            return false;
         }
     }
 
