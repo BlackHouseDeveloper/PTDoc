@@ -20,6 +20,7 @@ using PTDoc.Api.Appointments;
 using PTDoc.Api.Auth;
 using PTDoc.Api.Communications;
 using PTDoc.Api.Compliance;
+using PTDoc.Api.Data;
 using PTDoc.Api.Dashboard;
 using PTDoc.Api.Diagnostics;
 using PTDoc.Api.Health;
@@ -219,6 +220,7 @@ builder.Services.AddScoped<IPdfRenderer, QuestPdfRenderer>();
 var dbPath = Environment.GetEnvironmentVariable("PTDoc_DB_PATH")
     ?? builder.Configuration.GetValue<string>("Database:Path")
     ?? "PTDoc.db";
+dbPath = Path.GetFullPath(dbPath);
 
 // Ensure directory exists
 var dbDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath));
@@ -646,6 +648,22 @@ startupLogger.LogInformation(
     "Database auto-migrate: {AutoMigrate} (environment: {Environment})",
     autoMigrate,
     app.Environment.EnvironmentName);
+
+if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase) && !encryptionEnabled)
+{
+    var sqliteRecoveryOptions = new SqliteDatabaseRecoveryOptions(
+        Enabled: builder.Configuration.GetValue<bool?>("Database:SqliteRecovery:Enabled")
+            ?? app.Environment.IsDevelopment(),
+        CreateHealthyBackup: builder.Configuration.GetValue<bool?>("Database:SqliteRecovery:CreateHealthyBackup")
+            ?? true,
+        AllowFreshDatabaseWhenNoBackupExists: builder.Configuration.GetValue<bool?>("Database:SqliteRecovery:AllowFreshDatabaseWhenNoBackupExists")
+            ?? app.Environment.IsDevelopment(),
+        MaxHealthyBackups: builder.Configuration.GetValue<int?>("Database:SqliteRecovery:MaxHealthyBackups")
+            ?? 5,
+        BackupDirectory: builder.Configuration.GetValue<string>("Database:SqliteRecovery:BackupDirectory"));
+
+    SqliteDatabaseStartupGuard.EnsureUsableDatabase(dbPath, sqliteRecoveryOptions, startupLogger);
+}
 
 if (autoMigrate)
 {

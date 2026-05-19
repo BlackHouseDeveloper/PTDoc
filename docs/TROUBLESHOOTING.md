@@ -243,6 +243,36 @@ kill -9 <PID>
 rm ~/Library/Containers/com.ptdoc.app/Data/ptdoc.db
 ```
 
+### Error: "SQLite Error 11: 'database disk image is malformed'"
+
+**Cause:** The local SQLite file is corrupt. In Development, the API runs a plain-SQLite startup guard before migrations. If the database passes `PRAGMA integrity_check`, the guard creates a timestamped restore point under `.db-backups/sqlite/healthy`. If the active database is malformed, the guard quarantines it under `.db-backups/sqlite/corrupt` and restores the newest healthy backup. When no healthy backup exists, Development startup continues with a fresh database so migrations and seed data can recreate a usable local environment.
+
+**Manual recovery:**
+```bash
+# Optional: attempt to recover SQL before replacing the file
+sqlite3 src/PTDoc.Api/PTDoc.db ".recover" > .db-backups/PTDoc.recovered.sql
+
+# Quarantine the corrupt file and let Development startup recreate the DB
+mkdir -p .db-backups
+mv src/PTDoc.Api/PTDoc.db .db-backups/PTDoc.db.corrupt-$(date +%Y%m%d%H%M%S)
+./run-ptdoc.sh
+```
+
+**Configuration:**
+```json
+"Database": {
+  "SqliteRecovery": {
+    "Enabled": true,
+    "CreateHealthyBackup": true,
+    "AllowFreshDatabaseWhenNoBackupExists": true,
+    "MaxHealthyBackups": 5,
+    "BackupDirectory": ".db-backups/sqlite"
+  }
+}
+```
+
+This automatic recovery is intended for local plain-SQLite development databases. Encrypted SQLCipher or production databases should use an explicit, operator-controlled backup and restore process.
+
 ### Error: "The entity type 'Patient' requires a primary key"
 
 **Cause:** Entity missing `[Key]` attribute or Id property

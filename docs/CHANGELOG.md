@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Local SQLite startup recovery
+
+- **`.gitignore`**, **`src/PTDoc.Api/Data/SqliteDatabaseStartupGuard.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Development.json`**, **`tests/PTDoc.Tests/Integration/SqliteDatabaseStartupGuardTests.cs`**, **`docs/TROUBLESHOOTING.md`** — Added a Development-oriented plain-SQLite startup guard that runs an integrity check before EF migrations, creates timestamped healthy startup backups, quarantines malformed database files, restores the newest healthy backup when available, ignores generated `.db-backups/` artifacts, and falls back to a fresh local database when no valid backup exists. Reason: repeated local `SQLite Error 11: database disk image is malformed` failures should recover safely without manual DB deletion while avoiding automatic production/SQLCipher file replacement.
+
 ### Changed - AGENTS secret bootstrap and launcher troubleshooting notes
 
 - **`AGENTS.md`** — Updated the repo instructions to reflect that `setup-dev-secrets.sh` now seeds `Communication:RecipientHashSalt` into `PTDoc.Api` user-secrets in addition to the existing JWT and intake signing keys, and documented `/tmp/ptdoc-api.log` as the launcher-owned API startup log to inspect when `run-ptdoc.sh` fails. Reason: keep the agent workflow notes aligned with the current helper scripts and troubleshooting path.
