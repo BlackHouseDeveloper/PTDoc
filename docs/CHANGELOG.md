@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - AI project analyzer warning
+
+- **`src/PTDoc.AI/PTDoc.AI.csproj`** — Aligned direct `Microsoft.Extensions.*` package references with the repo's pinned .NET 8 SDK/package line. Reason: avoid the .NET 8 SDK `CSharpDetectPreviewFeatureAnalyzer` crash triggered while inspecting newer `10.0.3` assemblies during `PTDoc.AI` compilation.
+
 ### Fixed - Core CI reporter resiliency
 
 - **`.github/workflows/ci-core.yml`** — Made the non-critical `dorny/test-reporter` publishing step continue on error so a transient GitHub check-run API timeout does not fail an otherwise successful Core CI build/test job. Reason: PR #109's Linux Core workflow passed build, format, and 946 CoreCi tests, then failed only while creating the secondary test-results check run with `HttpError: Connect Timeout Error`.
