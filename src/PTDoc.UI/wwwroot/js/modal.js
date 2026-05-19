@@ -1,4 +1,75 @@
 // Modal utilities - ESC key handler and body scroll lock
+const focusableSelector = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+].join(',');
+
+function createFocusTrap(modalElement, onDispose) {
+    if (!modalElement) return null;
+
+    const getFocusableElements = () => Array.from(modalElement.querySelectorAll(focusableSelector))
+        .filter(element =>
+            element instanceof HTMLElement &&
+            !element.hasAttribute('disabled') &&
+            element.getAttribute('aria-hidden') !== 'true' &&
+            element.offsetParent !== null);
+
+    const focusInitialElement = () => {
+        const focusableElements = getFocusableElements();
+        const firstFocusable = focusableElements[0] ?? modalElement;
+        if (firstFocusable instanceof HTMLElement) {
+            firstFocusable.focus({ preventScroll: true });
+        }
+    };
+
+    const trapHandler = (e) => {
+        if (e.key !== 'Tab') return;
+
+        const focusableElements = getFocusableElements();
+        if (focusableElements.length === 0) {
+            e.preventDefault();
+            modalElement.focus({ preventScroll: true });
+            return;
+        }
+
+        const firstFocusable = focusableElements[0];
+        const lastFocusable = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+            // Shift + Tab
+            if (document.activeElement === firstFocusable) {
+                e.preventDefault();
+                lastFocusable.focus({ preventScroll: true });
+            }
+        } else {
+            // Tab
+            if (document.activeElement === lastFocusable) {
+                e.preventDefault();
+                firstFocusable.focus({ preventScroll: true });
+            }
+        }
+    };
+
+    document.addEventListener('keydown', trapHandler, true);
+
+    // Focus first element
+    setTimeout(focusInitialElement, 50);
+
+    return {
+        handler: trapHandler,
+        dispose: () => {
+            document.removeEventListener('keydown', trapHandler, true);
+            if (typeof onDispose === 'function') {
+                onDispose(trapHandler);
+            }
+        }
+    };
+}
+
 export class ModalHelper {
     constructor() {
         this.escapeHandlers = new Map();
@@ -126,72 +197,12 @@ export class ModalHelper {
 
     // Focus trap - keep focus within modal
     setupFocusTrap(modalId, modalElement) {
-        if (!modalElement) return null;
+        const trap = createFocusTrap(modalElement, () => this.focusTrapHandlers.delete(modalId));
+        if (trap) {
+            this.focusTrapHandlers.set(modalId, trap.handler);
+        }
 
-        const focusableSelector = [
-            'a[href]',
-            'button:not([disabled])',
-            'input:not([disabled])',
-            'select:not([disabled])',
-            'textarea:not([disabled])',
-            '[tabindex]:not([tabindex="-1"])'
-        ].join(',');
-
-        const getFocusableElements = () => Array.from(modalElement.querySelectorAll(focusableSelector))
-            .filter(element =>
-                element instanceof HTMLElement &&
-                !element.hasAttribute('disabled') &&
-                element.getAttribute('aria-hidden') !== 'true' &&
-                element.offsetParent !== null);
-
-        const focusInitialElement = () => {
-            const focusableElements = getFocusableElements();
-            const firstFocusable = focusableElements[0] ?? modalElement;
-            if (firstFocusable instanceof HTMLElement) {
-                firstFocusable.focus({ preventScroll: true });
-            }
-        };
-
-        const trapHandler = (e) => {
-            if (e.key !== 'Tab') return;
-
-            const focusableElements = getFocusableElements();
-            if (focusableElements.length === 0) {
-                e.preventDefault();
-                modalElement.focus({ preventScroll: true });
-                return;
-            }
-
-            const firstFocusable = focusableElements[0];
-            const lastFocusable = focusableElements[focusableElements.length - 1];
-
-            if (e.shiftKey) {
-                // Shift + Tab
-                if (document.activeElement === firstFocusable) {
-                    e.preventDefault();
-                    lastFocusable.focus({ preventScroll: true });
-                }
-            } else {
-                // Tab
-                if (document.activeElement === lastFocusable) {
-                    e.preventDefault();
-                    firstFocusable.focus({ preventScroll: true });
-                }
-            }
-        };
-
-        document.addEventListener('keydown', trapHandler, true);
-        this.focusTrapHandlers.set(modalId, trapHandler);
-
-        // Focus first element
-        setTimeout(focusInitialElement, 50);
-
-        return {
-            dispose: () => {
-                document.removeEventListener('keydown', trapHandler, true);
-                this.focusTrapHandlers.delete(modalId);
-            }
-        };
+        return trap;
     }
 
     hideBackgroundSiblings(modalId, modalElement) {
@@ -277,7 +288,10 @@ export function unregisterEscapeHandler(modalId) {
 }
 
 export function setupFocusTrap(modalElement) {
-    return getModalHelper().setupFocusTrap(`modal-${Date.now()}`, modalElement);
+    const trap = createFocusTrap(modalElement);
+    return trap
+        ? { dispose: trap.dispose }
+        : null;
 }
 
 export async function copyToClipboard(text) {

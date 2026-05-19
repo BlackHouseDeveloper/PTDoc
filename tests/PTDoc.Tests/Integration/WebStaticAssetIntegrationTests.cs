@@ -56,6 +56,25 @@ public sealed class WebStaticAssetIntegrationTests
         Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
     }
 
+    [Theory]
+    [InlineData("/unknown-route-with-extension.pdf")]
+    [InlineData("/_content/Other.Package/not-real.js")]
+    public async Task UnknownExtensionRoutes_AreNotShortCircuitedAsStaticAssets(string path)
+    {
+        await using var factory = new PTDocWebFactory("Development");
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var response = await client.GetAsync(path);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Page not found", body, StringComparison.Ordinal);
+    }
+
     private sealed class PTDocWebFactory(string environmentName)
         : WebApplicationFactory<PTDoc.Web.Components.App>
     {

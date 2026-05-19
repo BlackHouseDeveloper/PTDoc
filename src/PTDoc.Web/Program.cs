@@ -481,13 +481,24 @@ static void UsePTDocStaticAssetFallbacks(WebApplication app)
         ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "PTDoc.UI"))
         : Path.Combine(repositoryRoot, "src", "PTDoc.UI");
     var webRoot = Path.Combine(webProjectRoot, "wwwroot");
-    var uiStaticRoots = ResolveExistingDirectoryPaths(
-        Path.Combine(uiProjectRoot, "wwwroot"),
-        Path.Combine(uiProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "projectbundle"),
-        Path.Combine(uiProjectRoot, "obj", "Release", "net8.0", "scopedcss", "projectbundle"));
-    var webScopedCssRoots = ResolveExistingDirectoryPaths(
-        Path.Combine(webProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "bundle"),
-        Path.Combine(webProjectRoot, "obj", "Release", "net8.0", "scopedcss", "bundle"));
+    var uiStaticRootPaths = new List<string>
+    {
+        Path.Combine(uiProjectRoot, "wwwroot")
+    };
+    var webScopedCssRootPaths = new List<string>();
+
+    // Development source runs and WebApplicationFactory tests need scoped CSS from intermediate
+    // build output. Published/non-development hosts should rely on static web assets instead.
+    if (app.Environment.IsDevelopment())
+    {
+        uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "projectbundle"));
+        uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Release", "net8.0", "scopedcss", "projectbundle"));
+        webScopedCssRootPaths.Add(Path.Combine(webProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "bundle"));
+        webScopedCssRootPaths.Add(Path.Combine(webProjectRoot, "obj", "Release", "net8.0", "scopedcss", "bundle"));
+    }
+
+    var uiStaticRoots = ResolveExistingDirectoryPaths(uiStaticRootPaths);
+    var webScopedCssRoots = ResolveExistingDirectoryPaths(webScopedCssRootPaths);
 
     var webRootFileProviders = ResolveExistingDirectories([webRoot]);
 
@@ -606,7 +617,7 @@ static List<IFileProvider> ResolveExistingDirectories(IEnumerable<string> paths)
     return fileProviders;
 }
 
-static List<string> ResolveExistingDirectoryPaths(params string[] paths)
+static List<string> ResolveExistingDirectoryPaths(IEnumerable<string> paths)
 {
     var existingPaths = new List<string>();
 
@@ -707,7 +718,7 @@ static bool IsStaticAssetRequest(PathString path)
         return false;
     }
 
-    if (value.StartsWith("/_content/", StringComparison.OrdinalIgnoreCase)
+    if (value.StartsWith("/_content/PTDoc.UI/", StringComparison.OrdinalIgnoreCase)
         || value.StartsWith("/js/", StringComparison.OrdinalIgnoreCase)
         || value.StartsWith("/css/", StringComparison.OrdinalIgnoreCase)
         || value.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)
@@ -717,24 +728,7 @@ static bool IsStaticAssetRequest(PathString path)
         return true;
     }
 
-    return Path.HasExtension(value) && IsStaticAssetExtension(Path.GetExtension(value));
-}
-
-static bool IsStaticAssetExtension(string? extension)
-{
-    return extension is not null
-        && (extension.Equals(".css", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".js", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".map", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".svg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".ico", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".gif", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".webp", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".woff", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".woff2", StringComparison.OrdinalIgnoreCase));
+    return false;
 }
 
 static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
