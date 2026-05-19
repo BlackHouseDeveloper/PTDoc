@@ -11,7 +11,7 @@
         <nav class="ptdoc-nav" aria-label="Main navigation">
             <!-- Primary Navigation -->
             <div class="ptdoc-nav-section">
-                <NavLink class="ptdoc-nav-item" href="" Match="NavLinkMatch.All">
+                <NavLink class="ptdoc-nav-item" href="" Match="NavLinkMatch.All" @onclick="HandleNavigate">
                     <div class="ptdoc-nav-content">
                         <img src="_content/PTDoc.UI/images/nav-home.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                         <span class="ptdoc-nav-text">Dashboard</span>
@@ -21,7 +21,7 @@
 
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.SchedulingAccess">
                     <Authorized>
-                        <NavLink class="ptdoc-nav-item" href="appointments">
+                        <NavLink class="ptdoc-nav-item" href="appointments" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-appointments.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Appointments</span>
@@ -32,7 +32,7 @@
 
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.PatientRead">
                     <Authorized>
-                        <NavLink class="ptdoc-nav-item" href="patients">
+                        <NavLink class="ptdoc-nav-item" href="patients" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-patients.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Patients</span>
@@ -43,7 +43,7 @@
 
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.IntakeRead">
                     <Authorized>
-                        <NavLink class="ptdoc-nav-item" href="intake">
+                        <NavLink class="ptdoc-nav-item" href="intake" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-intake.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Intake</span>
@@ -55,7 +55,7 @@
 
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.NoteRead">
                     <Authorized>
-                        <NavLink class="ptdoc-nav-item" href="notes">
+                        <NavLink class="ptdoc-nav-item" href="notes" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-notes.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Notes</span>
@@ -67,7 +67,7 @@
 
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
                     <Authorized>
-                        <NavLink class="ptdoc-nav-item" href="progress-tracking">
+                        <NavLink class="ptdoc-nav-item" href="progress-tracking" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-progress.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Progress Tracking</span>
@@ -83,14 +83,14 @@
                     <div class="ptdoc-nav-section">
                         <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
 
-                        <NavLink class="ptdoc-nav-item" href="export-center">
+                        <NavLink class="ptdoc-nav-item" href="export-center" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Export Center</span>
                             </div>
                         </NavLink>
 
-                        <NavLink class="ptdoc-nav-item" href="settings">
+                        <NavLink class="ptdoc-nav-item" href="settings" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Settings</span>
@@ -106,7 +106,7 @@
     <AuthorizeView>
         <Authorized>
             <div class="ptdoc-nav-footer">
-                <a href="/logout" class="ptdoc-nav-logout-btn" aria-label="Logout">
+                <a href="/logout" class="ptdoc-nav-logout-btn" aria-label="Logout" @onclick="HandleNavigate">
                     <img src="_content/PTDoc.UI/images/nav-logout.svg" alt="" aria-hidden="true" />
                     <span>Logout</span>
                 </a>
@@ -118,5 +118,13 @@
 @code {
     [Parameter]
     public EventCallback OnNotificationsClick { get; set; }
+
+    [Parameter]
+    public EventCallback OnNavigate { get; set; }
+
+    private async Task HandleNavigate()
+    {
+        await OnNavigate.InvokeAsync();
+    }
 }
 

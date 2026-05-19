@@ -1,5 +1,7 @@
 ﻿@namespace PTDoc.UI.Components.Layout
 @using PTDoc.UI.Components
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @inherits LayoutComponentBase
 
@@ -9,8 +11,16 @@
     
     <div class="page-content">
         <div class="sidebar @GetSidebarClass()">
-            <NavMenu OnNotificationsClick="OpenNotificationsModal" />
+            <NavMenu OnNotificationsClick="OpenNotificationsModal" OnNavigate="CloseMenuOnMobileAsync" />
         </div>
+
+        @if (isMenuOpen)
+        {
+            <button type="button"
+                    class="sidebar-backdrop"
+                    aria-label="Close menu"
+                    @onclick="CloseMenuAsync"></button>
+        }
 
         <main>
             <article class="content">
@@ -25,8 +35,9 @@
 <ToastContainer />
 
 @code {
-    private bool isMenuOpen = true; // Default to open on desktop
+    private bool isMenuOpen;
     private bool isNotificationsModalOpen;
+    private IJSObjectReference? layoutModule;
     
     private string GetSidebarClass()
     {
@@ -37,6 +48,70 @@
     private void OpenNotificationsModal()
     {
         isNotificationsModalOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            layoutModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/layout.js");
+            isMenuOpen = !await layoutModule.InvokeAsync<bool>("isMobileLayout");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Layout JS interop error: {ex.Message}");
+        }
+    }
+
+    private async Task CloseMenuOnMobileAsync()
+    {
+        if (layoutModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await layoutModule.InvokeAsync<bool>("isMobileLayout"))
+            {
+                await CloseMenuAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Layout mobile close failed: {ex.Message}");
+        }
+    }
+
+    private Task CloseMenuAsync()
+    {
+        isMenuOpen = false;
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (layoutModule is not null)
+        {
+            try
+            {
+                await layoutModule.DisposeAsync();
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException)
+            {
+                // The Blazor Server circuit can disconnect before component disposal completes.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore disposal races during circuit teardown.
+            }
+        }
     }
 }
 
