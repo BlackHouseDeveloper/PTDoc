@@ -21,6 +21,16 @@
                                Subtitle="@Vm.PatientDisplayName"
                                OnBack="HandleBack" />
 
+        @if (isPatientUnavailable)
+        {
+            <section class="pi-page-state" role="status" aria-live="polite">
+                <h2>@unavailableTitle</h2>
+                <p>@unavailableMessage</p>
+                <button type="button" class="btn btn-primary" @onclick="HandleBackToPatients">Back to Patients</button>
+            </section>
+        }
+        else
+        {
         <div class="pi-page-panels">
 
             <PatientPayerInformationPanel
@@ -65,6 +75,7 @@
                               HasValidationErrors="@HasPageErrors"
                               OnSave="HandleSave"
                               OnBack="HandleBack" />
+        }
 
     </div>
 </div>
@@ -74,6 +85,9 @@
 
     private PatientInfoPageVm Vm { get; set; } = new();
     private IDisposable? _navGuard;
+    private bool isPatientUnavailable;
+    private string unavailableTitle = "Patient not found";
+    private string unavailableMessage = "The selected patient record could not be loaded.";
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -130,9 +144,15 @@
 
     private async Task LoadPatientAsync()
     {
+        if (string.IsNullOrWhiteSpace(Id))
+        {
+            Navigation.NavigateTo("/patients", replace: true);
+            return;
+        }
+
         if (!Guid.TryParse(Id, out var patientGuid))
         {
-            Vm = new PatientInfoPageVm { PatientDisplayName = "New Patient" };
+            Navigation.NavigateTo("/patients", replace: true);
             return;
         }
 
@@ -140,7 +160,7 @@
         if (patient is null)
         {
             ToastService.ShowError("Patient not found.");
-            Vm = new PatientInfoPageVm { PatientDisplayName = "Patient Not Found" };
+            SetPatientUnavailable("Patient not found.", "The selected patient record could not be found or is no longer available.");
             return;
         }
 
@@ -198,6 +218,20 @@
             IsDirty = false,
             IsSaving = false,
         };
+        isPatientUnavailable = false;
+    }
+
+    private void SetPatientUnavailable(string title, string message)
+    {
+        isPatientUnavailable = true;
+        unavailableTitle = title;
+        unavailableMessage = message;
+        Vm = new PatientInfoPageVm { PatientDisplayName = "Patient unavailable" };
+    }
+
+    private void HandleBackToPatients()
+    {
+        Navigation.NavigateTo("/patients");
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────

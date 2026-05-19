@@ -44,7 +44,7 @@
         {
             <div class="record-count-disabled">
                 <p class="record-count-disabled__title">Preview unavailable</p>
-                <p class="record-count-disabled__text">@UnsupportedReason</p>
+                <p id="@UnsupportedReasonId" class="record-count-disabled__text">@UnsupportedReason</p>
             </div>
         }
         else if (_isResolvingTarget)
@@ -164,7 +164,7 @@
     }
 
     <div class="export-preview-panel__actions">
-        <button class="btn btn-secondary" type="button" @onclick="HandleGeneratePreviewAsync" disabled="@(!_previewTarget.CanPreview || _isPreviewLoading || _isResolvingTarget)">
+        <button class="btn btn-secondary" type="button" @onclick="HandleGeneratePreviewAsync" disabled="@(!_previewTarget.CanPreview || _isPreviewLoading || _isResolvingTarget)" aria-describedby="@UnavailableActionDescriptionId">
             @if (_isPreviewLoading)
             {
                 <span class="spinner" aria-hidden="true"></span>
@@ -176,7 +176,7 @@
             }
         </button>
 
-        <button class="btn btn-primary" type="button" @onclick="HandleDownloadPdfAsync" disabled="@(!_previewTarget.CanDownloadPdf || _isDownloading || _isResolvingTarget)">
+        <button class="btn btn-primary" type="button" @onclick="HandleDownloadPdfAsync" disabled="@(!_previewTarget.CanDownloadPdf || _isDownloading || _isResolvingTarget)" aria-describedby="@UnavailableActionDescriptionId">
             @if (_isDownloading)
             {
                 <span class="spinner" aria-hidden="true"></span>
@@ -211,6 +211,7 @@
     private ExportPreviewTarget _previewTarget = new();
     private IJSObjectReference? _downloadModule;
     private CancellationTokenSource? _previewTargetCts;
+    private readonly string _unsupportedReasonId = $"export-preview-unavailable-{Guid.NewGuid():N}";
 
     [Parameter]
     [EditorRequired]
@@ -226,9 +227,20 @@
 
     private bool SupportsPreview => SelectedTab == ExportTab.SoapNotes && SelectedFormat == ExportFormat.PDF;
 
-    private string UnsupportedReason => SelectedTab != ExportTab.SoapNotes
-        ? "Preview is currently available only for SOAP note exports."
-        : "Preview is currently available only for PDF note exports.";
+    private bool IsProgressSummaryExport => SelectedTab == ExportTab.Reports
+        && State.SelectedReportTypes.Contains("progress-summary", StringComparer.OrdinalIgnoreCase);
+
+    private string UnsupportedReason => IsProgressSummaryExport
+        ? "Progress Summary export is selected, but the backend report export is not implemented yet. PDF generation is disabled instead of falling back to SOAP Notes."
+        : SelectedTab != ExportTab.SoapNotes
+            ? "Preview is currently available only for SOAP note exports."
+            : "Preview is currently available only for PDF note exports.";
+
+    private string UnsupportedReasonId => _unsupportedReasonId;
+
+    private string? UnavailableActionDescriptionId => IsProgressSummaryExport && !SupportsPreview
+        ? UnsupportedReasonId
+        : null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -496,7 +508,8 @@
             State.DateRangeEnd?.ToString("O") ?? string.Empty,
             string.Join(",", State.SelectedPatientIds.OrderBy(id => id, StringComparer.Ordinal)),
             string.Join(",", State.SelectedProviderIds.OrderBy(id => id, StringComparer.Ordinal)),
-            string.Join(",", State.SelectedNoteTypes.OrderBy(value => value, StringComparer.Ordinal)));
+            string.Join(",", State.SelectedNoteTypes.OrderBy(value => value, StringComparer.Ordinal)),
+            string.Join(",", State.SelectedReportTypes.OrderBy(value => value, StringComparer.Ordinal)));
     }
 
     private static IReadOnlyList<Guid> ParseGuids(IEnumerable<string> values)

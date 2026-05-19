@@ -1,10 +1,12 @@
 @page "/reports"
 @attribute [Authorize(Policy = "ClinicalStaff")]
+@inject NavigationManager Navigation
 
 <PageTitle>Reports - PTDoc</PageTitle>
 
-<div class="page-container">
-    <GlobalPageHeader />
-
-    <p>Generate and view clinical and administrative reports.</p>
-</div>
+@code {
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo("/export-center?template=progress-summary", replace: true);
+    }
+}

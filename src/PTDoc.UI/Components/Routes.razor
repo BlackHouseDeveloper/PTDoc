@@ -39,7 +39,13 @@
 
     <NotFound>
         <LayoutView Layout="@typeof(MainLayout)">
-            <p>Sorry, there’s nothing at this address.</p>
+            <section class="not-found-page" aria-labelledby="router-not-found-title">
+                <div class="not-found-page__panel">
+                    <p class="not-found-page__eyebrow">404</p>
+                    <h1 id="router-not-found-title">Page not found</h1>
+                    <p>The page you requested is not available in PTDoc.</p>
+                </div>
+            </section>
         </LayoutView>
     </NotFound>
 </Router>

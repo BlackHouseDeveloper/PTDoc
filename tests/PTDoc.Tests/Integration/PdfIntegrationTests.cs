@@ -370,6 +370,82 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PDF_Export_WorkspaceV2_DoesNotBlendLegacyOrPatientDiagnosisFallbacks()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 10, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Initial Evaluation",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2,
+                NoteType = NoteType.Evaluation,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    NarrativeContext = new SubjectNarrativeContextV2
+                    {
+                        ChiefComplaint = "Right shoulder pain with overhead reaching",
+                        HistoryOfPresentIllness = "Shoulder symptoms began after lifting overhead."
+                    },
+                    FunctionalLimitations =
+                    [
+                        new FunctionalLimitationEntryV2
+                        {
+                            BodyPart = BodyPart.Shoulder,
+                            Description = "Difficulty reaching overhead cabinets"
+                        }
+                    ]
+                },
+                Objective = new WorkspaceObjectiveV2
+                {
+                    PrimaryBodyPart = BodyPart.Shoulder
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Presentation is consistent with shoulder mobility and strength deficits.",
+                    DiagnosisCodes =
+                    [
+                        new DiagnosisCodeV2
+                        {
+                            Code = "M25.511",
+                            Description = "Pain in right shoulder"
+                        }
+                    ],
+                    Goals =
+                    [
+                        new WorkspaceGoalEntryV2
+                        {
+                            Description = "Reach overhead cabinets without shoulder pain",
+                            Timeframe = GoalTimeframe.ShortTerm,
+                            Status = GoalStatus.Active
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    TreatmentFocuses = ["Rotator cuff strengthening", "Scapular control"]
+                }
+            }),
+            PatientFirstName = "Shoulder",
+            PatientLastName = "Prefill",
+            PatientMedicalRecordNumber = "DEV-QA-SHOULDER-001",
+            PatientDiagnosisCodesJson = """[{"icdCode":"M25.551","description":"Pain in right hip","isPrimary":true}]""",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("Right shoulder pain", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pain in right shoulder", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reach overhead cabinets without shoulder pain", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Pain in right hip", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PDF_Export_WorkspaceOutcomeMeasures_PreservesHistoricalVasAndQuickDashLabels()
     {
         var noteData = new NoteExportDto

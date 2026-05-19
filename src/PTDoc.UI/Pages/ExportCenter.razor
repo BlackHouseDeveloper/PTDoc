@@ -6,6 +6,7 @@
 @inject IPatientService PatientService
 @inject IAppointmentService AppointmentService
 @inject INoteService NoteService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Export Center - PTDoc</PageTitle>
 
@@ -94,6 +95,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyQueryState();
         await ReloadAsync();
     }
 
@@ -262,6 +264,42 @@
         loadCts?.Cancel();
         loadCts?.Dispose();
         loadCts = null;
+    }
+
+    private void ApplyQueryState()
+    {
+        if (string.Equals(GetQueryValue("template"), "progress-summary", StringComparison.OrdinalIgnoreCase))
+        {
+            CurrentState.SelectedTab = ExportTab.Reports;
+            CurrentState.SelectedReportTypes.Clear();
+            CurrentState.SelectedReportTypes.Add("progress-summary");
+            CurrentState.SelectedFormat = ExportFormat.PDF;
+        }
+    }
+
+    private string? GetQueryValue(string key)
+    {
+        var query = NavigationManager.ToAbsoluteUri(NavigationManager.Uri).Query;
+
+        if (query.Length <= 1)
+        {
+            return null;
+        }
+
+        foreach (var queryPart in query[1..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var keyValue = queryPart.Split('=', 2);
+            var queryKey = System.Net.WebUtility.UrlDecode(keyValue[0]);
+
+            if (string.Equals(queryKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return keyValue.Length == 2
+                    ? System.Net.WebUtility.UrlDecode(keyValue[1])
+                    : string.Empty;
+            }
+        }
+
+        return null;
     }
 
     private static string BuildPatientLabel(PatientListItemResponse patient)

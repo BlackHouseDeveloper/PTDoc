@@ -49,6 +49,52 @@ public sealed class ExportCenterComponentsTests : TestContext
     }
 
     [Fact]
+    public void FiltersPanel_ReportsIncludesProgressSummary()
+    {
+        var cut = RenderComponent<FiltersPanel>(parameters => parameters
+            .Add(component => component.SelectedTab, ExportTab.Reports)
+            .Add(component => component.State, new ExportDraftState())
+            .Add(component => component.Patients, Array.Empty<ExportCenterSelectableItem>())
+            .Add(component => component.Providers, Array.Empty<ExportCenterSelectableItem>()));
+
+        Assert.Contains("Progress Summary", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExportPreviewPanel_ProgressSummaryDoesNotFallbackToSoapPreview()
+    {
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var state = new ExportDraftState
+        {
+            SelectedTab = ExportTab.Reports,
+            SelectedReportTypes = ["progress-summary"]
+        };
+
+        var cut = RenderComponent<ExportPreviewPanel>(parameters => parameters
+            .Add(component => component.SelectedTab, ExportTab.Reports)
+            .Add(component => component.SelectedFormat, ExportFormat.PDF)
+            .Add(component => component.State, state));
+
+        Assert.Contains("Progress Summary export is selected", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        var unavailableMessage = cut.Find(".record-count-disabled__text");
+        var unavailableMessageId = unavailableMessage.GetAttribute("id");
+        Assert.False(string.IsNullOrWhiteSpace(unavailableMessageId));
+        var actionButtons = cut.FindAll(".export-preview-panel__actions button");
+        Assert.All(actionButtons, button =>
+        {
+            Assert.True(button.HasAttribute("disabled"));
+            Assert.Equal(unavailableMessageId, button.GetAttribute("aria-describedby"));
+        });
+        noteService.Verify(
+            service => service.ResolveExportPreviewTargetAsync(It.IsAny<ExportPreviewTargetRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void ExportPreviewPanel_ShowsInlineError_WhenPreviewGenerationFails()
     {
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
