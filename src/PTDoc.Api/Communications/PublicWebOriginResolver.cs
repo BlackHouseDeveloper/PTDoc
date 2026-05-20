@@ -15,6 +15,8 @@ internal static class PublicWebOriginResolver
         IHostEnvironment environment,
         params string[] configurationKeys)
     {
+        var allowRequestDerivedOrigin = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+
         foreach (var key in configurationKeys)
         {
             var configured = NormalizeOrigin(configuration[key], allowLoopback: true);
@@ -24,10 +26,16 @@ internal static class PublicWebOriginResolver
             }
         }
 
-        if (TryReadRequestOrigin(httpContext, environment, out var requestOrigin) &&
+        if (allowRequestDerivedOrigin &&
+            TryReadRequestOrigin(httpContext, environment, out var requestOrigin) &&
             !IsLoopback(requestOrigin))
         {
             return requestOrigin;
+        }
+
+        if (!allowRequestDerivedOrigin)
+        {
+            return null;
         }
 
         foreach (var key in configurationKeys)

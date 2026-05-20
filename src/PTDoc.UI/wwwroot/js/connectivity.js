@@ -30,10 +30,13 @@ function applyConnectivityState(isOnline) {
 
     document.querySelectorAll("[data-sync-now-button]").forEach((element) => {
         const syncing = element.dataset.syncing === "true";
-        element.disabled = !isOnline || syncing;
-        element.setAttribute("aria-disabled", (!isOnline).toString());
+        const disabled = !isOnline || syncing;
+        element.disabled = disabled;
+        element.setAttribute("aria-disabled", disabled.toString());
         if (!isOnline) {
             element.setAttribute("aria-label", "Sync unavailable while offline");
+        } else if (syncing) {
+            element.setAttribute("aria-label", "Syncing clinical data");
         } else if (!syncing) {
             element.setAttribute("aria-label", "Sync now");
         }

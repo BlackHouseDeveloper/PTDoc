@@ -12,6 +12,10 @@ namespace PTDoc.Tests.UI.Layout;
 [Trait("Category", "CoreCi")]
 public sealed class MainLayoutTests : TestContext
 {
+    private readonly TestThemeService _themeService = new();
+    private readonly TestSyncService _syncService = new();
+    private readonly TestConnectivityService _connectivityService = new();
+
     public MainLayoutTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -25,9 +29,9 @@ public sealed class MainLayoutTests : TestContext
             AuthorizationPolicies.IntakeRead,
             AuthorizationPolicies.NoteRead,
             AuthorizationPolicies.ClinicalStaff);
-        Services.AddSingleton<IThemeService, TestThemeService>();
-        Services.AddSingleton<ISyncService, TestSyncService>();
-        Services.AddSingleton<IConnectivityService, TestConnectivityService>();
+        Services.AddSingleton<IThemeService>(_themeService);
+        Services.AddSingleton<ISyncService>(_syncService);
+        Services.AddSingleton<IConnectivityService>(_connectivityService);
         Services.AddSingleton<IToastService, TestToastService>();
         Services.AddSingleton<INotificationCenterService, TestNotificationCenterService>();
     }
@@ -64,6 +68,20 @@ public sealed class MainLayoutTests : TestContext
         Assert.Single(cut.FindAll("button").Where(button => button.GetAttribute("aria-label") == "Close menu"));
         Assert.NotEmpty(cut.FindAll(".sidebar-backdrop"));
         Assert.Empty(cut.FindAll(".sidebar-backdrop[aria-label]"));
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncingState_MatchesDisabledAccessibilityState()
+    {
+        _syncService.IsSyncing = true;
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        var syncButton = cut.Find("button[data-sync-now-button]");
+        Assert.True(syncButton.HasAttribute("disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.Equal("Syncing clinical data", syncButton.GetAttribute("aria-label"));
     }
 
     private IRenderedComponent<MainLayout> RenderLayout()
@@ -110,7 +128,7 @@ public sealed class MainLayoutTests : TestContext
     private sealed class TestSyncService : ISyncService
     {
         public DateTime? LastSyncTime => DateTime.UtcNow;
-        public bool IsSyncing => false;
+        public bool IsSyncing { get; set; }
         public event Action? OnSyncStateChanged
         {
             add { }
@@ -124,7 +142,7 @@ public sealed class MainLayoutTests : TestContext
 
     private sealed class TestConnectivityService : IConnectivityService
     {
-        public bool IsOnline => true;
+        public bool IsOnline { get; set; } = true;
         public event Action<bool>? OnConnectivityChanged
         {
             add { }

@@ -29,7 +29,7 @@ Local tunnel or device testing must also provide the browser-reachable public We
 PUBLIC_WEB_BASE_URL=https://0bh3gh9l-5145.use2.devtunnels.ms ./run-ptdoc.sh
 ```
 
-When the Web app calls the API through localhost, it also forwards the active browser origin to the API. Explicit non-loopback configuration still wins, and loopback-generated invite links are blocked in the send/copy modal when the clinician is using a public origin.
+When the Web app calls the API through localhost in Development or Testing, it also forwards the active browser origin to the API. Explicit non-loopback configuration still wins, and loopback-generated invite links are blocked in the send/copy modal when the clinician is using a public origin. Outside Development and Testing, the API ignores request-derived public origins and requires explicit non-loopback `Communication:PublicBaseUrl` and `IntakeInvite:PublicWebBaseUrl` configuration for patient-facing links.
 
 `PTDoc.Api` does not trust forwarded headers by default. Hosted deployments behind Azure App Service, Front Door, or another reverse proxy should explicitly enable forwarded headers only with trusted proxy configuration so password-reset rate-limit partitions use the nearest forwarded client IP without accepting spoofed `X-Forwarded-For` values from direct clients:
 
