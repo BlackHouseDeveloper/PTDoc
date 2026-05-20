@@ -19,7 +19,7 @@ public sealed class IntakeDeliveryService : IIntakeDeliveryService
     public Task<IntakeDeliveryBundleResponse> GetDeliveryBundleAsync(
         Guid intakeId,
         CancellationToken cancellationToken = default)
-        => _workflow.GetDeliveryBundleAsync(intakeId, cancellationToken);
+        => _workflow.GetDeliveryBundleAsync(intakeId, context: null, cancellationToken);
 
     public Task<IntakeDeliverySendResult> SendInviteAsync(
         IntakeSendInviteRequest request,

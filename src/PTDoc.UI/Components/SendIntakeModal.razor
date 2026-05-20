@@ -4,6 +4,7 @@
 @inject IIntakeService IntakeService
 @inject IIntakeDeliveryService IntakeDeliveryService
 @inject IToastService ToastService
+@inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 
 @if (IsOpen)
@@ -98,7 +99,7 @@
                         <button type="button" class="btn-cancel" @onclick="GenerateLinkAsync" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId))">
                             Generate Link &amp; QR
                         </button>
-                        <button type="button" class="btn-info" @onclick="CopyLinkAsync" disabled="@(_isBusy || _bundle is null)">
+                        <button type="button" class="btn-info" @onclick="CopyLinkAsync" disabled="@(_isBusy || _bundle is null || HasLoopbackInviteLinkWarning)">
                             Copy Link
                         </button>
                     </div>
@@ -111,6 +112,14 @@
                         <input id="generated-link" class="form-input" value="@_bundle.InviteUrl" readonly />
                         <p class="input-helper-text">Expires @(_bundle.ExpiresAt.ToLocalTime().ToString("f")).</p>
                     </div>
+
+                    @if (HasLoopbackInviteLinkWarning)
+                    {
+                        <div class="success-box" role="alert">
+                            <strong>This link only works on this computer.</strong>
+                            <p>Configure a public PTDoc URL before copying or sending this invite to a patient.</p>
+                        </div>
+                    }
 
                     <div class="success-box" role="note">
                         <div class="success-box-header">
@@ -139,7 +148,7 @@
                     <button type="button" class="btn-cancel" @onclick="Close" disabled="@_isBusy">
                         Cancel
                     </button>
-                    <button type="submit" class="btn-info" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId))">
+                    <button type="submit" class="btn-info" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId) || HasLoopbackInviteLinkWarning)">
                         <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M14 2L7 9M14 2L9.33333 14.6667L7 9M14 2L2 6.66667L7 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
@@ -184,6 +193,7 @@
     private Guid? _intakeId;
     private IntakeDeliveryBundleResponse? _bundle;
     private IntakeDeliveryStatusResponse? _status;
+    private bool HasLoopbackInviteLinkWarning => HasLoopbackInviteLink(_bundle?.InviteUrl) && !IsCurrentOriginLoopback();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -332,6 +342,12 @@
                 return;
             }
 
+            if (HasLoopbackInviteLinkWarning)
+            {
+                _errorMessage = "Configure a public PTDoc URL before copying this invite link.";
+                return;
+            }
+
             await modalModule.InvokeVoidAsync("copyToClipboard", _bundle.InviteUrl);
             ToastService.ShowSuccess("Secure intake link copied.");
         }
@@ -361,6 +377,18 @@
             _isBusy = true;
             var intakeId = await EnsureIntakeIdAsync();
             var sentChannels = new List<string>();
+
+            if (_bundle is null)
+            {
+                _bundle = await IntakeDeliveryService.GetDeliveryBundleAsync(intakeId);
+                await LoadStatusAsync(intakeId);
+            }
+
+            if (HasLoopbackInviteLinkWarning)
+            {
+                _errorMessage = "Configure a public PTDoc URL before sending this invite.";
+                return;
+            }
 
             if (!string.IsNullOrWhiteSpace(Email))
             {
@@ -497,6 +525,12 @@
 
     private static string FormatDateTime(DateTimeOffset? value)
         => value.HasValue ? value.Value.ToLocalTime().ToString("g") : "Not sent";
+
+    private static bool HasLoopbackInviteLink(string? value)
+        => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.IsLoopback;
+
+    private bool IsCurrentOriginLoopback()
+        => Uri.TryCreate(NavigationManager.Uri, UriKind.Absolute, out var uri) && uri.IsLoopback;
 
     public async ValueTask DisposeAsync()
     {

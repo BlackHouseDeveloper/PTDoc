@@ -26,6 +26,7 @@ MAUI_CSPROJ="$ROOT_DIR/src/PTDoc.Maui/PTDoc.csproj"
 API_CSPROJ="$ROOT_DIR/src/PTDoc.Api/PTDoc.Api.csproj"
 API_URL="${API_URL:-http://localhost:5170}"
 API_PORT="${API_URL##*:}"
+PUBLIC_WEB_BASE_URL="${PUBLIC_WEB_BASE_URL:-}"
 API_PID=""
 API_LOG_FILE="/tmp/ptdoc-api.log"
 DEV_SECRETS_SCRIPT="$ROOT_DIR/setup-dev-secrets.sh"
@@ -171,7 +172,15 @@ start_api() {
 
   for attempt in 1 2; do
     echo "${BLUE}🚀 Starting PTDoc API on $API_URL...${RESET}"
-    dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    api_env=()
+    if [[ -n "$PUBLIC_WEB_BASE_URL" ]]; then
+      api_env+=(
+        "IntakeInvite__PublicWebBaseUrl=$PUBLIC_WEB_BASE_URL"
+        "Communication__PublicBaseUrl=$PUBLIC_WEB_BASE_URL"
+      )
+    fi
+
+    env "${api_env[@]}" dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
     API_PID=$!
 
     # Wait for API to be ready (listening + health endpoint)
@@ -217,6 +226,10 @@ start_api() {
 echo ""
 echo "${BOLD}${BLUE}PTDoc Launcher${RESET}"
 echo "${BOLD}═══════════════════════════════════════${RESET}"
+if [[ -n "$PUBLIC_WEB_BASE_URL" ]]; then
+  echo "${BLUE}Public web URL for generated patient links: $PUBLIC_WEB_BASE_URL${RESET}"
+  echo ""
+fi
 echo ""
 echo "Select platform to run:"
 echo ""
@@ -235,7 +248,15 @@ case "$choice" in
     echo ""
     start_api
     echo ""
-    ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}" dotnet run --project "$WEB_CSPROJ"
+    web_env=("ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}")
+    if [[ -n "$PUBLIC_WEB_BASE_URL" ]]; then
+      web_env+=(
+        "IntakeInvite__PublicWebBaseUrl=$PUBLIC_WEB_BASE_URL"
+        "Communication__PublicBaseUrl=$PUBLIC_WEB_BASE_URL"
+      )
+    fi
+
+    env "${web_env[@]}" dotnet run --project "$WEB_CSPROJ"
     ;;
   2)
     echo "${BLUE}Building and launching Android...${RESET}"

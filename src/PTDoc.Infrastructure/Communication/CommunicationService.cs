@@ -132,7 +132,10 @@ public sealed class CommunicationService : ICommunicationService
         _db.PasswordResetTokens.Add(resetToken);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var link = CommunicationText.BuildUrl(_options.PublicBaseUrl, $"/reset-password?token={Uri.EscapeDataString(token)}");
+        var publicBaseUrl = string.IsNullOrWhiteSpace(request.PublicBaseUrlOverride)
+            ? _options.PublicBaseUrl
+            : request.PublicBaseUrlOverride;
+        var link = CommunicationText.BuildUrl(publicBaseUrl, $"/reset-password?token={Uri.EscapeDataString(token)}");
         var values = new Dictionary<string, string>
         {
             ["Link"] = link,

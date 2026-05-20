@@ -49,6 +49,7 @@ public sealed class PasswordResetDeliveryRequest
     public string Recipient { get; init; } = string.Empty;
     public Guid? UserId { get; init; }
     public string? CorrelationId { get; init; }
+    public string? PublicBaseUrlOverride { get; init; }
 }
 
 public sealed class IntakeLinkDeliveryRequest
@@ -153,4 +154,5 @@ public sealed class IntakeCommunicationContext
 {
     public Guid? UserId { get; init; }
     public string? CorrelationId { get; init; }
+    public string? PublicWebBaseUrlOverride { get; init; }
 }

@@ -72,18 +72,21 @@ builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationServi
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
+builder.Services.AddTransient<PublicOriginForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", (serviceProvider, client) =>
 {
     client.BaseAddress = serviceProvider
         .GetRequiredService<ApiClusterAddressResolver>()
         .ResolveApiClusterAddress();
-});
+})
+    .AddHttpMessageHandler<PublicOriginForwardingHandler>();
 builder.Services.AddHttpClient("ServerAPI", (serviceProvider, client) =>
 {
     client.BaseAddress = serviceProvider
         .GetRequiredService<ApiClusterAddressResolver>()
         .ResolveApiClusterAddress();
 })
+    .AddHttpMessageHandler<PublicOriginForwardingHandler>()
     .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
 
 builder.Services.AddScoped(sp =>
