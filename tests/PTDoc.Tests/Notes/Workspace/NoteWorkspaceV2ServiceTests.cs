@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using PTDoc.Application.Compliance;
@@ -30,18 +31,23 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             .Options;
 
         _context = new ApplicationDbContext(options);
+        _service = CreateService(_context);
+    }
 
+    private static NoteWorkspaceV2Service CreateService(ApplicationDbContext context)
+    {
         var registry = new OutcomeMeasureRegistry();
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
         var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper);
         var catalogs = new WorkspaceReferenceCatalogService(registry);
-        var auditService = new AuditService(_context);
-        var rulesEngine = new RulesEngine(_context, auditService);
-        var validationService = new NoteSaveValidationService(_context, rulesEngine, catalogs);
-        var carryForwardService = new CarryForwardService(_context);
-        _service = new NoteWorkspaceV2Service(
-            _context,
+        var auditService = new AuditService(context);
+        var rulesEngine = new RulesEngine(context, auditService);
+        var validationService = new NoteSaveValidationService(context, rulesEngine, catalogs);
+        var carryForwardService = new CarryForwardService(context);
+
+        return new NoteWorkspaceV2Service(
+            context,
             new TestIdentityContextAccessor(),
             new TestTenantContextAccessor(),
             validationService,
@@ -206,6 +212,89 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(["CQ", "GP", "KX"], cptEntry.ModifierOptions.OrderBy(value => value).ToArray());
         Assert.Equal(["GP"], cptEntry.SuggestedModifiers);
         Assert.Equal("docs/clinicrefdata/Commonly used CPT codes and modifiers.md", cptEntry.ModifierSource);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ExistingNoteWithObjectiveMetrics_ReplacesMetricsOnRelationalProvider()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        var service = CreateService(context);
+        var clinicId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Metric",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinicId
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 5, 19),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { NoteType = NoteType.Evaluation }),
+            LastModifiedUtc = DateTime.UtcNow,
+            NoteStatus = NoteStatus.Draft
+        };
+
+        note.ObjectiveMetrics.Add(new ObjectiveMetric
+        {
+            NoteId = note.Id,
+            BodyPart = BodyPart.Hip,
+            MetricType = MetricType.ROM,
+            Value = "92 degrees"
+        });
+
+        context.Clinics.Add(new Clinic
+        {
+            Id = clinicId,
+            Name = "Metric Clinic",
+            Slug = "metric-clinic",
+            IsActive = true
+        });
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
+        var result = await service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    Metrics =
+                    [
+                        new ObjectiveMetricInputV2
+                        {
+                            BodyPart = BodyPart.Hip,
+                            MetricType = MetricType.ROM,
+                            Value = "96 degrees"
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        var metric = Assert.Single(await context.ObjectiveMetrics.Where(item => item.NoteId == note.Id).ToListAsync());
+        Assert.Equal("96 degrees", metric.Value);
     }
 
     [Fact]
@@ -511,6 +600,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         {
             PatientId = patient.Id,
             PainSeverityScore = 6,
+            PainSeverityProvided = true,
             UsesAssistiveDevices = true,
             MedicalHistoryNotes = "History of recurrent knee pain.",
             SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
@@ -524,6 +614,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         {
             PatientId = patient.Id,
             PainSeverityScore = 2,
+            PainSeverityProvided = true,
             RecommendedOutcomeMeasures = ["DASH"]
         };
 
@@ -579,6 +670,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(seed.SourceIntakeId, seed.Payload.SeedContext.SourceIntakeId);
         Assert.True(seed.Payload.SeedContext.FromLockedSubmittedIntake);
         Assert.Equal(6, seed.Payload.Subjective.CurrentPainScore);
+        Assert.True(seed.Payload.Subjective.IsPainScoreDocumented);
         Assert.Contains("Lives alone", seed.Payload.Subjective.LivingSituation);
         Assert.Equal(
             "Single-Story Home: Bedroom and bathroom on main floor",
@@ -610,6 +702,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         {
             PatientId = patient.Id,
             PainSeverityScore = 3,
+            PainSeverityProvided = true,
             RecommendedOutcomeMeasures = ["DASH"],
             SelectedLivingSituations = ["Lives with spouse/partner"]
         };
@@ -644,9 +737,49 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(WorkspaceSeedKind.IntakePrefill, seed.Payload.SeedContext.Kind);
         Assert.False(seed.Payload.SeedContext.FromLockedSubmittedIntake);
         Assert.Equal(3, seed.Payload.Subjective.CurrentPainScore);
+        Assert.True(seed.Payload.Subjective.IsPainScoreDocumented);
         Assert.Contains("Right shoulder", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Shoulder, seed.Payload.Objective.PrimaryBodyPart);
         Assert.Equal(["DASH", "NPRS", "PSFS", "QuickDASH"], seed.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+    }
+
+    [Fact]
+    public async Task GetEvaluationSeedAsync_DoesNotMarkUndocumentedZeroPainAsDocumented()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "No",
+            LastName = "PainScore",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+
+        var draft = new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            PainSeverityScore = 0,
+            PainSeverityProvided = false
+        };
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(CreateIntakeForm(
+            patient.Id,
+            draft,
+            new IntakeStructuredDataDto { SchemaVersion = "2026-03-30" },
+            selectedBodyRegion: string.Empty,
+            submittedAt: new DateTime(2026, 4, 6, 12, 0, 0, DateTimeKind.Utc),
+            isLocked: true,
+            lastModifiedUtc: new DateTime(2026, 4, 6, 12, 0, 0, DateTimeKind.Utc)));
+
+        await _context.SaveChangesAsync();
+
+        var seed = await _service.GetEvaluationSeedAsync(patient.Id);
+
+        Assert.NotNull(seed);
+        Assert.Equal(0, seed!.Payload.Subjective.CurrentPainScore);
+        Assert.False(seed.Payload.Subjective.IsPainScoreDocumented);
+        Assert.DoesNotContain("Pain", seed.Payload.Subjective.Problems);
     }
 
     [Fact]
@@ -666,6 +799,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         {
             PatientId = patient.Id,
             PainSeverityScore = 5,
+            PainSeverityProvided = true,
             RecommendedOutcomeMeasures = ["LEFS"]
         };
 

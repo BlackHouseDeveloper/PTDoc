@@ -64,6 +64,7 @@ public sealed class NoteWorkspacePayloadMapper
                 CurrentPainScore = payload.Subjective.CurrentPainScore,
                 BestPainScore = payload.Subjective.BestPainScore,
                 WorstPainScore = payload.Subjective.WorstPainScore,
+                IsPainScoreDocumented = payload.Subjective.IsPainScoreDocumented,
                 PainFrequency = payload.Subjective.PainFrequency,
                 OnsetDate = payload.Subjective.OnsetDate,
                 OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo,
@@ -272,6 +273,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Subjective.CurrentPainScore = payload.Subjective.CurrentPainScore;
         preservedPayload.Subjective.BestPainScore = payload.Subjective.BestPainScore;
         preservedPayload.Subjective.WorstPainScore = payload.Subjective.WorstPainScore;
+        preservedPayload.Subjective.IsPainScoreDocumented = payload.Subjective.IsPainScoreDocumented;
         preservedPayload.Subjective.PainFrequency = payload.Subjective.PainFrequency;
         preservedPayload.Subjective.OnsetDate = payload.Subjective.OnsetDate;
         preservedPayload.Subjective.OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo;
