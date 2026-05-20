@@ -12,6 +12,7 @@
 @inject INoteService NoteService
 @inject IToastService ToastService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<NotesPage> Logger
 @implements IDisposable
 
 <PageTitle>Clinical Notes - PTDoc</PageTitle>
@@ -127,7 +128,8 @@
         {
             notes.Clear();
             _loadErrorMessage = "Notes could not be retrieved. Retry when the connection is available.";
-            ToastService.ShowError($"Failed to load notes. {ex.Message}");
+            Logger.LogError(ex, "Failed to load clinical notes.");
+            ToastService.ShowError("Failed to load notes. Retry when the connection is available.");
         }
         finally
         {

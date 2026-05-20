@@ -60,45 +60,64 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
 
         if (db.Database.IsRelational())
         {
-            tokenCount = await db.PasswordResetTokens
-                .Where(token =>
-                    token.ExpiresAtUtc < resetCutoff &&
-                    (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
-                    (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
-                .ExecuteDeleteAsync(cancellationToken);
+            tokenCount = await RemoveExpiredResetTokensAsync(db, resetCutoff, cancellationToken);
+            challengeCount = await RemoveExpiredOtpChallengesAsync(db, now, cancellationToken);
+            if (tokenCount > 0 || challengeCount > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             logCount = await db.CommunicationDeliveryLogs
                 .Where(log => log.CreatedAtUnixSeconds < logCutoff)
-                .ExecuteDeleteAsync(cancellationToken);
-
-            challengeCount = await db.IntakeOtpChallenges
-                .Where(challenge => challenge.ExpiresAtUtc < now)
                 .ExecuteDeleteAsync(cancellationToken);
 
             LogCleanupCounts(tokenCount, logCount, challengeCount);
             return;
         }
 
-        var expiredTokens = await db.PasswordResetTokens
-            .Where(token =>
-                token.ExpiresAtUtc < resetCutoff &&
-                (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
-                (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
-            .ToListAsync(cancellationToken);
-        db.PasswordResetTokens.RemoveRange(expiredTokens);
+        tokenCount = await RemoveExpiredResetTokensAsync(db, resetCutoff, cancellationToken);
 
         var expiredLogs = await db.CommunicationDeliveryLogs
             .Where(log => log.CreatedAtUnixSeconds < logCutoff)
             .ToListAsync(cancellationToken);
         db.CommunicationDeliveryLogs.RemoveRange(expiredLogs);
 
-        var expiredChallenges = await db.IntakeOtpChallenges
-            .Where(challenge => challenge.ExpiresAtUtc < now)
-            .ToListAsync(cancellationToken);
-        db.IntakeOtpChallenges.RemoveRange(expiredChallenges);
+        challengeCount = await RemoveExpiredOtpChallengesAsync(db, now, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-        LogCleanupCounts(expiredTokens.Count, expiredLogs.Count, expiredChallenges.Count);
+        LogCleanupCounts(tokenCount, expiredLogs.Count, challengeCount);
+    }
+
+    private static async Task<int> RemoveExpiredResetTokensAsync(
+        ApplicationDbContext db,
+        DateTimeOffset resetCutoff,
+        CancellationToken cancellationToken)
+    {
+        var expiredCandidates = await db.PasswordResetTokens.ToListAsync(cancellationToken);
+
+        var expiredTokens = expiredCandidates
+            .Where(token =>
+                token.ExpiresAtUtc < resetCutoff &&
+                (token.UsedAtUtc is null || token.UsedAtUtc < resetCutoff) &&
+                (token.RevokedAtUtc is null || token.RevokedAtUtc < resetCutoff))
+            .ToList();
+
+        db.PasswordResetTokens.RemoveRange(expiredTokens);
+        return expiredTokens.Count;
+    }
+
+    private static async Task<int> RemoveExpiredOtpChallengesAsync(
+        ApplicationDbContext db,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var challengeCandidates = await db.IntakeOtpChallenges.ToListAsync(cancellationToken);
+        var expiredChallenges = challengeCandidates
+            .Where(challenge => challenge.ExpiresAtUtc < now)
+            .ToList();
+
+        db.IntakeOtpChallenges.RemoveRange(expiredChallenges);
+        return expiredChallenges.Count;
     }
 
     private void LogCleanupCounts(int tokenCount, int logCount, int challengeCount)

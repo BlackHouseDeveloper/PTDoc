@@ -27,7 +27,11 @@ public sealed class PublicOriginForwardingHandler(
         var request = httpContext?.Request;
         if (request?.Host.HasValue == true)
         {
-            return NormalizeOrigin($"{request.Scheme}://{request.Host.Value}");
+            var requestOrigin = NormalizeOrigin($"{request.Scheme}://{request.Host.Value}");
+            if (!string.IsNullOrWhiteSpace(requestOrigin))
+            {
+                return requestOrigin;
+            }
         }
 
         try
