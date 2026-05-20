@@ -221,6 +221,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         cut.Find("input[type='range']").Input("7");
 
         Assert.Equal(7, state.PainSeverityScore);
+        Assert.True(state.PainSeverityProvided);
         Assert.DoesNotContain("Auto-Selected Outcome Measures", cut.Markup, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -230,6 +231,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         var state = new IntakeWizardState
         {
             PainSeverityScore = 6,
+            PainSeverityProvided = true,
             RecommendedOutcomeMeasures = ["LEFS", "PSFS", "NPRS"]
         };
 
@@ -268,5 +270,49 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.Contains("All required consents complete.", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Hypertension (High Blood Pressure)", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Authorized", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReviewStep_ReadOnlyReview_HidesMutationControlsAndCopy()
+    {
+        var state = new IntakeWizardState
+        {
+            IsLocked = true,
+            IsSubmitted = true,
+            TermsOfServiceAccepted = true,
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true,
+                CommunicationCallConsent = true,
+                CreditCardAuthorizationAccepted = true,
+                AuthorizedContacts =
+                [
+                    new AuthorizedContact
+                    {
+                        Name = "Case Manager",
+                        PhoneNumber = "555-0100",
+                        Relationship = "Care coordinator"
+                    }
+                ]
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.Contains("This intake has been submitted and locked. Review-only access is available.", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Intake Submitted", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Back to Previous Step", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("return to earlier steps", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("update the agreements", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("By clicking submit", cut.Markup, StringComparison.Ordinal);
+
+        var submitButton = cut.Find("[data-testid='submit-button']");
+        Assert.Equal("Intake Submitted", submitButton.TextContent.Trim());
+        Assert.True(submitButton.HasAttribute("disabled"));
+        Assert.All(cut.FindAll("button.review-step__edit-button"), button => Assert.True(button.HasAttribute("disabled")));
+        Assert.All(cut.FindAll("input"), input => Assert.True(input.HasAttribute("disabled")));
     }
 }

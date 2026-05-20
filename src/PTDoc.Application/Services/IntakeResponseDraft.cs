@@ -59,6 +59,9 @@ public sealed class IntakeResponseDraft
     public HashSet<string> SelectedHouseLayoutOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> RecommendedOutcomeMeasures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public bool PainSeverityProvided { get; set; }
     public bool IsSubmitted { get; set; }
     public bool IsLocked { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public DateTime? LastModifiedUtc { get; set; }
 }

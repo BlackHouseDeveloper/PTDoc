@@ -56,6 +56,7 @@ public sealed class IntakeWizardState
 
     public string? SelectedBodyRegion { get; set; }
     public int? PainSeverityScore { get; set; }
+    public bool PainSeverityProvided { get; set; }
     public HashSet<BodyRegion> SelectedBodyRegions { get; set; } = new();
     public Dictionary<string, object> PainDetailDrafts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public IntakeStructuredDataDto? StructuredData { get; set; }

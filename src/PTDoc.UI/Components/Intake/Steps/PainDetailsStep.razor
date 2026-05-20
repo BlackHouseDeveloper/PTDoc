@@ -252,7 +252,15 @@
 
     protected override void OnParametersSet()
     {
-        State.PainSeverityScore ??= ExtractLegacyPainSeverity();
+        if (!State.PainSeverityScore.HasValue)
+        {
+            var legacyPainSeverity = ExtractLegacyPainSeverity();
+            if (legacyPainSeverity.HasValue)
+            {
+                State.PainSeverityScore = legacyPainSeverity;
+                State.PainSeverityProvided = true;
+            }
+        }
 
         if (StructuredData.BodyPartSelections.Count > 0 && State.RecommendedOutcomeMeasures.Count == 0)
         {
@@ -293,7 +301,9 @@
 
     private bool CanContinue => StructuredData.BodyPartSelections.Count > 0;
     private int PainSeveritySliderValue => Math.Clamp(State.PainSeverityScore ?? 0, 0, 10);
-    private string PainSeverityDisplay => State.PainSeverityScore.HasValue ? State.PainSeverityScore.Value.ToString() : "0";
+    private string PainSeverityDisplay => State.PainSeverityProvided && State.PainSeverityScore.HasValue
+        ? State.PainSeverityScore.Value.ToString()
+        : "Not provided";
     private string PainSeverityStyle => $"--pain-severity-progress: {PainSeveritySliderValue * 10}%;";
 
     private IntakeBodyPartItemDto? GetBodyPart(string bodyPartId) => IntakeReferenceData.GetBodyPart(bodyPartId);
@@ -310,7 +320,10 @@
         {
             StructuredData.BodyPartSelections.Add(new IntakeBodyPartSelectionDto
             {
-                BodyPartId = item.Id
+                BodyPartId = item.Id,
+                Lateralities = item.SupportsLaterality
+                    ? InferSelectedLateralities().ToList()
+                    : new List<string>()
             });
         }
         else
@@ -380,6 +393,7 @@
         State.PainSeverityScore = int.TryParse(args.Value?.ToString(), out var value)
             ? Math.Clamp(value, 0, 10)
             : null;
+        State.PainSeverityProvided = State.PainSeverityScore.HasValue;
 
         await NotifyStateChangedAsync();
     }
@@ -459,6 +473,22 @@
         }
 
         return false;
+    }
+
+    private IReadOnlyList<string> InferSelectedLateralities()
+    {
+        var values = new List<string>();
+        if (State.SelectedBodyRegions.Any(region => region.ToString().Contains("Left", StringComparison.OrdinalIgnoreCase)))
+        {
+            values.Add(IntakeLateralityValues.Left);
+        }
+
+        if (State.SelectedBodyRegions.Any(region => region.ToString().Contains("Right", StringComparison.OrdinalIgnoreCase)))
+        {
+            values.Add(IntakeLateralityValues.Right);
+        }
+
+        return values;
     }
 
     private static string HumanizeRegion(BodyRegion region)

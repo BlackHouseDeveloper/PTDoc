@@ -20,7 +20,7 @@
         <div class="review-step__card-header">
             <div>
                 <h2>Review Your Information</h2>
-                <p>Review each section before you submit. You can still return to earlier steps or update the agreements below.</p>
+                <p>@ReviewIntroCopy</p>
             </div>
         </div>
 
@@ -33,7 +33,7 @@
 
     @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
-        <section class="review-step__message @(State.IsLocked || State.IsSubmitted ? "review-step__message--success" : "review-step__message--warning")" role="status" aria-live="polite">
+        <section class="review-step__message @(IsReadOnlyReview ? "review-step__message--success" : "review-step__message--warning")" role="status" aria-live="polite">
             @ValidationMessage
         </section>
     }
@@ -44,7 +44,7 @@
                 <h2>Personal Information</h2>
                 <p>Review your submitted demographic and emergency contact information.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@State.IsLocked">Edit</button>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__field-grid">
@@ -95,7 +95,7 @@
                 <h2>Medical History</h2>
                 <p>These answers summarize the health history captured in the Medical History / Pain Assessment step.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@State.IsLocked">Edit</button>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__row-list">
@@ -197,7 +197,7 @@
                 <h2>Medical History / Pain Assessment</h2>
                 <p>Review the mapped pain areas, severity, and structured pain detail captured in the combined intake step.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@State.IsLocked">Edit</button>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__stack">
@@ -285,29 +285,29 @@
         <div class="review-step__card-header">
             <div>
                 <h2>Legal Agreements</h2>
-                <p>These agreements are required before the intake can be submitted.</p>
+                <p>@LegalAgreementsCopy</p>
             </div>
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.TermsOfServiceAccepted" @onchange="OnTermsChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@State.TermsOfServiceAccepted" @onchange="OnTermsChanged" disabled="@IsReadOnlyReview" />
                 <span>I agree to the Terms of Service and Privacy Policy.</span>
             </label>
 
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@IsReadOnlyReview" />
                 <span>I acknowledge receipt of the HIPAA Notice of Privacy Practices.</span>
             </label>
 
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@IsReadOnlyReview" />
                 <span>I have reviewed my answers and confirm they are accurate.</span>
             </label>
         </div>
 
         <div class="review-step__info-box">
-            Submission locks this response for clinician review. Required agreements must stay active through final submission.
+            @LegalAgreementsInfoText
         </div>
     </section>
 
@@ -315,28 +315,28 @@
         <div class="review-step__card-header">
             <div>
                 <h2>Consent Revocation</h2>
-                <p>You may revoke previously granted consents. Revoking required consents will prevent final submission.</p>
+                <p>@ConsentRevocationCopy</p>
             </div>
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("hipaaAcknowledged"))" @onchange="OnRevokeHipaaChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("hipaaAcknowledged"))" @onchange="OnRevokeHipaaChanged" disabled="@IsReadOnlyReview" />
                 <span>HIPAA Privacy Notice</span>
             </label>
 
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("treatmentConsentAccepted"))" @onchange="OnRevokeTreatmentChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("treatmentConsentAccepted"))" @onchange="OnRevokeTreatmentChanged" disabled="@IsReadOnlyReview" />
                 <span>Treatment Consent</span>
             </label>
 
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@MarketingCommunicationsRevoked" @onchange="OnRevokeMarketingChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@MarketingCommunicationsRevoked" @onchange="OnRevokeMarketingChanged" disabled="@IsReadOnlyReview" />
                 <span>Marketing Communications</span>
             </label>
 
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("phiReleaseAuthorized"))" @onchange="OnRevokePhiChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("phiReleaseAuthorized"))" @onchange="OnRevokePhiChanged" disabled="@IsReadOnlyReview" />
                 <span>PHI Release</span>
             </label>
         </div>
@@ -351,16 +351,16 @@
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationCallConsent == true)" @onchange="OnCallConsentChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationCallConsent == true)" @onchange="OnCallConsentChanged" disabled="@IsReadOnlyReview" />
                 <span>Allow phone call reminders and follow-up communication.</span>
             </label>
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationTextConsent == true)" @onchange="OnTextConsentChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationTextConsent == true)" @onchange="OnTextConsentChanged" disabled="@IsReadOnlyReview" />
                 <span>Allow text / SMS reminders and follow-up communication.</span>
             </label>
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationEmailConsent == true)" @onchange="OnEmailConsentChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationEmailConsent == true)" @onchange="OnEmailConsentChanged" disabled="@IsReadOnlyReview" />
                 <span>Allow email reminders and follow-up communication.</span>
             </label>
         </div>
@@ -401,12 +401,12 @@
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.DryNeedlingConsentAccepted == true)" @onchange="OnDryNeedlingChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.DryNeedlingConsentAccepted == true)" @onchange="OnDryNeedlingChanged" disabled="@IsReadOnlyReview" />
                 <span>I authorize dry needling treatment when clinically indicated.</span>
             </label>
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PelvicFloorConsentAccepted == true)" @onchange="OnPelvicFloorChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PelvicFloorConsentAccepted == true)" @onchange="OnPelvicFloorChanged" disabled="@IsReadOnlyReview" />
                 <span>I authorize pelvic floor therapy treatment when clinically indicated.</span>
             </label>
         </div>
@@ -442,8 +442,8 @@
             <button type="button" class="review-step__text-button" @onclick="OpenPhiDetails">View Details</button>
         </div>
 
-        <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PhiReleaseAuthorized == true)" @onchange="OnPhiAuthorizedChanged" disabled="@State.IsLocked" />
+        <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PhiReleaseAuthorized == true)" @onchange="OnPhiAuthorizedChanged" disabled="@IsReadOnlyReview" />
             <span>I authorize release of protected health information to approved recipients.</span>
         </label>
 
@@ -464,8 +464,8 @@
             </div>
         </div>
 
-        <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CreditCardAuthorizationAccepted == true)" @onchange="OnBillingConsentChanged" disabled="@State.IsLocked" />
+        <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CreditCardAuthorizationAccepted == true)" @onchange="OnBillingConsentChanged" disabled="@IsReadOnlyReview" />
             <span>I authorize the billing and credit-card policy associated with this intake.</span>
         </label>
 
@@ -474,7 +474,7 @@
                 <span>Credit Card Authorization</span>
                 <p>@BillingTimestampText</p>
             </div>
-            <StatusBadge Text="@(BillingConsentAuthorized ? "Authorized" : "Pending")" Variant="@(BillingConsentAuthorized ? BadgeVariant.Success : BadgeVariant.Warning)" />
+            <StatusBadge Text="@BillingConsentStatusText" Variant="@BillingConsentStatusVariant" />
         </div>
     </section>
 
@@ -487,8 +487,8 @@
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(State.IsLocked ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.MediaConsentAccepted == true)" @onchange="OnMediaConsentChanged" disabled="@State.IsLocked" />
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.MediaConsentAccepted == true)" @onchange="OnMediaConsentChanged" disabled="@IsReadOnlyReview" />
                 <span>I authorize media capture related to treatment, education, or documentation.</span>
             </label>
         </div>
@@ -504,22 +504,25 @@
                     <div class="review-step__field">
                         <span class="review-step__field-label">Contact @(contactIndex + 1) Name</span>
                         <input class="form-control"
+                               aria-label="Contact @(contactIndex + 1) name"
                                value="@contact.Name"
-                               disabled="@State.IsLocked"
+                               disabled="@IsReadOnlyReview"
                                @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.Name, args)" />
                     </div>
                     <div class="review-step__field">
                         <span class="review-step__field-label">Phone Number</span>
                         <input class="form-control"
+                               aria-label="Contact @(contactIndex + 1) phone number"
                                value="@contact.PhoneNumber"
-                               disabled="@State.IsLocked"
+                               disabled="@IsReadOnlyReview"
                                @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.PhoneNumber, args)" />
                     </div>
                     <div class="review-step__field">
                         <span class="review-step__field-label">Relationship</span>
                         <input class="form-control"
+                               aria-label="Contact @(contactIndex + 1) relationship"
                                value="@contact.Relationship"
-                               disabled="@State.IsLocked"
+                               disabled="@IsReadOnlyReview"
                                @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.Relationship, args)" />
                     </div>
                 </div>
@@ -553,19 +556,25 @@
             <StatusBadge Text="Answers Confirmed" Variant="@(FinalAttestationAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
         </div>
 
-        <div class="@(SubmitReady ? "review-step__success-box" : "review-step__warning-box")">
-            @(SubmitReady ? "All required consents complete." : "Complete the required agreements before submitting this intake.")
+        <div class="@(CompletionReady ? "review-step__success-box" : "review-step__warning-box")">
+            @CompletionStatusMessage
         </div>
     </section>
 
     <div class="review-step__actions">
-        <button type="button" class="btn review-step__secondary-action" @onclick="OnBackClicked">Back to Previous Step</button>
-        <button type="button" class="btn btn-primary review-step__primary-action" @onclick="OnSubmitClicked" disabled="@(!SubmitReady || State.IsSubmitting || State.IsLocked)" data-testid="submit-button">@SubmitButtonText</button>
+        @if (!IsReadOnlyReview)
+        {
+            <button type="button" class="btn review-step__secondary-action" @onclick="OnBackClicked">Back to Previous Step</button>
+        }
+        <button type="button" class="btn btn-primary review-step__primary-action" @onclick="OnSubmitClicked" disabled="@(!SubmitReady || State.IsSubmitting || IsReadOnlyReview)" data-testid="submit-button">@SubmitButtonText</button>
     </div>
 
-    <section class="review-step__footer-note">
-        By clicking submit, your answers will be saved as a signed intake review and the response will become read-only.
-    </section>
+    @if (!IsReadOnlyReview)
+    {
+        <section class="review-step__footer-note">
+            By clicking submit, your answers will be saved as a signed intake review and the response will become read-only.
+        </section>
+    }
 </section>
 
 @if (_isPhiDetailsOpen)
@@ -604,7 +613,9 @@
     private bool IsAgeVerified => AgeYears.HasValue && AgeYears.Value >= 18;
     private bool HipaaConsentComplete => ConsentPacket.HipaaAcknowledged == true && !IsConsentRevoked("hipaaAcknowledged");
     private bool TreatmentConsentComplete => ConsentPacket.TreatmentConsentAccepted == true && !IsConsentRevoked("treatmentConsentAccepted");
-    private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !State.IsLocked;
+    private bool IsReadOnlyReview => State.IsLocked || State.IsSubmitted;
+    private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !IsReadOnlyReview;
+    private bool CompletionReady => IsReadOnlyReview || SubmitReady;
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
     private bool PhoneCallsAllowed => IntakeConsentJson.IsCallConsentActive(ConsentPacket);
     private bool TextMessagesAllowed => IntakeConsentJson.IsTextConsentActive(ConsentPacket);
@@ -617,13 +628,34 @@
         IsConsentRevoked("communicationCallConsent")
         || IsConsentRevoked("communicationTextConsent")
         || IsConsentRevoked("communicationEmailConsent");
-    private int? PainLevel => State.PainSeverityScore ?? GetPainLevel(State.PainDetailDrafts);
+    private int? PainLevel => State.PainSeverityProvided ? State.PainSeverityScore : null;
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
-    private string SubmitButtonText => State.IsLocked ? "Intake Submitted" : State.IsSubmitting ? "Submitting..." : "Submit Intake Form";
+    private string ReviewIntroCopy => IsReadOnlyReview
+        ? "This intake has been submitted and locked. Review-only access is available."
+        : "Review each section before you submit. You can still return to earlier steps or update the agreements below.";
+    private string LegalAgreementsCopy => IsReadOnlyReview
+        ? "Submitted agreements are shown exactly as captured."
+        : "These agreements are required before the intake can be submitted.";
+    private string LegalAgreementsInfoText => IsReadOnlyReview
+        ? "This response is locked for clinician review. Agreement values are read-only."
+        : "Submission locks this response for clinician review. Required agreements must stay active through final submission.";
+    private string ConsentRevocationCopy => IsReadOnlyReview
+        ? "Revocation selections are shown exactly as submitted."
+        : "You may revoke previously granted consents. Revoking required consents will prevent final submission.";
+    private string CompletionStatusMessage => CompletionReady
+        ? (IsReadOnlyReview ? "Submitted intake is complete and locked for review." : "All required consents complete.")
+        : "Complete the required agreements before submitting this intake.";
+    private string SubmitButtonText => IsReadOnlyReview ? "Intake Submitted" : State.IsSubmitting ? "Submitting..." : "Submit Intake Form";
     private string BillingTimestampText => State.IsSubmitted
         ? "Billing consent captured when the intake was submitted and locked."
         : "Billing consent timestamp will be recorded when this intake is submitted.";
+    private string BillingConsentStatusText => IsReadOnlyReview
+        ? "Captured"
+        : BillingConsentAuthorized ? "Authorized" : "Pending";
+    private BadgeVariant BillingConsentStatusVariant => IsReadOnlyReview || BillingConsentAuthorized
+        ? BadgeVariant.Success
+        : BadgeVariant.Warning;
     private IReadOnlyList<string> SelectedRegionLabels => GetSelectedRegionLabels(State);
     private string PrimaryRegionLabel => GetPrimaryRegionLabel(State);
     private IReadOnlyList<string> SelectedMedicationLabels => GetSelectedMedicationLabels();
@@ -642,11 +674,11 @@
     private IReadOnlyList<string> SelectedPainDescriptorLabels => GetSelectedPainDescriptorLabels();
     private IReadOnlyList<string> SelectedBodyPartLabels => GetSelectedBodyPartLabels();
 
-    private Task OnBackClicked() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
+    private Task OnBackClicked() => !IsReadOnlyReview && OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
 
-    private Task OnSubmitClicked() => OnSubmit.HasDelegate ? OnSubmit.InvokeAsync() : Task.CompletedTask;
+    private Task OnSubmitClicked() => !IsReadOnlyReview && SubmitReady && OnSubmit.HasDelegate ? OnSubmit.InvokeAsync() : Task.CompletedTask;
 
-    private Task OnEditRequestedAsync(IntakeStep step) => OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(step) : Task.CompletedTask;
+    private Task OnEditRequestedAsync(IntakeStep step) => !IsReadOnlyReview && OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(step) : Task.CompletedTask;
 
     private Task OnTermsChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.TermsOfServiceAccepted = ToBool(args));
 
@@ -774,7 +806,7 @@
 
     private Task UpdateStateAsync(Action update)
     {
-        if (State.IsLocked)
+        if (IsReadOnlyReview)
         {
             return Task.CompletedTask;
         }

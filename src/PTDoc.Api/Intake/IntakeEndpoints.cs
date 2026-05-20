@@ -53,6 +53,11 @@ public static class IntakeEndpoints
             .WithSummary("Get most recent intake draft for a patient")
             .RequireAuthorization(AuthorizationPolicies.IntakeRead);
 
+        group.MapGet("/patient/{patientId:guid}/latest", GetLatestByPatient)
+            .WithName("GetPatientLatestIntake")
+            .WithSummary("Get latest intake record for a patient, including submitted or locked records")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
         group.MapPut("/{id:guid}", UpdateIntake)
             .WithName("UpdateIntake")
             .WithSummary("Update an existing intake draft")
@@ -220,6 +225,26 @@ public static class IntakeEndpoints
 
         if (intake is null)
             return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
+
+        return Results.Ok(ToResponse(intake));
+    }
+
+    // GET /api/v1/intake/patient/{patientId}/latest
+    private static async Task<IResult> GetLatestByPatient(
+        Guid patientId,
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .Where(f => f.PatientId == patientId)
+            .OrderByDescending(f => f.SubmittedAt ?? f.LastModifiedUtc)
+            .ThenByDescending(f => f.LastModifiedUtc)
+            .ThenByDescending(f => f.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (intake is null)
+            return Results.NotFound(new { error = $"No intake record found for patient {patientId}." });
 
         return Results.Ok(ToResponse(intake));
     }

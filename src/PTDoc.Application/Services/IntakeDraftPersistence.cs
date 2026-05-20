@@ -147,6 +147,23 @@ public static class IntakeDraftPersistence
         draft.AccuracyConfirmed = draft.ConsentPacket.FinalAttestationAccepted ?? draft.AccuracyConfirmed;
     }
 
+    public static void HydratePainSeverityDocumentationFlag(IntakeResponseDraft draft, string? sourceJson)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        if (draft.PainSeverityProvided || !draft.PainSeverityScore.HasValue)
+        {
+            return;
+        }
+
+        if (HasJsonProperty(sourceJson, "painSeverityProvided"))
+        {
+            return;
+        }
+
+        draft.PainSeverityProvided = true;
+    }
+
     public static void NormalizeCanonicalSupplementalSelections(IntakeResponseDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -169,6 +186,27 @@ public static class IntakeDraftPersistence
         if ((draft.StructuredData?.HouseLayoutOptionIds?.Count ?? 0) > 0)
         {
             draft.SelectedHouseLayoutOptions.Clear();
+        }
+    }
+
+    private static bool HasJsonProperty(string? json, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement
+                    .EnumerateObject()
+                    .Any(property => string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

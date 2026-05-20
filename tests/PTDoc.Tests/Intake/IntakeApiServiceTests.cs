@@ -90,6 +90,41 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task EnsureDraftAsync_SendsEmptyConsentPayloadForBlankSeed()
+    {
+        var patientId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/intake/drafts/{patientId}", request.RequestUri!.AbsolutePath);
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        await service.EnsureDraftAsync(patientId, new IntakeResponseDraft { PatientId = patientId });
+
+        Assert.NotNull(requestBody);
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.Equal("{}", document.RootElement.GetProperty("consents").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("consentPacket").ValueKind);
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_IncludesCanonicalConsentPacketInRequest()
     {
         var patientId = Guid.NewGuid();
@@ -371,6 +406,83 @@ public sealed class IntakeApiServiceTests
         Assert.NotNull(draft);
         Assert.Equal("2026-03-30", draft!.StructuredData?.SchemaVersion);
         Assert.Equal("zestril-lisinopril", Assert.Single(draft.StructuredData!.MedicationIds));
+    }
+
+    [Fact]
+    public async Task GetLatestByPatientIdAsync_HydratesLockedSubmittedResponse()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal($"/api/v1/intake/patient/{patientId}/latest", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = """{"fullName":"Latest Locked","painSeverityProvided":true,"painSeverityScore":0}""",
+                Locked = true,
+                SubmittedAt = submittedAt,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = submittedAt
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        var draft = await service.GetLatestByPatientIdAsync(patientId);
+
+        Assert.NotNull(draft);
+        Assert.Equal(intakeId, draft!.IntakeId);
+        Assert.True(draft.IsLocked);
+        Assert.True(draft.IsSubmitted);
+        Assert.True(draft.PainSeverityProvided);
+        Assert.Equal(0, draft.PainSeverityScore);
+        Assert.Equal(submittedAt, draft.SubmittedAt);
+    }
+
+    [Fact]
+    public async Task GetLatestByPatientIdAsync_InStandalonePatientMode_UsesAccessEndpointAndSessionHeader()
+    {
+        var patientId = Guid.NewGuid();
+        RequestSnapshot? capturedRequest = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            capturedRequest = await RequestSnapshot.CreateAsync(request, cancellationToken);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                Locked = true,
+                SubmittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+                TemplateVersion = "1.0",
+                LastModifiedUtc = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc)
+            }, JsonOptions));
+        });
+
+        var service = CreateService(
+            handler,
+            new IntakeSessionToken("session-token", DateTimeOffset.UtcNow.AddMinutes(30)),
+            $"https://localhost/intake/{patientId:D}?mode=patient");
+
+        var draft = await service.GetLatestByPatientIdAsync(patientId);
+
+        Assert.NotNull(draft);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(HttpMethod.Get, capturedRequest!.Method);
+        Assert.Equal($"/api/v1/intake/access/patient/{patientId}/latest", capturedRequest.RequestUri!.AbsolutePath);
+        Assert.Equal("session-token", capturedRequest.Headers[IntakeAccessHeaders.AccessToken].Single());
     }
 
     [Fact]
