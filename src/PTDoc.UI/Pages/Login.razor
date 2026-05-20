@@ -66,9 +66,8 @@
 
     @if (authMode == AuthMode.Login)
     {
-      <EditForm FormName="LoginForm" Model="loginModel" OnValidSubmit="HandleLogin" class="auth-form" aria-busy="@isLoading">
-        <DataAnnotationsValidator />
-
+      <form method="post" action="/auth/login" class="auth-form" aria-busy="@isLoading" data-testid="login-form">
+        <input type="hidden" name="returnUrl" value="@LoginReturnUrl" />
         @if (supportsExternalIdentityLogin)
         {
           <div class="auth-info-alert">
@@ -82,27 +81,30 @@
 
         <div class="auth-field">
           <label for="username">Username or Email</label>
-          <InputText id="username"
-                     class="auth-input"
-                     placeholder="Enter your username or email"
-                     autocomplete="username"
-                     autocapitalize="none"
-                     autocorrect="off"
-                     spellcheck="false"
-                     @bind-Value="loginModel.Username" />
+          <input id="username"
+                 name="username"
+                 type="text"
+                 class="auth-input"
+                 placeholder="Enter your username or email"
+                 autocomplete="username"
+                 autocapitalize="none"
+                 autocorrect="off"
+                 spellcheck="false"
+                 required />
         </div>
 
         <div class="auth-field">
           <label for="pin">4-Digit PIN</label>
-          <InputText id="pin"
-                     type="password"
-                     class="auth-input"
-                     placeholder="Enter 4-digit PIN"
-                     autocomplete="current-password"
-                     maxlength="4"
-                     aria-describedby="pin-error"
-                     @bind-Value="loginModel.Pin" />
-          <ValidationMessage id="pin-error" For="@(() => loginModel.Pin)" class="auth-validation" />
+          <input id="pin"
+                 name="pin"
+                 type="password"
+                 class="auth-input"
+                 placeholder="Enter 4-digit PIN"
+                 autocomplete="current-password"
+                 inputmode="numeric"
+                 pattern="[0-9]{4}"
+                 maxlength="4"
+                 required />
         </div>
 
         <div class="auth-actions">
@@ -133,7 +135,7 @@
             }
           </button>
         }
-      </EditForm>
+      </form>
     }
     else if (authMode == AuthMode.ForgotPassword)
     {
