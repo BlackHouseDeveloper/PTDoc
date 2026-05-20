@@ -60,12 +60,11 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
 
         if (db.Database.IsRelational())
         {
-            tokenCount = await db.PasswordResetTokens
-                .Where(token =>
-                    token.ExpiresAtUtc < resetCutoff &&
-                    (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
-                    (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
-                .ExecuteDeleteAsync(cancellationToken);
+            tokenCount = await RemoveExpiredResetTokensAsync(db, resetCutoff, cancellationToken);
+            if (tokenCount > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             logCount = await db.CommunicationDeliveryLogs
                 .Where(log => log.CreatedAtUnixSeconds < logCutoff)
@@ -79,13 +78,7 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
             return;
         }
 
-        var expiredTokens = await db.PasswordResetTokens
-            .Where(token =>
-                token.ExpiresAtUtc < resetCutoff &&
-                (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
-                (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
-            .ToListAsync(cancellationToken);
-        db.PasswordResetTokens.RemoveRange(expiredTokens);
+        tokenCount = await RemoveExpiredResetTokensAsync(db, resetCutoff, cancellationToken);
 
         var expiredLogs = await db.CommunicationDeliveryLogs
             .Where(log => log.CreatedAtUnixSeconds < logCutoff)
@@ -98,7 +91,26 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
         db.IntakeOtpChallenges.RemoveRange(expiredChallenges);
 
         await db.SaveChangesAsync(cancellationToken);
-        LogCleanupCounts(expiredTokens.Count, expiredLogs.Count, expiredChallenges.Count);
+        LogCleanupCounts(tokenCount, expiredLogs.Count, expiredChallenges.Count);
+    }
+
+    private static async Task<int> RemoveExpiredResetTokensAsync(
+        ApplicationDbContext db,
+        DateTimeOffset resetCutoff,
+        CancellationToken cancellationToken)
+    {
+        var expiredCandidates = await db.PasswordResetTokens
+            .Where(token => token.ExpiresAtUtc < resetCutoff)
+            .ToListAsync(cancellationToken);
+
+        var expiredTokens = expiredCandidates
+            .Where(token =>
+                (token.UsedAtUtc is null || token.UsedAtUtc < resetCutoff) &&
+                (token.RevokedAtUtc is null || token.RevokedAtUtc < resetCutoff))
+            .ToList();
+
+        db.PasswordResetTokens.RemoveRange(expiredTokens);
+        return expiredTokens.Count;
     }
 
     private void LogCleanupCounts(int tokenCount, int logCount, int challengeCount)
