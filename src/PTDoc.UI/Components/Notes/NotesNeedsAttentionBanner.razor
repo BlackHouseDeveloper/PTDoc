@@ -29,7 +29,7 @@
                     <p class="notes-needs-attention-note-type">@item.NoteType</p>
                     @if (!string.IsNullOrWhiteSpace(item.AttentionReason))
                     {
-                        <p class="notes-needs-attention-reason">⚠️ @item.AttentionReason</p>
+                        <p class="notes-needs-attention-reason">@item.AttentionReason</p>
                     }
                     <p class="notes-needs-attention-meta">@GetMetaText(item)</p>
                 </div>

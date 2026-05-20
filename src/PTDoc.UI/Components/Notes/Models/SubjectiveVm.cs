@@ -20,6 +20,7 @@ public class SubjectiveVm
     public int CurrentPainScore { get; set; }
     public int BestPainScore { get; set; }
     public int WorstPainScore { get; set; }
+    public bool IsPainScoreDocumented { get; set; }
 
     // Q3a: Frequency
     public string PainFrequency { get; set; } = string.Empty;

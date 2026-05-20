@@ -17,6 +17,55 @@
     gap: var(--spacing-6);
 }
 
+.notes-page-state {
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    padding: var(--spacing-8);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-3);
+}
+
+.notes-page-state-error {
+    border-color: var(--destructive);
+}
+
+.notes-page-state-title {
+    margin: 0;
+    color: var(--foreground);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    line-height: 24px;
+}
+
+.notes-page-state-description {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: 20px;
+}
+
+.notes-page-state-button {
+    min-height: 44px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    padding: 0 var(--spacing-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: 20px;
+    cursor: pointer;
+}
+
+.notes-page-state-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
 @media (max-width: 767px) {
     .notes-page-content {
         padding: var(--spacing-4);

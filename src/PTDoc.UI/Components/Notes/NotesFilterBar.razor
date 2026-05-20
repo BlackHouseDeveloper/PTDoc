@@ -1,4 +1,6 @@
 @using PTDoc.UI.Components.Notes.Models
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <section class="notes-filter" data-testid="notes-filter">
     <div class="notes-filter-search-row">
@@ -17,57 +19,65 @@
     </div>
 
     <div class="notes-filter-fields">
-        <div class="notes-filter-label-row">
+        <button type="button"
+                class="notes-filter-toggle"
+                aria-expanded="@_filtersOpen.ToString().ToLowerInvariant()"
+                aria-controls="notes-filter-grid"
+                @onclick="ToggleFilters">
             <svg class="notes-filter-label-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M2 3.33331H14L9.33333 8.66665V12.6666L6.66667 11.3333V8.66665L2 3.33331Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <p class="notes-filter-label-text">Filters</p>
-        </div>
+            <span class="notes-filter-label-text">Filters</span>
+            <span class="notes-filter-toggle-indicator" aria-hidden="true">@(_filtersOpen ? "Hide" : "Show")</span>
+        </button>
 
-        <div class="notes-filter-grid">
-            <div class="notes-filter-field">
-                <label class="notes-filter-field-label" for="notes-filter-note-type">Note Type</label>
-                <select id="notes-filter-note-type" class="notes-filter-select" value="@State.NoteType" @onchange="HandleNoteTypeChange">
-                    <option value="all">All Types</option>
-                    @foreach (var noteType in NoteTypes)
-                    {
-                        <option value="@noteType">@noteType</option>
-                    }
-                </select>
-            </div>
+        @if (_filtersOpen)
+        {
+            <div id="notes-filter-grid" class="notes-filter-grid">
+                <div class="notes-filter-field">
+                    <label class="notes-filter-field-label" for="notes-filter-note-type">Note Type</label>
+                    <select id="notes-filter-note-type" class="notes-filter-select" value="@State.NoteType" @onchange="HandleNoteTypeChange">
+                        <option value="all">All Types</option>
+                        @foreach (var noteType in NoteTypes)
+                        {
+                            <option value="@noteType">@noteType</option>
+                        }
+                    </select>
+                </div>
 
-            <div class="notes-filter-field">
-                <label class="notes-filter-field-label" for="notes-filter-status">Status</label>
-                <select id="notes-filter-status" class="notes-filter-select" value="@State.Status" @onchange="HandleStatusChange">
-                    <option value="all">All Status</option>
-                    @foreach (var status in Statuses)
-                    {
-                        <option value="@status">@status</option>
-                    }
-                </select>
-            </div>
+                <div class="notes-filter-field">
+                    <label class="notes-filter-field-label" for="notes-filter-status">Status</label>
+                    <select id="notes-filter-status" class="notes-filter-select" value="@State.Status" @onchange="HandleStatusChange">
+                        <option value="all">All Status</option>
+                        @foreach (var status in Statuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </div>
 
-            <div class="notes-filter-field">
-                <label class="notes-filter-field-label" for="notes-filter-patient">Patient</label>
-                <select id="notes-filter-patient" class="notes-filter-select" value="@State.Patient" @onchange="HandlePatientChange">
-                    <option value="all">All Patients</option>
-                    @foreach (var patient in Patients)
-                    {
-                        <option value="@patient">@patient</option>
-                    }
-                </select>
-            </div>
+                <div class="notes-filter-field">
+                    <label class="notes-filter-field-label" for="notes-filter-patient">Patient</label>
+                    <select id="notes-filter-patient" class="notes-filter-select" value="@State.Patient" @onchange="HandlePatientChange">
+                        <option value="all">All Patients</option>
+                        @foreach (var patient in Patients)
+                        {
+                            <option value="@patient">@patient</option>
+                        }
+                    </select>
+                </div>
 
-            <div class="notes-filter-field">
-                <label class="notes-filter-field-label" for="notes-filter-date-range">Date Range</label>
-                <select id="notes-filter-date-range" class="notes-filter-select" value="@State.DateRange" @onchange="HandleDateRangeChange">
-                    <option value="all">All Dates</option>
-                    <option value="today">Today</option>
-                    <option value="week">Past Week</option>
-                    <option value="month">Past Month</option>
-                </select>
+                <div class="notes-filter-field">
+                    <label class="notes-filter-field-label" for="notes-filter-date-range">Date Range</label>
+                    <select id="notes-filter-date-range" class="notes-filter-select" value="@State.DateRange" @onchange="HandleDateRangeChange">
+                        <option value="all">All Dates</option>
+                        <option value="today">Today</option>
+                        <option value="week">Past Week</option>
+                        <option value="month">Past Month</option>
+                    </select>
+                </div>
             </div>
-        </div>
+        }
     </div>
 </section>
 
@@ -77,6 +87,36 @@
     [Parameter] public IReadOnlyList<string> Patients { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> Statuses { get; set; } = Array.Empty<string>();
     [Parameter, EditorRequired] public EventCallback<NotesFilterState> OnStateChanged { get; set; }
+
+    private bool _filtersOpen = true;
+    private IJSObjectReference? _layoutModule;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _layoutModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/layout.js");
+            if (await _layoutModule.InvokeAsync<bool>("isMobileLayout"))
+            {
+                _filtersOpen = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // Keep filters expanded when JS interop is unavailable, such as static test renders.
+        }
+    }
+
+    private void ToggleFilters()
+    {
+        _filtersOpen = !_filtersOpen;
+    }
 
     private Task HandleSearchInput(ChangeEventArgs e)
     {
@@ -108,5 +148,20 @@
         var next = State.Clone();
         update(next);
         return OnStateChanged.InvokeAsync(next);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_layoutModule is not null)
+        {
+            try
+            {
+                await _layoutModule.DisposeAsync();
+            }
+            catch
+            {
+                // JS interop may already be unavailable during circuit disposal.
+            }
+        }
     }
 }

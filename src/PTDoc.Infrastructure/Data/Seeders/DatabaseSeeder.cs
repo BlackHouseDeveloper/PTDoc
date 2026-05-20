@@ -1383,6 +1383,7 @@ public static class DatabaseSeeder
             MedicalHistoryNotes = "Fixture shoulder intake for live suggestion chip signoff.",
             SelectedBodyRegion = "RightShoulderFront",
             PainSeverityScore = 6,
+            PainSeverityProvided = true,
             StructuredData = structuredData,
             SelectedComorbidities = [],
             SelectedAssistiveDevices = [],

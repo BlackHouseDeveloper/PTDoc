@@ -1,12 +1,35 @@
 @* Patient Clinical Info Card - Tabbed interface for timeline, notes, and documents *@
+@using PTDoc.Application.DTOs
 @using PTDoc.UI.Components.Patients.Profile.Models
 
 <div class="patient-clinical-info-card" data-testid="patient-clinical-info-card">
+    @if (!string.IsNullOrWhiteSpace(IntakeStateMessage))
+    {
+        <section class="patient-clinical-info-intake-callout patient-clinical-info-intake-callout--@IntakeStatusVariant"
+                 role="status"
+                 aria-label="Patient intake status"
+                 data-testid="patient-intake-status">
+            <div>
+                <p class="patient-clinical-info-intake-eyebrow">Intake status</p>
+                <p class="patient-clinical-info-intake-message">@IntakeStateMessage</p>
+            </div>
+            @if (OnReviewIntake.HasDelegate)
+            {
+                <button type="button"
+                        class="patient-demographics-card-edit-btn"
+                        @onclick="ReviewIntakeAsync">
+                    Review intake
+                </button>
+            }
+        </section>
+    }
+
     <div class="patient-clinical-info-tabs">
         <button type="button" 
                 class="patient-clinical-info-tab @(selectedTab == "timeline" ? "active" : "")"
+                aria-pressed="@(selectedTab == "timeline" ? "true" : "false")"
                 @onclick="@(() => SelectTab("timeline"))">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
                 <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
@@ -14,21 +37,13 @@
         </button>
         <button type="button" 
                 class="patient-clinical-info-tab @(selectedTab == "notes" ? "active" : "")"
+                aria-pressed="@(selectedTab == "notes" ? "true" : "false")"
                 @onclick="@(() => SelectTab("notes"))">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M10 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6L10 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M10 2V6H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span>Notes</span>
-        </button>
-        <button type="button" 
-                class="patient-clinical-info-tab @(selectedTab == "docs" ? "active" : "")"
-                @onclick="@(() => SelectTab("docs"))">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9.33333 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6.66667L9.33333 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M9.33333 2V6.66667H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Docs</span>
         </button>
     </div>
 
@@ -45,13 +60,6 @@
                             Retry
                         </button>
                     }
-                </div>
-            }
-
-            @if (!string.IsNullOrWhiteSpace(IntakeStateMessage))
-            {
-                <div class="patient-clinical-info-empty" role="status">
-                    <p>@IntakeStateMessage</p>
                 </div>
             }
 
@@ -97,15 +105,39 @@
         }
         else if (selectedTab == "notes")
         {
-            <div class="patient-clinical-info-empty">
-                <p>Notes will appear here. Use the clinical notes section to view and manage notes for this patient.</p>
-            </div>
-        }
-        else
-        {
-            <div class="patient-clinical-info-empty">
-                <p>Documents will appear here once document management is available.</p>
-            </div>
+            @if (RecentNotes.Count == 0)
+            {
+                <div class="patient-clinical-info-empty">
+                    <p>No recent notes are available for this patient.</p>
+                </div>
+            }
+            else
+            {
+                <div class="patient-clinical-info-notes" aria-label="Recent patient notes">
+                    @foreach (var note in RecentNotes)
+                    {
+                        <article class="patient-clinical-info-note">
+                            <div>
+                                <h4>@note.NoteType</h4>
+                                <p>@(note.NoteStatus?.ToString() ?? (note.IsSigned ? "Signed" : "Draft")) • @note.DateOfService.ToString("M/d/yyyy")</p>
+                            </div>
+                            <div class="patient-clinical-info-note-actions">
+                                <button type="button"
+                                        class="patient-demographics-card-edit-btn"
+                                        aria-label="View @note.NoteType for this patient"
+                                        @onclick="() => ViewNoteAsync(note)">View</button>
+                                @if (!note.IsSigned)
+                                {
+                                    <button type="button"
+                                            class="patient-demographics-card-edit-btn"
+                                            aria-label="Edit @note.NoteType for this patient"
+                                            @onclick="() => EditNoteAsync(note)">Edit</button>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
         }
     </div>
 </div>
@@ -113,10 +145,15 @@
 @code {
     [Parameter, EditorRequired] public PatientProfileVm Patient { get; set; } = null!;
     [Parameter] public IReadOnlyList<TimelineEntry> TimelineEntries { get; set; } = Array.Empty<TimelineEntry>();
+    [Parameter] public IReadOnlyList<NoteListItemApiResponse> RecentNotes { get; set; } = Array.Empty<NoteListItemApiResponse>();
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? TimelineErrorMessage { get; set; }
     [Parameter] public string? IntakeStateMessage { get; set; }
+    [Parameter] public string IntakeStatusVariant { get; set; } = "default";
     [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback OnReviewIntake { get; set; }
+    [Parameter] public EventCallback<NoteListItemApiResponse> OnViewNote { get; set; }
+    [Parameter] public EventCallback<NoteListItemApiResponse> OnEditNote { get; set; }
 
     private string selectedTab = "timeline";
 
@@ -152,4 +189,12 @@
     }
 
     private Task RetryTimelineAsync() => OnRetry.InvokeAsync();
+
+    private Task ReviewIntakeAsync() => OnReviewIntake.InvokeAsync();
+
+    private Task ViewNoteAsync(NoteListItemApiResponse note) =>
+        OnViewNote.HasDelegate ? OnViewNote.InvokeAsync(note) : Task.CompletedTask;
+
+    private Task EditNoteAsync(NoteListItemApiResponse note) =>
+        OnEditNote.HasDelegate ? OnEditNote.InvokeAsync(note) : Task.CompletedTask;
 }

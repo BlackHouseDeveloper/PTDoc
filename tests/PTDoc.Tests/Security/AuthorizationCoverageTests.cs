@@ -144,6 +144,7 @@ public class AuthorizationCoverageTests
             "POST /api/v1/intake/access/validate-session",
             "POST /api/v1/intake/access/revoke-session",
             "GET /api/v1/intake/access/patient/{patientId:guid}/draft",
+            "GET /api/v1/intake/access/patient/{patientId:guid}/latest",
             "PUT /api/v1/intake/access/{id:guid}",
             "POST /api/v1/intake/access/{id:guid}/submit",
             // HEP patient launch callback — token is encoded in the URL path, not the auth header
@@ -196,6 +197,7 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/intake/patients/eligible",                           AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v1/intake/patient/{patientId:guid}/draft",              AuthorizationPolicies.IntakeRead),
+        new("GET",  "/api/v1/intake/patient/{patientId:guid}/latest",             AuthorizationPolicies.IntakeRead),
         new("PUT",  "/api/v1/intake/{id:guid}",                                   AuthorizationPolicies.IntakeWrite),
         new("POST", "/api/v1/intake/{id:guid}/submit",                            AuthorizationPolicies.IntakeRead),
         new("POST", "/api/v1/intake/{id:guid}/lock",                              AuthorizationPolicies.IntakeWrite),
@@ -212,6 +214,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/intake/access/validate-session",                     null, IsIntentionallyAnonymous: true),
         new("POST", "/api/v1/intake/access/revoke-session",                       null, IsIntentionallyAnonymous: true),
         new("GET",  "/api/v1/intake/access/patient/{patientId:guid}/draft",       null, IsIntentionallyAnonymous: true),
+        new("GET",  "/api/v1/intake/access/patient/{patientId:guid}/latest",      null, IsIntentionallyAnonymous: true),
         new("PUT",  "/api/v1/intake/access/{id:guid}",                            null, IsIntentionallyAnonymous: true),
         new("POST", "/api/v1/intake/access/{id:guid}/submit",                     null, IsIntentionallyAnonymous: true),
 
