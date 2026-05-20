@@ -171,11 +171,43 @@
     color: var(--success);
 }
 
+.navbar-brand-sync-badge-syncing,
+.navbar-brand-sync-badge-syncing svg {
+    border-color: var(--info);
+    color: var(--info);
+}
+
+.navbar-brand-sync-badge-syncing {
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+.navbar-brand-sync-badge-offline,
+.navbar-brand-sync-badge-offline svg {
+    border-color: var(--destructive);
+    color: var(--destructive);
+}
+
+.navbar-brand-sync-badge-offline {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
 /* Dark mode adjustments */
 .dark .navbar-brand-sync-badge {
     background-color: rgba(52, 211, 153, 0.1);
     border-color: var(--success);
     color: var(--success);
+}
+
+.dark .navbar-brand-sync-badge-syncing {
+    background-color: rgba(96, 165, 250, 0.1);
+    border-color: var(--info);
+    color: var(--info);
+}
+
+.dark .navbar-brand-sync-badge-offline {
+    background-color: rgba(248, 113, 113, 0.1);
+    border-color: var(--destructive);
+    color: var(--destructive);
 }
 
 /* Responsive adjustments for tablet and desktop */
