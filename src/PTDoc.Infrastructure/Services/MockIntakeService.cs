@@ -31,6 +31,12 @@ public sealed class MockIntakeService : IIntakeService
     public Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
         _drafts.TryGetValue(patientId, out var draft);
+        return Task.FromResult(draft is null || draft.IsLocked ? null : Clone(draft));
+    }
+
+    public Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
+    {
+        _drafts.TryGetValue(patientId, out var draft);
         return Task.FromResult(draft is null ? null : Clone(draft));
     }
 
@@ -93,6 +99,8 @@ public sealed class MockIntakeService : IIntakeService
         var draft = Clone(state);
         draft.IsSubmitted = true;
         draft.IsLocked = true;
+        draft.SubmittedAt ??= DateTime.UtcNow;
+        draft.LastModifiedUtc = DateTime.UtcNow;
         _drafts[state.PatientId.Value] = draft;
 
         return Task.CompletedTask;
@@ -152,8 +160,11 @@ public sealed class MockIntakeService : IIntakeService
             SelectedLivingSituations = state.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            PainSeverityProvided = state.PainSeverityProvided,
             IsSubmitted = state.IsSubmitted,
-            IsLocked = state.IsLocked
+            IsLocked = state.IsLocked,
+            SubmittedAt = state.SubmittedAt,
+            LastModifiedUtc = state.LastModifiedUtc
         };
 
         return _draftCanonicalizer.CreateCanonicalCopy(clone);

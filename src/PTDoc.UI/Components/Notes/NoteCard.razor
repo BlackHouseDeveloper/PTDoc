@@ -1,12 +1,7 @@
 @using PTDoc.UI.Components.Notes.Models
 
 <article class="note-card"
-         data-testid="@($"note-card-{Note.Id}")"
-         role="button"
-         tabindex="0"
-         aria-label="Open @Note.NoteType for @Note.PatientName"
-         @onclick="HandleOpen"
-         @onkeydown="HandleKeyDown">
+         data-testid="@($"note-card-{Note.Id}")">
     <div class="note-card-header">
         <div class="note-card-patient-row">
             <svg class="note-card-patient-icon @GetPatientIconClass()" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -58,8 +53,21 @@
 
     <div class="note-card-divider"></div>
 
-    <div class="note-card-actions" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
-        <button type="button" class="note-card-action-button" @onclick="() => OnView.InvokeAsync(Note)">
+    <div class="note-card-actions">
+        <button type="button"
+                class="note-card-action-button"
+                aria-label="Open @Note.NoteType for @Note.PatientName"
+                @onclick="HandleOpen">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M8 1.33333L10 5.33333L14 6L11 9.33333L11.6667 13.3333L8 11.3333L4.33333 13.3333L5 9.33333L2 6L6 5.33333L8 1.33333Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Open</span>
+        </button>
+
+        <button type="button"
+                class="note-card-action-button"
+                aria-label="View @Note.NoteType for @Note.PatientName"
+                @onclick="() => OnView.InvokeAsync(Note)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M1.33333 8C1.33333 8 3.33333 3.33333 8 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8 12.6667C3.33333 12.6667 1.33333 8 1.33333 8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                 <path d="M8 9.75C8.9665 9.75 9.75 8.9665 9.75 8C9.75 7.0335 8.9665 6.25 8 6.25C7.0335 6.25 6.25 7.0335 6.25 8C6.25 8.9665 7.0335 9.75 8 9.75Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
@@ -69,7 +77,10 @@
 
         @if (Note.CanEdit)
         {
-            <button type="button" class="note-card-action-button" @onclick="() => OnEdit.InvokeAsync(Note)">
+            <button type="button"
+                    class="note-card-action-button"
+                    aria-label="Edit @Note.NoteType for @Note.PatientName"
+                    @onclick="() => OnEdit.InvokeAsync(Note)">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M7.33333 2H2.66667C2.31305 2 1.97391 2.14048 1.72386 2.39052C1.47381 2.64057 1.33333 2.97971 1.33333 3.33333V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31305 14.6667 2.66667 14.6667H12.6667C13.0203 14.6667 13.3594 14.5262 13.6095 14.2761C13.8595 14.0261 14 13.687 14 13.3333V8.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                     <path d="M13 1.66667C13.2652 1.40146 13.6249 1.25244 14 1.25244C14.3751 1.25244 14.7348 1.40146 15 1.66667C15.2652 1.93189 15.4142 2.29152 15.4142 2.66667C15.4142 3.04181 15.2652 3.40146 15 3.66667L8 10.6667L5.33333 11.3333L6 8.66667L13 1.66667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
@@ -82,13 +93,17 @@
             <span class="note-card-readonly" title="@Note.ReadOnlyReason">@Note.ReadOnlyReason</span>
         }
 
-        <button type="button" class="note-card-action-button" @onclick="() => OnDownloadPdf.InvokeAsync(Note)" disabled="@(!Note.CanDownloadPdf)">
+        <button type="button"
+                class="note-card-action-button"
+                aria-label="Open PDF tools for @Note.NoteType for @Note.PatientName"
+                @onclick="() => OnDownloadPdf.InvokeAsync(Note)"
+                disabled="@(!Note.CanDownloadPdf)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M14 10V12.6667C14 13.0203 13.8595 13.3594 13.6095 13.6095C13.3594 13.8595 13.0203 14 12.6667 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V10" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                 <path d="M4.66667 6.66667L8 10L11.3333 6.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
                 <path d="M8 10V2" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <span>PDF</span>
+            <span>PDF Tools</span>
         </button>
     </div>
 </article>
@@ -103,16 +118,6 @@
     private Task HandleOpen()
     {
         return OnOpen.InvokeAsync(Note);
-    }
-
-    private Task HandleKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" || e.Key == " ")
-        {
-            return HandleOpen();
-        }
-
-        return Task.CompletedTask;
     }
 
     private BadgeVariant GetStatusVariant()

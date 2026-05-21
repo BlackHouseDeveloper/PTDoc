@@ -63,6 +63,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected string ForgotContactAutocomplete => string.Equals(forgotPasswordModel.Channel, "sms", StringComparison.OrdinalIgnoreCase)
         ? "tel"
         : "email";
+    protected string LoginReturnUrl => returnUrl;
     protected string registrationConfirmationTitle = "Registration submitted";
     protected string registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
     private bool _pendingLoginFieldReset;

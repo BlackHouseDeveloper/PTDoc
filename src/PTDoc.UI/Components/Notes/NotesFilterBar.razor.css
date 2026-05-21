@@ -52,10 +52,25 @@
     gap: var(--spacing-4);
 }
 
-.notes-filter-label-row {
+.notes-filter-toggle {
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--foreground);
     display: inline-flex;
     align-items: center;
+    justify-content: flex-start;
     gap: var(--spacing-2);
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.notes-filter-toggle:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .notes-filter-label-icon {
@@ -68,6 +83,14 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
     line-height: 14px;
+}
+
+.notes-filter-toggle-indicator {
+    margin-left: auto;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    line-height: 16px;
 }
 
 .notes-filter-grid {

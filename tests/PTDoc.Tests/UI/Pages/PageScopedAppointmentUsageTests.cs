@@ -47,7 +47,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
 
         intakeService
-            .Setup(service => service.GetDraftByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IntakeResponseDraft?)null);
 
         RegisterCommonServices();
@@ -70,6 +70,68 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         });
 
         appointmentService.Verify(service => service.GetOverviewAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void PatientProfile_RendersLockedIntakeCalloutAndTimelineEntry()
+    {
+        var patientId = Guid.NewGuid();
+        var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        var toastService = new Mock<IToastService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Alex",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteService
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
+
+        appointmentService
+            .Setup(service => service.GetByPatientAsync(
+                patientId,
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
+
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeResponseDraft
+            {
+                PatientId = patientId,
+                IsSubmitted = true,
+                IsLocked = true,
+                SubmittedAt = submittedAt,
+                LastModifiedUtc = submittedAt
+            });
+
+        RegisterCommonServices();
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(intakeService.Object);
+        Services.AddSingleton(toastService.Object);
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            var callout = cut.Find("[data-testid='patient-intake-status']");
+            Assert.Contains("Intake is submitted and locked.", callout.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Review intake", callout.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Submitted Intake", cut.Markup, StringComparison.Ordinal);
+        });
     }
 
     [Fact]

@@ -163,6 +163,7 @@
     private string _otpCode = string.Empty;
     private string? _errorMessage;
     private bool _isBusy;
+    private bool _hasCheckedAccess;
     private System.Threading.Timer? _expiryTimer;
 
     private bool CanRequestOtp =>
@@ -170,9 +171,16 @@
         !string.IsNullOrWhiteSpace(_contact) &&
         !string.IsNullOrWhiteSpace(_inviteToken);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender || _hasCheckedAccess)
+        {
+            return;
+        }
+
+        _hasCheckedAccess = true;
         await CheckAccessAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task CheckAccessAsync()

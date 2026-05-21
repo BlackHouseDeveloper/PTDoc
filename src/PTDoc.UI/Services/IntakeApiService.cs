@@ -50,16 +50,39 @@ public sealed class IntakeApiService(
         return ToDraft(intake);
     }
 
+    public async Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
+    {
+        var response = await SendWithOptionalStandaloneAccessAsync(
+            HttpMethod.Get,
+            authenticatedPath: $"/api/v1/intake/patient/{patientId}/latest",
+            standalonePath: $"/api/v1/intake/access/patient/{patientId}/latest",
+            body: null,
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
+
+        var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
+        return intake is null ? null : ToDraft(intake);
+    }
+
     public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
         Guid patientId,
         IntakeResponseDraft? seedState = null,
         CancellationToken cancellationToken = default)
     {
+        var includeConsentPayload = HasConsentPayload(seedState);
         var request = new EnsureIntakeDraftRequest
         {
             PainMapData = BuildPainMapJson(seedState),
-            Consents = BuildConsentJson(seedState),
-            ConsentPacket = BuildConsentPacket(seedState),
+            Consents = includeConsentPayload ? BuildConsentJson(seedState) : "{}",
+            ConsentPacket = includeConsentPayload ? BuildConsentPacket(seedState) : null,
             ResponseJson = seedState is null
                 ? "{}"
                 : SerializeDraft(seedState),
@@ -396,6 +419,7 @@ public sealed class IntakeApiService(
             try
             {
                 draft = JsonSerializer.Deserialize<IntakeResponseDraft>(response.ResponseJson, SerializerOptions) ?? new IntakeResponseDraft();
+                IntakeDraftPersistence.HydratePainSeverityDocumentationFlag(draft, response.ResponseJson);
             }
             catch (JsonException)
             {
@@ -409,6 +433,8 @@ public sealed class IntakeApiService(
         draft.StructuredData = response.StructuredData ?? draft.StructuredData;
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
+        draft.SubmittedAt = response.SubmittedAt;
+        draft.LastModifiedUtc = response.LastModifiedUtc;
         return draftCanonicalizer.CreateCanonicalCopy(draft);
     }
 
@@ -445,6 +471,30 @@ public sealed class IntakeApiService(
         return state is null
             ? new IntakeConsentPacket()
             : IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
+    }
+
+    private static bool HasConsentPayload(IntakeResponseDraft? state)
+    {
+        if (state is null)
+        {
+            return false;
+        }
+
+        if (state.ConsentPacket is not null)
+        {
+            return true;
+        }
+
+        return state.HipaaAcknowledged
+            || state.ConsentToTreatAcknowledged
+            || state.TermsOfServiceAccepted
+            || state.AccuracyConfirmed
+            || state.RevokeHipaaPrivacyNotice
+            || state.RevokeTreatmentConsent
+            || state.RevokeMarketingCommunications
+            || state.RevokePhiRelease
+            || !string.IsNullOrWhiteSpace(state.EmailAddress)
+            || !string.IsNullOrWhiteSpace(state.PhoneNumber);
     }
 
     private static (string FirstName, string LastName) SplitName(string? fullName)

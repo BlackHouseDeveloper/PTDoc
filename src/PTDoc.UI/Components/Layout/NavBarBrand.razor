@@ -1,7 +1,10 @@
 @namespace PTDoc.UI.Components.Layout
 @rendermode InteractiveServer
+@using PTDoc.Application.Services
 @using System.Security.Claims
 @inject IThemeService ThemeService
+@inject ISyncService SyncService
+@inject IConnectivityService ConnectivityService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @implements IDisposable
@@ -49,11 +52,15 @@
     </div>
 
     <!-- Sync Status Badge -->
-    <div class="navbar-brand-sync-badge" role="status" aria-live="polite">
+    <div class="navbar-brand-sync-badge @GetSyncBadgeClass()"
+         data-sync-badge
+         data-syncing="@SyncService.IsSyncing.ToString().ToLowerInvariant()"
+         role="status"
+         aria-live="polite">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M6 0.5C2.96243 0.5 0.5 2.96243 0.5 6C0.5 9.03757 2.96243 11.5 6 11.5C9.03757 11.5 11.5 9.03757 11.5 6C11.5 2.96243 9.03757 0.5 6 0.5Z" fill="currentColor"/>
         </svg>
-        <span>Synced</span>
+        <span data-sync-badge-text data-syncing="@SyncService.IsSyncing.ToString().ToLowerInvariant()">@GetSyncBadgeText()</span>
     </div>
 </div>
 
@@ -69,6 +76,8 @@
     protected override async Task OnInitializedAsync()
     {
         ThemeService.OnThemeChanged += OnThemeChanged;
+        SyncService.OnSyncStateChanged += OnSyncStateChanged;
+        ConnectivityService.OnConnectivityChanged += OnConnectivityChanged;
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         await LoadUserContextAsync();
     }
@@ -163,9 +172,41 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private void OnSyncStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnConnectivityChanged(bool isOnline)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetSyncBadgeText()
+    {
+        if (!ConnectivityService.IsOnline)
+        {
+            return "Offline";
+        }
+
+        return SyncService.IsSyncing ? "Syncing" : "Synced";
+    }
+
+    private string GetSyncBadgeClass()
+    {
+        if (!ConnectivityService.IsOnline)
+        {
+            return "navbar-brand-sync-badge-offline";
+        }
+
+        return SyncService.IsSyncing ? "navbar-brand-sync-badge-syncing" : "navbar-brand-sync-badge-synced";
+    }
+
     public void Dispose()
     {
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        SyncService.OnSyncStateChanged -= OnSyncStateChanged;
+        ConnectivityService.OnConnectivityChanged -= OnConnectivityChanged;
     }
 }

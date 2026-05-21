@@ -1,25 +1,27 @@
-﻿@namespace PTDoc.UI.Components.Layout
+@namespace PTDoc.UI.Components.Layout
+@using Microsoft.JSInterop
 @using PTDoc.UI.Components
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
 @inherits LayoutComponentBase
 
-
 <div class="page">
     <GlobalHeader @bind-IsMenuOpen="isMenuOpen" />
-    
-    <div class="page-content">
-        <div class="sidebar @GetSidebarClass()">
-            <NavMenu OnNotificationsClick="OpenNotificationsModal" OnNavigate="CloseMenuOnMobileAsync" />
-        </div>
 
-        @if (isMenuOpen)
+    <div class="page-content">
+        @if (ShouldRenderSidebar)
         {
-            <button type="button"
-                    class="sidebar-backdrop"
-                    aria-label="Close menu"
-                    @onclick="CloseMenuAsync"></button>
+            <div class="sidebar @GetSidebarClass()">
+                <NavMenu OnNotificationsClick="OpenNotificationsModal" OnNavigate="CloseMenuOnMobileAsync" />
+            </div>
+        }
+
+        @if (isMobileLayout && isMenuOpen)
+        {
+            <div class="sidebar-backdrop"
+                 aria-hidden="true"
+                 @onclick="CloseMenuAsync"></div>
         }
 
         <main>
@@ -38,7 +40,11 @@
     private bool isMenuOpen;
     private bool isNotificationsModalOpen;
     private IJSObjectReference? layoutModule;
-    
+    private DotNetObjectReference<MainLayout>? layoutReference;
+    private bool isMobileLayout;
+
+    private bool ShouldRenderSidebar => !isMobileLayout || isMenuOpen;
+
     private string GetSidebarClass()
     {
         var cssClass = isMenuOpen ? "open" : "closed";
@@ -60,7 +66,9 @@
         try
         {
             layoutModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/layout.js");
-            isMenuOpen = !await layoutModule.InvokeAsync<bool>("isMobileLayout");
+            layoutReference = DotNetObjectReference.Create(this);
+            isMobileLayout = await layoutModule.InvokeAsync<bool>("initializeMobileLayout", layoutReference);
+            isMenuOpen = !isMobileLayout;
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -71,22 +79,12 @@
 
     private async Task CloseMenuOnMobileAsync()
     {
-        if (layoutModule is null)
+        if (!isMobileLayout)
         {
             return;
         }
 
-        try
-        {
-            if (await layoutModule.InvokeAsync<bool>("isMobileLayout"))
-            {
-                await CloseMenuAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Layout mobile close failed: {ex.Message}");
-        }
+        await CloseMenuAsync();
     }
 
     private Task CloseMenuAsync()
@@ -95,12 +93,26 @@
         return Task.CompletedTask;
     }
 
+    [JSInvokable]
+    public Task OnMobileLayoutChanged(bool isMobile)
+    {
+        if (isMobileLayout == isMobile)
+        {
+            return Task.CompletedTask;
+        }
+
+        isMobileLayout = isMobile;
+        isMenuOpen = !isMobileLayout;
+        return InvokeAsync(StateHasChanged);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (layoutModule is not null)
         {
             try
             {
+                await layoutModule.InvokeVoidAsync("disposeMobileLayout");
                 await layoutModule.DisposeAsync();
             }
             catch (Microsoft.JSInterop.JSDisconnectedException)
@@ -112,6 +124,8 @@
                 // Ignore disposal races during circuit teardown.
             }
         }
+
+        layoutReference?.Dispose();
     }
 }
 

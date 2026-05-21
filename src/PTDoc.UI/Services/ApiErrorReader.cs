@@ -54,19 +54,6 @@ internal static class ApiErrorReader
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                foreach (var propertyName in new[] { "error", "message", "detail", "title" })
-                {
-                    if (element.TryGetProperty(propertyName, out var property)
-                        && property.ValueKind == JsonValueKind.String)
-                    {
-                        var value = property.GetString();
-                        if (!string.IsNullOrWhiteSpace(value))
-                        {
-                            return value.Trim();
-                        }
-                    }
-                }
-
                 if (element.TryGetProperty("errors", out var errors))
                 {
                     var validationMessage = ReadValidationErrors(errors);
@@ -82,6 +69,19 @@ internal static class ApiErrorReader
                     if (!string.IsNullOrWhiteSpace(failureMessage))
                     {
                         return failureMessage;
+                    }
+                }
+
+                foreach (var propertyName in new[] { "error", "message", "detail", "title" })
+                {
+                    if (element.TryGetProperty(propertyName, out var property)
+                        && property.ValueKind == JsonValueKind.String)
+                    {
+                        var value = property.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            return value.Trim();
+                        }
                     }
                 }
 

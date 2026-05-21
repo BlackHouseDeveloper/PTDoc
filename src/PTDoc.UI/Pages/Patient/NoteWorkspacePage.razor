@@ -1915,7 +1915,7 @@ else
         var normalizedComorbidities = SubjectiveCatalogNormalizer.NormalizeComorbidityLabels(subjective.Comorbidities);
         var normalizedMedications = SubjectiveCatalogNormalizer.ParseMedicationSelections(subjective.Medications);
 
-        if (subjective.CurrentPainScore > 0 || subjective.Problems.Contains("Pain"))
+        if (subjective.IsPainScoreDocumented)
         {
             chips.Add($"Pain {subjective.CurrentPainScore}/10");
         }

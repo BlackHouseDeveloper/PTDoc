@@ -48,10 +48,15 @@
                 <PatientClinicalInfoCardEditable
                     Patient="@patient"
                     TimelineEntries="@timelineEntries"
+                    RecentNotes="@recentNotes"
                     IsLoading="@timelineLoading"
                     TimelineErrorMessage="@timelineErrorMessage"
                     IntakeStateMessage="@intakeStateMessage"
-                    OnRetry="ReloadTimelineAsync" />
+                    IntakeStatusVariant="@intakeStatusVariant"
+                    OnRetry="ReloadTimelineAsync"
+                    OnReviewIntake="HandleReviewIntake"
+                    OnViewNote="HandleViewNote"
+                    OnEditNote="HandleEditNote" />
             }
         </div>
     </div>
@@ -62,11 +67,13 @@
 
     private PatientProfileVm patient = new();
     private readonly List<TimelineEntry> timelineEntries = new();
+    private readonly List<NoteListItemApiResponse> recentNotes = new();
     private bool isLoading = true;
     private bool timelineLoading;
     private string? loadErrorMessage;
     private string? timelineErrorMessage;
     private string? intakeStateMessage;
+    private string intakeStatusVariant = "default";
     private Guid currentPatientId;
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
 
@@ -81,7 +88,9 @@
         loadErrorMessage = null;
         timelineErrorMessage = null;
         intakeStateMessage = null;
+        intakeStatusVariant = "default";
         timelineEntries.Clear();
+        recentNotes.Clear();
         timelineLoading = true;
         StateHasChanged();
 
@@ -146,7 +155,9 @@
         timelineLoading = true;
         timelineErrorMessage = null;
         intakeStateMessage = null;
+        intakeStatusVariant = "default";
         timelineEntries.Clear();
+        recentNotes.Clear();
         StateHasChanged();
 
         var timelineRows = new List<(DateTime TimestampUtc, TimelineEntry Entry)>();
@@ -155,6 +166,7 @@
         try
         {
             var notes = await NoteService.GetNotesAsync(patientId: currentPatientId, take: 25);
+            recentNotes.AddRange(notes);
             timelineRows.AddRange(notes.Select(CreateNoteTimelineEntry));
         }
         catch (Exception ex)
@@ -180,8 +192,13 @@
 
         try
         {
-            var intake = await IntakeService.GetDraftByPatientIdAsync(currentPatientId);
+            var intake = await IntakeService.GetLatestByPatientIdAsync(currentPatientId);
             intakeStateMessage = BuildIntakeStateMessage(intake);
+            intakeStatusVariant = BuildIntakeStatusVariant(intake);
+            if (intake is not null)
+            {
+                timelineRows.Add(CreateIntakeTimelineEntry(intake));
+            }
         }
         catch (Exception ex)
         {
@@ -230,6 +247,25 @@
                 Type = "appointment",
                 Title = appointmentType,
                 Description = BuildAppointmentDescription(appointment),
+                Date = localTimestamp.ToString("M/d/yyyy"),
+                Time = localTimestamp.ToString("h:mm tt")
+            });
+    }
+
+    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateIntakeTimelineEntry(IntakeResponseDraft intake)
+    {
+        var timestampUtc = DateTime.SpecifyKind(
+            intake.SubmittedAt ?? intake.LastModifiedUtc ?? DateTime.UtcNow,
+            DateTimeKind.Utc);
+        var localTimestamp = timestampUtc.ToLocalTime();
+
+        return (
+            timestampUtc,
+            new TimelineEntry
+            {
+                Type = "intake",
+                Title = intake.IsSubmitted || intake.IsLocked ? "Submitted Intake" : "Intake Draft",
+                Description = BuildIntakeStateMessage(intake),
                 Date = localTimestamp.ToString("M/d/yyyy"),
                 Time = localTimestamp.ToString("h:mm tt")
             });
@@ -301,6 +337,26 @@
         return "Intake draft is in progress.";
     }
 
+    private static string BuildIntakeStatusVariant(IntakeResponseDraft? intake)
+    {
+        if (intake is null)
+        {
+            return "default";
+        }
+
+        if (intake.IsSubmitted && intake.IsLocked)
+        {
+            return "locked";
+        }
+
+        if (intake.IsLocked)
+        {
+            return "locked";
+        }
+
+        return "draft";
+    }
+
     private static string GetUserFacingMessage(Exception exception, string fallback)
     {
         return exception switch
@@ -319,6 +375,26 @@
         }
 
         NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note");
+    }
+
+    private void HandleReviewIntake()
+    {
+        if (currentPatientId == Guid.Empty)
+        {
+            return;
+        }
+
+        NavigationManager.NavigateTo($"/intake/{currentPatientId}");
+    }
+
+    private void HandleViewNote(NoteListItemApiResponse note)
+    {
+        NavigationManager.NavigateTo($"/patient/{note.PatientId}/note/{note.Id}");
+    }
+
+    private void HandleEditNote(NoteListItemApiResponse note)
+    {
+        NavigationManager.NavigateTo($"/patient/{note.PatientId}/note/{note.Id}");
     }
 
     private void HandleBack()

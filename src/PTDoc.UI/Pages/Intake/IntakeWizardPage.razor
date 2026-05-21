@@ -196,7 +196,7 @@
         IntakeResponseDraft? draft;
         try
         {
-            draft = await IntakeService.GetDraftByPatientIdAsync(patientId);
+            draft = await IntakeService.GetLatestByPatientIdAsync(patientId);
 
             if (draft is null)
             {
@@ -222,14 +222,30 @@
                     {
                         draft = ensureResult.Draft;
                     }
+                    else if (ensureResult.Status == IntakeEnsureDraftStatus.Locked)
+                    {
+                        draft = await IntakeService.GetLatestByPatientIdAsync(patientId);
+                        if (draft is not null && (draft.IsLocked || draft.IsSubmitted))
+                        {
+                            ClearDraftUnavailableState();
+                        }
+                        else
+                        {
+                            SetDraftUnavailableState(
+                                title: "Intake Locked",
+                                message: ensureResult.ErrorMessage ?? "This patient cannot receive a new intake draft right now.",
+                                detail: "This patient already has a locked intake record, but the submitted intake could not be loaded for review.");
+                            InitializeBlankState(patientId);
+                            _loadedPatientId = patientId;
+                            return;
+                        }
+                    }
                     else
                     {
                         SetDraftUnavailableState(
-                            title: ensureResult.Status == IntakeEnsureDraftStatus.Locked ? "Intake Locked" : "Patient Intake Unavailable",
+                            title: "Patient Intake Unavailable",
                             message: ensureResult.ErrorMessage ?? "This patient cannot receive a new intake draft right now.",
-                            detail: ensureResult.Status == IntakeEnsureDraftStatus.Locked
-                                ? "This patient already has a locked intake record. Create or review the evaluation from the chart instead of starting a new intake."
-                                : "Select a different patient or refresh the patient list and try again.");
+                            detail: "Select a different patient or refresh the patient list and try again.");
                         InitializeBlankState(patientId);
                         _loadedPatientId = patientId;
                         return;
@@ -249,6 +265,11 @@
 
             ClearDraftUnavailableState();
             State = FromDraft(draft!);
+            if (State.IsLocked || State.IsSubmitted)
+            {
+                State.CurrentStep = IntakeStep.Review;
+            }
+
             IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
             State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
 
@@ -637,6 +658,7 @@
             MedicalHistoryNotes = state.MedicalHistoryNotes,
             SelectedBodyRegion = SerializeSelectedRegions(state),
             PainSeverityScore = state.PainSeverityScore,
+            PainSeverityProvided = state.PainSeverityProvided,
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
             StructuredData = state.StructuredData,
             SelectedComorbidities = state.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),
@@ -666,6 +688,7 @@
                            ?? new IntakeResponseDraft();
         hydratedDraft.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(hydratedDraft);
         IntakeDraftPersistence.HydrateConsentConvenienceFields(hydratedDraft);
+        var legacyPainSeverity = ExtractLegacyPainSeverity(hydratedDraft.PainDetailDrafts);
 
         return new IntakeWizardState
         {
@@ -712,7 +735,8 @@
             MedicalHistoryNotes = hydratedDraft.MedicalHistoryNotes,
             SelectedBodyRegion = hydratedDraft.SelectedBodyRegion,
             SelectedBodyRegions = DeserializeSelectedRegions(hydratedDraft.SelectedBodyRegion),
-            PainSeverityScore = hydratedDraft.PainSeverityScore ?? ExtractLegacyPainSeverity(hydratedDraft.PainDetailDrafts),
+            PainSeverityScore = hydratedDraft.PainSeverityScore ?? legacyPainSeverity,
+            PainSeverityProvided = hydratedDraft.PainSeverityProvided || legacyPainSeverity.HasValue,
             PainDetailDrafts = hydratedDraft.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
             StructuredData = hydratedDraft.StructuredData,
             SelectedComorbidities = hydratedDraft.SelectedComorbidities.ToHashSet(StringComparer.OrdinalIgnoreCase),

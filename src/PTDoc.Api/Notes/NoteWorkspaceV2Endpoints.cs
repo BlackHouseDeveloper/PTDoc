@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
@@ -103,6 +104,11 @@ public static class NoteWorkspaceV2Endpoints
             validationErrors[nameof(request.DateOfService)] = ["DateOfService is required."];
         }
 
+        if (!Enum.IsDefined(typeof(NoteType), request.NoteType))
+        {
+            validationErrors[nameof(request.NoteType)] = [$"NoteType '{request.NoteType}' is not supported."];
+        }
+
         if (validationErrors.Count > 0)
         {
             return Results.ValidationProblem(validationErrors);
@@ -129,6 +135,14 @@ public static class NoteWorkspaceV2Endpoints
             {
                 IsValid = false,
                 Errors = [ex.Message]
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = ["The note workspace changed while it was being saved. Reload the workspace and try again."]
             });
         }
         catch (InvalidOperationException ex)

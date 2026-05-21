@@ -12,6 +12,7 @@
 @inject INoteService NoteService
 @inject IToastService ToastService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<NotesPage> Logger
 @implements IDisposable
 
 <PageTitle>Clinical Notes - PTDoc</PageTitle>
@@ -35,22 +36,40 @@
                 OnStateChanged="HandleFilterChanged"
             />
 
-            @if (notesNeedingAttention.Count > 0)
+            @if (_isLoading)
             {
-                <NotesNeedsAttentionBanner
-                    Items="notesNeedingAttention"
-                    OnFixNow="HandleResolveAttentionNote"
+                <section class="notes-page-state" role="status" aria-live="polite" data-testid="notes-loading-state">
+                    <p class="notes-page-state-title">Loading notes</p>
+                    <p class="notes-page-state-description">Retrieving recent clinical documentation.</p>
+                </section>
+            }
+            else if (!string.IsNullOrWhiteSpace(_loadErrorMessage))
+            {
+                <section class="notes-page-state notes-page-state-error" role="alert" data-testid="notes-error-state">
+                    <p class="notes-page-state-title">Unable to load notes</p>
+                    <p class="notes-page-state-description">@_loadErrorMessage</p>
+                    <button type="button" class="notes-page-state-button" @onclick="RetryLoadNotesAsync">Retry</button>
+                </section>
+            }
+            else
+            {
+                @if (notesNeedingAttention.Count > 0)
+                {
+                    <NotesNeedsAttentionBanner
+                        Items="notesNeedingAttention"
+                        OnFixNow="HandleResolveAttentionNote"
+                        OnView="HandleViewNote"
+                    />
+                }
+
+                <NotesRecentSection
+                    Items="regularRecentNotes"
+                    OnOpen="HandleOpenNote"
                     OnView="HandleViewNote"
+                    OnEdit="HandleEditNote"
+                    OnDownloadPdf="HandleDownloadPdf"
                 />
             }
-
-            <NotesRecentSection
-                Items="regularRecentNotes"
-                OnOpen="HandleOpenNote"
-                OnView="HandleViewNote"
-                OnEdit="HandleEditNote"
-                OnDownloadPdf="HandleDownloadPdf"
-            />
         </div>
     </div>
 </div>
@@ -74,6 +93,8 @@
     private List<NoteListItemVm> regularRecentNotes = new();
     private CancellationTokenSource _cts = new();
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
+    private bool _isLoading = true;
+    private string? _loadErrorMessage;
 
     private static DateTime RecentCutoff => DateTime.UtcNow.Date.AddDays(-30);
 
@@ -88,6 +109,9 @@
 
     private async Task LoadNotesAsync()
     {
+        _isLoading = true;
+        _loadErrorMessage = null;
+
         try
         {
             var result = await NoteService.GetNotesAsync(
@@ -100,10 +124,24 @@
             notes.Clear();
             notes.AddRange(result.Select(ToVm));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            ToastService.ShowError("Failed to load notes. Please refresh and try again.");
+            notes.Clear();
+            _loadErrorMessage = "Notes could not be retrieved. Retry when the connection is available.";
+            Logger.LogError(ex, "Failed to load clinical notes.");
+            ToastService.ShowError("Failed to load notes. Retry when the connection is available.");
         }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RetryLoadNotesAsync()
+    {
+        await LoadNotesAsync();
+        BuildFilterOptions();
+        ApplyFilters();
     }
 
     private NoteListItemVm ToVm(NoteListItemApiResponse dto)

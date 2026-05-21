@@ -440,12 +440,13 @@ public sealed class NoteWorkspaceV2Service(
             },
             Subjective = new WorkspaceSubjectiveV2
             {
-                Problems = draft.PainSeverityScore.HasValue || bodyPartLabels.Count > 0 || painDescriptorLabels.Count > 0
+                Problems = (draft.PainSeverityProvided && draft.PainSeverityScore.HasValue) || bodyPartLabels.Count > 0 || painDescriptorLabels.Count > 0
                     ? ["Pain"]
                     : new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 Locations = locations,
                 OtherLocation = otherLocation,
                 CurrentPainScore = Math.Clamp(draft.PainSeverityScore ?? 0, 0, 10),
+                IsPainScoreDocumented = draft.PainSeverityProvided && draft.PainSeverityScore.HasValue,
                 LivingSituation = livingSituationSelections.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 OtherLivingSituation = houseLayoutSelections.Count == 0
                     ? null
@@ -488,6 +489,7 @@ public sealed class NoteWorkspaceV2Service(
             var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, SerializerOptions);
             if (draft is not null)
             {
+                IntakeDraftPersistence.HydratePainSeverityDocumentationFlag(draft, intake.ResponseJson);
                 draft.PatientId = intake.PatientId;
                 draft.IntakeId = intake.Id;
                 draft.IsLocked = intake.IsLocked;
@@ -1014,12 +1016,13 @@ public sealed class NoteWorkspaceV2Service(
             await db.Entry(note).Collection(n => n.ObjectiveMetrics).LoadAsync(cancellationToken);
         }
 
-        db.ObjectiveMetrics.RemoveRange(note.ObjectiveMetrics);
+        var existingMetrics = note.ObjectiveMetrics.ToList();
+        db.ObjectiveMetrics.RemoveRange(existingMetrics);
         note.ObjectiveMetrics.Clear();
 
         foreach (var metric in payload.Objective.Metrics.Where(metric => !string.IsNullOrWhiteSpace(metric.Value)))
         {
-            note.ObjectiveMetrics.Add(new ObjectiveMetric
+            db.ObjectiveMetrics.Add(new ObjectiveMetric
             {
                 NoteId = note.Id,
                 BodyPart = metric.BodyPart,

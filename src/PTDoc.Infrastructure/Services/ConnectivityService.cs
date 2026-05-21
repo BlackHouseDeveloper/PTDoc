@@ -7,11 +7,12 @@ namespace PTDoc.Infrastructure.Services;
 /// Implementation of IConnectivityService using browser Network Information API
 /// Falls back to periodic connectivity checks if API is not available
 /// </summary>
-public class ConnectivityService : IConnectivityService
+public class ConnectivityService : IConnectivityService, IAsyncDisposable
 {
     private readonly IJSRuntime _jsRuntime;
     private bool _isOnline = true; // Assume online initially
     private DotNetObjectReference<ConnectivityService>? _dotNetRef;
+    private IJSObjectReference? _connectivityModule;
 
     public bool IsOnline => _isOnline;
 
@@ -26,38 +27,31 @@ public class ConnectivityService : IConnectivityService
     {
         try
         {
-            _dotNetRef = DotNetObjectReference.Create(this);
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            _connectivityModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+                "import",
+                "./_content/PTDoc.UI/js/connectivity.js");
 
             // Check initial connectivity status
-            _isOnline = await _jsRuntime.InvokeAsync<bool>("eval", "navigator.onLine");
-
-            // Register for connectivity change events
-            await _jsRuntime.InvokeVoidAsync("eval", $@"
-                window.ptdocConnectivityHandler = {{
-                    online: () => DotNet.invokeMethodAsync('PTDoc.Infrastructure', 'OnConnectivityStatusChanged', true),
-                    offline: () => DotNet.invokeMethodAsync('PTDoc.Infrastructure', 'OnConnectivityStatusChanged', false)
-                }};
-                window.addEventListener('online', window.ptdocConnectivityHandler.online);
-                window.addEventListener('offline', window.ptdocConnectivityHandler.offline);
-            ");
+            UpdateConnectivity(await _connectivityModule.InvokeAsync<bool>("getCurrentStatus"));
+            await _connectivityModule.InvokeVoidAsync("register", _dotNetRef);
         }
         catch (InvalidOperationException)
         {
             // JSRuntime not available during prerender - assume online
-            _isOnline = true;
+            UpdateConnectivity(true);
         }
         catch
         {
             // Other errors - assume online
-            _isOnline = true;
+            UpdateConnectivity(true);
         }
     }
 
     [JSInvokable]
-    public static void OnConnectivityStatusChanged(bool isOnline)
+    public void OnConnectivityStatusChanged(bool isOnline)
     {
-        // This is a static callback from JS - we'll need to route through instance
-        // For now, this is a placeholder for the JS callback pattern
+        UpdateConnectivity(isOnline);
     }
 
     public void UpdateConnectivity(bool isOnline)
@@ -73,12 +67,38 @@ public class ConnectivityService : IConnectivityService
     {
         try
         {
-            _isOnline = await _jsRuntime.InvokeAsync<bool>("eval", "navigator.onLine");
+            if (_connectivityModule is null)
+            {
+                _connectivityModule = await _jsRuntime.InvokeAsync<IJSObjectReference>(
+                    "import",
+                    "./_content/PTDoc.UI/js/connectivity.js");
+            }
+
+            UpdateConnectivity(await _connectivityModule.InvokeAsync<bool>("getCurrentStatus"));
             return _isOnline;
         }
         catch
         {
             return _isOnline; // Return last known state
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_connectivityModule is not null)
+            {
+                await _connectivityModule.InvokeVoidAsync("unregister");
+                await _connectivityModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+            // JS interop may be unavailable during circuit disposal.
+        }
+
+        _connectivityModule = null;
+        _dotNetRef?.Dispose();
     }
 }

@@ -68,6 +68,40 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public async Task PasswordResetEmail_WithPublicBaseUrlOverride_UsesPublicResetLink()
+    {
+        await using var db = CreateDbContext();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "clinician",
+            PinHash = "hash",
+            FirstName = "Clin",
+            LastName = "Ician",
+            Email = "clinician@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var service = CreateService(db, emailSender: emailSender);
+
+        var result = await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "clinician@example.com",
+            PublicBaseUrlOverride = "https://0bh3gh9l-5145.use2.devtunnels.ms"
+        });
+
+        Assert.True(result.Succeeded);
+        var body = Assert.Single(emailSender.Messages).PlainTextBody;
+        Assert.Contains("https://0bh3gh9l-5145.use2.devtunnels.ms/reset-password?token=", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PasswordResetEmail_UnknownContact_AuditsSkippedRequestWithoutCreatingToken()
     {
         await using var db = CreateDbContext();

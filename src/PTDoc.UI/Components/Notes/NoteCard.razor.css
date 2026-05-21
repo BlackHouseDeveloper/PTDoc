@@ -7,10 +7,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-4);
-    cursor: pointer;
 }
 
-.note-card:focus-visible,
 .note-card-action-button:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -163,7 +161,7 @@
 .note-card-actions {
     width: calc(100% - var(--spacing-6));
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
     gap: var(--spacing-3);
 }
 

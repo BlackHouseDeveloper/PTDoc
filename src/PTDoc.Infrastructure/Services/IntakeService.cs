@@ -59,6 +59,22 @@ public sealed class IntakeService : IIntakeService
         return DeserializeDraft(intake);
     }
 
+    public async Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
+    {
+        var intake = await _context.IntakeForms
+            .AsNoTracking()
+            .Where(f => f.PatientId == patientId)
+            .OrderByDescending(f => f.SubmittedAt ?? f.LastModifiedUtc)
+            .ThenByDescending(f => f.LastModifiedUtc)
+            .ThenByDescending(f => f.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (intake is null)
+            return null;
+
+        return DeserializeDraft(intake);
+    }
+
     public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
         Guid patientId,
         IntakeResponseDraft? seedState = null,
@@ -319,10 +335,10 @@ public sealed class IntakeService : IIntakeService
         intake.PainMapData = BuildPainMapJson(submittedState);
         intake.Consents = BuildConsentsJson(canonicalState);
         intake.SubmittedAt = DateTime.UtcNow;
+        intake.IsLocked = true;
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = userId;
         intake.SyncState = SyncState.Pending;
-        // Note: IsLocked is NOT set here — locking happens when an Evaluation note is signed.
 
         // Flush all demographic data back to the Patient record.
         var patient = await _context.Patients
@@ -417,8 +433,11 @@ public sealed class IntakeService : IIntakeService
         target.SelectedLivingSituations = source.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.SelectedHouseLayoutOptions = source.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.RecommendedOutcomeMeasures = source.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.PainSeverityProvided = source.PainSeverityProvided;
         target.IsSubmitted = source.IsSubmitted;
         target.IsLocked = source.IsLocked;
+        target.SubmittedAt = source.SubmittedAt;
+        target.LastModifiedUtc = source.LastModifiedUtc;
     }
 
     private IntakeResponseDraft DeserializeDraft(IntakeForm intake)
@@ -427,6 +446,8 @@ public sealed class IntakeService : IIntakeService
         draft.IntakeId = intake.Id;
         draft.IsLocked = intake.IsLocked;
         draft.IsSubmitted = intake.SubmittedAt.HasValue;
+        draft.SubmittedAt = intake.SubmittedAt;
+        draft.LastModifiedUtc = intake.LastModifiedUtc;
         return draft;
     }
 
@@ -438,6 +459,7 @@ public sealed class IntakeService : IIntakeService
             if (draft is not null)
             {
                 draft.PatientId = patientId;
+                IntakeDraftPersistence.HydratePainSeverityDocumentationFlag(draft, json);
                 if (IntakeStructuredDataJson.TryParse(structuredDataJson, out var structuredData, out _))
                 {
                     draft.StructuredData = structuredData;

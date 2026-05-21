@@ -54,6 +54,44 @@ public sealed class IntakeDeliveryServiceTests
     }
 
     [Fact]
+    public async Task GetDeliveryBundleAsync_WithPublicBaseUrlOverride_RewritesLoopbackInviteUrl()
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        var auditService = new AuditService(db);
+        var inviteService = new Mock<IIntakeInviteService>();
+        inviteService
+            .Setup(service => service.CreateInviteAsync(intake.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeInviteLinkResult(
+                true,
+                intake.Id,
+                intake.PatientId,
+                $"http://localhost:5000/intake/{intake.PatientId:D}?mode=patient&invite=test-token",
+                DateTimeOffset.Parse("2026-03-31T20:00:00Z"),
+                null));
+
+        var workflow = new IntakeCommunicationWorkflow(
+            db,
+            inviteService.Object,
+            Mock.Of<ICommunicationService>(),
+            new ContactNormalizer(),
+            auditService,
+            Options.Create(new CommunicationOptions()));
+
+        var bundle = await workflow.GetDeliveryBundleAsync(
+            intake.Id,
+            new IntakeCommunicationContext
+            {
+                PublicWebBaseUrlOverride = "https://0bh3gh9l-5145.use2.devtunnels.ms"
+            });
+
+        Assert.StartsWith("https://0bh3gh9l-5145.use2.devtunnels.ms/intake/", bundle.InviteUrl, StringComparison.Ordinal);
+        Assert.Contains("invite=test-token", bundle.InviteUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost", bundle.InviteUrl, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<svg", bundle.QrSvg, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SendInviteAsync_UsesPatientFallbackEmail_And_StatusReflectsMaskedAuditHistory()
     {
         await using var db = CreateDbContext();
@@ -129,6 +167,66 @@ public sealed class IntakeDeliveryServiceTests
             .SingleAsync();
         Assert.DoesNotContain("patient@example.com", deliveredAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("p***t@example.com", deliveredAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SendInviteAsync_WithPublicBaseUrlOverride_DeliversPublicInviteUrl()
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        var auditService = new AuditService(db);
+        var inviteService = new Mock<IIntakeInviteService>();
+        inviteService
+            .Setup(service => service.CreateInviteAsync(intake.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeInviteLinkResult(
+                true,
+                intake.Id,
+                intake.PatientId,
+                $"http://localhost:5000/intake/{intake.PatientId:D}?mode=patient&invite=test-token",
+                DateTimeOffset.UtcNow.AddHours(4),
+                null));
+
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService
+            .Setup(service => service.SendIntakeLinkEmailAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult
+            {
+                Succeeded = true,
+                Status = DeliveryStatus.Sent,
+                Provider = "Fake",
+                ProviderMessageId = "fake-message-123",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = DeliveryChannel.Email,
+                Purpose = DeliveryPurpose.IntakeLink
+            });
+
+        var workflow = new IntakeCommunicationWorkflow(
+            db,
+            inviteService.Object,
+            communicationService.Object,
+            new ContactNormalizer(),
+            auditService,
+            Options.Create(new CommunicationOptions()));
+
+        var sendResult = await workflow.SendInviteAsync(
+            new IntakeSendInviteRequest
+            {
+                IntakeId = intake.Id,
+                Channel = IntakeDeliveryChannel.Email
+            },
+            new IntakeCommunicationContext
+            {
+                PublicWebBaseUrlOverride = "https://0bh3gh9l-5145.use2.devtunnels.ms"
+            });
+
+        Assert.True(sendResult.Success);
+        communicationService.Verify(service => service.SendIntakeLinkEmailAsync(
+            It.Is<IntakeLinkDeliveryRequest>(request =>
+                request.InviteUrl.StartsWith("https://0bh3gh9l-5145.use2.devtunnels.ms/intake/", StringComparison.Ordinal) &&
+                request.InviteUrl.Contains("invite=test-token", StringComparison.Ordinal) &&
+                !request.InviteUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private static async Task<IntakeForm> SeedOpenIntakeAsync(ApplicationDbContext db)

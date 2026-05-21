@@ -31,9 +31,12 @@
             <button 
                 type="button" 
                 class="sync-button"
+                data-sync-now-button
+                data-syncing="@IsSyncing.ToString().ToLowerInvariant()"
                 disabled="@(IsSyncing || !IsOnline)"
+                aria-label="@(IsSyncing ? "Syncing clinical data" : IsOnline ? "Sync now" : "Sync unavailable while offline")"
                 aria-busy="@IsSyncing.ToString().ToLower()"
-                aria-disabled="@((!IsOnline).ToString().ToLower())"
+                aria-disabled="@((IsSyncing || !IsOnline).ToString().ToLower())"
                 @onclick="HandleSyncNow">
                 <span class="sync-icon @(IsSyncing ? "syncing" : "")" aria-hidden="true"></span>
                 <span class="sync-button-text">@(IsSyncing ? "Syncing..." : "Sync Now")</span>
@@ -41,12 +44,12 @@
 
             <!-- Online/Offline Status Badge -->
             <div class="status-badge @(IsOnline ? "online" : "offline")" 
+                 data-connectivity-status
                  role="status" 
                  aria-live="polite">
                 <span class="status-icon" aria-hidden="true"></span>
-                <span class="status-text">@(IsOnline ? "Online" : "Offline")</span>
+                <span class="status-text" data-connectivity-text>@(IsOnline ? "Online" : "Offline")</span>
             </div>
         </div>
     </div>
 </header>
-

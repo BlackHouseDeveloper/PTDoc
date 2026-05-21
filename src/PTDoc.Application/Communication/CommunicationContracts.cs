@@ -59,6 +59,7 @@ public interface IIntakeCommunicationWorkflow
 {
     Task<IntakeDeliveryBundleResponse> GetDeliveryBundleAsync(
         Guid intakeId,
+        IntakeCommunicationContext? context = null,
         CancellationToken cancellationToken = default);
 
     Task<IntakeDeliverySendResult> SendInviteAsync(

@@ -124,7 +124,12 @@ public static class CommunicationEndpoints
         }, new IntakeCommunicationContext
         {
             UserId = identityContext.TryGetCurrentUserId(),
-            CorrelationId = httpContext.TraceIdentifier
+            CorrelationId = httpContext.TraceIdentifier,
+            PublicWebBaseUrlOverride = PublicWebOriginResolver.Resolve(
+                httpContext,
+                httpContext.RequestServices.GetRequiredService<IConfiguration>(),
+                httpContext.RequestServices.GetRequiredService<IHostEnvironment>(),
+                "IntakeInvite:PublicWebBaseUrl")
         }, cancellationToken);
 
         if (!result.Success &&
@@ -228,7 +233,12 @@ public static class CommunicationEndpoints
         var deliveryRequest = new PasswordResetDeliveryRequest
         {
             Recipient = recipient,
-            CorrelationId = httpContext.TraceIdentifier
+            CorrelationId = httpContext.TraceIdentifier,
+            PublicBaseUrlOverride = PublicWebOriginResolver.Resolve(
+                httpContext,
+                httpContext.RequestServices.GetRequiredService<IConfiguration>(),
+                httpContext.RequestServices.GetRequiredService<IHostEnvironment>(),
+                "Communication:PublicBaseUrl")
         };
 
         if (channel == DeliveryChannel.Email)

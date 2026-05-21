@@ -427,6 +427,40 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task ListNotes_Returns_200_With_SeededClinicalNotes()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"subjective\":\"Patient reports improvement\"}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createEnvelope = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createEnvelope.Note!.Id;
+
+        using var listResponse = await client.GetAsync("/api/v1/notes?take=50");
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+
+        var notes = JsonSerializer.Deserialize<List<NoteListItemApiResponse>>(
+            await listResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.Contains(notes, note =>
+            note.Id == noteId &&
+            note.PatientId == patientId &&
+            note.PatientName == "Test Patient" &&
+            note.NoteType == nameof(NoteType.Daily));
+    }
+
+    [Fact]
     public async Task PT_Creates_DailyNote_WithLegacySoapJson_PersistsCanonicalWorkspaceV2Content()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);

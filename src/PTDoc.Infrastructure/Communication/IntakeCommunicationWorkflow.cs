@@ -40,6 +40,7 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
 
     public async Task<IntakeDeliveryBundleResponse> GetDeliveryBundleAsync(
         Guid intakeId,
+        IntakeCommunicationContext? context = null,
         CancellationToken cancellationToken = default)
     {
         var invite = await _inviteService.CreateInviteAsync(intakeId, cancellationToken);
@@ -47,6 +48,8 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
         {
             throw new InvalidOperationException(invite.Error ?? "Unable to create an intake invite link.");
         }
+
+        var inviteUrl = ApplyPublicBaseUrl(invite.InviteUrl, context?.PublicWebBaseUrlOverride);
 
         await LogInviteEventAsync(
             intakeId,
@@ -65,8 +68,8 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
         {
             IntakeId = intakeId,
             PatientId = invite.PatientId,
-            InviteUrl = invite.InviteUrl,
-            QrSvg = GenerateQrSvg(invite.InviteUrl),
+            InviteUrl = inviteUrl,
+            QrSvg = GenerateQrSvg(inviteUrl),
             ExpiresAt = invite.ExpiresAt.Value
         };
     }
@@ -122,6 +125,8 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             return Failure(intake, request.Channel, invite.Error ?? "Unable to create an intake invite link.");
         }
 
+        var inviteUrl = ApplyPublicBaseUrl(invite.InviteUrl, context?.PublicWebBaseUrlOverride);
+
         await LogInviteEventAsync(
             intake.Id,
             intake.PatientId,
@@ -142,7 +147,7 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             ClinicId = intake.ClinicId,
             UserId = context?.UserId,
             Recipient = normalizedDestination.NormalizedValue,
-            InviteUrl = invite.InviteUrl,
+            InviteUrl = inviteUrl,
             ExpiresAtUtc = invite.ExpiresAt.Value,
             CorrelationId = context?.CorrelationId
         };
@@ -262,6 +267,25 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             Channel = channel,
             ErrorMessage = message
         };
+
+    private static string ApplyPublicBaseUrl(string inviteUrl, string? publicBaseUrlOverride)
+    {
+        if (string.IsNullOrWhiteSpace(publicBaseUrlOverride) ||
+            !Uri.TryCreate(inviteUrl, UriKind.Absolute, out var inviteUri) ||
+            !Uri.TryCreate(publicBaseUrlOverride.TrimEnd('/'), UriKind.Absolute, out var baseUri))
+        {
+            return inviteUrl;
+        }
+
+        var builder = new UriBuilder(baseUri)
+        {
+            Path = inviteUri.AbsolutePath,
+            Query = inviteUri.Query.TrimStart('?'),
+            Fragment = string.Empty
+        };
+
+        return builder.Uri.ToString();
+    }
 
     private static string ResolveDestination(IntakeSendInviteRequest request, Patient? patient)
     {

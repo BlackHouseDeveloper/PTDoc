@@ -13,6 +13,31 @@ namespace PTDoc.Tests.UI.Intake;
 public sealed class StandaloneIntakeAccessGateTests : TestContext
 {
     [Fact]
+    public void CheckAccess_RunsAfterFirstRender()
+    {
+        var inviteService = new Mock<IIntakeInviteService>(MockBehavior.Strict);
+        var sessionStore = new Mock<IIntakeSessionStore>(MockBehavior.Strict);
+        var sessionLookup = new TaskCompletionSource<IntakeSessionToken?>();
+        sessionStore
+            .Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .Returns(sessionLookup.Task);
+
+        Services.AddLogging();
+        Services.AddSingleton(inviteService.Object);
+        Services.AddSingleton(sessionStore.Object);
+
+        var cut = RenderComponent<StandaloneIntakeAccessGate>();
+
+        Assert.Contains("Verifying access", cut.Markup, StringComparison.Ordinal);
+        cut.WaitForAssertion(() =>
+            sessionStore.Verify(store => store.GetAsync(It.IsAny<CancellationToken>()), Times.Once));
+
+        sessionLookup.SetResult(null);
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Use the secure invite link from your clinic", cut.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void RequestContact_DisablesOtpSend_WhenInviteTokenIsMissing()
     {
         var inviteService = new Mock<IIntakeInviteService>(MockBehavior.Strict);

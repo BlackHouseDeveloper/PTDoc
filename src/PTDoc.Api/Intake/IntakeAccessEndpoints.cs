@@ -58,6 +58,10 @@ public static class IntakeAccessEndpoints
             .WithName("GetStandalonePatientIntakeDraft")
             .WithSummary("Load an intake draft through a validated standalone intake access token");
 
+        group.MapGet("/patient/{patientId:guid}/latest", GetPatientLatest)
+            .WithName("GetStandalonePatientLatestIntake")
+            .WithSummary("Load the latest intake record through a validated standalone intake access token");
+
         group.MapPut("/{id:guid}", UpdateIntakeDraft)
             .WithName("UpdateStandalonePatientIntakeDraft")
             .WithSummary("Save an intake draft through a validated standalone intake access token");
@@ -200,6 +204,37 @@ public static class IntakeAccessEndpoints
         if (intake is null)
         {
             return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
+        }
+
+        var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, contactNormalizer, intake);
+        if (authorization is not null)
+        {
+            return authorization;
+        }
+
+        return Results.Ok(IntakeEndpoints.ToResponse(intake));
+    }
+
+    private static async Task<IResult> GetPatientLatest(
+        Guid patientId,
+        HttpContext httpContext,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IOptions<IntakeInviteOptions> inviteOptions,
+        [FromServices] IContactNormalizer contactNormalizer,
+        CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms
+            .AsNoTracking()
+            .Include(form => form.Patient)
+            .Where(form => form.PatientId == patientId)
+            .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
+            .ThenByDescending(form => form.LastModifiedUtc)
+            .ThenByDescending(form => form.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (intake is null)
+        {
+            return Results.NotFound(new { error = $"No intake record found for patient {patientId}." });
         }
 
         var authorization = AuthorizePatientScope(httpContext, inviteOptions.Value, contactNormalizer, intake);

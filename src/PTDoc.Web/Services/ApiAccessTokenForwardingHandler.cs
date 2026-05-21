@@ -12,7 +12,7 @@ public sealed class ApiAccessTokenForwardingHandler(
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request.Headers.Authorization is null)
+        if (request.Headers.Authorization is null && !ShouldSkipTokenForwarding(request))
         {
             var accessToken = await GetAccessTokenAsync();
             if (!string.IsNullOrWhiteSpace(accessToken))
@@ -22,6 +22,13 @@ public sealed class ApiAccessTokenForwardingHandler(
         }
 
         return await base.SendAsync(request, cancellationToken);
+    }
+
+    private static bool ShouldSkipTokenForwarding(HttpRequestMessage request)
+    {
+        var path = request.RequestUri?.AbsolutePath;
+        return path is not null
+            && path.StartsWith("/api/v1/intake/access/", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string?> GetAccessTokenAsync()
@@ -34,8 +41,16 @@ public sealed class ApiAccessTokenForwardingHandler(
         var tokenFromClaim = httpContext?.User.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
         if (string.IsNullOrWhiteSpace(tokenFromClaim))
         {
-            var authState = await authenticationStateProvider.GetAuthenticationStateAsync();
-            tokenFromClaim = authState.User.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
+            try
+            {
+                var authState = await authenticationStateProvider.GetAuthenticationStateAsync();
+                tokenFromClaim = authState.User.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
+            }
+            catch (InvalidOperationException)
+            {
+                // Static prerender and anonymous service calls can execute outside the
+                // Razor component DI scope. Those paths should proceed without a token.
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(tokenFromClaim))

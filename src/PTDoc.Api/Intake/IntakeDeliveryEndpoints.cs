@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using PTDoc.Api.Communications;
+using PTDoc.Application.Communication;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 
@@ -29,12 +32,18 @@ public static class IntakeDeliveryEndpoints
 
     private static async Task<IResult> GetDeliveryBundle(
         Guid id,
-        [FromServices] IIntakeDeliveryService deliveryService,
+        [FromServices] IIntakeCommunicationWorkflow workflow,
+        [FromServices] IConfiguration configuration,
+        IHostEnvironment environment,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         try
         {
-            var bundle = await deliveryService.GetDeliveryBundleAsync(id, cancellationToken);
+            var bundle = await workflow.GetDeliveryBundleAsync(
+                id,
+                CreateContext(httpContext, configuration, environment, userId: null),
+                cancellationToken);
             return Results.Ok(bundle);
         }
         catch (KeyNotFoundException ex)
@@ -50,11 +59,18 @@ public static class IntakeDeliveryEndpoints
     private static async Task<IResult> SendInvite(
         Guid id,
         [FromBody] IntakeSendInviteRequest request,
-        [FromServices] IIntakeDeliveryService deliveryService,
+        [FromServices] IIntakeCommunicationWorkflow workflow,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IConfiguration configuration,
+        IHostEnvironment environment,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         request.IntakeId = id;
-        var result = await deliveryService.SendInviteAsync(request, cancellationToken);
+        var result = await workflow.SendInviteAsync(
+            request,
+            CreateContext(httpContext, configuration, environment, identityContext.TryGetCurrentUserId()),
+            cancellationToken);
         return result.Success
             ? Results.Ok(result)
             : Results.UnprocessableEntity(new
@@ -80,4 +96,20 @@ public static class IntakeDeliveryEndpoints
             return Results.NotFound(new { error = ex.Message });
         }
     }
+
+    private static IntakeCommunicationContext CreateContext(
+        HttpContext httpContext,
+        IConfiguration configuration,
+        IHostEnvironment environment,
+        Guid? userId)
+        => new()
+        {
+            UserId = userId,
+            CorrelationId = httpContext.TraceIdentifier,
+            PublicWebBaseUrlOverride = PublicWebOriginResolver.Resolve(
+                httpContext,
+                configuration,
+                environment,
+                "IntakeInvite:PublicWebBaseUrl")
+        };
 }

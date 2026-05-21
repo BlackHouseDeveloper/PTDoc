@@ -102,6 +102,7 @@ public sealed class WorkspaceSubjectiveV2
     public int CurrentPainScore { get; set; }
     public int BestPainScore { get; set; }
     public int WorstPainScore { get; set; }
+    public bool IsPainScoreDocumented { get; set; }
     public string PainFrequency { get; set; } = string.Empty;
     public DateTime? OnsetDate { get; set; }
     public bool OnsetOverAYearAgo { get; set; }

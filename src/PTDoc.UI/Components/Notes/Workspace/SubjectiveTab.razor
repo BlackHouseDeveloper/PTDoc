@@ -95,7 +95,7 @@
                        class="subjective-tab__number-input"
                        value="@_vm.CurrentPainScore"
                        disabled="@IsReadOnly"
-                       @onchange="e => SetAndNotify(v => v.CurrentPainScore = ParseInt(e.Value))" />
+                       @onchange="HandleCurrentPainScoreChanged" />
             </div>
             <div class="subjective-tab__pain-scale-field">
                 <label class="subjective-tab__field-label" for="q3-best">Best</label>
@@ -815,6 +815,16 @@
     {
         update(_vm);
         return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task HandleCurrentPainScoreChanged(ChangeEventArgs e)
+    {
+        var rawValue = e.Value?.ToString();
+        return SetAndNotify(v =>
+        {
+            v.CurrentPainScore = ParseInt(rawValue);
+            v.IsPainScoreDocumented = !string.IsNullOrWhiteSpace(rawValue);
+        });
     }
 
     private Task SetAssistiveDeviceUsageAsync(bool value)

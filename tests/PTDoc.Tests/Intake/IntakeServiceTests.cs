@@ -100,6 +100,26 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureDraftAsync_CreatesDraft_WhenSeedIsEmpty()
+    {
+        var patient = CreatePatient("Emery", "EmptySeed");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id
+        });
+
+        Assert.Equal(IntakeEnsureDraftStatus.Created, result.Status);
+        Assert.NotNull(result.Draft);
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.PatientId == patient.Id);
+        Assert.False(storedDraft.IsLocked);
+        Assert.False(string.IsNullOrWhiteSpace(storedDraft.Consents));
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_PersistsStructuredDataJson_WhenStructuredDataExists()
     {
         var patient = CreatePatient("Jordan", "Structured");
@@ -364,6 +384,84 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetDraftByPatientIdAsync_ReturnsNull_WhenOnlyLockedIntakeExists()
+    {
+        var patient = CreatePatient("Locke", "DraftOnly");
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Locke DraftOnly"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = true,
+            SubmittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var draft = await _service.GetDraftByPatientIdAsync(patient.Id);
+
+        Assert.Null(draft);
+    }
+
+    [Fact]
+    public async Task GetLatestByPatientIdAsync_ReturnsLockedSubmittedLatestIntake()
+    {
+        var patient = CreatePatient("Latest", "Locked");
+        var olderDraftId = Guid.NewGuid();
+        var submittedId = Guid.NewGuid();
+
+        _context.Patients.Add(patient);
+        _context.IntakeForms.AddRange(
+            new IntakeForm
+            {
+                Id = olderDraftId,
+                PatientId = patient.Id,
+                ResponseJson = """{"fullName":"Older Draft"}""",
+                PainMapData = "{}",
+                Consents = "{}",
+                TemplateVersion = "1.0",
+                IsLocked = false,
+                AccessToken = "older-token",
+                LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+                ModifiedByUserId = _userId,
+                ClinicId = _clinicId
+            },
+            new IntakeForm
+            {
+                Id = submittedId,
+                PatientId = patient.Id,
+                ResponseJson = """{"fullName":"Latest Locked","painSeverityProvided":true,"painSeverityScore":0}""",
+                PainMapData = "{}",
+                Consents = "{}",
+                TemplateVersion = "1.0",
+                IsLocked = true,
+                SubmittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+                AccessToken = "submitted-token",
+                LastModifiedUtc = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+                ModifiedByUserId = _userId,
+                ClinicId = _clinicId
+            });
+        await _context.SaveChangesAsync();
+
+        var latest = await _service.GetLatestByPatientIdAsync(patient.Id);
+
+        Assert.NotNull(latest);
+        Assert.Equal(submittedId, latest!.IntakeId);
+        Assert.True(latest.IsLocked);
+        Assert.True(latest.IsSubmitted);
+        Assert.True(latest.PainSeverityProvided);
+        Assert.Equal(0, latest.PainSeverityScore);
+        Assert.Equal(new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc), latest.SubmittedAt);
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_ReturnsLocked_WhenOnlyLockedIntakeExists()
     {
         var patient = CreatePatient("Jordan", "Locked");
@@ -389,6 +487,41 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal(IntakeEnsureDraftStatus.Locked, result.Status);
         Assert.Null(result.Draft);
         Assert.Contains("locked", result.ErrorMessage ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_LocksDraftAndStampsSubmittedAt()
+    {
+        var patient = CreatePatient("Sam", "Submit");
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Sam Submit"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Sam Submit",
+            PainSeverityProvided = false
+        });
+
+        var storedDraft = await _context.IntakeForms.SingleAsync(form => form.Id == intakeId);
+        Assert.True(storedDraft.IsLocked);
+        Assert.NotNull(storedDraft.SubmittedAt);
+        Assert.True(storedDraft.LastModifiedUtc >= storedDraft.SubmittedAt.Value);
     }
 
     [Fact]
