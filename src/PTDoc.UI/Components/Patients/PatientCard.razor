@@ -1,12 +1,10 @@
 @* Patient Card Component - Displays individual patient summary *@
 
-<div class="patient-card" 
-     data-testid="patient-card-@Patient.Id"
-     @onclick="HandleClick"
-     @onkeydown="HandleKeyDown"
-     role="button"
-     tabindex="0"
-     aria-label="View details for @Patient.DisplayName">
+<button type="button"
+        class="patient-card"
+        data-testid="patient-card-@Patient.Id"
+        @onclick="HandleClick"
+        aria-label="View details for @Patient.DisplayName">
     
     <div class="patient-card-content">
         <div class="patient-card-header">
@@ -33,9 +31,33 @@
                     <p class="patient-card-detail-value">@Patient.LastVisit</p>
                 </div>
             }
+
+            @if (!string.IsNullOrEmpty(Patient.MedicalRecordNumber))
+            {
+                <div class="patient-card-detail-item">
+                    <p class="patient-card-detail-label">MRN</p>
+                    <p class="patient-card-detail-value">@Patient.MedicalRecordNumber</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(Patient.Email))
+            {
+                <div class="patient-card-detail-item">
+                    <p class="patient-card-detail-label">Email</p>
+                    <p class="patient-card-detail-value">@Patient.Email</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(Patient.Phone))
+            {
+                <div class="patient-card-detail-item">
+                    <p class="patient-card-detail-label">Phone</p>
+                    <p class="patient-card-detail-value">@Patient.Phone</p>
+                </div>
+            }
         </div>
     </div>
-</div>
+</button>
 
 @code {
     [Parameter, EditorRequired] public PatientListItemVm Patient { get; set; } = null!;
@@ -43,22 +65,9 @@
 
     private async Task HandleClick()
     {
-        Console.WriteLine($"PatientCard clicked: {Patient.DisplayName}, HasDelegate: {OnOpen.HasDelegate}");
         if (OnOpen.HasDelegate)
         {
             await OnOpen.InvokeAsync(Patient);
-        }
-        else
-        {
-            Console.WriteLine("WARNING: OnOpen has no delegate!");
-        }
-    }
-
-    private async Task HandleKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" || e.Key == " ")
-        {
-            await HandleClick();
         }
     }
 }

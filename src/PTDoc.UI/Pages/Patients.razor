@@ -1,40 +1,69 @@
 @page "/patients"
 @attribute [Authorize(Policy = AuthorizationPolicies.PatientRead)]
+@using System.Net
+@using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
 @using PTDoc.UI.Components.Patients.Models
 @inject NavigationManager NavigationManager
 @inject IPatientService PatientService
 @inject IToastService ToastService
+@inject ILogger<Patients> Logger
 @rendermode InteractiveServer
 @implements IDisposable
 
 <PageTitle>Patients - PTDoc</PageTitle>
 
 <div class="patients-page">
-    <GlobalPageHeader OnPrimaryAction="OpenAddPatientModal" />
+    <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+        <Authorized>
+            <GlobalPageHeader Configuration="patientsHeaderWithAction" OnPrimaryAction="OpenAddPatientModal" />
+        </Authorized>
+        <NotAuthorized>
+            <GlobalPageHeader Configuration="patientsHeaderReadOnly" />
+        </NotAuthorized>
+        <Authorizing>
+            <GlobalPageHeader Configuration="patientsHeaderReadOnly" />
+        </Authorizing>
+    </AuthorizeView>
 
     <div class="patients-page-body">
         <div class="patients-page-search">
             <PatientSearchInput 
                 Value="@searchQuery"
                 ValueChanged="@HandleSearchChanged"
-                Placeholder="Search by name or DOB" 
+                Placeholder="Search by name, MRN, or email"
             />
         </div>
 
-        <div class="patients-page-content">
-            @if (isLoading)
+        <div class="patients-page-content" aria-busy="@isLoading">
+            @if (isLoading && patients.Count == 0)
             {
-                <div class="patients-page-loading">
+                <section class="patients-page-state" role="status" aria-live="polite" data-testid="patients-loading-state">
                     @for (var i = 0; i < 6; i++)
                     {
                         <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
                     }
-                </div>
+                </section>
+            }
+            else if (!string.IsNullOrWhiteSpace(loadErrorMessage) && patients.Count == 0)
+            {
+                <section class="patients-page-state patients-page-state--error" role="alert" data-testid="patients-error-state">
+                    <h2>Unable to load patients</h2>
+                    <p>@loadErrorMessage</p>
+                    <button type="button" class="patients-page-state-button" @onclick="RetryLoadPatientsAsync" disabled="@isLoading">Retry</button>
+                </section>
             }
             else
             {
+                @if (!string.IsNullOrWhiteSpace(loadErrorMessage))
+                {
+                    <section class="patients-page-inline-error" role="alert" data-testid="patients-inline-error">
+                        <span>@loadErrorMessage</span>
+                        <button type="button" class="patients-page-state-button" @onclick="RetryLoadPatientsAsync" disabled="@isLoading">Retry</button>
+                    </section>
+                }
+
                 <PatientCardSection 
                     Items="@GetFilteredPatients()" 
                     OnCardClick="@HandlePatientClick" 
@@ -50,11 +79,35 @@
 />
 
 @code {
+    private readonly HeaderConfiguration patientsHeaderWithAction = new()
+    {
+        Route = "/patients",
+        Title = "Patients",
+        Subtitle = "Patient directory",
+        ShowPrimaryAction = true,
+        PrimaryActionText = "Add Patient",
+        PrimaryActionRoute = "/patients?action=patients.add",
+        ShowSyncControls = false,
+        ShowStatusBadge = false
+    };
+
+    private readonly HeaderConfiguration patientsHeaderReadOnly = new()
+    {
+        Route = "/patients",
+        Title = "Patients",
+        Subtitle = "Patient directory",
+        ShowPrimaryAction = false,
+        ShowSyncControls = false,
+        ShowStatusBadge = false
+    };
+
     private bool isLoading = false;
     private bool isAddPatientModalOpen = false;
     private string searchQuery = string.Empty;
+    private string? loadErrorMessage;
     private List<PatientListItemVm> patients = new();
     private CancellationTokenSource? _searchCts;
+    private int _loadSequence;
 
     protected override async Task OnInitializedAsync()
     {
@@ -63,27 +116,45 @@
 
     private async Task LoadPatientsAsync(string? query = null, CancellationToken cancellationToken = default)
     {
+        var sequence = Interlocked.Increment(ref _loadSequence);
         isLoading = true;
+        loadErrorMessage = null;
         StateHasChanged();
+
         try
         {
             var results = await PatientService.SearchAsync(query: query, take: 200, cancellationToken: cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested || sequence != _loadSequence)
+            {
+                return;
+            }
+
             patients = results.Select(ToVm).ToList();
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Superseded by a newer search — ignore stale results.
             return;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Patients] Error loading patients: {ex.Message}");
-            ToastService.ShowError("Failed to load patients.");
+            if (sequence != _loadSequence)
+            {
+                return;
+            }
+
+            Logger.LogWarning(ex, "Failed to load patient directory.");
+            loadErrorMessage = "Patients could not be retrieved. Retry when the connection is available.";
+            ToastService.ShowError("Failed to load patients. Retry when the connection is available.");
         }
         finally
         {
-            isLoading = false;
-            StateHasChanged();
+            if (sequence == _loadSequence)
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -107,6 +178,9 @@
     }
 
     private IReadOnlyList<PatientListItemVm> GetFilteredPatients() => patients;
+
+    private Task RetryLoadPatientsAsync()
+        => LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
 
     private void OpenAddPatientModal()
     {
@@ -132,13 +206,25 @@
                 Phone = formData.PhoneNumber
             };
             await PatientService.CreateAsync(request);
-            ToastService.ShowSuccess($"{formData.FirstName} {formData.LastName} added.");
+            ToastService.ShowSuccess("Patient added.");
             await LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
             return true;
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            Logger.LogWarning(ex, "Patient creation was forbidden for the current user.");
+            ToastService.ShowError("You do not have permission to add patients.");
+            return false;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            Logger.LogWarning(ex, "Patient creation failed validation.");
+            ToastService.ShowError("Review the patient details and try again.");
+            return false;
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Patients] Error creating patient: {ex.Message}");
+            Logger.LogWarning(ex, "Patient creation failed.");
             ToastService.ShowError("Failed to add patient. Please try again.");
             return false;
         }
@@ -153,6 +239,9 @@
     {
         Id = p.Id.ToString(),
         DisplayName = p.DisplayName,
+        MedicalRecordNumber = p.MedicalRecordNumber,
+        Email = p.Email,
+        Phone = p.Phone,
         DateOfBirth = p.DateOfBirth == default ? null : p.DateOfBirth.ToString("MMM d, yyyy"),
         StatusLabel = p.IsArchived ? "Inactive" : "Active",
         StatusVariant = p.IsArchived ? BadgeVariant.Default : BadgeVariant.Success

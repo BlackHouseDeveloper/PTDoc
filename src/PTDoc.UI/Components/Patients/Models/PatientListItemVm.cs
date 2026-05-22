@@ -7,6 +7,9 @@ public class PatientListItemVm
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string? MedicalRecordNumber { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
     public string? DateOfBirth { get; set; }
     public string? LastVisit { get; set; }
     public string StatusLabel { get; set; } = "Active";

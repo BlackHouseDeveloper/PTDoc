@@ -1,4 +1,6 @@
 .patient-card {
+    width: 100%;
+    text-align: left;
     background: var(--card);
     border: 2px solid var(--border);
     border-radius: var(--radius-xl);
@@ -7,6 +9,8 @@
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
     position: relative;
     z-index: 1;
+    appearance: none;
+    font: inherit;
 }
 
 .patient-card:hover {
@@ -72,6 +76,7 @@
     line-height: var(--line-height-normal);
     color: var(--card-foreground);
     margin: 0;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 767px) {
