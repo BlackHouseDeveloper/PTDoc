@@ -19,6 +19,14 @@ else
         <p>@SelectedPatient.Condition</p>
         <p>@SelectedPatient.Provider</p>
         <p>Last assessment: @SelectedPatient.LastAssessment</p>
+        @if (SelectedPatient.HasOutcomeScore)
+        {
+            <p>Latest outcome: @SelectedPatient.CurrentOutcomeMeasureLabel @SelectedPatient.CurrentOutcomeScoreDisplay, @SelectedPatient.CurrentOutcomeInterpretation</p>
+        }
+        else
+        {
+            <p>No outcome measure score recorded in the latest note.</p>
+        }
     </section>
 }
 

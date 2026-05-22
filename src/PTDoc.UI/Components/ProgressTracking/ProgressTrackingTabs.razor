@@ -8,8 +8,9 @@
                 id="@GetTabId(tab)"
                 role="tab"
                 class="@(ActiveTab == tab ? "is-active" : string.Empty)"
-                aria-selected="@(ActiveTab == tab)"
+                aria-selected="@GetAriaSelected(tab)"
                 aria-controls="@GetPanelId(tab)"
+                tabindex="@(ActiveTab == tab ? "0" : "-1")"
                 @onclick="() => SetActiveTab(tab)"
                 @onkeydown="(args) => HandleTabKeyDown(args, tab)">
             @tab
@@ -45,8 +46,8 @@
 
         return args.Key switch
         {
-            "ArrowRight" => SetActiveTab(Tabs[(index + 1) % Tabs.Length]),
-            "ArrowLeft" => SetActiveTab(Tabs[(index - 1 + Tabs.Length) % Tabs.Length]),
+            "ArrowRight" or "ArrowDown" => SetActiveTab(Tabs[(index + 1) % Tabs.Length]),
+            "ArrowLeft" or "ArrowUp" => SetActiveTab(Tabs[(index - 1 + Tabs.Length) % Tabs.Length]),
             "Home" => SetActiveTab(Tabs[0]),
             "End" => SetActiveTab(Tabs[^1]),
             _ => Task.CompletedTask
@@ -61,5 +62,10 @@
     private string GetPanelId(ProgressTrackingTab tab)
     {
         return $"{PanelIdPrefix}-{tab.ToString().ToLowerInvariant()}";
+    }
+
+    private string GetAriaSelected(ProgressTrackingTab tab)
+    {
+        return ActiveTab == tab ? "true" : "false";
     }
 }

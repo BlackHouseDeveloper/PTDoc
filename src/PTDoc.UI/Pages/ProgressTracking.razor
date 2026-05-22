@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
 @rendermode InteractiveServer
 @using System.Globalization
+@using PTDoc.Application.Outcomes
 @using PTDoc.Application.Services
 @using PTDoc.UI.Components.ProgressTracking
 @using PTDoc.UI.Components.ProgressTracking.Models
@@ -9,6 +10,8 @@
 @inject NavigationManager NavigationManager
 @inject INoteService NoteService
 @inject IAppointmentService AppointmentService
+@inject IOutcomeMeasureRegistry OutcomeMeasureRegistry
+@inject ILogger<ProgressTrackingAggregationService> Logger
 
 <PageTitle>Progress Tracking - PTDoc</PageTitle>
 
@@ -69,15 +72,18 @@
                                 <ProgressTrackingOverviewPanel Summary="@overviewSummary" />
                                 break;
                             case ProgressTrackingTab.Patients:
-                                <ProgressTrackingPatientsPanel Items="filteredPatients" OnSelectPatient="SelectPatient" />
+                                <ProgressTrackingPatientsPanel Items="filteredPatients"
+                                                               SelectedPatientId="@selectedPatientId"
+                                                               OnSelectPatient="SelectPatient" />
                                 break;
                             case ProgressTrackingTab.Goals:
                                 <ProgressTrackingGoalsPanel Goals="goalHighlights" />
                                 break;
                             case ProgressTrackingTab.Trends:
                                 <ProgressTrackingTrendsPanel OutcomeTrend="trendPoints"
+                                                             MeasureLabel="@selectedTrendMeasureLabel"
                                                              ProviderProgress="providerProgress"
-                                                             ErrorMessage="trendErrorMessage" />
+                                                             ErrorMessage="@trendErrorMessage" />
                                 break;
                         }
                     </div>
@@ -105,6 +111,7 @@
     private IReadOnlyList<ProgressTrendPointVm> trendPoints = Array.Empty<ProgressTrendPointVm>();
     private ProgressTrackingPatientVm? selectedPatient;
     private string? selectedPatientId;
+    private string selectedTrendMeasureLabel = string.Empty;
     private ProgressTrackingTab activeTab = ProgressTrackingTab.Overview;
     private bool isLoading = true;
     private string overviewSummary = string.Empty;
@@ -118,7 +125,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        aggregationService = new ProgressTrackingAggregationService(NoteService, AppointmentService);
+        aggregationService = new ProgressTrackingAggregationService(NoteService, AppointmentService, OutcomeMeasureRegistry);
         await ReloadAsync();
     }
 
@@ -148,7 +155,7 @@
 
         try
         {
-            aggregationService ??= new ProgressTrackingAggregationService(NoteService, AppointmentService);
+            aggregationService ??= new ProgressTrackingAggregationService(NoteService, AppointmentService, OutcomeMeasureRegistry);
 
             var result = await aggregationService.LoadAsync(filterState, cancellationToken);
             if (cancellationToken.IsCancellationRequested)
@@ -171,7 +178,8 @@
         catch (Exception ex)
         {
             snapshot = null;
-            errorMessage = ex.Message;
+            Logger.LogWarning(ex, "Progress tracking load failed.");
+            errorMessage = "Progress tracking data could not be retrieved. Retry when the connection is available.";
             quickActionStatus = "Unable to load progress tracking data.";
             ClearDerivedState();
         }
@@ -210,6 +218,7 @@
         selectedPatientId = selectedPatient?.Id;
         goalHighlights = selectedPatient?.Goals ?? Array.Empty<string>();
         trendErrorMessage = null;
+        selectedTrendMeasureLabel = selectedPatient?.CurrentOutcomeMeasureLabel ?? string.Empty;
 
         await LoadSelectedPatientTrendPointsAsync(selectedPatient, cancellationToken);
     }
@@ -235,13 +244,18 @@
         selectedPatient = patient;
         goalHighlights = patient.Goals;
         trendErrorMessage = null;
+        selectedTrendMeasureLabel = patient.CurrentOutcomeMeasureLabel;
         await LoadSelectedPatientTrendPointsAsync(patient);
     }
 
-    private async Task SelectPatientFromAlert(string patientId)
+    private Task SelectPatientFromAlert(string targetUrl)
     {
-        await SelectPatient(patientId);
-        activeTab = ProgressTrackingTab.Patients;
+        if (!string.IsNullOrWhiteSpace(targetUrl))
+        {
+            NavigationManager.NavigateTo(targetUrl);
+        }
+
+        return Task.CompletedTask;
     }
 
     private void ClearSelectedPatient()
@@ -251,6 +265,7 @@
         goalHighlights = Array.Empty<string>();
         trendPoints = Array.Empty<ProgressTrendPointVm>();
         trendErrorMessage = null;
+        selectedTrendMeasureLabel = string.Empty;
     }
 
     private async Task HandleFilterStateChanged(ProgressTrackingFilterState next)
@@ -267,7 +282,7 @@
         {
             case "export-summary":
                 NavigationManager.NavigateTo("/export-center?template=progress-summary");
-                quickActionStatus = "Opened progress summary export.";
+                quickActionStatus = "Opened Export Center with Progress Summary selected. Report PDF generation is currently unavailable there.";
                 break;
             case "open-export-center":
                 NavigationManager.NavigateTo("/export-center");
@@ -314,10 +329,15 @@
         {
             trendPoints = Array.Empty<ProgressTrendPointVm>();
             trendErrorMessage = null;
-            var points = await aggregationService!.LoadTrendPointsAsync(patient.RecentNoteIds, localCts.Token);
+            var points = await aggregationService!.LoadTrendPointsAsync(
+                patient.RecentNoteIds,
+                patient.CurrentOutcomeMeasureType,
+                localCts.Token);
             if (!localCts.IsCancellationRequested && string.Equals(selectedPatientId, patient.Id, StringComparison.OrdinalIgnoreCase))
             {
                 trendPoints = points.ToList();
+                selectedTrendMeasureLabel = trendPoints.FirstOrDefault()?.MeasureLabel
+                    ?? patient.CurrentOutcomeMeasureLabel;
             }
         }
         catch (OperationCanceledException)
@@ -363,6 +383,7 @@
         selectedPatient = null;
         overviewSummary = string.Empty;
         trendErrorMessage = null;
+        selectedTrendMeasureLabel = string.Empty;
     }
 
     private static List<ProgressTrackingMetricVm> BuildMetrics(IReadOnlyList<ProgressTrackingPatientVm> patients)
@@ -370,10 +391,7 @@
         var totalPatients = patients.Count;
         var activePatients = patients.Count(patient => string.Equals(patient.StatusLabel, "Active", StringComparison.OrdinalIgnoreCase));
         var dischargedPatients = patients.Count(patient => string.Equals(patient.StatusLabel, "Discharged", StringComparison.OrdinalIgnoreCase));
-        var scoredPatients = patients.Where(patient => patient.HasOutcomeScore).ToList();
-        int? averageScore = scoredPatients.Count == 0
-            ? null
-            : (int)Math.Round(scoredPatients.Average(patient => patient.CurrentScore));
+        var scoredPatients = patients.Count(patient => patient.HasOutcomeScore);
 
         return new List<ProgressTrackingMetricVm>
         {
@@ -403,14 +421,16 @@
             },
             new()
             {
-                Label = "Avg Outcome Score",
-                Value = averageScore?.ToString(CultureInfo.InvariantCulture) ?? "—",
-                Subtitle = scoredPatients.Count == 0
+                Label = "Outcome Scores",
+                Value = totalPatients == 0
+                    ? "0"
+                    : $"{scoredPatients.ToString(CultureInfo.InvariantCulture)}/{totalPatients.ToString(CultureInfo.InvariantCulture)}",
+                Subtitle = scoredPatients == 0
                     ? "No score data available"
-                    : "Across filtered patients",
-                TrendText = scoredPatients.Count == 0 ? null : $"{scoredPatients.Count} scored patients",
-                BadgeText = scoredPatients.Count == 0 ? "No scores" : "Improving",
-                BadgeVariant = scoredPatients.Count == 0 ? "default" : "warning"
+                    : "Patients with recorded measures",
+                TrendText = scoredPatients == 0 ? null : "Instrument-specific",
+                BadgeText = scoredPatients == 0 ? "No scores" : "Measured",
+                BadgeVariant = scoredPatients == 0 ? "default" : "info"
             }
         };
     }
