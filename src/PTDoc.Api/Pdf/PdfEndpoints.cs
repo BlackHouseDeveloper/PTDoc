@@ -22,6 +22,7 @@ public static class PdfEndpoints
             .WithTags("PDF Export");
 
         group.MapGet("/{noteId:guid}/export/hierarchy", GetNoteDocumentHierarchy)
+            .RequireAuthorization(AuthorizationPolicies.NoteExport)
             .WithName("GetNoteDocumentHierarchy");
 
         group.MapPost("/{noteId:guid}/export/pdf", ExportNoteToPdf)

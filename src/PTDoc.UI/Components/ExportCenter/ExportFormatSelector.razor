@@ -15,14 +15,17 @@
         @foreach (var format in Enum.GetValues<ExportFormat>())
         {
             var isSelected = SelectedFormat == format;
-            <label class="export-format-selector__card @(isSelected ? "export-format-selector__card--selected" : "")">
+            var isUnavailable = !IsSupportedFormat(format);
+            <label class="export-format-selector__card @(isSelected ? "export-format-selector__card--selected" : "") @(isUnavailable ? "export-format-selector__card--disabled" : "")">
                 <input
                     type="radio"
                     name="export-format"
                     class="export-format-selector__radio"
                     checked="@isSelected"
+                    disabled="@isUnavailable"
                     @onchange="@((ChangeEventArgs e) => OnFormatSelected(format))"
-                    aria-label="@GetFormatLabel(format)" />
+                    aria-label="@GetFormatLabel(format)"
+                    aria-describedby="@(isUnavailable ? UnsupportedFormatDescriptionId : null)" />
                 
                 <span class="export-format-selector__icon" aria-hidden="true">
                     @GetFormatIcon(format)
@@ -33,11 +36,15 @@
                 </span>
                 
                 <span class="export-format-selector__description">
-                    @GetFormatDescription(format)
+                    @(isUnavailable ? "Not available yet" : GetFormatDescription(format))
                 </span>
             </label>
         }
     </div>
+
+    <p id="@UnsupportedFormatDescriptionId" class="export-format-selector__unavailable">
+        Only SOAP Notes PDF export is currently available.
+    </p>
 </div>
 
 @code {
@@ -48,14 +55,23 @@
     [Parameter]
     public EventCallback<ExportFormat> SelectedFormatChanged { get; set; }
 
+    private string UnsupportedFormatDescriptionId { get; } = $"export-format-unavailable-{Guid.NewGuid():N}";
+
     private async Task OnFormatSelected(ExportFormat format)
     {
+        if (!IsSupportedFormat(format))
+        {
+            return;
+        }
+
         if (SelectedFormat != format)
         {
             SelectedFormat = format;
             await SelectedFormatChanged.InvokeAsync(format);
         }
     }
+
+    private static bool IsSupportedFormat(ExportFormat format) => format == ExportFormat.PDF;
 
     private static string GetFormatLabel(ExportFormat format) => format switch
     {

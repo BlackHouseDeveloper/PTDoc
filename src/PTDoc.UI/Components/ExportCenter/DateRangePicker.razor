@@ -16,7 +16,9 @@
             value="@StartDateValue"
             @oninput="HandleStartDateInput"
             max="@MaxDateString"
-            aria-label="Start date" />
+            aria-label="Start date"
+            aria-invalid="@ShowErrorState"
+            aria-describedby="@DateRangeErrorDescriptionId" />
         
         <span class="date-range-picker__separator">to</span>
         
@@ -27,12 +29,14 @@
             value="@EndDateValue"
             @oninput="HandleEndDateInput"
             max="@MaxDateString"
-            aria-label="End date" />
+            aria-label="End date"
+            aria-invalid="@ShowErrorState"
+            aria-describedby="@DateRangeErrorDescriptionId" />
     </div>
     
     @if (ShowErrorState)
     {
-        <div class="date-range-picker__error" role="alert">
+        <div id="@DateRangeErrorId" class="date-range-picker__error" role="alert">
             Start date must be before or equal to end date
         </div>
     }
@@ -53,8 +57,10 @@
 
     private string StartDateInputId { get; } = $"date-start-{Guid.NewGuid()}";
     private string EndDateInputId { get; } = $"date-end-{Guid.NewGuid()}";
+    private string DateRangeErrorId { get; } = $"date-range-error-{Guid.NewGuid()}";
 
     private bool ShowErrorState => StartDate.HasValue && EndDate.HasValue && StartDate > EndDate;
+    private string? DateRangeErrorDescriptionId => ShowErrorState ? DateRangeErrorId : null;
 
     private string StartDateValue
     {

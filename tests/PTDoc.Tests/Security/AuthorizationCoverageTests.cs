@@ -284,6 +284,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/ai/goals",       AuthorizationPolicies.ClinicalStaff),
 
         // ── PDF export (Pdf/PdfEndpoints.cs) ─────────────────────────────────
+        new("GET",  "/api/v1/notes/{noteId:guid}/export/hierarchy", AuthorizationPolicies.NoteExport),
         new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.NoteExport),
 
         // ── Daily Treatment Note workflow (Notes/DailyNoteEndpoints.cs) ───────

@@ -9,5 +9,5 @@ export async function downloadStreamFile(fileName, contentType, streamReference)
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(href);
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
 }

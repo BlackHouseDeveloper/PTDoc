@@ -21,8 +21,10 @@
         <!-- Date Range (all tabs) -->
         <div class="filters-panel__section">
             <DateRangePicker
-                @bind-StartDate="State.DateRangeStart"
-                @bind-EndDate="State.DateRangeEnd" />
+                StartDate="@State.DateRangeStart"
+                StartDateChanged="@HandleStartDateChanged"
+                EndDate="@State.DateRangeEnd"
+                EndDateChanged="@HandleEndDateChanged" />
         </div>
 
         <!-- SOAP Notes Schema -->
@@ -32,7 +34,8 @@
             <div class="filters-panel__section">
                 <PatientsDropdown
                     Patients="Patients"
-                    @bind-SelectedPatientIds="State.SelectedPatientIds" />
+                    SelectedPatientIds="@State.SelectedPatientIds"
+                    SelectedPatientIdsChanged="@HandleSelectedPatientIdsChanged" />
             </div>
             
             @if (ShowSoapProviderFilter)
@@ -40,7 +43,8 @@
                 <div class="filters-panel__section">
                     <ProvidersDropdown
                         Providers="Providers"
-                        @bind-SelectedProviderIds="State.SelectedProviderIds" />
+                        SelectedProviderIds="@State.SelectedProviderIds"
+                        SelectedProviderIdsChanged="@HandleSelectedProviderIdsChanged" />
                 </div>
             }
             
@@ -49,7 +53,8 @@
                 <h4 class="filters-panel__group-label">Note Types</h4>
                 <TypesSelectorGrid
                     Items="@SoapNoteTypesItems"
-                    @bind-SelectedValues="State.SelectedNoteTypes"
+                    SelectedValues="@State.SelectedNoteTypes"
+                    SelectedValuesChanged="@HandleSelectedNoteTypesChanged"
                     GridLabel="SOAP Note Types" />
             </div>
         }
@@ -61,14 +66,16 @@
             <div class="filters-panel__section">
                 <PatientsDropdown
                     Patients="Patients"
-                    @bind-SelectedPatientIds="State.SelectedPatientIds" />
+                    SelectedPatientIds="@State.SelectedPatientIds"
+                    SelectedPatientIdsChanged="@HandleSelectedPatientIdsChanged" />
             </div>
             
             <!-- Providers (Patient Data) -->
             <div class="filters-panel__section">
                 <ProvidersDropdown
                     Providers="Providers"
-                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+                    SelectedProviderIds="@State.SelectedProviderIds"
+                    SelectedProviderIdsChanged="@HandleSelectedProviderIdsChanged" />
             </div>
             
             <!-- Data Types Grid (Patient Data) -->
@@ -76,7 +83,8 @@
                 <h4 class="filters-panel__group-label">Include Data</h4>
                 <TypesSelectorGrid
                     Items="@PatientDataTypesItems"
-                    @bind-SelectedValues="State.SelectedDataTypes"
+                    SelectedValues="@State.SelectedDataTypes"
+                    SelectedValuesChanged="@HandleSelectedDataTypesChanged"
                     GridLabel="Data Types" />
             </div>
         }
@@ -88,7 +96,8 @@
             <div class="filters-panel__section">
                 <ProvidersDropdown
                     Providers="Providers"
-                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+                    SelectedProviderIds="@State.SelectedProviderIds"
+                    SelectedProviderIdsChanged="@HandleSelectedProviderIdsChanged" />
             </div>
             
             <!-- Appointment Status Grid -->
@@ -96,7 +105,8 @@
                 <h4 class="filters-panel__group-label">Appointment Status</h4>
                 <TypesSelectorGrid
                     Items="@ApptStatusItems"
-                    @bind-SelectedValues="State.SelectedApptStatuses"
+                    SelectedValues="@State.SelectedApptStatuses"
+                    SelectedValuesChanged="@HandleSelectedApptStatusesChanged"
                     GridLabel="Appointment Status" />
             </div>
         }
@@ -109,7 +119,8 @@
                 <h4 class="filters-panel__group-label">Report Type</h4>
                 <TypesSelectorGrid
                     Items="@ReportTypesItems"
-                    @bind-SelectedValues="State.SelectedReportTypes"
+                    SelectedValues="@State.SelectedReportTypes"
+                    SelectedValuesChanged="@HandleSelectedReportTypesChanged"
                     GridLabel="Report Types" />
             </div>
             
@@ -117,7 +128,8 @@
             <div class="filters-panel__section">
                 <ProvidersDropdown
                     Providers="Providers"
-                    @bind-SelectedProviderIds="State.SelectedProviderIds" />
+                    SelectedProviderIds="@State.SelectedProviderIds"
+                    SelectedProviderIdsChanged="@HandleSelectedProviderIdsChanged" />
             </div>
         }
     </div>
@@ -186,4 +198,52 @@
         ("cancellation-report", "Cancellation Report"),
         ("productivity-report", "Productivity Report"),
     };
+
+    private async Task HandleStartDateChanged(DateTime? value)
+    {
+        State.DateRangeStart = value;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleEndDateChanged(DateTime? value)
+    {
+        State.DateRangeEnd = value;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedPatientIdsChanged(List<string> values)
+    {
+        State.SelectedPatientIds = values;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedProviderIdsChanged(List<string> values)
+    {
+        State.SelectedProviderIds = values;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedNoteTypesChanged(List<string> values)
+    {
+        State.SelectedNoteTypes = values;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedDataTypesChanged(List<string> values)
+    {
+        State.SelectedDataTypes = values;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedApptStatusesChanged(List<string> values)
+    {
+        State.SelectedApptStatuses = values;
+        await StateChanged.InvokeAsync();
+    }
+
+    private async Task HandleSelectedReportTypesChanged(List<string> values)
+    {
+        State.SelectedReportTypes = values;
+        await StateChanged.InvokeAsync();
+    }
 }

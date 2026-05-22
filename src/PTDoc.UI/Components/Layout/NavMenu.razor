@@ -77,10 +77,9 @@
                 </AuthorizeView>
             </div>
 
-            <!-- Admin Section: visible to ClinicalStaff for Export/Settings -->
-            <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.ClinicalStaff">
-                <Authorized Context="staffCtx">
-                    <div class="ptdoc-nav-section">
+            <div class="ptdoc-nav-section">
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.NoteExport">
+                    <Authorized>
                         <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
 
                         <NavLink class="ptdoc-nav-item" href="export-center" @onclick="HandleNavigate">
@@ -89,16 +88,20 @@
                                 <span class="ptdoc-nav-text">Export Center</span>
                             </div>
                         </NavLink>
+                    </Authorized>
+                </AuthorizeView>
 
+                <AuthorizeView Roles="Admin,Owner">
+                    <Authorized>
                         <NavLink class="ptdoc-nav-item" href="settings" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Settings</span>
                             </div>
                         </NavLink>
-                    </div>
-                </Authorized>
-            </AuthorizeView>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
         </nav>
     </div>
 
