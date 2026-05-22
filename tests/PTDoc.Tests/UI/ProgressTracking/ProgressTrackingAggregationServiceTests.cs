@@ -32,7 +32,11 @@ public sealed class ProgressTrackingAggregationServiceTests
                 500,
                 null,
                 null,
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                null,
+                null,
+                null,
+                0))
             .ReturnsAsync(new[]
             {
                 new NoteListItemApiResponse
@@ -163,7 +167,11 @@ public sealed class ProgressTrackingAggregationServiceTests
                 500,
                 null,
                 null,
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                null,
+                null,
+                null,
+                0))
             .ReturnsAsync(new[]
             {
                 new NoteListItemApiResponse

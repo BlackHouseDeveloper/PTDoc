@@ -992,6 +992,7 @@ public sealed class NoteWorkspaceV2Service(
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
             IsReEvaluation = note.IsReEvaluation,
+            NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             Payload = payload
         };

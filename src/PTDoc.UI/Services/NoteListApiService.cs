@@ -24,7 +24,11 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
         int take = 100,
         string? categoryId = null,
         string? itemId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? search = null,
+        DateTime? dateRangeStart = null,
+        DateTime? dateRangeEnd = null,
+        int skip = 0)
     {
         var queryParts = new List<string>();
         if (patientId.HasValue)
@@ -34,10 +38,18 @@ public sealed class NoteListApiService(HttpClient httpClient) : INoteService
         if (!string.IsNullOrWhiteSpace(status))
             queryParts.Add($"status={Uri.EscapeDataString(status)}");
         queryParts.Add($"take={take}");
+        if (skip > 0)
+            queryParts.Add($"skip={skip}");
         if (!string.IsNullOrWhiteSpace(categoryId))
             queryParts.Add($"categoryId={Uri.EscapeDataString(categoryId)}");
         if (!string.IsNullOrWhiteSpace(itemId))
             queryParts.Add($"itemId={Uri.EscapeDataString(itemId)}");
+        if (!string.IsNullOrWhiteSpace(search))
+            queryParts.Add($"search={Uri.EscapeDataString(search)}");
+        if (dateRangeStart.HasValue)
+            queryParts.Add($"dateRangeStart={Uri.EscapeDataString(dateRangeStart.Value.ToString("O"))}");
+        if (dateRangeEnd.HasValue)
+            queryParts.Add($"dateRangeEnd={Uri.EscapeDataString(dateRangeEnd.Value.ToString("O"))}");
 
         var url = "/api/v1/notes?" + string.Join("&", queryParts);
 

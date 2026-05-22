@@ -19,7 +19,11 @@ public interface INoteService
         int take = 100,
         string? categoryId = null,
         string? itemId = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? search = null,
+        DateTime? dateRangeStart = null,
+        DateTime? dateRangeEnd = null,
+        int skip = 0);
 
     /// <summary>
     /// Returns a full note record when the UI needs authoritative backend status details.

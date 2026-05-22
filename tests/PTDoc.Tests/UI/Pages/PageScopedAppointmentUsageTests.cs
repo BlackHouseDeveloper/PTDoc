@@ -35,7 +35,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             });
 
         noteService
-            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         appointmentService
@@ -94,7 +94,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             });
 
         noteService
-            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         appointmentService
@@ -166,7 +166,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             .ReturnsAsync(new AppointmentsOverviewResponse());
 
         noteService
-            .Setup(service => service.GetNotesAsync(null, null, null, 200, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(null, null, null, 200, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         noteService
