@@ -1,14 +1,18 @@
 @* Today/Week View Tabs Component *@
 
 <div class="appointments-view-tabs">
-    <div class="tab-list">
+    <div class="tab-list" role="tablist" aria-label="Appointment view">
         <button type="button" 
                 class="tab-button @(SelectedView == AppointmentsView.Today ? "selected" : "")"
+                role="tab"
+                aria-selected="@(SelectedView == AppointmentsView.Today ? "true" : "false")"
                 @onclick="SelectTodayView">
             Today
         </button>
         <button type="button" 
                 class="tab-button @(SelectedView == AppointmentsView.Week ? "selected" : "")"
+                role="tab"
+                aria-selected="@(SelectedView == AppointmentsView.Week ? "true" : "false")"
                 @onclick="SelectWeekView">
             Week View
         </button>

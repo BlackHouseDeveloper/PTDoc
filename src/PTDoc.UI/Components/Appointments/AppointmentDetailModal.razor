@@ -103,23 +103,25 @@
                     <div class="appointment-detail-modal__quick-actions-grid">
                         <button type="button"
                                 class="@GetContextualQuickActionClass()"
-                                @onclick="HandleStartVisitRequested"
-                                disabled="@(!CanStartVisit)"
-                                aria-describedby="@GetStartVisitDescriptionId()">
-                            @RenderStartVisitIcon()
-                            <span>Start Visit</span>
+                                @onclick="HandlePrimaryActionRequested"
+                                disabled="@(!CanUsePrimaryAction)"
+                                aria-describedby="@GetPrimaryActionDescriptionId()">
+                            @RenderPrimaryActionIcon()
+                            <span>@GetPrimaryActionLabel()</span>
                         </button>
 
-                        @if (!CanStartVisit)
+                        @if (!CanUsePrimaryAction)
                         {
-                            <p id="@StartVisitDisabledReasonId" class="appointment-detail-modal__quick-action-reason">
-                                Check in the patient before starting the visit.
+                            <p id="@PrimaryActionDisabledReasonId" class="appointment-detail-modal__quick-action-reason">
+                                @GetPrimaryActionDisabledReason()
                             </p>
                         }
 
                         <button type="button"
                                 class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
-                                @onclick="HandleSendReminderRequested">
+                                @onclick="HandleSendReminderRequested"
+                                disabled="@IsTerminalStatus"
+                                aria-describedby="@GetTerminalActionDescriptionId()">
                             <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M5 2.5H11L13 4.5V13C13 13.5523 12.5523 14 12 14H5C4.44772 14 4 13.5523 4 13V3.5C4 2.94772 4.44772 2.5 5 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
                                 <path d="M10.5 2.75V4.75H12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -130,7 +132,9 @@
 
                         <button type="button"
                                 class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
-                                @onclick="HandleRescheduleRequested">
+                                @onclick="HandleRescheduleRequested"
+                                disabled="@IsTerminalStatus"
+                                aria-describedby="@GetTerminalActionDescriptionId()">
                             <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M4 2.75V4.25M12 2.75V4.25M3.25 6H12.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                                 <rect x="3.25" y="3.5" width="9.5" height="9.25" rx="1.5" stroke="currentColor" stroke-width="1.5" />
@@ -150,11 +154,11 @@
 
                 <button type="button"
                         class="appointment-detail-modal__footer-button appointment-detail-modal__footer-button--primary"
-                        @onclick="HandleStartVisitRequested"
-                        disabled="@(!CanStartVisit)"
-                        aria-describedby="@GetStartVisitDescriptionId()">
-                    @RenderStartVisitIcon()
-                    <span>Start Visit</span>
+                        @onclick="HandlePrimaryActionRequested"
+                        disabled="@(!CanUsePrimaryAction)"
+                        aria-describedby="@GetPrimaryActionDescriptionId()">
+                    @RenderPrimaryActionIcon()
+                    <span>@GetPrimaryActionLabel()</span>
                 </button>
             </div>
         </div>
@@ -178,6 +182,7 @@
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<AppointmentDetailModal>? dotNetRef;
     private readonly string modalId = $"appointment-detail-modal-{Guid.NewGuid():N}";
+    private bool modalAccessibilityActive;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -194,25 +199,27 @@
             }
         }
 
-        if (IsOpen && modalModule is not null && dotNetRef is not null)
+        if (IsOpen && !modalAccessibilityActive && modalModule is not null && dotNetRef is not null)
         {
             try
             {
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
                 await closeButtonRef.FocusAsync();
+                modalAccessibilityActive = true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Modal JS interop error: {ex.Message}");
             }
         }
-        else if (!IsOpen && modalModule is not null)
+        else if (!IsOpen && modalAccessibilityActive && modalModule is not null)
         {
             try
             {
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
                 await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                modalAccessibilityActive = false;
             }
             catch (Exception ex)
             {
@@ -236,14 +243,44 @@
             ? OnActionRequested.InvokeAsync(actionName)
             : Task.CompletedTask;
 
+    private bool CanCheckIn =>
+        string.Equals(Appointment?.AppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase);
+
     private bool CanStartVisit =>
-        string.Equals(Appointment?.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase);
+        string.Equals(Appointment?.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase);
 
-    private string StartVisitDisabledReasonId => $"{modalId}-start-visit-reason";
+    private bool IsTerminalStatus =>
+        string.Equals(Appointment?.AppointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Appointment?.AppointmentStatus, "No Show", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Appointment?.AppointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase);
 
-    private string? GetStartVisitDescriptionId() => CanStartVisit ? null : StartVisitDisabledReasonId;
+    private bool CanUsePrimaryAction => CanCheckIn || CanStartVisit;
+
+    private string PrimaryActionDisabledReasonId => $"{modalId}-primary-action-reason";
+
+    private string? GetPrimaryActionDescriptionId() => CanUsePrimaryAction ? null : PrimaryActionDisabledReasonId;
+
+    private string? GetTerminalActionDescriptionId() => IsTerminalStatus ? PrimaryActionDisabledReasonId : null;
 
     private Task HandleStartVisitRequested() => HandleActionRequested("start-visit");
+
+    private Task HandleCheckInRequested() => HandleActionRequested("check-in");
+
+    private Task HandlePrimaryActionRequested()
+    {
+        if (CanCheckIn)
+        {
+            return HandleCheckInRequested();
+        }
+
+        if (CanStartVisit)
+        {
+            return HandleStartVisitRequested();
+        }
+
+        return Task.CompletedTask;
+    }
 
     private Task HandleSendReminderRequested() => HandleActionRequested("send-reminder");
 
@@ -254,7 +291,27 @@
         return "appointment-detail-modal__quick-action appointment-detail-modal__quick-action--outlined";
     }
 
-    private RenderFragment RenderStartVisitIcon() => builder =>
+    private string GetPrimaryActionLabel()
+    {
+        if (CanCheckIn)
+        {
+            return "Check In";
+        }
+
+        return "Start Visit";
+    }
+
+    private string GetPrimaryActionDisabledReason()
+    {
+        if (IsTerminalStatus)
+        {
+            return "This appointment is closed and cannot be started.";
+        }
+
+        return "Check in the patient before starting the visit.";
+    }
+
+    private RenderFragment RenderPrimaryActionIcon() => builder =>
     {
         builder.OpenElement(0, "svg");
         builder.AddAttribute(1, "class", "appointment-detail-modal__button-icon");
@@ -307,6 +364,7 @@
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
                 await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
                 await modalModule.DisposeAsync();
+                modalAccessibilityActive = false;
             }
             catch
             {

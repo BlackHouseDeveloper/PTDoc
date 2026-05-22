@@ -5,14 +5,30 @@
 
 <div class="appointments-right-column">
     <AppointmentsRightHeader ViewLabel="@ViewLabel" />
-    
-    <ClinicianScheduler SelectedDate="@SelectedDate" 
-                       Clinicians="@Clinicians"
-                       Appointments="@Appointments"
-                       View="@View"
-                       Filter="@Filter"
-                       OnAppointmentSelected="@OnAppointmentSelected"
-                       AppointmentStatusOverrides="@AppointmentStatusOverrides" />
+
+    @if (ShowEmptyState)
+    {
+        <section class="appointments-empty-state" role="status" aria-live="polite">
+            <h3>@EmptyStateTitle</h3>
+            <p>@EmptyStateDescription</p>
+            @if (HasActiveFilters)
+            {
+                <button type="button" class="appointments-empty-state__action" @onclick="OnClearFilters">
+                    Clear filters
+                </button>
+            }
+        </section>
+    }
+    else
+    {
+        <ClinicianScheduler SelectedDate="@SelectedDate"
+                           Clinicians="@Clinicians"
+                           Appointments="@Appointments"
+                           View="@View"
+                           Filter="@Filter"
+                           OnAppointmentSelected="@OnAppointmentSelected"
+                           AppointmentStatusOverrides="@AppointmentStatusOverrides" />
+    }
 </div>
 
 @code {
@@ -39,4 +55,19 @@
 
     [Parameter]
     public IReadOnlyDictionary<string, string>? AppointmentStatusOverrides { get; set; }
+
+    [Parameter]
+    public bool ShowEmptyState { get; set; }
+
+    [Parameter]
+    public bool HasActiveFilters { get; set; }
+
+    [Parameter]
+    public string EmptyStateTitle { get; set; } = "No appointments scheduled";
+
+    [Parameter]
+    public string EmptyStateDescription { get; set; } = "Use New Appointment to add a scheduled visit.";
+
+    [Parameter]
+    public EventCallback OnClearFilters { get; set; }
 }

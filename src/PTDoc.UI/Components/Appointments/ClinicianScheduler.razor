@@ -57,7 +57,7 @@
                                     <button type="button"
                                             class="appointment-block @GetAppointmentClass(effectiveBlockStatus) @GetAppointmentDensityClass(appt)"
                                             title="@($"{appt.Time} - {appt.PatientName}")"
-                                            aria-label="@($"Open appointment details for {appt.PatientName} at {appt.Time}")"
+                                            aria-label="@GetAppointmentAriaLabel(appt, SelectedDate)"
                                             style="@GetAppointmentStyle(appt)"
                                             @onclick="@(() => OpenAppointmentDetailsAsync(appt, SelectedDate))">
                                         <div class="appointment-content">
@@ -111,7 +111,7 @@
                                 <button type="button"
                                         class="appointment-block @GetAppointmentClass(effectiveBlockStatus) @GetAppointmentDensityClass(appt)"
                                         title="@($"{appt.Time} - {appt.PatientName}")"
-                                        aria-label="@($"Open appointment details for {appt.PatientName} at {appt.Time}")"
+                                        aria-label="@GetAppointmentAriaLabel(appt, day.Date)"
                                         style="@GetAppointmentStyle(appt)"
                                         @onclick="@(() => OpenAppointmentDetailsAsync(appt, day.Date))">
                                     <div class="appointment-content">
@@ -358,6 +358,12 @@
         }
 
         return appointment.AppointmentStatus;
+    }
+
+    private string GetAppointmentAriaLabel(SchedulerAppointmentItem appointment, DateTime appointmentDate)
+    {
+        var status = GetEffectiveAppointmentStatusLabel(appointment, appointmentDate);
+        return $"Open appointment details for {appointment.PatientName} with {appointment.ClinicianName} at {appointment.Time}, {status}";
     }
 
     private static string BuildAppointmentKey(SchedulerAppointmentItem appointment) =>

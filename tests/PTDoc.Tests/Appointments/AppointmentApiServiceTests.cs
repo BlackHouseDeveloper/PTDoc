@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Tests.Integrations;
@@ -73,6 +74,30 @@ public sealed class AppointmentApiServiceTests
         var result = await service.GetCliniciansAsync();
 
         Assert.Collection(result, clinician => Assert.Equal("Taylor PT", clinician.DisplayName));
+    }
+
+    [Fact]
+    public async Task CheckInAsync_WhenServerRejects_ThrowsUserSafeMessage()
+    {
+        var appointmentId = Guid.NewGuid();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/appointments/{appointmentId}/check-in", request.RequestUri!.AbsolutePath);
+
+            return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(new { error = "Cancelled or no-show appointments cannot be checked in." }, JsonOptions),
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var service = CreateService(handler);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckInAsync(appointmentId));
+        Assert.Equal("Cancelled or no-show appointments cannot be checked in.", ex.Message);
     }
 
     private static AppointmentApiService CreateService(HttpMessageHandler handler)

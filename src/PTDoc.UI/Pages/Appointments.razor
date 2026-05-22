@@ -3,11 +3,14 @@
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
+@implements IAsyncDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Appointments - PTDoc</PageTitle>
 
-<div class="appointments-page">
+<div class="appointments-page"
+     aria-hidden="@GetAppointmentsPageAriaHidden()"
+     inert="@(IsAnyModalOpen ? string.Empty : null)">
     <GlobalPageHeader OnPrimaryAction="HandleNewAppointment" />
 
     @if (isLoadingAppointments && appointmentDirectory.Count == 0)
@@ -50,7 +53,12 @@
                                     View="@selectedView"
                                     Filter="@currentFilter"
                                     OnAppointmentSelected="@HandleAppointmentSelected"
-                                    AppointmentStatusOverrides="@appointmentStatusOverrides" />
+                                    AppointmentStatusOverrides="@appointmentStatusOverrides"
+                                    HasActiveFilters="@HasActiveFilters"
+                                    ShowEmptyState="@(!isLoadingAppointments && visibleAppointments.Count == 0)"
+                                    EmptyStateTitle="@GetEmptyStateTitle()"
+                                    EmptyStateDescription="@GetEmptyStateDescription()"
+                                    OnClearFilters="@ClearFilters" />
         </div>
     }
 </div>
@@ -92,8 +100,13 @@
     private List<NewAppointmentModal.ClinicianOption> availableClinicians = new();
     private bool isLoadingAppointments = true;
     private string? appointmentLoadError;
+    private bool shouldNormalizeRouteAction;
+    private IJSObjectReference? navigationModule;
+
+    private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen;
 
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
     [Inject] private IToastService ToastService { get; set; } = default!;
@@ -102,6 +115,31 @@
     {
         await LoadPatientsAsync();
         await LoadAppointmentsAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        HandleRouteAction();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!shouldNormalizeRouteAction)
+        {
+            return;
+        }
+
+        shouldNormalizeRouteAction = false;
+
+        try
+        {
+            navigationModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/navigation.js");
+            await navigationModule.InvokeVoidAsync("replaceUrl", "/appointments");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Appointments] Route normalization failed: {ex.Message}");
+        }
     }
 
     private async Task HandleViewChanged(AppointmentsView view)
@@ -254,6 +292,9 @@
 
         switch (actionName)
         {
+            case "check-in":
+                await HandleCheckInAsync();
+                break;
             case "start-visit":
                 await HandleStartVisitAsync();
                 break;
@@ -284,6 +325,21 @@
     {
         return selectedView == AppointmentsView.Today ? "Today's Appointments" : "Week Appointments";
     }
+
+    private void HandleRouteAction()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (!TryGetQueryParameter(uri.Query, "action", out var action)
+            || !string.Equals(action, "appointments.new", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        HandleNewAppointment();
+        shouldNormalizeRouteAction = true;
+    }
+
+    private string GetAppointmentsPageAriaHidden() => IsAnyModalOpen ? "true" : "false";
 
     private async Task LoadPatientsAsync()
     {
@@ -395,7 +451,10 @@
         catch (Exception ex)
         {
             Console.WriteLine($"[Appointments] Error checking in appointment: {ex.Message}");
-            ToastService.ShowError("Failed to update the appointment status.");
+            var message = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+                ? ex.Message
+                : "Failed to update the appointment status.";
+            ToastService.ShowError(message);
         }
     }
 
@@ -674,6 +733,56 @@
         return true;
     }
 
+    private void ClearFilters()
+    {
+        currentFilter = new AppointmentsFilter();
+        RebuildSchedulerState();
+    }
+
+    private bool HasActiveFilters =>
+        currentFilter.SelectedAppointmentTypes.Count > 0
+        || currentFilter.SelectedAppointmentStatuses.Count > 0
+        || currentFilter.SelectedIntakeStatuses.Count > 0;
+
+    private string GetEmptyStateTitle() =>
+        HasActiveFilters
+            ? "No appointments match the current filters"
+            : selectedView == AppointmentsView.Today
+                ? "No appointments scheduled for this day"
+                : "No appointments scheduled for this week";
+
+    private string GetEmptyStateDescription() =>
+        HasActiveFilters
+            ? "Clear filters or adjust the selected date to view appointments."
+            : "Use New Appointment to add a scheduled visit for this period.";
+
+    private static bool TryGetQueryParameter(string query, string name, out string value)
+    {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        var trimmedQuery = query[0] == '?' ? query[1..] : query;
+        foreach (var segment in trimmedQuery.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = segment.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0].Replace("+", " ", StringComparison.Ordinal));
+            if (!string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            value = parts.Length > 1
+                ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal))
+                : string.Empty;
+            return true;
+        }
+
+        return false;
+    }
+
     private (DateTime StartDate, DateTime EndDate) GetVisibleDateWindow()
     {
         if (selectedView == AppointmentsView.Today)
@@ -754,5 +863,22 @@
     {
         var daysFromSunday = (int)date.DayOfWeek;
         return date.Date.AddDays(-daysFromSunday);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (navigationModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await navigationModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore disposal failures during circuit teardown.
+        }
     }
 }

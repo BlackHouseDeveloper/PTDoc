@@ -239,6 +239,7 @@
     private DotNetObjectReference<NewAppointmentModal>? dotNetRef;
     private string modalId = $"new-appointment-modal-{Guid.NewGuid():N}";
     private bool wasOpen;
+    private bool modalAccessibilityActive;
 
     private string PatientId { get; set; } = string.Empty;
     private string AppointmentType { get; set; } = string.Empty;
@@ -276,25 +277,27 @@
             }
         }
 
-        if (IsOpen && modalModule != null && dotNetRef != null)
+        if (IsOpen && !modalAccessibilityActive && modalModule != null && dotNetRef != null)
         {
             try
             {
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
                 await firstInputRef.FocusAsync();
+                modalAccessibilityActive = true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Modal JS interop error: {ex.Message}");
             }
         }
-        else if (!IsOpen && modalModule != null)
+        else if (!IsOpen && modalAccessibilityActive && modalModule != null)
         {
             try
             {
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
                 await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                modalAccessibilityActive = false;
             }
             catch (Exception ex)
             {
@@ -470,6 +473,7 @@
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
                 await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
                 await modalModule.DisposeAsync();
+                modalAccessibilityActive = false;
             }
             catch { /* Ignore disposal errors */ }
         }

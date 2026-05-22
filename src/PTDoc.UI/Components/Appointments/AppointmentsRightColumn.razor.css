@@ -7,6 +7,64 @@
     overflow: hidden;
 }
 
+.appointments-empty-state {
+    display: flex;
+    flex: 1;
+    min-height: 24rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-8);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    text-align: center;
+}
+
+.appointments-empty-state h3,
+.appointments-empty-state p {
+    margin: 0;
+}
+
+.appointments-empty-state h3 {
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+}
+
+.appointments-empty-state p {
+    max-width: 28rem;
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.appointments-empty-state__action {
+    min-height: var(--touch-target-mobile);
+    padding: 0 var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.appointments-empty-state__action:hover {
+    background: var(--muted);
+}
+
+.appointments-empty-state__action:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
 @media (max-width: 1199px) {
     .appointments-right-column {
         /* In stacked layout, allow scheduler content to expand/scroll instead of clipping. */
