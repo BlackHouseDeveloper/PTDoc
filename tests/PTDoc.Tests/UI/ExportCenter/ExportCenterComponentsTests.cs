@@ -138,8 +138,23 @@ public sealed class ExportCenterComponentsTests : TestContext
         var inputs = cut.FindAll("input[type='date']");
         Assert.All(inputs, input =>
         {
-            Assert.NotEqual("False", input.GetAttribute("aria-invalid"));
+            Assert.Equal("true", input.GetAttribute("aria-invalid"));
             Assert.False(string.IsNullOrWhiteSpace(input.GetAttribute("aria-describedby")));
+        });
+    }
+
+    [Fact]
+    public void DateRangePicker_ValidRange_OmitsInvalidStateAttributes()
+    {
+        var cut = RenderComponent<DateRangePicker>(parameters => parameters
+            .Add(component => component.StartDate, new DateTime(2026, 5, 1))
+            .Add(component => component.EndDate, new DateTime(2026, 5, 2)));
+
+        var inputs = cut.FindAll("input[type='date']");
+        Assert.All(inputs, input =>
+        {
+            Assert.Null(input.GetAttribute("aria-invalid"));
+            Assert.Null(input.GetAttribute("aria-describedby"));
         });
     }
 

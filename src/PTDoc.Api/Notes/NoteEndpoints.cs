@@ -176,13 +176,13 @@ public static class NoteEndpoints
                                 GetNoteTypeDisplayName(value).Contains(trimmedSearch, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
+            // Keep list search on bounded, indexed/structured fields. Large note body JSON
+            // requires a dedicated full-text/indexed path rather than per-request scans.
             query = query.Where(n =>
                 (n.Patient != null && (
-                    n.Patient.FirstName.Contains(trimmedSearch) ||
-                    n.Patient.LastName.Contains(trimmedSearch) ||
-                    (n.Patient.FirstName + " " + n.Patient.LastName).Contains(trimmedSearch))) ||
-                n.CptCodesJson.Contains(trimmedSearch) ||
-                n.ContentJson.Contains(trimmedSearch) ||
+                    n.Patient.FirstName.StartsWith(trimmedSearch) ||
+                    n.Patient.LastName.StartsWith(trimmedSearch) ||
+                    (n.Patient.MedicalRecordNumber != null && n.Patient.MedicalRecordNumber.StartsWith(trimmedSearch)))) ||
                 matchingNoteTypes.Contains(n.NoteType));
         }
 

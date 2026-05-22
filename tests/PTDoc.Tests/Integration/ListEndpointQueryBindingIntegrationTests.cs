@@ -79,6 +79,51 @@ public sealed class ListEndpointQueryBindingIntegrationTests : IClassFixture<PtD
         Assert.DoesNotContain("Required parameter", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task NotesList_Search_DoesNotScanClinicalContentJson()
+    {
+        var marker = $"BodyOnly{Guid.NewGuid():N}";
+        var medicalRecordNumber = $"MRN-{Guid.NewGuid():N}"[..20];
+        var patient = await CreatePatientWithNoteAsync(
+            firstName: "Content",
+            lastName: "Search",
+            medicalRecordNumber: medicalRecordNumber,
+            contentJson: $$"""{"subjective":"{{marker}}"}""",
+            cptCodesJson: "[]");
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.GetAsync($"/api/v1/notes?search={Uri.EscapeDataString(marker)}&take=50");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var notes = await response.Content.ReadFromJsonAsync<List<NoteListItemApiResponse>>();
+        Assert.NotNull(notes);
+        Assert.DoesNotContain(notes!, note => note.PatientId == patient.Id);
+    }
+
+    [Fact]
+    public async Task NotesList_Search_MatchesStructuredPatientFields()
+    {
+        var marker = $"MRN{Guid.NewGuid():N}"[..18];
+        var patient = await CreatePatientWithNoteAsync(
+            firstName: "Structured",
+            lastName: "Search",
+            medicalRecordNumber: marker,
+            contentJson: "{}",
+            cptCodesJson: "[]");
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.GetAsync($"/api/v1/notes?search={Uri.EscapeDataString(marker)}&take=50");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var notes = await response.Content.ReadFromJsonAsync<List<NoteListItemApiResponse>>();
+        Assert.NotNull(notes);
+        Assert.Contains(notes!, note => note.PatientId == patient.Id);
+    }
+
     private static Patient CreatePatient(
         string firstName,
         string lastName,
@@ -94,4 +139,38 @@ public sealed class ListEndpointQueryBindingIntegrationTests : IClassFixture<PtD
             ModifiedByUserId = modifiedByUserId,
             SyncState = SyncState.Pending
         };
+
+    private async Task<Patient> CreatePatientWithNoteAsync(
+        string firstName,
+        string lastName,
+        string medicalRecordNumber,
+        string contentJson,
+        string cptCodesJson)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var patient = CreatePatient(firstName, lastName, clinician.Id, medicalRecordNumber);
+        patient.ClinicId = clinician.ClinicId;
+
+        db.Patients.Add(patient);
+        db.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            Patient = patient,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinician.Id,
+            ClinicId = clinician.ClinicId,
+            ContentJson = contentJson,
+            CptCodesJson = cptCodesJson,
+            SyncState = SyncState.Pending
+        });
+
+        await db.SaveChangesAsync();
+        return patient;
+    }
 }
