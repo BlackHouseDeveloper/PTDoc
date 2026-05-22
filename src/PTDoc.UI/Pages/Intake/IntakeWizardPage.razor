@@ -53,6 +53,23 @@
                     </RoleGate>
                 }
 
+                @if (ShowClinicianPatientSelector && !ShouldShowWizard)
+                {
+                    <section class="intake-page__empty-state" role="status">
+                        <h2>Select a patient to start intake</h2>
+                        <p>Use the patient selector above to load an existing intake draft or start a draft for an eligible patient.</p>
+                    </section>
+                }
+
+                @if (ShowMissingPatientContext)
+                {
+                    <section class="intake-page__not-found" role="status">
+                        <h2>Intake Link Required</h2>
+                        <p>Use the secure intake link from your clinic to open this form.</p>
+                        <p>If you received this page without a patient-specific link, contact your care provider for a new intake invitation.</p>
+                    </section>
+                }
+
                 @if (_isLoadingDraft)
                 {
                     <section class="intake-page__notice" role="status" aria-live="polite">
@@ -67,35 +84,38 @@
                     </section>
                 }
 
-                <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
-                    @switch (State.CurrentStep)
-                    {
-                        case IntakeStep.Demographics:
-                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                        case IntakeStep.PainAssessment:
-                            <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                        case IntakeStep.PainDetails:
-                            <PainDetailsStep State="@State"
-                                             OnBack="HandleBackAsync"
-                                             OnContinue="HandlePainDetailsContinueAsync"
-                                             OnStateChanged="HandleStateChangedAsync"
-                                             ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                            break;
-                        case IntakeStep.Review:
-                            <ReviewStep State="@State"
-                                        ValidationMessage="@_validationMessage"
-                                        OnBack="HandleBackAsync"
-                                        OnSubmit="HandleSubmitAsync"
-                                        OnEditStep="HandleEditStepAsync"
-                                        ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                            break;
-                        default:
-                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                    }
-                </fieldset>
+                @if (ShouldShowWizard)
+                {
+                    <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
+                        @switch (State.CurrentStep)
+                        {
+                            case IntakeStep.Demographics:
+                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                            case IntakeStep.PainAssessment:
+                                <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                            case IntakeStep.PainDetails:
+                                <PainDetailsStep State="@State"
+                                                 OnBack="HandleBackAsync"
+                                                 OnContinue="HandlePainDetailsContinueAsync"
+                                                 OnStateChanged="HandleStateChangedAsync"
+                                                 ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                break;
+                            case IntakeStep.Review:
+                                <ReviewStep State="@State"
+                                            ValidationMessage="@_validationMessage"
+                                            OnBack="HandleBackAsync"
+                                            OnSubmit="HandleSubmitAsync"
+                                            OnEditStep="HandleEditStepAsync"
+                                            ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                break;
+                            default:
+                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                        }
+                    </fieldset>
+                }
             }
         </main>
     </div>
@@ -121,6 +141,8 @@
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner},{Roles.FrontDesk}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+    private bool ShowMissingPatientContext => State.IsPatientMode && !PatientId.HasValue && !State.PatientId.HasValue;
+    private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
     private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
     private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || !CanEditDraft;
@@ -308,6 +330,14 @@
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
+            return;
+        }
+
+        if (!State.PatientId.HasValue)
+        {
+            _validationMessage = State.IsPatientMode
+                ? "Use a patient-specific intake link before starting this form."
+                : "Select a patient before starting an intake draft.";
             return;
         }
 
