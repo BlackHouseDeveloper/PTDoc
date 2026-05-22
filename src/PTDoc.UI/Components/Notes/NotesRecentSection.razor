@@ -17,7 +17,6 @@
             {
                 <NoteCard
                     Note="item"
-                    OnOpen="OnOpen"
                     OnView="OnView"
                     OnEdit="OnEdit"
                     OnDownloadPdf="OnDownloadPdf"
@@ -29,7 +28,6 @@
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<NoteListItemVm> Items { get; set; } = Array.Empty<NoteListItemVm>();
-    [Parameter] public EventCallback<NoteListItemVm> OnOpen { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnEdit { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnDownloadPdf { get; set; }

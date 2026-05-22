@@ -90,14 +90,13 @@
 
 @code {
     [Parameter, EditorRequired] public NoteListItemVm Note { get; set; } = null!;
-    [Parameter] public EventCallback<NoteListItemVm> OnOpen { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnEdit { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnDownloadPdf { get; set; }
 
     private Task HandlePrimaryAction()
     {
-        if (Note.CanEdit || Note.IsPendingCoSign)
+        if (CanUseEditAction())
         {
             return OnEdit.InvokeAsync(Note);
         }
@@ -107,7 +106,7 @@
 
     private string GetPrimaryActionText()
     {
-        if (Note.IsPendingCoSign)
+        if (Note.IsPendingCoSign && Note.CanResolveAttention)
         {
             return "Finalize";
         }
@@ -121,6 +120,8 @@
     }
 
     private string GetPrimaryActionAriaLabel() => $"{GetPrimaryActionText()} {Note.NoteType} for {Note.PatientName}";
+
+    private bool CanUseEditAction() => Note.CanEdit || (Note.IsPendingCoSign && Note.CanResolveAttention);
 
     private BadgeVariant GetStatusVariant()
     {

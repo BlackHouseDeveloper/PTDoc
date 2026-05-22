@@ -110,6 +110,7 @@
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
     [Inject] private IToastService ToastService { get; set; } = default!;
+    [Inject] private ILogger<Appointments> Logger { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -138,7 +139,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Appointments] Route normalization failed: {ex.Message}");
+            Logger.LogWarning(ex, "Failed to normalize the appointments route action URL.");
         }
     }
 
@@ -256,11 +257,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Appointments] Error saving appointment: {ex.Message}");
-            var message = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
-                ? ex.Message
-                : "Failed to save the appointment.";
-            ToastService.ShowError(message);
+            Logger.LogWarning(ex, "Failed to save an appointment from the appointments page.");
+            ToastService.ShowError("Failed to save the appointment.");
             return false;
         }
     }
@@ -358,7 +356,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Appointments] Error loading patient list: {ex.Message}");
+            Logger.LogWarning(ex, "Failed to load appointment patient options.");
             ToastService.ShowError("Failed to load appointment patient options.");
         }
     }
@@ -407,7 +405,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Appointments] Error loading appointments: {ex.Message}");
+            Logger.LogWarning(ex, "Failed to load appointments overview.");
             appointmentLoadError = "Appointment data could not be refreshed. Check the API connection and try again.";
             appointmentDirectory.Clear();
             clinicianDirectory.Clear();
@@ -450,11 +448,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Appointments] Error checking in appointment: {ex.Message}");
-            var message = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
-                ? ex.Message
-                : "Failed to update the appointment status.";
-            ToastService.ShowError(message);
+            Logger.LogWarning(ex, "Failed to check in an appointment from the appointments page.");
+            ToastService.ShowError("Failed to update the appointment status.");
         }
     }
 

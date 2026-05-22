@@ -64,7 +64,6 @@
 
                 <NotesRecentSection
                     Items="regularRecentNotes"
-                    OnOpen="HandleOpenNote"
                     OnView="HandleViewNote"
                     OnEdit="HandleEditNote"
                     OnDownloadPdf="HandleDownloadPdf"
@@ -424,11 +423,6 @@
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, "all", StringComparison.OrdinalIgnoreCase)
             ? null
             : value.Trim();
-    }
-
-    private void HandleOpenNote(NoteListItemVm note)
-    {
-        NavigateToNoteWorkspace(note);
     }
 
     private void HandleResolveAttentionNote(NoteListItemVm note)

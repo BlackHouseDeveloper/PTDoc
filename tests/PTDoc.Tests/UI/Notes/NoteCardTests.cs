@@ -49,12 +49,49 @@ public sealed class NoteCardTests : TestContext
         var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
         note.Status = "Pending Co-Sign";
         note.IsPendingCoSign = true;
+        note.CanResolveAttention = true;
 
         var cut = RenderComponent<NoteCard>(parameters => parameters
             .Add(component => component.Note, note));
 
         Assert.Contains(">Finalize<", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Co-sign pending", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PendingCoSignNote_WithoutResolvePermission_ShowsViewAction()
+    {
+        var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
+        note.Status = "Pending Co-Sign";
+        note.IsPendingCoSign = true;
+        note.CanResolveAttention = false;
+
+        var cut = RenderComponent<NoteCard>(parameters => parameters
+            .Add(component => component.Note, note));
+
+        Assert.Contains(">View<", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Finalize<", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PendingCoSignNote_WithoutResolvePermission_InvokesViewAction()
+    {
+        var viewed = false;
+        var edited = false;
+        var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
+        note.Status = "Pending Co-Sign";
+        note.IsPendingCoSign = true;
+        note.CanResolveAttention = false;
+
+        var cut = RenderComponent<NoteCard>(parameters => parameters
+            .Add(component => component.Note, note)
+            .Add(component => component.OnView, _ => viewed = true)
+            .Add(component => component.OnEdit, _ => edited = true));
+
+        cut.Find("button").Click();
+
+        Assert.True(viewed);
+        Assert.False(edited);
     }
 
     [Fact]

@@ -60,6 +60,8 @@ public sealed class AppointmentsPageTests : TestContext
 
     private void RegisterServices()
     {
+        Services.AddLogging();
+
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService
             .Setup(service => service.GetConfiguration(It.IsAny<string>()))
