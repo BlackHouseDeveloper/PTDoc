@@ -227,6 +227,23 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.DoesNotContain(alerts, alert => alert.Id == $"unsignedNote:{addendum.Id:N}");
     }
 
+    [Fact]
+    public async Task DashboardSnapshot_Returns_ClinicalSnapshotShape()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var response = await client.GetAsync("/api/v1/dashboard/snapshot");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var snapshot = await response.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+        Assert.NotNull(snapshot);
+        Assert.NotNull(snapshot!.Overview);
+        Assert.True(snapshot.GeneratedAtUtc > DateTimeOffset.MinValue);
+        Assert.True(snapshot.TotalAlertCount >= snapshot.Alerts.Count);
+        Assert.True(snapshot.UrgentAlertCount >= snapshot.Alerts.Count(alert => alert.IsUrgent));
+        Assert.True(snapshot.RecentNotes.Count <= 5);
+        Assert.True(snapshot.Alerts.Count <= 10);
+    }
+
     private static Patient CreatePatient(
         string firstName,
         string lastName,

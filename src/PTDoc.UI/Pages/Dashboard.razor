@@ -1,5 +1,5 @@
 @page "/"
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
 @using PTDoc.Application.Services
 @using PTDoc.Application.Dashboard
 @using PTDoc.Application.DTOs
@@ -7,8 +7,6 @@
 @using PTDoc.UI.Services
 @inject IPatientService PatientService
 @inject IIntakeService IntakeService
-@inject IAppointmentService AppointmentService
-@inject INoteService NoteService
 @inject IDashboardAlertService DashboardAlertService
 @inject IToastService ToastService
 @inject ILogger<Dashboard> Logger
@@ -47,7 +45,7 @@
 
         <AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
             <Authorized>
-                <button type="button" class="action-btn action-btn-info" @onclick="HandleSendIntake" aria-label="Send intake form to patient">
+                <button type="button" class="action-btn action-btn-info" @onclick="HandleSendIntakeAsync" aria-label="Send intake form to patient">
                     <div class="action-btn-content">
                         <div class="action-icon-container action-icon-info">
                             <svg class="action-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -157,7 +155,9 @@
     private bool _dashboardLoadFailed;
     private bool _hasLoadedDashboard;
     private string? _dashboardErrorMessage;
-    private CancellationTokenSource? _recentActivityCts;
+    private CancellationTokenSource? _dashboardCts;
+    private bool _isDisposed;
+    private bool _isLoadingAvailablePatients;
     private int _patientsToday;
     private int _appointmentsToday;
     private int _notesDue;
@@ -189,8 +189,14 @@
 
     private async Task LoadAvailablePatientsAsync()
     {
+        if (_isLoadingAvailablePatients)
+        {
+            return;
+        }
+
         try
         {
+            _isLoadingAvailablePatients = true;
             var patients = await IntakeService.SearchEligiblePatientsAsync(take: 200);
             availablePatients = patients
                 .Select(p => new SendIntakeModal.PatientOption
@@ -205,133 +211,73 @@
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "[Dashboard] Error loading patient list");
+            ToastService.ShowError("Unable to load eligible patients for intake invites.");
+        }
+        finally
+        {
+            _isLoadingAvailablePatients = false;
         }
     }
 
     private async Task RetryDashboardAsync()
     {
-        await Task.WhenAll(LoadDashboardSnapshotAsync(), LoadAvailablePatientsAsync());
+        await LoadDashboardSnapshotAsync();
     }
 
     private async Task LoadDashboardSnapshotAsync()
     {
+        if (_isDashboardLoading && _hasLoadedDashboard)
+        {
+            return;
+        }
+
+        _dashboardCts?.Cancel();
+        _dashboardCts?.Dispose();
+        _dashboardCts = new CancellationTokenSource();
+
         _isDashboardLoading = true;
         _isRecentActivityLoading = true;
         _dashboardLoadFailed = false;
         _dashboardErrorMessage = null;
         _recentActivityLoadFailed = false;
         _recentActivityErrorMessage = null;
-        StateHasChanged();
+        await InvokeStateHasChangedAsync();
 
         try
         {
-            var today = DateTime.UtcNow.Date;
-            var notesTask = NoteService.GetNotesAsync(take: 50);
-            var appointmentsTask = AppointmentService.GetOverviewAsync(today, today.AddDays(1).AddTicks(-1));
-            var alertsTask = DashboardAlertService.GetAlertsAsync(take: 10);
-
-            await Task.WhenAll(notesTask, appointmentsTask, alertsTask);
-
-            var notes = (await notesTask)
-                .OrderByDescending(note => note.LastModifiedUtc)
-                .ToList();
-            var appointments = (await appointmentsTask).Appointments
-                .OrderBy(appointment => appointment.StartTimeUtc)
-                .ToList();
-            var alertsResponse = await alertsTask;
-            var alerts = alertsResponse.Alerts.ToList();
-
-            _recentNotes = [.. await EnrichRecentNotesAsync(notes.Take(5).ToList())];
-            _dashboardAlerts = alerts;
-
-            var unsignedNotes = notes.Where(note => !note.IsSigned).ToList();
-            _patientsToday = appointments
-                .Select(appointment => appointment.PatientRecordId)
-                .Distinct()
-                .Count();
-            _appointmentsToday = appointments.Count;
-            _notesDue = alerts.Count(alert => string.Equals(alert.Kind, "notesDueToday", StringComparison.Ordinal));
-            _pendingItems = alerts.Count;
-            _draftNotes = unsignedNotes.Count;
-            _unsignedNotesNeedingSignature = alerts.Count(alert => string.Equals(alert.Kind, "unsignedNote", StringComparison.Ordinal));
-            _incompleteIntakes = alerts.Count(alert => string.Equals(alert.Kind, "incompleteIntake", StringComparison.Ordinal));
+            var snapshot = await DashboardAlertService.GetSnapshotAsync(_dashboardCts.Token);
+            ApplySnapshot(snapshot);
             _hasLoadedDashboard = true;
-            _isDashboardLoading = false;
+        }
+        catch (OperationCanceledException) when (_isDisposed || _dashboardCts.IsCancellationRequested)
+        {
+            return;
         }
         catch (Exception ex)
         {
             _dashboardLoadFailed = true;
             _dashboardErrorMessage = ToUserFacingDashboardError(ex, "The dashboard could not be loaded right now.");
             Logger.LogWarning(ex, "[Dashboard] Error loading dashboard snapshot");
-            _isDashboardLoading = false;
-            _isRecentActivityLoading = false;
-            StateHasChanged();
-            return;
-        }
-
-        StateHasChanged();
-        _ = InvokeAsync(() => LoadRecentActivityAsync(force: true));
-    }
-
-    private async Task RetryRecentActivityAsync()
-    {
-        await LoadRecentActivityAsync(force: true);
-    }
-
-    private async Task LoadRecentActivityAsync(bool force = false)
-    {
-        if (_isRecentActivityLoading && !force)
-        {
-            return;
-        }
-
-        _recentActivityCts?.Cancel();
-        _recentActivityCts?.Dispose();
-        _recentActivityCts = new CancellationTokenSource();
-
-        _isRecentActivityLoading = true;
-        _recentActivityLoadFailed = false;
-        _recentActivityErrorMessage = null;
-        StateHasChanged();
-
-        try
-        {
-            var today = DateTime.UtcNow.Date;
-            var notesTask = NoteService.GetNotesAsync(take: 20, cancellationToken: _recentActivityCts.Token);
-            var appointmentsTask = AppointmentService.GetOverviewAsync(today, today.AddDays(1).AddTicks(-1), _recentActivityCts.Token);
-            await Task.WhenAll(notesTask, appointmentsTask);
-
-            var notes = (await notesTask)
-                .OrderByDescending(note => note.LastModifiedUtc)
-                .ToList();
-            var appointments = (await appointmentsTask).Appointments
-                .OrderBy(appointment => appointment.StartTimeUtc)
-                .ToList();
-
-            _recentActivities = BuildRecentActivities(notes, appointments);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _recentActivityLoadFailed = true;
-            _recentActivityErrorMessage = "Recent activity could not be refreshed. Check the API connection and try again.";
-            Logger.LogWarning(ex, "[Dashboard] Error loading recent activity");
         }
         finally
         {
+            _isDashboardLoading = false;
             _isRecentActivityLoading = false;
-            StateHasChanged();
+            await InvokeStateHasChangedAsync();
         }
     }
+
+    private async Task RetryRecentActivityAsync() => await LoadDashboardSnapshotAsync();
 
     private void SetupAutoRefresh()
     {
         _autoRefreshTimer = new System.Timers.Timer(5 * 60 * 1000); // 5 minutes
         _autoRefreshTimer.Elapsed += async (sender, e) =>
         {
-            await InvokeAsync(LoadDashboardSnapshotAsync);
+            if (!_isDisposed)
+            {
+                await InvokeAsync(LoadDashboardSnapshotAsync);
+            }
         };
         _autoRefreshTimer.Start();
     }
@@ -341,8 +287,13 @@
         isAddPatientModalOpen = true;
     }
 
-    private void HandleSendIntake()
+    private async Task HandleSendIntakeAsync()
     {
+        if (availablePatients.Count == 0)
+        {
+            await LoadAvailablePatientsAsync();
+        }
+
         isSendIntakeModalOpen = true;
     }
 
@@ -389,33 +340,18 @@
         }
     }
 
-    private async Task<IReadOnlyList<NoteListItemApiResponse>> EnrichRecentNotesAsync(List<NoteListItemApiResponse> notes)
+    private void ApplySnapshot(DashboardSnapshotResponse snapshot)
     {
-        if (notes.Count == 0)
-        {
-            return notes;
-        }
-
-        var enrichedNotes = await Task.WhenAll(notes.Select(async note =>
-        {
-            try
-            {
-                var detail = await NoteService.GetByIdAsync(note.Id);
-                if (detail?.Note is not null)
-                {
-                    note.NoteStatus = detail.Note.NoteStatus;
-                    note.IsSigned = detail.Note.NoteStatus == PTDoc.Core.Models.NoteStatus.Signed;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogDebug(ex, "[Dashboard] Unable to enrich note status for {NoteId}", note.Id);
-            }
-
-            return note;
-        }));
-
-        return enrichedNotes;
+        _patientsToday = snapshot.Overview.PatientsToday;
+        _appointmentsToday = snapshot.Overview.AppointmentsToday;
+        _notesDue = snapshot.Overview.NotesDueToday;
+        _pendingItems = snapshot.Overview.PendingItems;
+        _draftNotes = snapshot.Overview.DraftNotes;
+        _unsignedNotesNeedingSignature = snapshot.Overview.UnsignedNotes;
+        _incompleteIntakes = snapshot.Overview.IncompleteIntakes;
+        _dashboardAlerts = snapshot.Alerts.ToList();
+        _recentNotes = snapshot.RecentNotes.ToList();
+        _recentActivities = snapshot.RecentActivities.Select(ToRecentActivity).ToList();
     }
 
     private static string ToUserFacingDashboardError(Exception exception, string fallback)
@@ -430,47 +366,34 @@
         return fallback;
     }
 
-    private static List<RecentActivity> BuildRecentActivities(
-        IReadOnlyList<NoteListItemApiResponse> notes,
-        IReadOnlyList<AppointmentListItemResponse> appointments)
+    private static RecentActivity ToRecentActivity(DashboardRecentActivityResponse activity)
     {
-        var noteActivities = notes.Select(note => new RecentActivity
+        return new RecentActivity
         {
-            Id = note.Id.ToString("N"),
-            Type = note.IsSigned ? ActivityType.NoteCompleted : ActivityType.NoteUpdated,
-            Description = note.IsSigned
-                ? $"Signed {note.NoteType}"
-                : $"Updated {note.NoteType}",
-            PatientId = note.PatientId.ToString(),
-            PatientName = note.PatientName,
-            Timestamp = note.LastModifiedUtc
-        });
+            Id = activity.Id,
+            Type = Enum.TryParse<ActivityType>(activity.Type, ignoreCase: true, out var parsedType)
+                ? parsedType
+                : ActivityType.NoteUpdated,
+            Description = activity.Description,
+            PatientId = activity.PatientId,
+            PatientName = activity.PatientName,
+            Timestamp = activity.Timestamp
+        };
+    }
 
-        var appointmentActivities = appointments.Select(appointment => new RecentActivity
+    private async Task InvokeStateHasChangedAsync()
+    {
+        if (!_isDisposed)
         {
-            Id = appointment.Id.ToString("N"),
-            Type = string.Equals(appointment.AppointmentStatus, "checked in", StringComparison.OrdinalIgnoreCase)
-                ? ActivityType.AppointmentCheckedIn
-                : ActivityType.AppointmentScheduled,
-            Description = string.Equals(appointment.AppointmentStatus, "checked in", StringComparison.OrdinalIgnoreCase)
-                ? $"Checked in {appointment.AppointmentType} appointment"
-                : $"Scheduled {appointment.AppointmentType} appointment",
-            PatientId = appointment.PatientRecordId.ToString(),
-            PatientName = appointment.PatientName,
-            Timestamp = appointment.StartTimeUtc
-        });
-
-        return noteActivities
-            .Concat(appointmentActivities)
-            .OrderByDescending(activity => activity.Timestamp)
-            .Take(10)
-            .ToList();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     public void Dispose()
     {
-        _recentActivityCts?.Cancel();
-        _recentActivityCts?.Dispose();
+        _isDisposed = true;
+        _dashboardCts?.Cancel();
+        _dashboardCts?.Dispose();
         _autoRefreshTimer?.Stop();
         _autoRefreshTimer?.Dispose();
     }

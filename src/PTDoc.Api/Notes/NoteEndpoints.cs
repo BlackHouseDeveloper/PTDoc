@@ -115,12 +115,14 @@ public static class NoteEndpoints
         [FromQuery] string? noteType,
         [FromQuery] string? status,
         [FromQuery] int take,
+        [FromQuery] int? skip,
         [FromQuery] string? categoryId,
         [FromQuery] string? itemId,
         [FromServices] ApplicationDbContext db,
         CancellationToken cancellationToken)
     {
         var normalizedTake = take <= 0 ? 100 : Math.Min(take, 500);
+        var normalizedSkip = Math.Max(skip.GetValueOrDefault(), 0);
 
         var query = db.ClinicalNotes
             .AsNoTracking()
@@ -152,6 +154,7 @@ public static class NoteEndpoints
 
         var notes = await query
             .OrderByDescending(n => n.DateOfService)
+            .Skip(normalizedSkip)
             .Take(normalizedTake)
             .Select(n => new NoteListItemApiResponse
             {
