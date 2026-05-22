@@ -78,7 +78,7 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
             .ReturnsAsync((IntakeSessionToken?)null);
         inviteService
             .Setup(service => service.ValidateInviteTokenAsync("expired-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new IntakeInviteResult(false, null, null, "The secure invite link is invalid or expired."));
+            .ReturnsAsync(new IntakeInviteValidationResponse(false, null, "The secure invite link is invalid or expired."));
 
         Services.AddLogging();
         Services.AddSingleton(inviteService.Object);
@@ -121,17 +121,28 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
             .Returns(Task.CompletedTask);
         inviteService
             .Setup(service => service.ValidateInviteTokenAsync("valid-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new IntakeInviteResult(
-                true,
-                "access-token",
-                DateTimeOffset.UtcNow.AddHours(1),
-                null));
+            .ReturnsAsync(new IntakeInviteValidationResponse(true, DateTimeOffset.UtcNow.AddHours(1), null));
         inviteService
             .Setup(service => service.SendOtpAsync(
                 "valid-token",
                 "patient@example.com",
                 OtpChannel.Sms,
                 It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        inviteService
+            .Setup(service => service.VerifyOtpAndIssueAccessTokenAsync(
+                "valid-token",
+                "patient@example.com",
+                OtpChannel.Sms,
+                "123456",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeInviteResult(
+                true,
+                "access-token",
+                DateTimeOffset.UtcNow.AddHours(1),
+                null));
+        inviteService
+            .Setup(service => service.ValidateAccessTokenAsync("access-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         Services.AddLogging();
@@ -142,6 +153,16 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
         var cut = RenderComponent<StandaloneIntakeAccessGate>(
             parameters => parameters.AddChildContent("<p>Authorized intake</p>"));
 
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Verify Your Identity", cut.Markup, StringComparison.Ordinal));
+
+        cut.Find("#intake-contact-input").Input("patient@example.com");
+        cut.Find("button.intake-access-gate__btn--primary").Click();
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Enter Your Code", cut.Markup, StringComparison.Ordinal));
+
+        cut.Find("#intake-otp-input").Input("123456");
+        cut.Find("button.intake-access-gate__btn--primary").Click();
         cut.WaitForAssertion(() =>
             Assert.Contains("Authorized intake", cut.Markup, StringComparison.Ordinal));
 
@@ -155,6 +176,8 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
 
         cut.WaitForAssertion(() =>
             Assert.Contains("Session Expired", cut.Markup, StringComparison.Ordinal));
+
+        inviteService.Invocations.Clear();
 
         cut.FindAll("button")
             .Single(button => button.TextContent.Contains("Verify Again", StringComparison.Ordinal))

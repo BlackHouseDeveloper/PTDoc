@@ -83,6 +83,7 @@ public class LocalDbContext : DbContext
             entity.HasIndex(e => e.PatientServerId);
             entity.HasIndex(e => e.SyncState);
             entity.HasIndex(e => e.IsLocked);
+            entity.HasIndex(e => e.ReviewedAtUtc);
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
         });

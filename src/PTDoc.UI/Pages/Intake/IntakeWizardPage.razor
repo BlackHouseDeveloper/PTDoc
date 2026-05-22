@@ -108,6 +108,10 @@
                                             OnBack="HandleBackAsync"
                                             OnSubmit="HandleSubmitAsync"
                                             OnEditStep="HandleEditStepAsync"
+                                            OnMarkReviewed="HandleMarkReviewedAsync"
+                                            CanMarkReviewed="@CanMarkIntakeReviewed"
+                                            IsMarkingReviewed="@_isMarkingReviewed"
+                                            ShowReviewedStatus="@ShowClinicianReviewStatus"
                                             ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                                 break;
                             default:
@@ -131,8 +135,10 @@
     private bool _canSelectPatient;
     private bool _canManageDrafts;
     private bool _canViewOutcomeMeasureRecommendations;
+    private bool _canMarkIntakeReviewed;
     private bool _isLoadingDraft;
     private bool _isSavingDraft;
+    private bool _isMarkingReviewed;
     private string? _validationMessage;
     private string _draftUnavailableTitle = "Intake Unavailable";
     private string _draftUnavailableMessage = "We could not load an intake draft for this patient.";
@@ -145,7 +151,18 @@
     private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
     private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
-    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || !CanEditDraft;
+    private bool CanMarkIntakeReviewed =>
+        _canMarkIntakeReviewed &&
+        !State.IsPatientMode &&
+        State.IsLocked &&
+        State.IsSubmitted &&
+        !State.ReviewedAtUtc.HasValue;
+    private bool ShowClinicianReviewStatus =>
+        _canMarkIntakeReviewed &&
+        !State.IsPatientMode &&
+        State.IsLocked &&
+        State.IsSubmitted;
+    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
     private string? ReadOnlyNoticeMessage => State.IsLocked
         ? "This intake has been submitted and locked. Editing is disabled."
         : (!CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
@@ -177,6 +194,12 @@
              user.IsInRole(Roles.FrontDesk));
 
         _canViewOutcomeMeasureRecommendations = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.Owner));
+
+        _canMarkIntakeReviewed = isAuthenticated &&
             (user.IsInRole(Roles.PT) ||
              user.IsInRole(Roles.PTA) ||
              user.IsInRole(Roles.Admin) ||
@@ -535,6 +558,46 @@
         return Task.CompletedTask;
     }
 
+    private async Task HandleMarkReviewedAsync()
+    {
+        _validationMessage = null;
+
+        if (!CanMarkIntakeReviewed)
+        {
+            return;
+        }
+
+        if (!State.IntakeId.HasValue)
+        {
+            _validationMessage = "Intake record is unavailable for review.";
+            return;
+        }
+
+        _isMarkingReviewed = true;
+        try
+        {
+            var reviewed = await IntakeService.MarkReviewedAsync(State.IntakeId.Value);
+            State.ReviewedAtUtc = reviewed.ReviewedAtUtc;
+            State.ReviewedByUserId = reviewed.ReviewedByUserId;
+            State.LastModifiedUtc = reviewed.LastModifiedUtc;
+            State.IsLocked = reviewed.IsLocked;
+            State.IsSubmitted = reviewed.IsSubmitted;
+            _validationMessage = "Intake marked reviewed.";
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _validationMessage = ex.Message;
+        }
+        finally
+        {
+            _isMarkingReviewed = false;
+        }
+    }
+
     private async Task SaveDraftIfPossibleAsync()
     {
         if (!State.PatientId.HasValue || !CanEditDraft || _isSavingDraft)
@@ -646,6 +709,7 @@
     {
         var draft = new IntakeResponseDraft
         {
+            IntakeId = state.IntakeId,
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
             ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
@@ -697,7 +761,10 @@
             SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = state.IsSubmitted,
-            IsLocked = state.IsLocked
+            IsLocked = state.IsLocked,
+            ReviewedAtUtc = state.ReviewedAtUtc,
+            ReviewedByUserId = state.ReviewedByUserId,
+            LastModifiedUtc = state.LastModifiedUtc
         };
 
         draft.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(draft);
@@ -722,6 +789,7 @@
 
         return new IntakeWizardState
         {
+            IntakeId = hydratedDraft.IntakeId,
             PatientId = hydratedDraft.PatientId,
             CurrentStep = Enum.IsDefined(typeof(IntakeStep), hydratedDraft.CurrentStep)
                 ? (IntakeStep)hydratedDraft.CurrentStep
@@ -775,7 +843,10 @@
             SelectedHouseLayoutOptions = hydratedDraft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = hydratedDraft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = hydratedDraft.IsSubmitted,
-            IsLocked = hydratedDraft.IsLocked
+            IsLocked = hydratedDraft.IsLocked,
+            ReviewedAtUtc = hydratedDraft.ReviewedAtUtc,
+            ReviewedByUserId = hydratedDraft.ReviewedByUserId,
+            LastModifiedUtc = hydratedDraft.LastModifiedUtc
         };
     }
 

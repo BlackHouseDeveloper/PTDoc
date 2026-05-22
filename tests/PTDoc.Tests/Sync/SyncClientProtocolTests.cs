@@ -76,6 +76,8 @@ public class SyncClientProtocolTests
             TemplateVersion = "1.0",
             AccessToken = Guid.NewGuid().ToString(),
             StructuredDataJson = "{\"schemaVersion\":\"2026-03-30\",\"bodyPartSelections\":[{\"bodyPartId\":\"knee\",\"lateralities\":[\"left\"]}]}",
+            ReviewedAtUtc = watermark.AddMinutes(2),
+            ReviewedByUserId = Guid.NewGuid(),
             LastModifiedUtc = watermark.AddMinutes(1) // after watermark
         };
         var oldForm = new IntakeForm
@@ -102,6 +104,8 @@ public class SyncClientProtocolTests
         Assert.Equal(form.Id, result.Items[0].ServerId);
         Assert.Contains("IsLocked", result.Items[0].DataJson);
         Assert.Contains("StructuredDataJson", result.Items[0].DataJson);
+        Assert.Contains("ReviewedAtUtc", result.Items[0].DataJson);
+        Assert.Contains("ReviewedByUserId", result.Items[0].DataJson);
     }
 
     [Fact]

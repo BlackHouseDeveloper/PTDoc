@@ -31,7 +31,7 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
         return new IntakeInviteLinkResult(true, bundle.IntakeId, bundle.PatientId, bundle.InviteUrl, bundle.ExpiresAt, null);
     }
 
-    public async Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
+    public async Task<IntakeInviteValidationResponse> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/validate-invite",
@@ -39,8 +39,8 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<IntakeInviteResult>(SerializerOptions, cancellationToken)
-            ?? new IntakeInviteResult(false, null, null, "Invite validation payload was empty.");
+        return await response.Content.ReadFromJsonAsync<IntakeInviteValidationResponse>(SerializerOptions, cancellationToken)
+            ?? new IntakeInviteValidationResponse(false, null, "Invite validation payload was empty.");
     }
 
     public async Task<bool> SendOtpAsync(

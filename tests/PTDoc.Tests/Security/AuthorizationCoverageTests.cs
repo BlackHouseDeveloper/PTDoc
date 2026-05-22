@@ -304,6 +304,7 @@ public class AuthorizationCoverageTests
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/runtime", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
+        new("GET", "/diagnostics/development/communications", AuthorizationPolicies.AdminOnly),
         new("PUT", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
         new("DELETE", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
 

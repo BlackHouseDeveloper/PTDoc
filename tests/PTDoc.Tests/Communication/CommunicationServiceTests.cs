@@ -486,9 +486,10 @@ public sealed class CommunicationServiceTests
     public async Task NullProviders_AreRejectedInProduction()
     {
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
+        var store = new DevelopmentCommunicationMessageStore();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new NullEmailSender(environment, NullLogger<NullEmailSender>.Instance)
+            new NullEmailSender(environment, store, NullLogger<NullEmailSender>.Instance)
                 .SendEmailAsync(new EmailMessage
                 {
                     ToAddress = "test@example.com",
@@ -498,7 +499,7 @@ public sealed class CommunicationServiceTests
                 }));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new NullSmsSender(environment, NullLogger<NullSmsSender>.Instance)
+            new NullSmsSender(environment, store, NullLogger<NullSmsSender>.Instance)
                 .SendSmsAsync(new SmsMessage
                 {
                     ToNumber = "5550100000",
@@ -650,6 +651,48 @@ public sealed class CommunicationServiceTests
         Assert.Equal(3, options.RateLimits.PasswordResetMaxPerWindow);
         Assert.Equal(15, options.RateLimits.PasswordResetWindowMinutes);
         Assert.Equal(5, options.RateLimits.IntakeMaxPerDay);
+    }
+
+    [Fact]
+    public async Task NullSenders_CaptureMessagesForDevelopmentDiagnostics()
+    {
+        var store = new DevelopmentCommunicationMessageStore();
+        var environment = new TestHostEnvironment();
+        var emailSender = new NullEmailSender(
+            environment,
+            store,
+            NullLogger<NullEmailSender>.Instance);
+        var smsSender = new NullSmsSender(
+            environment,
+            store,
+            NullLogger<NullSmsSender>.Instance);
+
+        await emailSender.SendEmailAsync(new EmailMessage
+        {
+            ToAddress = "patient@example.com",
+            Subject = "Your code",
+            PlainTextBody = "Your verification code is 123456.",
+            HtmlBody = "<p>Your verification code is 123456.</p>",
+            Purpose = DeliveryPurpose.IntakeOtp
+        });
+        await smsSender.SendSmsAsync(new SmsMessage
+        {
+            ToNumber = "555-0101",
+            Body = "Your verification code is 654321.",
+            Purpose = DeliveryPurpose.IntakeOtp
+        });
+
+        var messages = store.List();
+
+        Assert.Equal(2, messages.Count);
+        Assert.Equal(DeliveryChannel.Sms, messages[0].Channel);
+        Assert.Equal("555-0101", messages[0].Recipient);
+        Assert.Contains("654321", messages[0].PlainTextBody, StringComparison.Ordinal);
+        Assert.Equal(DeliveryChannel.Email, messages[1].Channel);
+        Assert.Equal("patient@example.com", messages[1].Recipient);
+        Assert.Equal("Your code", messages[1].Subject);
+        Assert.Contains("123456", messages[1].PlainTextBody, StringComparison.Ordinal);
+        Assert.Contains("123456", messages[1].HtmlBody!, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

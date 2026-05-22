@@ -165,6 +165,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.AccessToken).IsUnique();
             entity.HasIndex(e => e.LastModifiedUtc);
+            entity.HasIndex(e => e.ReviewedAtUtc);
 
             entity.Property(e => e.TemplateVersion).HasMaxLength(50).IsRequired();
             entity.Property(e => e.AccessToken).HasMaxLength(256).IsRequired();

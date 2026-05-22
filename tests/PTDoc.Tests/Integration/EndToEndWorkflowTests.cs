@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using PTDoc.Application.AI;
+using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -26,6 +27,7 @@ using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
+using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -338,22 +340,66 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             await bundleResponse.Content.ReadAsStringAsync(),
             JsonOpts)!;
         var inviteToken = ReadInviteToken(bundle.InviteUrl);
+        var patientEmail = await GetPatientEmailAsync(patientId);
 
         using var validateResponse = await anonymousClient.PostAsync(
             "/api/v1/intake/access/validate-invite",
             JsonContent(new ValidateIntakeInviteRequest { InviteToken = inviteToken }));
         Assert.Equal(HttpStatusCode.OK, validateResponse.StatusCode);
 
-        var validatePayload = JsonSerializer.Deserialize<IntakeInviteResult>(
-            await validateResponse.Content.ReadAsStringAsync(),
+        var validateContent = await validateResponse.Content.ReadAsStringAsync();
+        using var validateDocument = JsonSerializer.Deserialize<JsonDocument>(validateContent, JsonOpts)!;
+        Assert.False(validateDocument.RootElement.TryGetProperty("accessToken", out _));
+        Assert.False(validateDocument.RootElement.TryGetProperty("patientId", out _));
+        Assert.False(validateDocument.RootElement.TryGetProperty("intakeId", out _));
+        var validatePayload = JsonSerializer.Deserialize<IntakeInviteValidationResponse>(
+            validateContent,
             JsonOpts)!;
         Assert.True(validatePayload.IsValid);
-        Assert.False(string.IsNullOrWhiteSpace(validatePayload.AccessToken));
+        Assert.NotNull(validatePayload.ExpiresAt);
+
+        using var rejectedDraftRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/intake/access/patient/{patientId}/draft");
+        rejectedDraftRequest.Headers.Add(IntakeAccessHeaders.AccessToken, inviteToken);
+        using var rejectedDraftResponse = await anonymousClient.SendAsync(rejectedDraftRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, rejectedDraftResponse.StatusCode);
+
+        using var sendOtpResponse = await anonymousClient.PostAsync(
+            "/api/v1/intake/access/send-otp",
+            JsonContent(new SendIntakeOtpRequest
+            {
+                InviteToken = inviteToken,
+                Contact = patientEmail,
+                Channel = OtpChannel.Email
+            }));
+        Assert.Equal(HttpStatusCode.OK, sendOtpResponse.StatusCode);
+        var sendOtpPayload = JsonSerializer.Deserialize<SendIntakeOtpResponse>(
+            await sendOtpResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.True(sendOtpPayload.Success);
+        Assert.False(string.IsNullOrWhiteSpace(_factory.LastIntakeOtpCode));
+
+        using var verifyOtpResponse = await anonymousClient.PostAsync(
+            "/api/v1/intake/access/verify-otp",
+            JsonContent(new VerifyIntakeOtpRequest
+            {
+                InviteToken = inviteToken,
+                Contact = patientEmail,
+                Channel = OtpChannel.Email,
+                OtpCode = _factory.LastIntakeOtpCode!
+            }));
+        Assert.Equal(HttpStatusCode.OK, verifyOtpResponse.StatusCode);
+        var accessPayload = JsonSerializer.Deserialize<IntakeInviteResult>(
+            await verifyOtpResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        Assert.True(accessPayload.IsValid);
+        Assert.False(string.IsNullOrWhiteSpace(accessPayload.AccessToken));
 
         using var draftRequest = new HttpRequestMessage(
             HttpMethod.Get,
             $"/api/v1/intake/access/patient/{patientId}/draft");
-        draftRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+        draftRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessPayload.AccessToken);
 
         using var draftResponse = await anonymousClient.SendAsync(draftRequest);
         Assert.Equal(HttpStatusCode.OK, draftResponse.StatusCode);
@@ -376,7 +422,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 TemplateVersion = "1.1"
             })
         };
-        updateRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+        updateRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessPayload.AccessToken);
 
         using var updateResponse = await anonymousClient.SendAsync(updateRequest);
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -384,7 +430,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var submitRequest = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/v1/intake/access/{intakeId}/submit");
-        submitRequest.Headers.Add(IntakeAccessHeaders.AccessToken, validatePayload.AccessToken);
+        submitRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessPayload.AccessToken);
 
         using var submitResponse = await anonymousClient.SendAsync(submitRequest);
         Assert.Equal(HttpStatusCode.OK, submitResponse.StatusCode);
@@ -1855,6 +1901,16 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         return Uri.UnescapeDataString(inviteQueryPart!["invite=".Length..]);
     }
 
+    private async Task<string> GetPatientEmailAsync(Guid patientId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.Patients
+            .Where(patient => patient.Id == patientId)
+            .Select(patient => patient.Email!)
+            .SingleAsync();
+    }
+
     private static StringContent JsonContent<T>(T value) =>
         new(JsonSerializer.Serialize(value, JsonOpts), Encoding.UTF8, "application/json");
 }
@@ -1872,6 +1928,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     private SqliteConnection? _sharedConnection;
     public Guid? LastPdfExportNoteId { get; private set; }
     public string? LastPdfExportContentJson { get; private set; }
+    public string? LastIntakeOtpCode { get; private set; }
 
     public void ResetPdfExportCapture()
     {
@@ -1954,6 +2011,59 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
             ReplaceWithMock<IFaxService>(services);
             ReplaceWithMock<IHomeExerciseProgramService>(services);
             ReplaceWithMock<IAiClinicalGenerationService>(services);
+
+            var communicationMock = new Mock<ICommunicationService>();
+            communicationMock
+                .Setup(service => service.SendIntakeLinkEmailAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IntakeLinkDeliveryRequest request, CancellationToken cancellationToken) => new DeliveryResult
+                {
+                    Succeeded = true,
+                    Status = DeliveryStatus.Sent,
+                    Provider = "TestCommunication",
+                    ProviderMessageId = $"test-link-{Guid.NewGuid():N}",
+                    SentAtUtc = DateTimeOffset.UtcNow,
+                    Channel = DeliveryChannel.Email,
+                    Purpose = DeliveryPurpose.IntakeLink
+                });
+            communicationMock
+                .Setup(service => service.SendIntakeLinkSmsAsync(It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IntakeLinkDeliveryRequest request, CancellationToken cancellationToken) => new DeliveryResult
+                {
+                    Succeeded = true,
+                    Status = DeliveryStatus.Sent,
+                    Provider = "TestCommunication",
+                    ProviderMessageId = $"test-link-{Guid.NewGuid():N}",
+                    SentAtUtc = DateTimeOffset.UtcNow,
+                    Channel = DeliveryChannel.Sms,
+                    Purpose = DeliveryPurpose.IntakeLink
+                });
+            communicationMock
+                .Setup(service => service.SendIntakeOtpEmailAsync(It.IsAny<IntakeOtpDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<IntakeOtpDeliveryRequest, CancellationToken>((request, _) => LastIntakeOtpCode = request.OtpCode)
+                .ReturnsAsync((IntakeOtpDeliveryRequest request, CancellationToken cancellationToken) => new DeliveryResult
+                {
+                    Succeeded = true,
+                    Status = DeliveryStatus.Sent,
+                    Provider = "TestCommunication",
+                    ProviderMessageId = $"test-otp-{Guid.NewGuid():N}",
+                    SentAtUtc = DateTimeOffset.UtcNow,
+                    Channel = DeliveryChannel.Email,
+                    Purpose = DeliveryPurpose.IntakeOtp
+                });
+            communicationMock
+                .Setup(service => service.SendIntakeOtpSmsAsync(It.IsAny<IntakeOtpDeliveryRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<IntakeOtpDeliveryRequest, CancellationToken>((request, _) => LastIntakeOtpCode = request.OtpCode)
+                .ReturnsAsync((IntakeOtpDeliveryRequest request, CancellationToken cancellationToken) => new DeliveryResult
+                {
+                    Succeeded = true,
+                    Status = DeliveryStatus.Sent,
+                    Provider = "TestCommunication",
+                    ProviderMessageId = $"test-otp-{Guid.NewGuid():N}",
+                    SentAtUtc = DateTimeOffset.UtcNow,
+                    Channel = DeliveryChannel.Sms,
+                    Purpose = DeliveryPurpose.IntakeOtp
+                });
+            ReplaceWithInstance(services, communicationMock.Object);
 
             var pdfRendererMock = new Mock<IPdfRenderer>();
             pdfRendererMock

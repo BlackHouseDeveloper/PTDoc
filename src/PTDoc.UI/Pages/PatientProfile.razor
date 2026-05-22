@@ -264,11 +264,21 @@
             new TimelineEntry
             {
                 Type = "intake",
-                Title = intake.IsSubmitted || intake.IsLocked ? "Submitted Intake" : "Intake Draft",
+                Title = BuildIntakeTimelineTitle(intake),
                 Description = BuildIntakeStateMessage(intake),
                 Date = localTimestamp.ToString("M/d/yyyy"),
                 Time = localTimestamp.ToString("h:mm tt")
             });
+    }
+
+    private static string BuildIntakeTimelineTitle(IntakeResponseDraft intake)
+    {
+        if (intake.ReviewedAtUtc.HasValue)
+        {
+            return "Reviewed Intake";
+        }
+
+        return intake.IsSubmitted || intake.IsLocked ? "Submitted Intake" : "Intake Draft";
     }
 
     private static string MapNoteTimelineType(string noteType)
@@ -326,7 +336,9 @@
 
         if (intake.IsSubmitted && intake.IsLocked)
         {
-            return "Intake is submitted and locked.";
+            return intake.ReviewedAtUtc.HasValue
+                ? "Intake reviewed."
+                : "Intake submitted and awaiting clinician review.";
         }
 
         if (intake.IsLocked)
@@ -346,7 +358,7 @@
 
         if (intake.IsSubmitted && intake.IsLocked)
         {
-            return "locked";
+            return intake.ReviewedAtUtc.HasValue ? "reviewed" : "submitted";
         }
 
         if (intake.IsLocked)

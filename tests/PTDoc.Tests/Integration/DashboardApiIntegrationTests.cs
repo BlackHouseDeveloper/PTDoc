@@ -184,7 +184,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         db.IntakeForms.AddRange(
             CreateIntakeForm(intakePatient.Id, clinician.Id, isLocked: false, lastModifiedUtc: today.AddDays(-2)),
             CreateIntakeForm(lockedIntakePatient.Id, clinician.Id, isLocked: true, lastModifiedUtc: today.AddDays(-2)),
-            CreateIntakeForm(submittedIntakePatient.Id, clinician.Id, isLocked: false, submittedAt: today.AddHours(8), lastModifiedUtc: today.AddDays(-2)));
+            CreateIntakeForm(submittedIntakePatient.Id, clinician.Id, isLocked: true, submittedAt: today.AddHours(8), lastModifiedUtc: today.AddDays(-2)));
 
         await db.SaveChangesAsync();
 
@@ -218,12 +218,16 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Equal($"/intake/{intakePatient.Id:D}", intakeAlert.TargetUrl);
         Assert.Equal("Open Intake", intakeAlert.ActionLabel);
 
+        var reviewAlert = Assert.Single(alerts, alert => alert.PatientId == submittedIntakePatient.Id);
+        Assert.Equal("submittedIntakeReview", reviewAlert.Kind);
+        Assert.Equal($"/intake/{submittedIntakePatient.Id:D}", reviewAlert.TargetUrl);
+        Assert.Equal("Review", reviewAlert.ActionLabel);
+
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{signedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{unsignedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{archivedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{cancelledAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.PatientId == lockedIntakePatient.Id);
-        Assert.DoesNotContain(alerts, alert => alert.PatientId == submittedIntakePatient.Id);
         Assert.DoesNotContain(alerts, alert => alert.Id == $"unsignedNote:{addendum.Id:N}");
     }
 

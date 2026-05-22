@@ -525,6 +525,44 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkReviewedAsync_StampsReviewState_AndIsIdempotent()
+    {
+        var patient = CreatePatient("Rita", "Review");
+        var intakeId = Guid.NewGuid();
+        var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Rita Review"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = true,
+            SubmittedAt = submittedAt,
+            AccessToken = "review-token",
+            LastModifiedUtc = submittedAt,
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        var reviewed = await _service.MarkReviewedAsync(intakeId);
+        var reviewedAgain = await _service.MarkReviewedAsync(intakeId);
+
+        Assert.True(reviewed.IsLocked);
+        Assert.True(reviewed.IsSubmitted);
+        Assert.NotNull(reviewed.ReviewedAtUtc);
+        Assert.Equal(_userId, reviewed.ReviewedByUserId);
+        Assert.Equal(reviewed.ReviewedAtUtc, reviewedAgain.ReviewedAtUtc);
+
+        var stored = await _context.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == intakeId);
+        Assert.NotNull(stored.ReviewedAtUtc);
+        Assert.Equal(_userId, stored.ReviewedByUserId);
+    }
+
+    [Fact]
     public async Task SearchEligiblePatientsAsync_ExcludesLockedOnlyPatients()
     {
         var unlockedPatient = CreatePatient("Una", "Unlocked");

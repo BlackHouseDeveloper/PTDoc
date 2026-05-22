@@ -85,6 +85,7 @@ public static class DashboardEndpoints
         var alerts = new List<DashboardAlertItemResponse>();
 
         alerts.AddRange(await BuildUnsignedNoteAlertsAsync(db, today, now, cancellationToken));
+        alerts.AddRange(await BuildSubmittedIntakeReviewAlertsAsync(db, now, cancellationToken));
         alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, cancellationToken));
         alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, cancellationToken));
 
@@ -176,15 +177,26 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
+        var submittedIntakesAwaitingReview = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
         return new DashboardOverviewCountsResponse
         {
             PatientsToday = appointmentRows.Select(appointment => appointment.PatientId).Distinct().Count(),
             AppointmentsToday = appointmentRows.Count,
             NotesDueToday = notesDueToday,
-            PendingItems = notesDueToday + unsignedNotes + incompleteIntakes,
+            PendingItems = notesDueToday + unsignedNotes + incompleteIntakes + submittedIntakesAwaitingReview,
             DraftNotes = draftNotes,
             UnsignedNotes = unsignedNotes,
-            IncompleteIntakes = incompleteIntakes
+            IncompleteIntakes = incompleteIntakes,
+            SubmittedIntakesAwaitingReview = submittedIntakesAwaitingReview
         };
     }
 
@@ -217,7 +229,18 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes;
+        var staleSubmittedIntakesAwaitingReview = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.SubmittedAt <= staleIntakeThreshold &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
+        return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes + staleSubmittedIntakesAwaitingReview;
     }
 
     private static async Task<IReadOnlyList<NoteListItemApiResponse>> BuildRecentNotesAsync(
@@ -443,6 +466,56 @@ public static class DashboardEndpoints
         }).ToList();
     }
 
+    private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildSubmittedIntakeReviewAlertsAsync(
+        ApplicationDbContext db,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var staleThreshold = now.UtcDateTime.AddHours(-24);
+
+        var intakes = await db.IntakeForms
+            .AsNoTracking()
+            .Include(intake => intake.Patient)
+            .Where(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived)
+            .OrderBy(intake => intake.SubmittedAt)
+            .ThenBy(intake => intake.LastModifiedUtc)
+            .Take(MaxTake * 4)
+            .Select(intake => new SubmittedIntakeReviewAlertCandidate(
+                intake.Id,
+                intake.PatientId,
+                intake.Patient!.FirstName,
+                intake.Patient.LastName,
+                intake.Patient.MedicalRecordNumber,
+                intake.SubmittedAt!.Value))
+            .ToListAsync(cancellationToken);
+
+        return intakes.Select(intake =>
+        {
+            var isUrgent = intake.SubmittedAtUtc <= staleThreshold;
+            return new DashboardAlertItemResponse
+            {
+                Id = $"submittedIntakeReview:{intake.Id:N}",
+                Kind = DashboardAlertKinds.SubmittedIntakeReview,
+                Priority = isUrgent ? DashboardAlertPriorities.High : DashboardAlertPriorities.Medium,
+                Title = "Intake Review Needed",
+                Message = "Patient intake is submitted and awaiting clinician review.",
+                PatientId = intake.PatientId,
+                PatientName = FormatPatientName(intake.PatientFirstName, intake.PatientLastName),
+                PatientMedicalRecordNumber = intake.PatientMedicalRecordNumber,
+                Timestamp = ToUtcOffset(intake.SubmittedAtUtc),
+                DueDateUtc = intake.SubmittedAtUtc,
+                TargetUrl = $"/intake/{intake.PatientId:D}",
+                ActionLabel = "Review",
+                IsUrgent = isUrgent
+            };
+        }).ToList();
+    }
+
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildUnsignedNoteAlertsAsync(
         ApplicationDbContext db,
         DateTime today,
@@ -544,8 +617,9 @@ public static class DashboardEndpoints
     {
         DashboardAlertKinds.NotesDueToday => 0,
         DashboardAlertKinds.UnsignedNote => 1,
-        DashboardAlertKinds.IncompleteIntake => 2,
-        _ => 3
+        DashboardAlertKinds.SubmittedIntakeReview => 2,
+        DashboardAlertKinds.IncompleteIntake => 3,
+        _ => 4
     };
 
     private static DateTimeOffset ToUtcOffset(DateTime value)
@@ -593,6 +667,7 @@ public static class DashboardEndpoints
         public const string NotesDueToday = "notesDueToday";
         public const string IncompleteIntake = "incompleteIntake";
         public const string UnsignedNote = "unsignedNote";
+        public const string SubmittedIntakeReview = "submittedIntakeReview";
     }
 
     private static class DashboardAlertPriorities
@@ -616,6 +691,14 @@ public static class DashboardEndpoints
         string PatientLastName,
         string? PatientMedicalRecordNumber,
         DateTime LastModifiedUtc);
+
+    private sealed record SubmittedIntakeReviewAlertCandidate(
+        Guid Id,
+        Guid PatientId,
+        string PatientFirstName,
+        string PatientLastName,
+        string? PatientMedicalRecordNumber,
+        DateTime SubmittedAtUtc);
 
     private sealed record NoteAlertCandidate(
         Guid Id,

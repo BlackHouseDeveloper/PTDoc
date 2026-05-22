@@ -123,6 +123,12 @@
                 </button>
 
                 <button class="intake-access-gate__btn intake-access-gate__btn--link"
+                        @onclick="RequestOtpAsync"
+                        disabled="@(!CanRequestOtp)">
+                    Resend Code
+                </button>
+
+                <button class="intake-access-gate__btn intake-access-gate__btn--link"
                         @onclick="@(() => { _errorMessage = null; _gateState = GateState.RequestContact; })"
                         disabled="@_isBusy">
                     Use a different contact
@@ -215,16 +221,11 @@
             if (!string.IsNullOrEmpty(inviteToken))
             {
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
-                if (result.IsValid && result.AccessToken is not null)
+                if (result.IsValid)
                 {
                     _inviteToken = inviteToken;
-                    var token = new IntakeSessionToken(
-                        result.AccessToken,
-                        result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
-
-                    await SessionStore.SaveAsync(token);
-                    ScheduleExpiryCheck(token.ExpiresAt);
-                    _gateState = GateState.Authorized;
+                    _errorMessage = null;
+                    _gateState = GateState.RequestContact;
                     return;
                 }
 

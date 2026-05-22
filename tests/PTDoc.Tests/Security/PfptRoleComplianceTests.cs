@@ -459,7 +459,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
 
-        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(409, statusResult.StatusCode);
@@ -492,7 +492,7 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
 
-        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         var statusResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
         Assert.Equal(409, statusResult.StatusCode);
@@ -642,13 +642,30 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var auditMock = new Mock<IAuditService>();
 
-        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, CancellationToken.None);
+        var syncEngineMock = new Mock<ISyncEngine>();
+
+        var result = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, syncEngineMock.Object, CancellationToken.None);
 
         Assert.IsType<Ok<IntakeResponse>>(result);
+        var updated = await _db.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == intake.Id);
+        Assert.NotNull(updated.ReviewedAtUtc);
+        Assert.Equal(reviewerId, updated.ReviewedByUserId);
         auditMock.Verify(
             a => a.LogIntakeEventAsync(
                 It.Is<AuditEvent>(e => e.EventType == "IntakeReviewed" && e.UserId == reviewerId && e.EntityId == intake.Id),
                 It.IsAny<CancellationToken>()),
+            Times.Once);
+        syncEngineMock.Verify(
+            engine => engine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        var repeat = await IntakeEndpoints.ReviewIntake(intake.Id, _db, identityMock.Object, auditMock.Object, syncEngineMock.Object, CancellationToken.None);
+        Assert.IsType<Ok<IntakeResponse>>(repeat);
+        auditMock.Verify(
+            a => a.LogIntakeEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        syncEngineMock.Verify(
+            engine => engine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

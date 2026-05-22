@@ -172,6 +172,10 @@
     color: var(--warning);
 }
 
+.dashboard-alert-card--submittedintakereview .dashboard-alert-card__icon {
+    color: var(--success);
+}
+
 .dashboard-alert-card--notesduetoday .dashboard-alert-card__icon {
     color: var(--destructive);
 }

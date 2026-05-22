@@ -63,5 +63,7 @@ public sealed class IntakeResponseDraft
     public bool IsSubmitted { get; set; }
     public bool IsLocked { get; set; }
     public DateTime? SubmittedAt { get; set; }
+    public DateTime? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedByUserId { get; set; }
     public DateTime? LastModifiedUtc { get; set; }
 }

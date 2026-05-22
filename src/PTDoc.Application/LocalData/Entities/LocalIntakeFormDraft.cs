@@ -39,6 +39,12 @@ public class LocalIntakeFormDraft : ILocalEntity
     /// <summary>UTC timestamp when the intake was submitted. Null until submitted.</summary>
     public DateTime? SubmittedAt { get; set; }
 
+    /// <summary>UTC timestamp when a clinician reviewed the submitted intake. Null until reviewed.</summary>
+    public DateTime? ReviewedAtUtc { get; set; }
+
+    /// <summary>Server user ID of the clinician who reviewed the intake. Null until reviewed.</summary>
+    public Guid? ReviewedByUserId { get; set; }
+
     /// <inheritdoc/>
     public SyncState SyncState { get; set; }
 

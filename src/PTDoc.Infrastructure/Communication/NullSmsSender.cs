@@ -8,13 +8,16 @@ namespace PTDoc.Infrastructure.Communication;
 public sealed class NullSmsSender : ISmsSender
 {
     private readonly IHostEnvironment _environment;
+    private readonly DevelopmentCommunicationMessageStore _messageStore;
     private readonly ILogger<NullSmsSender> _logger;
 
     public NullSmsSender(
         IHostEnvironment environment,
+        DevelopmentCommunicationMessageStore messageStore,
         ILogger<NullSmsSender> logger)
     {
         _environment = environment;
+        _messageStore = messageStore;
         _logger = logger;
     }
 
@@ -24,7 +27,8 @@ public sealed class NullSmsSender : ISmsSender
     {
         EnsureAllowed();
 
-        _logger.LogInformation("Null SMS delivery accepted.");
+        _messageStore.CaptureSms(message);
+        _logger.LogInformation("Null SMS delivery accepted and captured for development diagnostics.");
 
         return Task.FromResult(new DeliveryResult
         {

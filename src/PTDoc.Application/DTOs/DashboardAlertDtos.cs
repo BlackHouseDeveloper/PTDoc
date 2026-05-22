@@ -27,6 +27,7 @@ public sealed class DashboardOverviewCountsResponse
     public int DraftNotes { get; set; }
     public int UnsignedNotes { get; set; }
     public int IncompleteIntakes { get; set; }
+    public int SubmittedIntakesAwaitingReview { get; set; }
 }
 
 public sealed class DashboardRecentActivityResponse

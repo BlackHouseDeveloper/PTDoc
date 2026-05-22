@@ -128,7 +128,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             var callout = cut.Find("[data-testid='patient-intake-status']");
-            Assert.Contains("Intake is submitted and locked.", callout.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Intake submitted and awaiting clinician review.", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Review intake", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Submitted Intake", cut.Markup, StringComparison.Ordinal);
         });

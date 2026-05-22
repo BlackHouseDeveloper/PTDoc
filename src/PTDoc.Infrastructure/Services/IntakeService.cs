@@ -379,6 +379,31 @@ public sealed class IntakeService : IIntakeService
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
+    {
+        var intake = await _context.IntakeForms
+            .FirstOrDefaultAsync(form => form.Id == intakeId, cancellationToken)
+            ?? throw new InvalidOperationException($"Intake {intakeId} not found.");
+
+        if (!intake.IsLocked || !intake.SubmittedAt.HasValue)
+        {
+            throw new InvalidOperationException("Intake must be submitted and locked before it can be reviewed.");
+        }
+
+        if (!intake.ReviewedAtUtc.HasValue)
+        {
+            var nowUtc = DateTime.UtcNow;
+            intake.ReviewedAtUtc = nowUtc;
+            intake.ReviewedByUserId = _identityContext.GetCurrentUserId();
+            intake.LastModifiedUtc = nowUtc;
+            intake.ModifiedByUserId = intake.ReviewedByUserId.Value;
+            intake.SyncState = SyncState.Pending;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return DeserializeDraft(intake);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private static void CopyDraftProperties(IntakeResponseDraft source, IntakeResponseDraft target)
@@ -437,6 +462,8 @@ public sealed class IntakeService : IIntakeService
         target.IsSubmitted = source.IsSubmitted;
         target.IsLocked = source.IsLocked;
         target.SubmittedAt = source.SubmittedAt;
+        target.ReviewedAtUtc = source.ReviewedAtUtc;
+        target.ReviewedByUserId = source.ReviewedByUserId;
         target.LastModifiedUtc = source.LastModifiedUtc;
     }
 
@@ -447,6 +474,8 @@ public sealed class IntakeService : IIntakeService
         draft.IsLocked = intake.IsLocked;
         draft.IsSubmitted = intake.SubmittedAt.HasValue;
         draft.SubmittedAt = intake.SubmittedAt;
+        draft.ReviewedAtUtc = intake.ReviewedAtUtc;
+        draft.ReviewedByUserId = intake.ReviewedByUserId;
         draft.LastModifiedUtc = intake.LastModifiedUtc;
         return draft;
     }

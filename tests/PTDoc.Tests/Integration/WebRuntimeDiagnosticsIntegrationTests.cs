@@ -101,6 +101,17 @@ public sealed class WebRuntimeDiagnosticsIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task DevelopmentCommunicationDiagnostics_ForNonAdmin_ReturnsForbidden()
+    {
+        await using var factory = new PTDocWebFactory();
+        using var client = factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.GetAsync("/diagnostics/development/communications");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private sealed class PTDocWebFactory(IReadOnlyDictionary<string, string?>? overrides = null)
         : WebApplicationFactory<PTDoc.Web.Components.App>
     {

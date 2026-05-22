@@ -414,6 +414,8 @@ public sealed class IntakeApiServiceTests
         var patientId = Guid.NewGuid();
         var intakeId = Guid.NewGuid();
         var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
+        var reviewedAt = submittedAt.AddHours(1);
+        var reviewerId = Guid.NewGuid();
 
         var handler = new StubHttpMessageHandler(request =>
         {
@@ -429,6 +431,8 @@ public sealed class IntakeApiServiceTests
                 ResponseJson = """{"fullName":"Latest Locked","painSeverityProvided":true,"painSeverityScore":0}""",
                 Locked = true,
                 SubmittedAt = submittedAt,
+                ReviewedAtUtc = reviewedAt,
+                ReviewedByUserId = reviewerId,
                 TemplateVersion = "1.0",
                 LastModifiedUtc = submittedAt
             }, JsonOptions));
@@ -445,6 +449,46 @@ public sealed class IntakeApiServiceTests
         Assert.True(draft.PainSeverityProvided);
         Assert.Equal(0, draft.PainSeverityScore);
         Assert.Equal(submittedAt, draft.SubmittedAt);
+        Assert.Equal(reviewedAt, draft.ReviewedAtUtc);
+        Assert.Equal(reviewerId, draft.ReviewedByUserId);
+    }
+
+    [Fact]
+    public async Task MarkReviewedAsync_PostsReviewEndpointAndHydratesReviewState()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var reviewedAt = new DateTime(2026, 5, 2, 15, 30, 0, DateTimeKind.Utc);
+        var reviewerId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/intake/{intakeId}/review", request.RequestUri!.AbsolutePath);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = """{"fullName":"Reviewed Intake"}""",
+                Locked = true,
+                SubmittedAt = reviewedAt.AddHours(-1),
+                ReviewedAtUtc = reviewedAt,
+                ReviewedByUserId = reviewerId,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = reviewedAt
+            }, JsonOptions));
+        });
+
+        var result = await CreateService(handler).MarkReviewedAsync(intakeId);
+
+        Assert.Equal(intakeId, result.IntakeId);
+        Assert.True(result.IsLocked);
+        Assert.True(result.IsSubmitted);
+        Assert.Equal(reviewedAt, result.ReviewedAtUtc);
+        Assert.Equal(reviewerId, result.ReviewedByUserId);
     }
 
     [Fact]

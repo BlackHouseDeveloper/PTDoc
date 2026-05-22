@@ -273,6 +273,20 @@ public sealed class IntakeApiService(
         }
     }
 
+    public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsync($"/api/v1/intake/{intakeId}/review", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        }
+
+        var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Review completed but the intake payload was empty.");
+
+        return ToDraft(intake);
+    }
+
     private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken)
     {
         var response = await SendWithOptionalStandaloneAccessAsync(
@@ -434,6 +448,8 @@ public sealed class IntakeApiService(
         draft.IsSubmitted = response.SubmittedAt.HasValue;
         draft.IsLocked = response.Locked;
         draft.SubmittedAt = response.SubmittedAt;
+        draft.ReviewedAtUtc = response.ReviewedAtUtc;
+        draft.ReviewedByUserId = response.ReviewedByUserId;
         draft.LastModifiedUtc = response.LastModifiedUtc;
         return draftCanonicalizer.CreateCanonicalCopy(draft);
     }

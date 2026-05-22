@@ -5,6 +5,7 @@ namespace PTDoc.UI.Components.Intake.Models;
 
 public sealed class IntakeWizardState
 {
+    public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;
     public bool IsPatientMode { get; set; }
@@ -17,6 +18,9 @@ public sealed class IntakeWizardState
     public bool IsDirty { get; set; }
     public bool IsSubmitted { get; set; }
     public bool IsLocked { get; set; }
+    public DateTime? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedByUserId { get; set; }
+    public DateTime? LastModifiedUtc { get; set; }
     public bool RevokeHipaaPrivacyNotice { get; set; }
     public bool RevokeTreatmentConsent { get; set; }
     public bool RevokeMarketingCommunications { get; set; }

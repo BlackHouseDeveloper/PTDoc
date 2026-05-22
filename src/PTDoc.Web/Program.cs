@@ -424,6 +424,46 @@ app.MapGet("/diagnostics/runtime", (
 .RequireAuthorization(AuthorizationPolicies.AdminOnly)
 .WithName("GetWebRuntimeDiagnostics");
 
+app.MapGet("/diagnostics/development/communications", async (
+    IHttpClientFactory httpClientFactory,
+    string? purpose,
+    string? channel,
+    int? take,
+    CancellationToken cancellationToken) =>
+{
+    var queryValues = new List<KeyValuePair<string, string?>>();
+    if (!string.IsNullOrWhiteSpace(purpose))
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("purpose", purpose));
+    }
+
+    if (!string.IsNullOrWhiteSpace(channel))
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("channel", channel));
+    }
+
+    if (take.HasValue)
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("take", take.Value.ToString()));
+    }
+
+    var queryString = queryValues.Count == 0
+        ? QueryString.Empty
+        : QueryString.Create(queryValues);
+
+    using var response = await httpClientFactory
+        .CreateClient("ServerAPI")
+        .GetAsync($"/diagnostics/development/communications{queryString}", cancellationToken);
+    var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+
+    return Results.Content(
+        payload,
+        response.Content.Headers.ContentType?.ToString() ?? "application/json",
+        statusCode: (int)response.StatusCode);
+})
+.RequireAuthorization(AuthorizationPolicies.AdminOnly)
+.WithName("GetWebDevelopmentCommunicationDiagnostics");
+
 app.MapRazorComponents<PTDoc.Web.Components.App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(PTDoc.UI.Components.Routes).Assembly);

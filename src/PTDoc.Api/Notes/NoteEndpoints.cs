@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.Diagnostics;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -114,7 +115,7 @@ public static class NoteEndpoints
         [FromQuery] Guid? patientId,
         [FromQuery] string? noteType,
         [FromQuery] string? status,
-        [FromQuery] int take,
+        [FromQuery] string? take,
         [FromQuery] int? skip,
         [FromQuery] string? categoryId,
         [FromQuery] string? itemId,
@@ -122,9 +123,14 @@ public static class NoteEndpoints
         [FromQuery] DateTime? dateRangeStart,
         [FromQuery] DateTime? dateRangeEnd,
         [FromServices] ApplicationDbContext db,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 500);
+        if (!ListQueryParameterParser.TryNormalizeTake(take, 100, 500, httpContext, out var normalizedTake, out var failure))
+        {
+            return failure!;
+        }
+
         var normalizedSkip = Math.Max(skip.GetValueOrDefault(), 0);
 
         var query = db.ClinicalNotes

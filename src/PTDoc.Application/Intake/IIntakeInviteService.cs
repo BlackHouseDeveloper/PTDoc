@@ -6,8 +6,8 @@ public interface IIntakeInviteService
     /// <summary>Creates or rotates the secure invite link for a specific intake record.</summary>
     Task<IntakeInviteLinkResult> CreateInviteAsync(Guid intakeId, CancellationToken cancellationToken = default);
 
-    /// <summary>Validates a signed invite token from the URL and issues a short-lived intake access token.</summary>
-    Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default);
+    /// <summary>Validates a signed invite token from the URL without issuing intake access.</summary>
+    Task<IntakeInviteValidationResponse> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default);
 
     /// <summary>Sends a one-time passcode to the specified contact via the selected channel for a signed invite.</summary>
     Task<bool> SendOtpAsync(string inviteToken, string contact, OtpChannel channel, CancellationToken cancellationToken = default);

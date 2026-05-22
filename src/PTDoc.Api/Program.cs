@@ -521,6 +521,7 @@ app.UseExceptionHandler(errorApp =>
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var statusCode = exception switch
         {
+            BadHttpRequestException => StatusCodes.Status400BadRequest,
             ProvisioningException => StatusCodes.Status403Forbidden,
             WibbiAuthenticationException => StatusCodes.Status502BadGateway,
             WibbiUnsafeLaunchUrlException => StatusCodes.Status502BadGateway,
@@ -539,6 +540,13 @@ app.UseExceptionHandler(errorApp =>
 
             switch (exception)
             {
+                case BadHttpRequestException:
+                    logger.LogWarning(
+                        exception,
+                        "Bad request on {Method} {Path}",
+                        sanitizedMethod,
+                        sanitizedPath);
+                    break;
                 case ProvisioningException provisioningException:
                     logger.LogWarning(
                         exception,
@@ -590,6 +598,7 @@ app.UseExceptionHandler(errorApp =>
         {
             error = exception switch
             {
+                BadHttpRequestException => "The request could not be processed.",
                 ProvisioningException => "Authenticated principal is not provisioned for this PTDoc environment.",
                 WibbiAuthenticationException => "The home exercise platform is temporarily unavailable.",
                 WibbiUnsafeLaunchUrlException => "The home exercise platform returned an unsafe launch response.",
@@ -598,6 +607,7 @@ app.UseExceptionHandler(errorApp =>
             },
             code = exception switch
             {
+                BadHttpRequestException => "bad_request",
                 ProvisioningException provisioningException => provisioningException.FailureCode,
                 WibbiAuthenticationException => "wibbi_upstream_failure",
                 WibbiUnsafeLaunchUrlException => "wibbi_unsafe_launch_response",
@@ -608,6 +618,37 @@ app.UseExceptionHandler(errorApp =>
         });
         await context.Response.WriteAsync(result);
     });
+});
+
+// Minimal API query/body binding failures are client errors. Handle them before the
+// fallback exception handler logs them as unhandled server faults.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
+    {
+        context.Response.Clear();
+        SecurityHeadersMiddleware.ApplyHeaders(context.Response);
+        if (!app.Environment.IsDevelopment())
+        {
+            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        }
+
+        LogBadRequestException(context, exception);
+
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        context.Response.ContentType = "application/json";
+        var result = JsonSerializer.Serialize(new
+        {
+            error = "The request could not be processed.",
+            code = "bad_request",
+            correlationId = context.TraceIdentifier
+        });
+        await context.Response.WriteAsync(result, context.RequestAborted);
+    }
 });
 
 // Sprint G: Apply security headers to all API responses.
@@ -899,6 +940,19 @@ static string GetPasswordResetRateLimitPartitionKey(
     }
 
     return "unknown";
+}
+
+static void LogBadRequestException(HttpContext context, BadHttpRequestException exception)
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var sanitizedMethod = context.Request.Method.Replace("\r", string.Empty).Replace("\n", string.Empty);
+    var sanitizedPath = context.Request.Path.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
+    logger.LogWarning(
+        exception,
+        "Bad request on {Method} {Path}",
+        sanitizedMethod,
+        sanitizedPath);
 }
 
 static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)
