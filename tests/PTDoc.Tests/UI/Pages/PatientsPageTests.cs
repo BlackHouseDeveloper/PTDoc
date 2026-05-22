@@ -76,6 +76,31 @@ public sealed class PatientsPageTests : TestContext
     }
 
     [Fact]
+    public void PatientDirectory_EmitsLowercaseAriaBusyTokens()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var pendingLoad = new TaskCompletionSource<IReadOnlyList<PatientListItemResponse>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .Returns(pendingLoad.Task);
+
+        RegisterServices(patientService.Object, includePatientWrite: true);
+
+        var cut = RenderComponent<Patients>();
+
+        Assert.Equal("true", cut.Find(".patients-page-content").GetAttribute("aria-busy"));
+
+        pendingLoad.SetResult(Array.Empty<PatientListItemResponse>());
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("false", cut.Find(".patients-page-content").GetAttribute("aria-busy"));
+        });
+    }
+
+    [Fact]
     public void AddPatientAction_RequiresPatientWritePolicy()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

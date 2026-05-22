@@ -5,9 +5,9 @@
     
     States & conditional logic:
     - Toggle is disabled for all formats
-    - Stored password state is cleared so the UI does not collect an ignored value
+    - Password draft state is owned by the parent and is not changed here
     
-    Data behavior: Do not collect a password until PDF encryption is backend-enforced.
+    Data behavior: Do not collect or mutate password draft state until PDF encryption is backend-enforced.
 *@
 
 <div class="export-options-panel">
@@ -31,7 +31,6 @@
                         type="checkbox"
                         class="password-protect-row__toggle"
                         checked="@false"
-                        @onchange="@((ChangeEventArgs e) => TogglePasswordProtect((bool)e!.Value!))"
                         disabled
                         aria-label="Password-protect PDF"
                         aria-describedby="@PasswordUnavailableDescriptionId" />
@@ -51,26 +50,5 @@
     [EditorRequired]
     public ExportFormat SelectedFormat { get; set; } = ExportFormat.PDF;
 
-    [Parameter]
-    [EditorRequired]
-    public ExportDraftState State { get; set; } = new();
-
-    [Parameter]
-    public EventCallback StateChanged { get; set; }
-
     private string PasswordUnavailableDescriptionId { get; } = $"password-unavailable-{Guid.NewGuid():N}";
-
-    protected override void OnParametersSet()
-    {
-        State.IsPasswordProtected = false;
-        State.PasswordValue = string.Empty;
-    }
-
-    private void TogglePasswordProtect(bool isProtected)
-    {
-        State.IsPasswordProtected = false;
-        State.PasswordValue = string.Empty;
-
-        StateChanged.InvokeAsync();
-    }
 }

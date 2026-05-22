@@ -36,7 +36,7 @@
             />
         </div>
 
-        <div class="patients-page-content" aria-busy="@isLoading">
+        <div class="patients-page-content" aria-busy="@AriaBusy">
             @if (isLoading && patients.Count == 0)
             {
                 <section class="patients-page-state" role="status" aria-live="polite" data-testid="patients-loading-state">
@@ -108,6 +108,7 @@
     private List<PatientListItemVm> patients = new();
     private CancellationTokenSource? _searchCts;
     private int _loadSequence;
+    private string AriaBusy => isLoading ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

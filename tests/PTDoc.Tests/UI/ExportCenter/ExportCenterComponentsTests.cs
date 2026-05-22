@@ -109,22 +109,16 @@ public sealed class ExportCenterComponentsTests : TestContext
     }
 
     [Fact]
-    public void ExportOptionsPanel_DisablesIgnoredPasswordProtection()
+    public void ExportOptionsPanel_DisablesPasswordProtectionWithoutMutatingDraftState()
     {
-        var state = new ExportDraftState
-        {
-            IsPasswordProtected = true,
-            PasswordValue = "secret-value"
-        };
-
         var cut = RenderComponent<ExportOptionsPanel>(parameters => parameters
-            .Add(component => component.SelectedFormat, ExportFormat.PDF)
-            .Add(component => component.State, state));
+            .Add(component => component.SelectedFormat, ExportFormat.PDF));
 
         var passwordToggle = cut.Find("input[type='checkbox']");
         Assert.True(passwordToggle.HasAttribute("disabled"));
-        Assert.False(state.IsPasswordProtected);
-        Assert.Equal(string.Empty, state.PasswordValue);
+        Assert.False(passwordToggle.HasAttribute("checked"));
+        Assert.Null(typeof(ExportOptionsPanel).GetProperty("State"));
+        Assert.Null(typeof(ExportOptionsPanel).GetProperty("StateChanged"));
         Assert.Contains("Password protection is not available", cut.Markup, StringComparison.Ordinal);
     }
 
