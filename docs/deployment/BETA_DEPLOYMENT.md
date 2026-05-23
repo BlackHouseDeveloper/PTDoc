@@ -37,7 +37,6 @@ Set these app settings on the frontend App Service:
 ```text
 ASPNETCORE_ENVIRONMENT=Beta
 ReverseProxy__Clusters__apiCluster__Destinations__api__Address=https://api-ptdoc.bhdevsites.com/
-IntakeInvite__PublicWebBaseUrl=https://ptdoc.bhdevsites.com
 EntraExternalId__ClientSecret=<from secret store>
 ```
 
