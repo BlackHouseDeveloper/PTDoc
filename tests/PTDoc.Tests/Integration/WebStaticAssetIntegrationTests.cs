@@ -5,13 +5,13 @@ using Microsoft.Extensions.Hosting;
 
 namespace PTDoc.Tests.Integration;
 
+[Collection("EnvironmentVariables")]
 [Trait("Category", "CoreCi")]
 public sealed class WebStaticAssetIntegrationTests
 {
     private const string BetaEnvironmentName = "Beta";
     private const string EntraClientSecretEnvironmentVariable = "EntraExternalId__ClientSecret";
     private const string TestEntraClientSecret = "web-static-asset-test-client-secret-placeholder";
-    private static readonly object EnvironmentLock = new();
 
     public static TheoryData<string, string, string> ServedAssets =>
         new()
@@ -121,19 +121,16 @@ public sealed class WebStaticAssetIntegrationTests
                 return base.CreateHost(builder);
             }
 
-            lock (EnvironmentLock)
-            {
-                var previousClientSecret = Environment.GetEnvironmentVariable(EntraClientSecretEnvironmentVariable);
-                Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, TestEntraClientSecret);
+            var previousClientSecret = Environment.GetEnvironmentVariable(EntraClientSecretEnvironmentVariable);
+            Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, TestEntraClientSecret);
 
-                try
-                {
-                    return base.CreateHost(builder);
-                }
-                finally
-                {
-                    Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, previousClientSecret);
-                }
+            try
+            {
+                return base.CreateHost(builder);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, previousClientSecret);
             }
         }
 

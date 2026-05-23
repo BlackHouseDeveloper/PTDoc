@@ -59,7 +59,7 @@ jobs:
           --logger "trx;LogFileName=beta-deploy-results.trx"
 
     - name: Publish Web
-      run: dotnet publish "$WEB_PROJECT" --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
+      run: dotnet publish "$WEB_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
 
     - name: Verify Web static assets
       run: |
@@ -70,7 +70,7 @@ jobs:
         test -f ./publish/web/wwwroot/PTDoc.Web.styles.css
 
     - name: Publish API
-      run: dotnet publish "$API_PROJECT" --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
+      run: dotnet publish "$API_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
 
     - name: Upload Web artifact
       uses: actions/upload-artifact@v4
