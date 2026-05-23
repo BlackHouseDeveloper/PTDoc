@@ -173,29 +173,41 @@ public sealed class WebStaticAssetIntegrationTests
             var root = Path.Combine(Path.GetTempPath(), $"ptdoc-web-assets-{Guid.NewGuid():N}");
             Directory.CreateDirectory(root);
 
-            CopyFile(
-                Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "css", "app.css"),
-                Path.Combine(root, "_content", "PTDoc.UI", "css", "app.css"));
-            CopyFile(
-                Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "js", "theme.js"),
-                Path.Combine(root, "_content", "PTDoc.UI", "js", "theme.js"));
-            CopyFile(
-                Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "ptdoclogo.png"),
-                Path.Combine(root, "_content", "PTDoc.UI", "ptdoclogo.png"));
-            CopyFirstExisting(
-                [
-                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Debug", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css"),
-                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Release", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css")
-                ],
-                Path.Combine(root, "_content", "PTDoc.UI", "PTDoc.UI.bundle.scp.css"));
-            CopyFirstExisting(
-                [
-                    Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Debug", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css"),
-                    Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Release", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css")
-                ],
-                Path.Combine(root, "PTDoc.Web.styles.css"));
+            try
+            {
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "css", "app.css"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "css", "app.css"));
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "js", "theme.js"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "js", "theme.js"));
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "ptdoclogo.png"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "ptdoclogo.png"));
+                CopyFirstExisting(
+                    [
+                        Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Debug", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css"),
+                        Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Release", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css")
+                    ],
+                    Path.Combine(root, "_content", "PTDoc.UI", "PTDoc.UI.bundle.scp.css"));
+                CopyFirstExisting(
+                    [
+                        Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Debug", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css"),
+                        Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Release", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css")
+                    ],
+                    Path.Combine(root, "PTDoc.Web.styles.css"));
 
-            return root;
+                return root;
+            }
+            catch
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+
+                throw;
+            }
         }
 
         private static string ResolveRepositoryRoot(string webContentRoot)
