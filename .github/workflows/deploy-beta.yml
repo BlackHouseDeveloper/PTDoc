@@ -42,7 +42,10 @@ jobs:
         echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
     - name: Restore dependencies
-      run: dotnet restore "$TEST_PROJECT"
+      run: |
+        dotnet restore "$TEST_PROJECT"
+        dotnet restore "$WEB_PROJECT"
+        dotnet restore "$API_PROJECT"
 
     - name: Build tests
       run: dotnet build "$TEST_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION"
@@ -56,10 +59,18 @@ jobs:
           --logger "trx;LogFileName=beta-deploy-results.trx"
 
     - name: Publish Web
-      run: dotnet publish "$WEB_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
+      run: dotnet publish "$WEB_PROJECT" --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
+
+    - name: Verify Web static assets
+      run: |
+        test -f ./publish/web/wwwroot/_content/PTDoc.UI/css/app.css
+        test -f ./publish/web/wwwroot/_content/PTDoc.UI/PTDoc.UI.bundle.scp.css
+        test -f ./publish/web/wwwroot/_content/PTDoc.UI/js/theme.js
+        test -f ./publish/web/wwwroot/_content/PTDoc.UI/ptdoclogo.png
+        test -f ./publish/web/wwwroot/PTDoc.Web.styles.css
 
     - name: Publish API
-      run: dotnet publish "$API_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
+      run: dotnet publish "$API_PROJECT" --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
 
     - name: Upload Web artifact
       uses: actions/upload-artifact@v4

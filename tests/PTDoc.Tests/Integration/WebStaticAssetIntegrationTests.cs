@@ -15,7 +15,11 @@ public sealed class WebStaticAssetIntegrationTests
             { "Development", "/PTDoc.Web.styles.css", "text/css" },
             { "Development", "/js/auth.js", "javascript" },
             { "Development", "/_content/PTDoc.UI/js/modal.js", "javascript" },
-            { "Development", "/_content/PTDoc.UI/images/nav-home.svg", "image/svg+xml" }
+            { "Development", "/_content/PTDoc.UI/images/nav-home.svg", "image/svg+xml" },
+            { "Beta", "/_content/PTDoc.UI/css/app.css", "text/css" },
+            { "Beta", "/_content/PTDoc.UI/PTDoc.UI.bundle.scp.css", "text/css" },
+            { "Beta", "/PTDoc.Web.styles.css", "text/css" },
+            { "Beta", "/_content/PTDoc.UI/ptdoclogo.png", "image/png" }
         };
 
     [Theory]

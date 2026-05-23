@@ -635,9 +635,10 @@ static void UsePTDocStaticAssetFallbacks(WebApplication app)
     var uiProjectRoot = repositoryRoot is null
         ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "PTDoc.UI"))
         : Path.Combine(repositoryRoot, "src", "PTDoc.UI");
-    var webRoot = Path.Combine(webProjectRoot, "wwwroot");
+    var webRoot = app.Environment.WebRootPath ?? Path.Combine(webProjectRoot, "wwwroot");
     var uiStaticRootPaths = new List<string>
     {
+        Path.Combine(webRoot, "_content", "PTDoc.UI"),
         Path.Combine(uiProjectRoot, "wwwroot")
     };
     var webScopedCssRootPaths = new List<string>();
@@ -808,7 +809,7 @@ static string? ResolveStaticAssetPhysicalPath(
 
     if (string.Equals(value, "/PTDoc.Web.styles.css", StringComparison.OrdinalIgnoreCase))
     {
-        return ResolveExistingFile(webScopedCssRoots, "PTDoc.Web.styles.css");
+        return ResolveExistingFile(webScopedCssRoots.Append(webRoot), "PTDoc.Web.styles.css");
     }
 
     if (value.StartsWith("/js/", StringComparison.OrdinalIgnoreCase)
