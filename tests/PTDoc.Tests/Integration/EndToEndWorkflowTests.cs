@@ -1957,6 +1957,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["Communication:RecipientHashSalt"] = "integration-test-recipient-hash-salt",
                 ["Communication:TokenExpiryMinutes:PasswordReset"] = "30",
                 ["Communication:TokenExpiryMinutes:Intake"] = "10080",
+                ["Cors:AllowedOrigins:0"] = "https://ptdoc.bhdevsites.com",
                 ["ForwardedHeaders:Enabled"] = "true",
                 ["ForwardedHeaders:KnownNetworks:0"] = "0.0.0.0/0",
                 ["ForwardedHeaders:KnownNetworks:1"] = "::/0",

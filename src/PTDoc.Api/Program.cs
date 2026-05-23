@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -94,6 +95,21 @@ if (!builder.Environment.IsEnvironment("Testing"))
 // Add HttpContextAccessor for identity context
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+builder.Services.AddCors();
+builder.Services.AddOptions<CorsOptions>().Configure<IConfiguration>((options, configuration) =>
+{
+    var corsAllowedOrigins = NormalizeCorsAllowedOrigins(ReadStringList(configuration, "Cors:AllowedOrigins"));
+    options.AddDefaultPolicy(policy =>
+    {
+        if (corsAllowedOrigins.Length > 0)
+        {
+            policy
+                .WithOrigins(corsAllowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
+});
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     if (builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
@@ -712,12 +728,23 @@ if (autoMigrate)
 
 app.UseForwardedHeaders();
 
+app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
 app.UseAuthorization();
 
 // Health check endpoints (Sprint F – unauthenticated, standard deployment probe pattern)
+app.MapGet("/health", (IHostEnvironment environment) => Results.Ok(new
+{
+    status = "Healthy",
+    app = "PTDoc API",
+    environment = environment.EnvironmentName,
+    timestampUtc = DateTimeOffset.UtcNow
+}))
+.AllowAnonymous()
+.WithName("GetHealth");
+
 // /health/live  – liveness: confirms the process is running
 // /health/ready – readiness: confirms database connectivity and migration state
 app.MapHealthChecks("/health/live", new HealthCheckOptions
@@ -855,6 +882,48 @@ static IEnumerable<string> ReadStringList(IConfiguration configuration, string k
     return string.IsNullOrWhiteSpace(raw)
         ? Array.Empty<string>()
         : raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+static string[] NormalizeCorsAllowedOrigins(IEnumerable<string> origins)
+{
+    var normalizedOrigins = new List<string>();
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var origin in origins)
+    {
+        var normalized = NormalizeCorsAllowedOrigin(origin);
+        if (seen.Add(normalized))
+        {
+            normalizedOrigins.Add(normalized);
+        }
+    }
+
+    return normalizedOrigins.ToArray();
+}
+
+static string NormalizeCorsAllowedOrigin(string value)
+{
+    if (string.IsNullOrWhiteSpace(value) ||
+        value.Any(char.IsControl) ||
+        !Uri.TryCreate(value.Trim().TrimEnd('/'), UriKind.Absolute, out var uri) ||
+        string.IsNullOrWhiteSpace(uri.Host) ||
+        !string.IsNullOrWhiteSpace(uri.AbsolutePath.Trim('/')) ||
+        !string.IsNullOrWhiteSpace(uri.Query) ||
+        !string.IsNullOrWhiteSpace(uri.Fragment))
+    {
+        throw new InvalidOperationException($"Cors:AllowedOrigins contains invalid origin '{value}'.");
+    }
+
+    if (uri.Scheme != Uri.UriSchemeHttps &&
+        !(uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback))
+    {
+        throw new InvalidOperationException(
+            $"Cors:AllowedOrigins origin '{value}' must use HTTPS unless it is loopback HTTP for local development.");
+    }
+
+    return uri.IsDefaultPort
+        ? $"{uri.Scheme}://{uri.Host}"
+        : $"{uri.Scheme}://{uri.Host}:{uri.Port}";
 }
 
 static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string value, bool isLocalEnvironment)

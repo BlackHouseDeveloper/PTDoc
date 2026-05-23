@@ -834,11 +834,24 @@ The API exposes standard health check endpoints. Use them to verify database
 connectivity and migration state after deployment:
 
 ```bash
+# Simple smoke check (JSON, HTTP 200 when process is running)
+curl http://localhost:5170/health
+
 # Liveness check (HTTP 200 when process is running)
 curl http://localhost:5170/health/live
 
 # Readiness check (JSON, HTTP 503 when database is unreachable)
 curl http://localhost:5170/health/ready
+```
+
+**Simple health JSON response:**
+```json
+{
+  "status": "Healthy",
+  "app": "PTDoc API",
+  "environment": "Development",
+  "timestampUtc": "2026-05-23T00:00:00+00:00"
+}
 ```
 
 **Readiness JSON response:**

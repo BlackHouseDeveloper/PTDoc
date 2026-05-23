@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Beta deployment foundation
+
+- **`src/PTDoc.Web/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/Program.cs`**, **`.github/workflows/deploy-beta.yml`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`docs/CI.md`**, **`docs/ARCHITECTURE.md`**, **`docs/DEVELOPMENT.md`**, **`tests/PTDoc.Tests/Integration/BetaDeploymentConfigurationTests.cs`**, **`tests/PTDoc.Tests/Security/AuthorizationCoverageTests.cs`** — Added Beta environment configuration for separate Azure App Services, config-driven API CORS, unauthenticated `GET /health`, a manual Web/API deployment workflow, beta runbook documentation, and focused regression coverage. Reason: beta must run the Blazor Interactive Server frontend and API from stable Azure App Services without localhost, dev tunnel, or temporary Azure hostname dependencies.
+
 ### Fixed - Patient, intake, and notes workflow remediation
 
 - **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Infrastructure/Communication/CommunicationService.cs`** — Centralized `BadHttpRequestException` JSON handling in the existing API exception handler and kept password-reset token expiry filtering SQL-side for providers that support `DateTimeOffset`, with the SQLite fallback limited to that provider. Reason: PR review identified duplicate bad-request middleware and avoidable reset-token materialization on non-SQLite providers.

@@ -135,6 +135,7 @@ public class AuthorizationCoverageTests
             // request reach the handler so it can return 401 with a body when no token is present.
             "GET /api/v1/auth/me",
             // Health probes (liveness + readiness)
+            "GET /health",
             "GET /health/live",
             "GET /health/ready",
             // Standalone intake access flow uses signed invite / session tokens in the payload or header.
@@ -178,6 +179,7 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/auth/me",        null, IsIntentionallyAnonymous: true),
 
         // ── Health probes (Program.cs MapHealthChecks) ─────────────────────────
+        new("GET", "/health",       null, IsIntentionallyAnonymous: true),
         new("GET", "/health/live",  null, IsIntentionallyAnonymous: true),
         new("GET", "/health/ready", null, IsIntentionallyAnonymous: true),
 

@@ -1,0 +1,116 @@
+name: "Deploy Beta"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-deployment
+  cancel-in-progress: false
+
+env:
+  DOTNET_CONFIGURATION: Release
+  WEB_PROJECT: src/PTDoc.Web/PTDoc.Web.csproj
+  API_PROJECT: src/PTDoc.Api/PTDoc.Api.csproj
+  TEST_PROJECT: tests/PTDoc.Tests/PTDoc.Tests.csproj
+
+jobs:
+  build-test-publish:
+    name: Build, Test, and Publish
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj', '.config/dotnet-tools.json') }}
+
+    - name: Generate ephemeral CI secrets
+      run: |
+        echo "Jwt__SigningKey=$(openssl rand -base64 64)" >> "$GITHUB_ENV"
+        echo "IntakeInvite__SigningKey=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+    - name: Restore dependencies
+      run: dotnet restore "$TEST_PROJECT"
+
+    - name: Build tests
+      run: dotnet build "$TEST_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION"
+
+    - name: Run tests
+      run: |
+        dotnet test "$TEST_PROJECT" \
+          --no-build \
+          --configuration "$DOTNET_CONFIGURATION" \
+          --verbosity normal \
+          --logger "trx;LogFileName=beta-deploy-results.trx"
+
+    - name: Publish Web
+      run: dotnet publish "$WEB_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
+
+    - name: Publish API
+      run: dotnet publish "$API_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
+
+    - name: Upload Web artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ptdoc-web-beta
+        path: ./publish/web
+        if-no-files-found: error
+
+    - name: Upload API artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ptdoc-api-beta
+        path: ./publish/api
+        if-no-files-found: error
+
+  deploy-web:
+    name: Deploy Web App Service
+    needs: build-test-publish
+    runs-on: ubuntu-latest
+    environment: beta
+
+    steps:
+    - name: Download Web artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ptdoc-web-beta
+        path: ./publish/web
+
+    - name: Deploy Web to Azure App Service
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ptdoc-web-prod
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_WEB_PROD }}
+        package: ./publish/web
+
+  deploy-api:
+    name: Deploy API App Service
+    needs: build-test-publish
+    runs-on: ubuntu-latest
+    environment: beta
+
+    steps:
+    - name: Download API artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ptdoc-api-beta
+        path: ./publish/api
+
+    - name: Deploy API to Azure App Service
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ptdoc-api-plan
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_API_PLAN }}
+        package: ./publish/api

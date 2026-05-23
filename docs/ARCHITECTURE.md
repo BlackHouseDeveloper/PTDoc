@@ -644,8 +644,19 @@ and never return sensitive configuration data.
 
 | Endpoint | Purpose | HTTP Status |
 |----------|---------|-------------|
+| `GET /health` | Simple JSON process health for hosting smoke tests | 200 OK |
 | `GET /health/live` | Liveness — confirms the process is running | 200 OK |
 | `GET /health/ready` | Readiness — confirms DB connectivity + migration state | 200 / 503 |
+
+**Simple health response format (JSON):**
+```json
+{
+  "status": "Healthy",
+  "app": "PTDoc API",
+  "environment": "Production",
+  "timestampUtc": "2026-05-23T00:00:00+00:00"
+}
+```
 
 **Readiness response format (JSON):**
 ```json
