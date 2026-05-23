@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace PTDoc.Tests.Integration;
 
@@ -19,6 +20,7 @@ public sealed class WebStaticAssetIntegrationTests
             { "Beta", "/_content/PTDoc.UI/css/app.css", "text/css" },
             { "Beta", "/_content/PTDoc.UI/PTDoc.UI.bundle.scp.css", "text/css" },
             { "Beta", "/PTDoc.Web.styles.css", "text/css" },
+            { "Beta", "/_content/PTDoc.UI/js/theme.js", "javascript" },
             { "Beta", "/_content/PTDoc.UI/ptdoclogo.png", "image/png" }
         };
 
@@ -86,6 +88,18 @@ public sealed class WebStaticAssetIntegrationTests
         {
             builder.UseEnvironment(environmentName);
             builder.UseContentRoot(ResolveWebContentRoot());
+            builder.ConfigureAppConfiguration((context, configuration) =>
+            {
+                if (!string.Equals(context.HostingEnvironment.EnvironmentName, "Beta", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["EntraExternalId:ClientSecret"] = "web-static-asset-test-client-secret-placeholder"
+                });
+            });
         }
 
         private static string ResolveWebContentRoot()
