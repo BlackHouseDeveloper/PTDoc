@@ -1,13 +1,17 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace PTDoc.Tests.Integration;
 
 [Trait("Category", "CoreCi")]
 public sealed class WebStaticAssetIntegrationTests
 {
+    private const string BetaEnvironmentName = "Beta";
+    private const string EntraClientSecretEnvironmentVariable = "EntraExternalId__ClientSecret";
+    private const string TestEntraClientSecret = "web-static-asset-test-client-secret-placeholder";
+
     public static TheoryData<string, string, string> ServedAssets =>
         new()
         {
@@ -88,18 +92,26 @@ public sealed class WebStaticAssetIntegrationTests
         {
             builder.UseEnvironment(environmentName);
             builder.UseContentRoot(ResolveWebContentRoot());
-            builder.ConfigureAppConfiguration((context, configuration) =>
-            {
-                if (!string.Equals(context.HostingEnvironment.EnvironmentName, "Beta", StringComparison.Ordinal))
-                {
-                    return;
-                }
+        }
 
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["EntraExternalId:ClientSecret"] = "web-static-asset-test-client-secret-placeholder"
-                });
-            });
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            if (!string.Equals(environmentName, BetaEnvironmentName, StringComparison.Ordinal))
+            {
+                return base.CreateHost(builder);
+            }
+
+            var previousClientSecret = Environment.GetEnvironmentVariable(EntraClientSecretEnvironmentVariable);
+            Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, TestEntraClientSecret);
+
+            try
+            {
+                return base.CreateHost(builder);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, previousClientSecret);
+            }
         }
 
         private static string ResolveWebContentRoot()
