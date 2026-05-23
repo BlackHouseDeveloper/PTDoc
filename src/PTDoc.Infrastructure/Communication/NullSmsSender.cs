@@ -27,8 +27,11 @@ public sealed class NullSmsSender : ISmsSender
     {
         EnsureAllowed();
 
-        _messageStore.CaptureSms(message);
-        _logger.LogInformation("Null SMS delivery accepted and captured for development diagnostics.");
+        var captured = _messageStore.CaptureSms(message);
+        _logger.LogInformation(
+            captured
+                ? "Null SMS delivery accepted and captured for development diagnostics."
+                : "Null SMS delivery accepted without diagnostics capture.");
 
         return Task.FromResult(new DeliveryResult
         {

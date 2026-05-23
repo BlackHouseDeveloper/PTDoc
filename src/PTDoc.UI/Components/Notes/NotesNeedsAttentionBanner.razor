@@ -35,11 +35,21 @@
                 </div>
 
                 <div class="notes-needs-attention-actions">
-                    <button type="button" class="notes-needs-attention-fix" @onclick="() => HandlePrimaryActionAsync(item)">
-                        <svg class="notes-needs-attention-fix-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                            <path d="M7.33333 2H2.66667C2.31305 2 1.97391 2.14048 1.72386 2.39052C1.47381 2.64057 1.33333 2.97971 1.33333 3.33333V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31305 14.6667 2.66667 14.6667H12.6667C13.0203 14.6667 13.3594 14.5262 13.6095 14.2761C13.8595 14.0261 14 13.687 14 13.3333V8.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
-                            <path d="M13 1.66667C13.2652 1.40146 13.6249 1.25244 14 1.25244C14.3751 1.25244 14.7348 1.40146 15 1.66667C15.2652 1.93189 15.4142 2.29152 15.4142 2.66667C15.4142 3.04181 15.2652 3.40146 15 3.66667L8 10.6667L5.33333 11.3333L6 8.66667L13 1.66667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
+                    <button type="button" class="@GetPrimaryActionClass(item)" @onclick="() => HandlePrimaryActionAsync(item)">
+                        @if (item.CanResolveAttention)
+                        {
+                            <svg class="notes-needs-attention-primary-icon notes-needs-attention-primary-icon--fix" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M7.33333 2H2.66667C2.31305 2 1.97391 2.14048 1.72386 2.39052C1.47381 2.64057 1.33333 2.97971 1.33333 3.33333V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31305 14.6667 2.66667 14.6667H12.6667C13.0203 14.6667 13.3594 14.5262 13.6095 14.2761C13.8595 14.0261 14 13.687 14 13.3333V8.66667" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M13 1.66667C13.2652 1.40146 13.6249 1.25244 14 1.25244C14.3751 1.25244 14.7348 1.40146 15 1.66667C15.2652 1.93189 15.4142 2.29152 15.4142 2.66667C15.4142 3.04181 15.2652 3.40146 15 3.66667L8 10.6667L5.33333 11.3333L6 8.66667L13 1.66667Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg class="notes-needs-attention-primary-icon notes-needs-attention-primary-icon--view" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <path d="M1.33333 8C1.33333 8 3.33333 3.33333 8 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8 12.6667C3.33333 12.6667 1.33333 8 1.33333 8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M8 9.75C8.9665 9.75 9.75 8.9665 9.75 8C9.75 7.0335 8.9665 6.25 8 6.25C7.0335 6.25 6.25 7.0335 6.25 8C6.25 8.9665 7.0335 9.75 8 9.75Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        }
                         <span>@GetPrimaryActionText(item)</span>
                     </button>
 
@@ -84,6 +94,10 @@
 
         return item.IsPendingCoSign ? "Finalize" : "Fix Now";
     }
+
+    private static string GetPrimaryActionClass(NoteListItemVm item) => item.CanResolveAttention
+        ? "notes-needs-attention-primary notes-needs-attention-primary--fix"
+        : "notes-needs-attention-primary notes-needs-attention-primary--view";
 
     private static string GetMetaText(NoteListItemVm item)
     {

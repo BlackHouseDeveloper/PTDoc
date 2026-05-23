@@ -61,10 +61,27 @@
                 class="note-card-action-button"
                 aria-label="@GetPrimaryActionAriaLabel()"
                 @onclick="HandlePrimaryAction">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M1.33333 8C1.33333 8 3.33333 3.33333 8 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8 12.6667C3.33333 12.6667 1.33333 8 1.33333 8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M8 9.75C8.9665 9.75 9.75 8.9665 9.75 8C9.75 7.0335 8.9665 6.25 8 6.25C7.0335 6.25 6.25 7.0335 6.25 8C6.25 8.9665 7.0335 9.75 8 9.75Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+            @if (GetPrimaryActionKind() == "finalize")
+            {
+                <svg class="note-card-action-icon note-card-action-icon--finalize" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M14.6667 7.38667V8C14.6658 9.43762 14.2003 10.8365 13.3391 11.9879C12.4779 13.1393 11.2668 13.9817 9.8879 14.3892C8.50899 14.7967 7.03558 14.7475 5.68693 14.2489C4.33828 13.7503 3.18608 12.8287 2.40179 11.6234C1.6175 10.4181 1.24283 8.99304 1.33354 7.55829C1.42426 6.12354 1.97553 4.75531 2.90532 3.65823C3.83511 2.56115 5.094 1.79353 6.49464 1.46962C7.89528 1.14571 9.36319 1.28272 10.68 1.86" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M14.6667 2.66666L8 9.34L6 7.34" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            }
+            else if (GetPrimaryActionKind() == "edit")
+            {
+                <svg class="note-card-action-icon note-card-action-icon--edit" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M7.33333 2.66666H2.66667C2.31304 2.66666 1.97391 2.80714 1.72386 3.05718C1.47381 3.30723 1.33333 3.64637 1.33333 4V13.3333C1.33333 13.687 1.47381 14.0261 1.72386 14.2761C1.97391 14.5262 2.31304 14.6667 2.66667 14.6667H12C12.3536 14.6667 12.6928 14.5262 12.9428 14.2761C13.1929 14.0261 13.3333 13.687 13.3333 13.3333V8.66666" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M12.3333 1.66666C12.5985 1.40144 12.9582 1.25244 13.3333 1.25244C13.7085 1.25244 14.0681 1.40144 14.3333 1.66666C14.5985 1.93187 14.7476 2.29151 14.7476 2.66666C14.7476 3.0418 14.5985 3.40144 14.3333 3.66666L8 10L5.33333 10.6667L6 8L12.3333 1.66666Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            }
+            else
+            {
+                <svg class="note-card-action-icon note-card-action-icon--view" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M1.33333 8C1.33333 8 3.33333 3.33333 8 3.33333C12.6667 3.33333 14.6667 8 14.6667 8C14.6667 8 12.6667 12.6667 8 12.6667C3.33333 12.6667 1.33333 8 1.33333 8Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M8 9.75C8.9665 9.75 9.75 8.9665 9.75 8C9.75 7.0335 8.9665 6.25 8 6.25C7.0335 6.25 6.25 7.0335 6.25 8C6.25 8.9665 7.0335 9.75 8 9.75Z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            }
             <span>@GetPrimaryActionText()</span>
         </button>
 
@@ -106,22 +123,27 @@
 
     private string GetPrimaryActionText()
     {
-        if (Note.IsPendingCoSign && Note.CanResolveAttention)
+        return GetPrimaryActionKind() switch
         {
-            return "Finalize";
-        }
-
-        if (Note.CanEdit)
-        {
-            return "Continue Draft";
-        }
-
-        return "View";
+            "finalize" => "Finalize",
+            "edit" => "Continue Draft",
+            _ => "View"
+        };
     }
 
     private string GetPrimaryActionAriaLabel() => $"{GetPrimaryActionText()} {Note.NoteType} for {Note.PatientName}";
 
     private bool CanUseEditAction() => Note.CanEdit || (Note.IsPendingCoSign && Note.CanResolveAttention);
+
+    private string GetPrimaryActionKind()
+    {
+        if (Note.IsPendingCoSign && Note.CanResolveAttention)
+        {
+            return "finalize";
+        }
+
+        return Note.CanEdit ? "edit" : "view";
+    }
 
     private BadgeVariant GetStatusVariant()
     {

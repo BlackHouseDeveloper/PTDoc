@@ -15,6 +15,7 @@ using PTDoc.Infrastructure.DependencyInjection;
 
 namespace PTDoc.Tests.Communication;
 
+[Collection("EnvironmentVariables")]
 [Trait("Category", "CoreCi")]
 public sealed class CommunicationServiceTests
 {
@@ -423,7 +424,61 @@ public sealed class CommunicationServiceTests
         await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest { Recipient = "reset-again@example.com" });
         await service.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest { Recipient = "reset-again@example.com" });
 
-        var tokens = await db.PasswordResetTokens.OrderBy(token => token.CreatedAtUtc).ToListAsync();
+        var tokens = (await db.PasswordResetTokens.ToListAsync())
+            .OrderBy(token => token.CreatedAtUtc)
+            .ToList();
+        Assert.Equal(2, tokens.Count);
+        Assert.NotNull(tokens[0].RevokedAtUtc);
+        Assert.Equal("Superseded", tokens[0].RevocationReason);
+        Assert.Null(tokens[1].RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task PasswordResetEmail_WithSqlite_RevokesPreviousTokenWithoutDateTimeOffsetTranslationFailure()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "sqlite-reset",
+            PinHash = "hash",
+            FirstName = "SQLite",
+            LastName = "Reset",
+            Email = "sqlite-reset@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        var previousToken = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = new string('a', 64),
+            RecipientHash = new string('b', 64),
+            Channel = DeliveryChannel.Email,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(25)
+        };
+        db.Users.Add(user);
+        db.PasswordResetTokens.Add(previousToken);
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = "sqlite-reset@example.com"
+        });
+
+        Assert.True(result.Succeeded);
+        var tokens = (await db.PasswordResetTokens.ToListAsync())
+            .OrderBy(token => token.CreatedAtUtc)
+            .ToList();
         Assert.Equal(2, tokens.Count);
         Assert.NotNull(tokens[0].RevokedAtUtc);
         Assert.Equal("Superseded", tokens[0].RevocationReason);
@@ -656,6 +711,10 @@ public sealed class CommunicationServiceTests
     [Fact]
     public async Task NullSenders_CaptureMessagesForDevelopmentDiagnostics()
     {
+        using var env = new EnvironmentVariableScope(new Dictionary<string, string?>
+        {
+            ["PTDOC_DEVELOPER_MODE"] = "true"
+        });
         var store = new DevelopmentCommunicationMessageStore();
         var environment = new TestHostEnvironment();
         var emailSender = new NullEmailSender(
@@ -693,6 +752,44 @@ public sealed class CommunicationServiceTests
         Assert.Equal("Your code", messages[1].Subject);
         Assert.Contains("123456", messages[1].PlainTextBody, StringComparison.Ordinal);
         Assert.Contains("123456", messages[1].HtmlBody!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NullSenders_DoNotRetainMessages_WhenDeveloperDiagnosticsDisabled()
+    {
+        using var env = new EnvironmentVariableScope(new Dictionary<string, string?>
+        {
+            ["PTDOC_DEVELOPER_MODE"] = "false"
+        });
+        var store = new DevelopmentCommunicationMessageStore();
+        var environment = new TestHostEnvironment();
+        var emailSender = new NullEmailSender(
+            environment,
+            store,
+            NullLogger<NullEmailSender>.Instance);
+        var smsSender = new NullSmsSender(
+            environment,
+            store,
+            NullLogger<NullSmsSender>.Instance);
+
+        var emailResult = await emailSender.SendEmailAsync(new EmailMessage
+        {
+            ToAddress = "patient@example.com",
+            Subject = "Your code",
+            PlainTextBody = "Your verification code is 123456.",
+            HtmlBody = "<p>Your verification code is 123456.</p>",
+            Purpose = DeliveryPurpose.IntakeOtp
+        });
+        var smsResult = await smsSender.SendSmsAsync(new SmsMessage
+        {
+            ToNumber = "555-0101",
+            Body = "Your verification code is 654321.",
+            Purpose = DeliveryPurpose.IntakeOtp
+        });
+
+        Assert.True(emailResult.Succeeded);
+        Assert.True(smsResult.Succeeded);
+        Assert.Empty(store.List());
     }
 
     private static string FindRepoRoot()
@@ -828,6 +925,28 @@ public sealed class CommunicationServiceTests
                 Channel = DeliveryChannel.Sms,
                 Purpose = message.Purpose
             });
+        }
+    }
+
+    private sealed class EnvironmentVariableScope : IDisposable
+    {
+        private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
+
+        public EnvironmentVariableScope(IReadOnlyDictionary<string, string?> values)
+        {
+            foreach (var (name, value) in values)
+            {
+                _previousValues[name] = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var (name, previousValue) in _previousValues)
+            {
+                Environment.SetEnvironmentVariable(name, previousValue);
+            }
         }
     }
 

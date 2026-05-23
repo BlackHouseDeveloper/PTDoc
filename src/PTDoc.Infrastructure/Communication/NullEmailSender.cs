@@ -27,8 +27,11 @@ public sealed class NullEmailSender : IEmailSender
     {
         EnsureAllowed();
 
-        _messageStore.CaptureEmail(message);
-        _logger.LogInformation("Null email delivery accepted and captured for development diagnostics.");
+        var captured = _messageStore.CaptureEmail(message);
+        _logger.LogInformation(
+            captured
+                ? "Null email delivery accepted and captured for development diagnostics."
+                : "Null email delivery accepted without diagnostics capture.");
 
         return Task.FromResult(new DeliveryResult
         {

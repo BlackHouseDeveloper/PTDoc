@@ -25,6 +25,8 @@ public sealed class NoteCardTests : TestContext
             .Add(component => component.Note, CreateNote(canEdit: true, readOnlyReason: null)));
 
         Assert.Contains(">Continue Draft<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--edit"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--view"));
     }
 
     [Fact]
@@ -55,6 +57,8 @@ public sealed class NoteCardTests : TestContext
             .Add(component => component.Note, note));
 
         Assert.Contains(">Finalize<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--finalize"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--view"));
         Assert.Contains("Co-sign pending", cut.Markup, StringComparison.Ordinal);
     }
 
@@ -70,6 +74,8 @@ public sealed class NoteCardTests : TestContext
             .Add(component => component.Note, note));
 
         Assert.Contains(">View<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--view"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--finalize"));
         Assert.DoesNotContain(">Finalize<", cut.Markup, StringComparison.Ordinal);
     }
 
@@ -128,6 +134,10 @@ public sealed class NoteCardTests : TestContext
             }));
 
         Assert.Contains(">View<", cut.Markup, StringComparison.Ordinal);
+        var primaryAction = cut.Find(".notes-needs-attention-primary");
+        Assert.Contains("notes-needs-attention-primary--view", primaryAction.ClassList);
+        Assert.NotNull(cut.Find(".notes-needs-attention-primary-icon--view"));
+        Assert.Empty(cut.FindAll(".notes-needs-attention-primary-icon--fix"));
         Assert.DoesNotContain(">Finalize<", cut.Markup, StringComparison.Ordinal);
     }
 
@@ -141,6 +151,9 @@ public sealed class NoteCardTests : TestContext
             }));
 
         Assert.Contains(">Finalize<", cut.Markup, StringComparison.Ordinal);
+        var primaryAction = cut.Find(".notes-needs-attention-primary");
+        Assert.Contains("notes-needs-attention-primary--fix", primaryAction.ClassList);
+        Assert.NotNull(cut.Find(".notes-needs-attention-primary-icon--fix"));
     }
 
     private static NoteListItemVm CreateNote(bool canEdit, string? readOnlyReason) => new()

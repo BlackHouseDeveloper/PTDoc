@@ -101,6 +101,8 @@ The API registers a daily cleanup service for expired OTP challenges, old reset 
 
 The cleanup service logs sanitized deletion counts for reset tokens, OTP challenges, and delivery logs. Auth and communication diagnostics must not write submitted usernames, email addresses, phone numbers, reset tokens, OTPs, or raw recipient values at information level.
 
+Development/Testing null senders retain full email/SMS bodies for QA only when developer diagnostics mode is enabled through `PTDOC_DEVELOPER_MODE` or `App:DeveloperMode` (including the documented Debug fallback). When developer diagnostics mode is disabled, null delivery still succeeds but message bodies are not captured in-process.
+
 ## Web/API Runtime Routing
 
 `PTDoc.Web` forwards `/api/{**catch-all}` and `/auth/{**catch-all}` to the configured `apiCluster`. Live devtunnel smoke tests should validate communication APIs through the Web host when only the Web tunnel is exposed. API authentication, authorization, rate limiting, and response contracts remain enforced by `PTDoc.Api`; the Web proxy does not add communication bypasses.

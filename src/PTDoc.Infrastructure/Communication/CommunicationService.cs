@@ -432,11 +432,12 @@ public sealed class CommunicationService : ICommunicationService
                 token.Id != exceptTokenId &&
                 token.Channel == channel &&
                 token.UsedAtUtc == null &&
-                token.RevokedAtUtc == null &&
-                token.ExpiresAtUtc > now)
+                token.RevokedAtUtc == null)
             .ToListAsync(cancellationToken);
 
-        foreach (var token in activeTokens)
+        // EF Core SQLite cannot translate DateTimeOffset ordering predicates reliably.
+        // The remaining candidate set is already scoped to one user/channel.
+        foreach (var token in activeTokens.Where(token => token.ExpiresAtUtc > now))
         {
             token.RevokedAtUtc = now;
             token.RevocationReason = "Superseded";
