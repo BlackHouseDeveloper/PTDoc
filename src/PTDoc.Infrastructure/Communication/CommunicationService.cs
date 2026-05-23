@@ -426,23 +426,39 @@ public sealed class CommunicationService : ICommunicationService
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var activeTokens = await _db.PasswordResetTokens
+        var activeTokenQuery = _db.PasswordResetTokens
             .Where(token =>
                 token.UserId == userId &&
                 token.Id != exceptTokenId &&
                 token.Channel == channel &&
                 token.UsedAtUtc == null &&
-                token.RevokedAtUtc == null)
-            .ToListAsync(cancellationToken);
+                token.RevokedAtUtc == null);
 
-        // EF Core SQLite cannot translate DateTimeOffset ordering predicates reliably.
+        var isSqlite = IsSqlite();
+        var activeTokens = isSqlite
+            ? await activeTokenQuery.ToListAsync(cancellationToken)
+            : await activeTokenQuery
+                .Where(token => token.ExpiresAtUtc > now)
+                .ToListAsync(cancellationToken);
+
+        // EF Core SQLite cannot translate DateTimeOffset predicates reliably.
         // The remaining candidate set is already scoped to one user/channel.
-        foreach (var token in activeTokens.Where(token => token.ExpiresAtUtc > now))
+        var tokensToRevoke = isSqlite
+            ? activeTokens.Where(token => token.ExpiresAtUtc > now)
+            : activeTokens;
+
+        foreach (var token in tokensToRevoke)
         {
             token.RevokedAtUtc = now;
             token.RevocationReason = "Superseded";
         }
     }
+
+    private bool IsSqlite() =>
+        string.Equals(
+            _db.Database.ProviderName,
+            "Microsoft.EntityFrameworkCore.Sqlite",
+            StringComparison.OrdinalIgnoreCase);
 
     private async Task<DeliveryResult> RateLimitedAsync(
         string recipient,

@@ -620,37 +620,6 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-// Minimal API query/body binding failures are client errors. Handle them before the
-// fallback exception handler logs them as unhandled server faults.
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next(context);
-    }
-    catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
-    {
-        context.Response.Clear();
-        SecurityHeadersMiddleware.ApplyHeaders(context.Response);
-        if (!app.Environment.IsDevelopment())
-        {
-            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-        }
-
-        LogBadRequestException(context, exception);
-
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        context.Response.ContentType = "application/json";
-        var result = JsonSerializer.Serialize(new
-        {
-            error = "The request could not be processed.",
-            code = "bad_request",
-            correlationId = context.TraceIdentifier
-        });
-        await context.Response.WriteAsync(result, context.RequestAborted);
-    }
-});
-
 // Sprint G: Apply security headers to all API responses.
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
@@ -940,19 +909,6 @@ static string GetPasswordResetRateLimitPartitionKey(
     }
 
     return "unknown";
-}
-
-static void LogBadRequestException(HttpContext context, BadHttpRequestException exception)
-{
-    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    var sanitizedMethod = context.Request.Method.Replace("\r", string.Empty).Replace("\n", string.Empty);
-    var sanitizedPath = context.Request.Path.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
-
-    logger.LogWarning(
-        exception,
-        "Bad request on {Method} {Path}",
-        sanitizedMethod,
-        sanitizedPath);
 }
 
 static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)
