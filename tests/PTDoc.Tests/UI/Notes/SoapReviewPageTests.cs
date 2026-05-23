@@ -93,4 +93,29 @@ public sealed class SoapReviewPageTests : TestContext
         Assert.Contains("Mobility", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Manual therapy (Manual)", cut.Markup, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void SoapReviewPage_ReadOnlyHidesMutationControls()
+    {
+        var cut = RenderComponent<SoapReviewPage>(parameters => parameters
+            .Add(component => component.Note, new SoapNoteVm { NoteType = "Progress Note" })
+            .Add(component => component.IsReadOnly, true)
+            .Add(component => component.CanSubmit, false)
+            .Add(component => component.OnEditSection, EventCallback.Factory.Create<SoapSection>(this, _ => { }))
+            .Add(component => component.OnBackToEdit, EventCallback.Factory.Create(this, () => { }))
+            .Add(component => component.OnRegenerateSummary, EventCallback.Factory.Create(this, () => { }))
+            .Add(component => component.OnRegenerateGoals, EventCallback.Factory.Create(this, () => { }))
+            .Add(component => component.OnExportPdf, EventCallback.Factory.Create(this, () => { }))
+            .Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => { })));
+
+        var buttonLabels = cut.FindAll("button")
+            .Select(button => button.TextContent.Trim())
+            .ToArray();
+
+        Assert.DoesNotContain("Edit", buttonLabels);
+        Assert.DoesNotContain("Regenerate", buttonLabels);
+        Assert.DoesNotContain("Back to Edit", buttonLabels);
+        Assert.DoesNotContain("Submit & Lock Note", buttonLabels);
+        Assert.Contains("Export PDF", buttonLabels);
+    }
 }

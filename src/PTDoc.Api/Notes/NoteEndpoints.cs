@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.Diagnostics;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -114,13 +115,23 @@ public static class NoteEndpoints
         [FromQuery] Guid? patientId,
         [FromQuery] string? noteType,
         [FromQuery] string? status,
-        [FromQuery] int take,
+        [FromQuery] string? take,
+        [FromQuery] int? skip,
         [FromQuery] string? categoryId,
         [FromQuery] string? itemId,
+        [FromQuery] string? search,
+        [FromQuery] DateTime? dateRangeStart,
+        [FromQuery] DateTime? dateRangeEnd,
         [FromServices] ApplicationDbContext db,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 500);
+        if (!ListQueryParameterParser.TryNormalizeTake(take, 100, 500, httpContext, out var normalizedTake, out var failure))
+        {
+            return failure!;
+        }
+
+        var normalizedSkip = Math.Max(skip.GetValueOrDefault(), 0);
 
         var query = db.ClinicalNotes
             .AsNoTracking()
@@ -130,15 +141,50 @@ public static class NoteEndpoints
         if (patientId.HasValue)
             query = query.Where(n => n.PatientId == patientId.Value);
 
-        if (!string.IsNullOrWhiteSpace(noteType) &&
-            Enum.TryParse<NoteType>(noteType, ignoreCase: true, out var parsedType))
+        if (!string.IsNullOrWhiteSpace(noteType) && TryParseNoteTypeFilter(noteType, out var parsedType))
             query = query.Where(n => n.NoteType == parsedType);
 
-        // Status filter: "signed" means fully finalized; "unsigned" means not fully finalized
-        if (status?.Equals("signed", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.NoteStatus == NoteStatus.Signed);
-        else if (status?.Equals("unsigned", StringComparison.OrdinalIgnoreCase) == true)
-            query = query.Where(n => n.NoteStatus != NoteStatus.Signed);
+        if (TryParseNoteStatusFilter(status, out var statusFilter))
+        {
+            query = statusFilter switch
+            {
+                NoteStatusListFilter.Signed => query.Where(n => n.NoteStatus == NoteStatus.Signed),
+                NoteStatusListFilter.Unsigned => query.Where(n => n.NoteStatus != NoteStatus.Signed),
+                NoteStatusListFilter.Draft => query.Where(n => n.NoteStatus == NoteStatus.Draft),
+                NoteStatusListFilter.PendingCoSign => query.Where(n => n.NoteStatus == NoteStatus.PendingCoSign),
+                _ => query
+            };
+        }
+
+        if (dateRangeStart.HasValue)
+        {
+            var start = dateRangeStart.Value.Date;
+            query = query.Where(n => n.DateOfService.Date >= start);
+        }
+
+        if (dateRangeEnd.HasValue)
+        {
+            var end = dateRangeEnd.Value.Date;
+            query = query.Where(n => n.DateOfService.Date <= end);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var trimmedSearch = search.Trim();
+            var matchingNoteTypes = Enum.GetValues<NoteType>()
+                .Where(value => value.ToString().Contains(trimmedSearch, StringComparison.OrdinalIgnoreCase) ||
+                                GetNoteTypeDisplayName(value).Contains(trimmedSearch, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            // Keep list search on bounded, indexed/structured fields. Large note body JSON
+            // requires a dedicated full-text/indexed path rather than per-request scans.
+            query = query.Where(n =>
+                (n.Patient != null && (
+                    n.Patient.FirstName.StartsWith(trimmedSearch) ||
+                    n.Patient.LastName.StartsWith(trimmedSearch) ||
+                    (n.Patient.MedicalRecordNumber != null && n.Patient.MedicalRecordNumber.StartsWith(trimmedSearch)))) ||
+                matchingNoteTypes.Contains(n.NoteType));
+        }
 
         // Taxonomy filter: use ANY/EXISTS predicate for an efficient SQL plan.
         if (!string.IsNullOrWhiteSpace(categoryId))
@@ -152,6 +198,9 @@ public static class NoteEndpoints
 
         var notes = await query
             .OrderByDescending(n => n.DateOfService)
+            .ThenByDescending(n => n.LastModifiedUtc)
+            .ThenBy(n => n.Id)
+            .Skip(normalizedSkip)
             .Take(normalizedTake)
             .Select(n => new NoteListItemApiResponse
             {
@@ -171,6 +220,80 @@ public static class NoteEndpoints
 
         return Results.Ok(notes);
     }
+
+    private enum NoteStatusListFilter
+    {
+        Signed,
+        Unsigned,
+        Draft,
+        PendingCoSign
+    }
+
+    private static bool TryParseNoteStatusFilter(string? status, out NoteStatusListFilter filter)
+    {
+        filter = default;
+        var normalized = NormalizeFilterToken(status);
+        if (string.IsNullOrWhiteSpace(normalized) || normalized == "all")
+        {
+            return false;
+        }
+
+        return normalized switch
+        {
+            "signed" or "submitted" => SetFilter(NoteStatusListFilter.Signed, out filter),
+            "unsigned" => SetFilter(NoteStatusListFilter.Unsigned, out filter),
+            "draft" => SetFilter(NoteStatusListFilter.Draft, out filter),
+            "pendingcosign" or "pendingcountersign" => SetFilter(NoteStatusListFilter.PendingCoSign, out filter),
+            _ => false
+        };
+    }
+
+    private static bool TryParseNoteTypeFilter(string? noteType, out NoteType parsedType)
+    {
+        parsedType = default;
+        var normalized = NormalizeFilterToken(noteType);
+        if (string.IsNullOrWhiteSpace(normalized) || normalized == "all")
+        {
+            return false;
+        }
+
+        foreach (var candidate in Enum.GetValues<NoteType>())
+        {
+            if (NormalizeFilterToken(candidate.ToString()) == normalized ||
+                NormalizeFilterToken(GetNoteTypeDisplayName(candidate)) == normalized)
+            {
+                parsedType = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SetFilter(NoteStatusListFilter value, out NoteStatusListFilter filter)
+    {
+        filter = value;
+        return true;
+    }
+
+    private static string NormalizeFilterToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return new string(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
+
+    private static string GetNoteTypeDisplayName(NoteType noteType) => noteType switch
+    {
+        NoteType.Evaluation => "Evaluation Note",
+        NoteType.Daily => "Daily Treatment Note",
+        NoteType.ProgressNote => "Progress Note",
+        NoteType.Discharge => "Discharge Note",
+        _ => noteType.ToString()
+    };
 
     private static async Task<IResult> GetNoteById(
         Guid id,

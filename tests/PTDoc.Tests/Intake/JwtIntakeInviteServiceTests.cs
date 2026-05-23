@@ -43,7 +43,6 @@ public sealed class JwtIntakeInviteServiceTests
 
         Assert.True(firstValidation.IsValid);
         Assert.True(secondValidation.IsValid);
-        Assert.False(string.IsNullOrWhiteSpace(secondValidation.AccessToken));
         Assert.NotNull(secondValidation.ExpiresAt);
 
         var stored = await db.IntakeForms.SingleAsync(form => form.Id == intake.Id);

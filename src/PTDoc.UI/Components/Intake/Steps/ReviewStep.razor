@@ -38,6 +38,31 @@
         </section>
     }
 
+    @if (ShowClinicianReviewCallout)
+    {
+        <section class="review-step__review-callout" aria-labelledby="clinician-review-title">
+            <div>
+                <h2 id="clinician-review-title">Clinician Review Required</h2>
+                <p>This intake is submitted, locked, and ready for clinical review.</p>
+            </div>
+            <button type="button"
+                    class="btn btn-primary review-step__review-action"
+                    @onclick="OnMarkReviewedClicked"
+                    disabled="@IsMarkingReviewed">
+                @(IsMarkingReviewed ? "Marking..." : "Mark Reviewed")
+            </button>
+        </section>
+    }
+    else if (ShowReviewedStatus && State.ReviewedAtUtc.HasValue)
+    {
+        <section class="review-step__review-callout review-step__review-callout--complete" aria-labelledby="clinician-review-complete-title">
+            <div>
+                <h2 id="clinician-review-complete-title">Clinician Review Complete</h2>
+                <p>@ReviewedTimestampText</p>
+            </div>
+        </section>
+    }
+
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
@@ -605,6 +630,10 @@
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnSubmit { get; set; }
     [Parameter] public EventCallback<IntakeStep> OnEditStep { get; set; }
+    [Parameter] public EventCallback OnMarkReviewed { get; set; }
+    [Parameter] public bool CanMarkReviewed { get; set; }
+    [Parameter] public bool IsMarkingReviewed { get; set; }
+    [Parameter] public bool ShowReviewedStatus { get; set; }
     [Parameter] public bool ShowOutcomeMeasureRecommendations { get; set; }
 
     private IntakeConsentPacket ConsentPacket => State.EnsureConsentPacket();
@@ -647,6 +676,10 @@
         ? (IsReadOnlyReview ? "Submitted intake is complete and locked for review." : "All required consents complete.")
         : "Complete the required agreements before submitting this intake.";
     private string SubmitButtonText => IsReadOnlyReview ? "Intake Submitted" : State.IsSubmitting ? "Submitting..." : "Submit Intake Form";
+    private bool ShowClinicianReviewCallout => CanMarkReviewed && IsReadOnlyReview && !State.ReviewedAtUtc.HasValue;
+    private string ReviewedTimestampText => State.ReviewedAtUtc.HasValue
+        ? $"Reviewed {ToLocalDisplay(State.ReviewedAtUtc.Value)}."
+        : "Clinician review has not been recorded.";
     private string BillingTimestampText => State.IsSubmitted
         ? "Billing consent captured when the intake was submitted and locked."
         : "Billing consent timestamp will be recorded when this intake is submitted.";
@@ -679,6 +712,8 @@
     private Task OnSubmitClicked() => !IsReadOnlyReview && SubmitReady && OnSubmit.HasDelegate ? OnSubmit.InvokeAsync() : Task.CompletedTask;
 
     private Task OnEditRequestedAsync(IntakeStep step) => !IsReadOnlyReview && OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(step) : Task.CompletedTask;
+
+    private Task OnMarkReviewedClicked() => ShowClinicianReviewCallout && OnMarkReviewed.HasDelegate ? OnMarkReviewed.InvokeAsync() : Task.CompletedTask;
 
     private Task OnTermsChanged(ChangeEventArgs args) => UpdateStateAsync(() => State.TermsOfServiceAccepted = ToBool(args));
 
@@ -928,6 +963,15 @@
     private static string DisplayDate(DateTime? value)
     {
         return value?.ToString("MMMM d, yyyy") ?? "Not provided";
+    }
+
+    private static string ToLocalDisplay(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+        return utc.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
     }
 
     private static bool ToBool(ChangeEventArgs args)

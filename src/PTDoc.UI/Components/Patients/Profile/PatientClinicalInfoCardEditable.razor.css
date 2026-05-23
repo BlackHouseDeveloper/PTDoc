@@ -22,6 +22,16 @@
     background: color-mix(in srgb, var(--success) 8%, var(--card));
 }
 
+.patient-clinical-info-intake-callout--reviewed {
+    border-color: color-mix(in srgb, var(--success) 30%, var(--border));
+    background: color-mix(in srgb, var(--success) 8%, var(--card));
+}
+
+.patient-clinical-info-intake-callout--submitted {
+    border-color: color-mix(in srgb, var(--info) 30%, var(--border));
+    background: color-mix(in srgb, var(--info) 8%, var(--card));
+}
+
 .patient-clinical-info-intake-callout--draft {
     border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
     background: color-mix(in srgb, var(--warning) 8%, var(--card));

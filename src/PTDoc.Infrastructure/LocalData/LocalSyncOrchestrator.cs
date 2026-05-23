@@ -1009,6 +1009,8 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                     ? il.ValueKind == JsonValueKind.True
                     : false,
                 SubmittedAt = GetDateTimeCaseInsensitive(root, "SubmittedAt"),
+                ReviewedAtUtc = GetDateTimeCaseInsensitive(root, "ReviewedAtUtc"),
+                ReviewedByUserId = GetGuid(root, "reviewedByUserId") ?? GetGuid(root, "ReviewedByUserId"),
                 LastModifiedUtc = item.LastModifiedUtc,
                 SyncState = SyncState.Synced,
                 LastSyncedUtc = DateTime.UtcNow
@@ -1053,6 +1055,8 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
             ? ilLock.ValueKind == JsonValueKind.True
             : local.IsLocked;
         local.SubmittedAt = GetDateTimeCaseInsensitive(root, "SubmittedAt") ?? local.SubmittedAt;
+        local.ReviewedAtUtc = GetDateTimeCaseInsensitive(root, "ReviewedAtUtc") ?? local.ReviewedAtUtc;
+        local.ReviewedByUserId = GetGuid(root, "reviewedByUserId") ?? GetGuid(root, "ReviewedByUserId") ?? local.ReviewedByUserId;
         local.LastModifiedUtc = item.LastModifiedUtc;
         local.SyncState = SyncState.Synced;
         local.LastSyncedUtc = DateTime.UtcNow;

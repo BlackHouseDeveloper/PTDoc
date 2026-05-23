@@ -4,7 +4,10 @@
     <section class="progress-trend-card" aria-label="Outcome trend chart">
         <header class="progress-trend-header">
             <h3>Outcome Trend</h3>
-            <span class="progress-trend-chip">LEFS</span>
+            @if (!string.IsNullOrWhiteSpace(MeasureLabel))
+            {
+                <span class="progress-trend-chip">@MeasureLabel</span>
+            }
         </header>
 
         @if (!string.IsNullOrWhiteSpace(ErrorMessage))
@@ -13,7 +16,7 @@
         }
         else
         {
-            <div class="progress-line-chart" role="img" aria-label="Outcome score trend over time">
+            <div class="progress-line-chart" role="img" aria-label="@GetTrendAriaLabel()">
                 <div class="progress-line-grid" aria-hidden="true"></div>
                 @if (OutcomeTrend.Count == 0)
                 {
@@ -26,7 +29,7 @@
                         {
                             <div class="progress-line-point" style="bottom:@GetBottomOffset(point.Value)%">
                                 <span class="progress-line-dot"></span>
-                                <span class="progress-line-value">@point.Value</span>
+                                <span class="progress-line-value">@point.ScoreDisplay</span>
                             </div>
                         }
                     </div>
@@ -38,6 +41,16 @@
                     </div>
                 }
             </div>
+            @if (OutcomeTrend.Count > 0)
+            {
+                <dl class="progress-trend-data">
+                    @foreach (var point in OutcomeTrend)
+                    {
+                        <dt>@point.Label</dt>
+                        <dd>@point.MeasureLabel @point.ScoreDisplay, @point.Interpretation</dd>
+                    }
+                </dl>
+            }
         }
     </section>
 
@@ -72,6 +85,7 @@
 
 @code {
     [Parameter] public IReadOnlyList<ProgressTrendPointVm> OutcomeTrend { get; set; } = Array.Empty<ProgressTrendPointVm>();
+    [Parameter] public string MeasureLabel { get; set; } = string.Empty;
     [Parameter] public IReadOnlyList<ProviderGoalProgressVm> ProviderProgress { get; set; } = Array.Empty<ProviderGoalProgressVm>();
     [Parameter] public string? ErrorMessage { get; set; }
 
@@ -90,4 +104,9 @@
 
         return Math.Round((double)part / total * 100, 2);
     }
+
+    private string GetTrendAriaLabel() =>
+        string.IsNullOrWhiteSpace(MeasureLabel)
+            ? "Outcome score trend over time"
+            : $"{MeasureLabel} score trend over time";
 }

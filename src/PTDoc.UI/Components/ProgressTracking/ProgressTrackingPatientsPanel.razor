@@ -11,7 +11,9 @@
             @foreach (var patient in Items)
             {
                 <li>
-                    <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(patient.Id)">
+                    <button type="button"
+                            aria-current="@IsSelected(patient)"
+                            @onclick="() => OnSelectPatient.InvokeAsync(patient.Id)">
                         <span>@patient.DisplayName</span>
                         <StatusBadge Text="@patient.StatusLabel" Variant="@patient.StatusVariant" />
                     </button>
@@ -23,5 +25,11 @@
 
 @code {
     [Parameter] public IReadOnlyList<ProgressTrackingPatientVm> Items { get; set; } = Array.Empty<ProgressTrackingPatientVm>();
+    [Parameter] public string? SelectedPatientId { get; set; }
     [Parameter] public EventCallback<string> OnSelectPatient { get; set; }
+
+    private string? IsSelected(ProgressTrackingPatientVm patient) =>
+        string.Equals(patient.Id, SelectedPatientId, StringComparison.OrdinalIgnoreCase)
+            ? "true"
+            : null;
 }

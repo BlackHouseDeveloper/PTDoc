@@ -1,21 +1,13 @@
 @* Export Options Panel
     Purpose: Hosts export options that depend on Format selection
     Subcomponents:
-    - PasswordProtectToggleRow: Label + toggle switch (disabled when Format != PDF)
-    - PasswordInput: Conditional (appears only when Format == PDF AND toggle is ON)
+    - PasswordProtectToggleRow: Label + toggle switch (disabled until backend encryption exists)
     
     States & conditional logic:
-    - If Format != PDF:
-      - Toggle is disabled
-      - Password input is hidden
-    - Toggle ON:
-      - Reveal password input immediately
-    - Toggle OFF:
-      - Clear stored password value
-      - Hide password input
+    - Toggle is disabled for all formats
+    - Password draft state is owned by the parent and is not changed here
     
-    Data behavior: Store password in memory only; do not persist across sessions
-    Password is currently an in-memory UI option used for PDF export flow scaffolding.
+    Data behavior: Do not collect or mutate password draft state until PDF encryption is backend-enforced.
 *@
 
 <div class="export-options-panel">
@@ -38,40 +30,18 @@
                     <input
                         type="checkbox"
                         class="password-protect-row__toggle"
-                        checked="@State.IsPasswordProtected"
-                        @onchange="@((ChangeEventArgs e) => TogglePasswordProtect((bool)e!.Value!))"
-                        disabled="@(SelectedFormat != ExportFormat.PDF)"
-                        aria-label="Password-protect PDF" />
+                        checked="@false"
+                        disabled
+                        aria-label="Password-protect PDF"
+                        aria-describedby="@PasswordUnavailableDescriptionId" />
                     
                     <span class="toggle-switch" aria-hidden="true"></span>
                 </label>
             </div>
+            <p id="@PasswordUnavailableDescriptionId" class="export-options-panel__password-hint">
+                Password protection is not available until PDF encryption is enforced by the export service.
+            </p>
         </div>
-        
-        <!-- Conditional Password Input -->
-        @if (SelectedFormat == ExportFormat.PDF && State.IsPasswordProtected)
-        {
-            <div class="export-options-panel__section">
-                <label for="@PasswordInputId" class="export-options-panel__password-label">Password</label>
-                
-                <input
-                    id="@PasswordInputId"
-                    type="password"
-                    class="export-options-panel__password-input"
-                    placeholder="Enter a password"
-                    @bind="State.PasswordValue"
-                    @bind:event="oninput"
-                    minlength="6"
-                    aria-label="Password" />
-                
-                @if (!IsPasswordValid())
-                {
-                    <div class="export-options-panel__password-hint" role="alert">
-                        Password must be at least 6 characters
-                    </div>
-                }
-            </div>
-        }
     </div>
 </div>
 
@@ -80,35 +50,5 @@
     [EditorRequired]
     public ExportFormat SelectedFormat { get; set; } = ExportFormat.PDF;
 
-    [Parameter]
-    [EditorRequired]
-    public ExportDraftState State { get; set; } = new();
-
-    [Parameter]
-    public EventCallback StateChanged { get; set; }
-
-    private string PasswordInputId { get; } = $"password-input-{Guid.NewGuid()}";
-
-    private void TogglePasswordProtect(bool isProtected)
-    {
-        State.IsPasswordProtected = isProtected;
-        
-        // Clear password if toggle is off
-        if (!isProtected)
-        {
-            State.PasswordValue = string.Empty;
-        }
-
-        StateChanged.InvokeAsync();
-    }
-
-    private bool IsPasswordValid()
-    {
-        // If not attempting to protect, consider valid
-        if (!State.IsPasswordProtected)
-            return true;
-
-        // If protecting, password must be at least 6 chars
-        return State.PasswordValue.Length >= 6;
-    }
+    private string PasswordUnavailableDescriptionId { get; } = $"password-unavailable-{Guid.NewGuid():N}";
 }

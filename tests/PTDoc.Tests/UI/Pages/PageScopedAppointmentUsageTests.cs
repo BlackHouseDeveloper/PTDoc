@@ -35,7 +35,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             });
 
         noteService
-            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         appointmentService
@@ -94,7 +94,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             });
 
         noteService
-            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         appointmentService
@@ -128,7 +128,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             var callout = cut.Find("[data-testid='patient-intake-status']");
-            Assert.Contains("Intake is submitted and locked.", callout.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Intake submitted and awaiting clinician review.", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Review intake", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Submitted Intake", cut.Markup, StringComparison.Ordinal);
         });
@@ -166,7 +166,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             .ReturnsAsync(new AppointmentsOverviewResponse());
 
         noteService
-            .Setup(service => service.GetNotesAsync(null, null, null, 200, null, null, It.IsAny<CancellationToken>()))
+            .Setup(service => service.GetNotesAsync(null, null, null, 200, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
             .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
 
         noteService

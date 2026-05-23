@@ -31,18 +31,14 @@ public sealed class MockIntakeInviteService : IIntakeInviteService
             null));
     }
 
-    public Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
+    public Task<IntakeInviteValidationResponse> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(inviteToken))
         {
-            return Task.FromResult(new IntakeInviteResult(false, null, null, "Invalid invite token."));
+            return Task.FromResult(new IntakeInviteValidationResponse(false, null, "Invalid invite token."));
         }
 
-        var accessToken = GenerateToken();
-        var expiry = DateTimeOffset.UtcNow.Add(AccessTokenLifetime);
-        _accessTokens[accessToken] = ("invite-user", expiry);
-
-        return Task.FromResult(new IntakeInviteResult(true, accessToken, expiry, null));
+        return Task.FromResult(new IntakeInviteValidationResponse(true, DateTimeOffset.UtcNow.AddDays(1), null));
     }
 
     public Task<bool> SendOtpAsync(

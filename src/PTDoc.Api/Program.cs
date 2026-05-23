@@ -521,6 +521,7 @@ app.UseExceptionHandler(errorApp =>
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var statusCode = exception switch
         {
+            BadHttpRequestException => StatusCodes.Status400BadRequest,
             ProvisioningException => StatusCodes.Status403Forbidden,
             WibbiAuthenticationException => StatusCodes.Status502BadGateway,
             WibbiUnsafeLaunchUrlException => StatusCodes.Status502BadGateway,
@@ -539,6 +540,13 @@ app.UseExceptionHandler(errorApp =>
 
             switch (exception)
             {
+                case BadHttpRequestException:
+                    logger.LogWarning(
+                        exception,
+                        "Bad request on {Method} {Path}",
+                        sanitizedMethod,
+                        sanitizedPath);
+                    break;
                 case ProvisioningException provisioningException:
                     logger.LogWarning(
                         exception,
@@ -590,6 +598,7 @@ app.UseExceptionHandler(errorApp =>
         {
             error = exception switch
             {
+                BadHttpRequestException => "The request could not be processed.",
                 ProvisioningException => "Authenticated principal is not provisioned for this PTDoc environment.",
                 WibbiAuthenticationException => "The home exercise platform is temporarily unavailable.",
                 WibbiUnsafeLaunchUrlException => "The home exercise platform returned an unsafe launch response.",
@@ -598,6 +607,7 @@ app.UseExceptionHandler(errorApp =>
             },
             code = exception switch
             {
+                BadHttpRequestException => "bad_request",
                 ProvisioningException provisioningException => provisioningException.FailureCode,
                 WibbiAuthenticationException => "wibbi_upstream_failure",
                 WibbiUnsafeLaunchUrlException => "wibbi_unsafe_launch_response",

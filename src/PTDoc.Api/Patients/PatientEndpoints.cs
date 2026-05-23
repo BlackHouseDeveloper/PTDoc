@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -68,11 +69,16 @@ public static class PatientEndpoints
     // GET /api/patients
     private static async Task<IResult> ListPatients(
         [FromQuery] string? query,
-        [FromQuery] int take,
+        [FromQuery] string? take,
         [FromServices] ApplicationDbContext db,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var normalizedTake = take <= 0 ? 100 : Math.Min(take, 250);
+        if (!ListQueryParameterParser.TryNormalizeTake(take, 100, 250, httpContext, out var normalizedTake, out var failure))
+        {
+            return failure!;
+        }
+
         var normalizedQuery = query?.Trim();
 
         var patientQuery = db.Patients

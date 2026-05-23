@@ -13,6 +13,48 @@ public sealed class NoteListApiServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task GetNotesAsync_EncodesExtendedListFilters()
+    {
+        var patientId = Guid.NewGuid();
+        Uri? requestedUri = null;
+        var start = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var end = new DateTime(2026, 4, 30, 0, 0, 0, DateTimeKind.Utc);
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return StubHttpMessageHandler.JsonResponse("[]");
+        });
+
+        var service = CreateService(handler);
+
+        await service.GetNotesAsync(
+            patientId: patientId,
+            noteType: "Progress Note",
+            status: "Pending Co-Sign",
+            take: 25,
+            categoryId: "region",
+            itemId: "knee",
+            search: "Alex knee",
+            dateRangeStart: start,
+            dateRangeEnd: end,
+            skip: 50);
+
+        Assert.NotNull(requestedUri);
+        Assert.Equal("/api/v1/notes", requestedUri!.AbsolutePath);
+        Assert.Contains($"patientId={patientId}", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("noteType=Progress%20Note", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("status=Pending%20Co-Sign", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("take=25", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("skip=50", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("categoryId=region", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("itemId=knee", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("search=Alex%20knee", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("dateRangeStart=2026-04-01T00%3A00%3A00.0000000Z", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("dateRangeEnd=2026-04-30T00%3A00%3A00.0000000Z", requestedUri.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GetByIdsAsync_PostsBatchReadRequest()
     {
         var noteId = Guid.NewGuid();

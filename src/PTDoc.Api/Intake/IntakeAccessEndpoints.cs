@@ -83,7 +83,7 @@ public static class IntakeAccessEndpoints
         if (document is null ||
             string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "inviteToken")))
         {
-            return Results.Ok(new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired."));
+            return Results.Ok(new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired."));
         }
 
         var result = await inviteService.ValidateInviteTokenAsync(

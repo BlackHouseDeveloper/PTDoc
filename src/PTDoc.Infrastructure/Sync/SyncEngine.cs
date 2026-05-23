@@ -1246,6 +1246,8 @@ public class SyncEngine : ISyncEngine
                         i.Consents,
                         i.TemplateVersion,
                         i.SubmittedAt,
+                        i.ReviewedAtUtc,
+                        i.ReviewedByUserId,
                         i.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = i.LastModifiedUtc
@@ -1468,6 +1470,9 @@ public class SyncEngine : ISyncEngine
                     intake.PainMapData,
                     intake.Consents,
                     intake.TemplateVersion,
+                    intake.SubmittedAt,
+                    intake.ReviewedAtUtc,
+                    intake.ReviewedByUserId,
                     intake.LastModifiedUtc
                 }, ConflictJsonOptions)
             };

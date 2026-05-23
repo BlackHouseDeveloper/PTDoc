@@ -106,6 +106,24 @@ public sealed class InMemoryIntakeService : IIntakeService
         return Task.CompletedTask;
     }
 
+    public Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
+    {
+        var draft = _drafts.Values.FirstOrDefault(value => value.IntakeId == intakeId);
+        if (draft is null)
+        {
+            throw new InvalidOperationException($"Intake {intakeId} not found.");
+        }
+
+        if (!draft.IsLocked || !draft.IsSubmitted)
+        {
+            throw new InvalidOperationException("Intake must be submitted and locked before it can be reviewed.");
+        }
+
+        draft.ReviewedAtUtc ??= DateTime.UtcNow;
+        draft.LastModifiedUtc = DateTime.UtcNow;
+        return Task.FromResult(Clone(draft));
+    }
+
     private IntakeResponseDraft Clone(IntakeResponseDraft state)
     {
         var clone = new IntakeResponseDraft
@@ -164,6 +182,8 @@ public sealed class InMemoryIntakeService : IIntakeService
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked,
             SubmittedAt = state.SubmittedAt,
+            ReviewedAtUtc = state.ReviewedAtUtc,
+            ReviewedByUserId = state.ReviewedByUserId,
             LastModifiedUtc = state.LastModifiedUtc
         };
 

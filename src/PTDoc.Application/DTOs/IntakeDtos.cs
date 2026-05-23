@@ -110,6 +110,8 @@ public sealed class IntakeResponse
 
     public string TemplateVersion { get; set; } = string.Empty;
     public DateTime? SubmittedAt { get; set; }
+    public DateTime? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedByUserId { get; set; }
     public Guid? ClinicId { get; set; }
     public DateTime LastModifiedUtc { get; set; }
 }

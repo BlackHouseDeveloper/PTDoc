@@ -681,7 +681,9 @@ public class LocalSyncOrchestratorTests
         var ctx = CreateInMemoryLocalContext();
         var serverId = Guid.NewGuid();
         var patientId = Guid.NewGuid();
+        var reviewerId = Guid.NewGuid();
         var modifiedUtc = DateTime.UtcNow;
+        var reviewedAtUtc = modifiedUtc.AddMinutes(-1);
         var serverResponse = new ClientSyncPullResponse
         {
             SyncedAt = DateTime.UtcNow,
@@ -701,7 +703,9 @@ public class LocalSyncOrchestratorTests
                         Consents = "{}",
                         TemplateVersion = "1.0",
                         IsLocked = false,
-                        SubmittedAt = (DateTime?)null
+                        SubmittedAt = (DateTime?)null,
+                        ReviewedAtUtc = reviewedAtUtc,
+                        ReviewedByUserId = reviewerId
                     }),
                     LastModifiedUtc = modifiedUtc
                 }
@@ -718,6 +722,8 @@ public class LocalSyncOrchestratorTests
         Assert.NotNull(local);
         Assert.Equal(patientId, local!.PatientServerId);
         Assert.Contains("bodyPartSelections", local.StructuredDataJson);
+        Assert.Equal(reviewedAtUtc, local.ReviewedAtUtc);
+        Assert.Equal(reviewerId, local.ReviewedByUserId);
         Assert.Equal(SyncState.Synced, local.SyncState);
     }
 

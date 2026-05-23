@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace PTDoc.Tests.Integration;
@@ -88,12 +89,53 @@ public sealed class WebLoginEndpointIntegrationTests
         Assert.Contains("\"pin\":\"1234\"", recordingFactory.RequestPayloads[0], StringComparison.Ordinal);
     }
 
-    private sealed class PTDocWebFactory(RecordingHttpClientFactory recordingHttpClientFactory)
+    [Fact]
+    public async Task AuthChallenge_UsesForwardedHost_ForTrustedProxyRedirects()
+    {
+        var recordingFactory = new RecordingHttpClientFactory(_ =>
+            new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
+        await using var factory = new PTDocWebFactory(
+            recordingFactory,
+            new Dictionary<string, string?>
+            {
+                ["ForwardedHeaders:KnownNetworks:0"] = "0.0.0.0/0",
+                ["ForwardedHeaders:KnownNetworks:1"] = "::/0"
+            });
+
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("http://localhost:5145")
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/diagnostics/runtime");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Host", "0bh3gh9l-5145.use2.devtunnels.ms");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(
+            "https://0bh3gh9l-5145.use2.devtunnels.ms/login?ReturnUrl=%2Fdiagnostics%2Fruntime",
+            response.Headers.Location?.OriginalString);
+    }
+
+    private sealed class PTDocWebFactory(
+        RecordingHttpClientFactory recordingHttpClientFactory,
+        IReadOnlyDictionary<string, string?>? configuration = null)
         : WebApplicationFactory<PTDoc.Web.Components.App>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            if (configuration is not null)
+            {
+                builder.ConfigureAppConfiguration(config =>
+                {
+                    config.AddInMemoryCollection(configuration);
+                });
+            }
 
             builder.ConfigureTestServices(services =>
             {

@@ -17,6 +17,7 @@ public interface IIntakeService
     Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default);
     Task SaveDraftAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default);
     Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default);
+    Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default);
 }
 
 public sealed class IntakeEnsureDraftResult

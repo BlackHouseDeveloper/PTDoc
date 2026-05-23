@@ -40,6 +40,8 @@ public class IntakeForm : ISyncTrackedEntity
 
     // Submission
     public DateTime? SubmittedAt { get; set; }
+    public DateTime? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedByUserId { get; set; }
 
     // Tenant / clinic scoping (Sprint J)
     /// <summary>

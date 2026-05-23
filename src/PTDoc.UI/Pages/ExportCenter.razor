@@ -1,8 +1,10 @@
 @page "/export-center"
-@attribute [Authorize(Policy = "ClinicalStaff")]
+@attribute [Authorize(Policy = AuthorizationPolicies.NoteExport)]
 @rendermode InteractiveServer
 @implements IDisposable
+@using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
+@using PTDoc.Core.Models
 @inject IPatientService PatientService
 @inject IAppointmentService AppointmentService
 @inject INoteService NoteService
@@ -59,14 +61,14 @@
                         State="@CurrentState"
                         Patients="@patientOptions"
                         Providers="@providerOptions"
-                        ShowSoapProviderFilter="@ShouldShowSoapProviderFilter()" />
+                        ShowSoapProviderFilter="@ShouldShowSoapProviderFilter()"
+                        StateChanged="@HandleDraftStateChanged" />
 
                     <ExportFormatSelector
                         @bind-SelectedFormat="CurrentState.SelectedFormat" />
 
                     <ExportOptionsPanel
-                        SelectedFormat="@CurrentState.SelectedFormat"
-                        State="@CurrentState" />
+                        SelectedFormat="@CurrentState.SelectedFormat" />
                 </div>
 
                 <div class="export-center-right">
@@ -218,7 +220,7 @@
                 {
                     Id = $"note-{note.Id}",
                     Kind = ExportCenterActivityKind.Note,
-                    Title = $"{note.NoteType} for {note.PatientName}",
+                    Title = $"{FormatNoteTypeLabel(note.NoteType)} for {note.PatientName}",
                     Meta = $"{statusLabel} · {FormatDate(note.DateOfService)}",
                     TimestampUtc = timestampUtc
                 });
@@ -257,6 +259,11 @@
     {
         CurrentState.ResetForTabSwitch();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleDraftStateChanged()
+    {
+        return InvokeAsync(StateHasChanged);
     }
 
     private void CancelLoadToken()
@@ -317,6 +324,15 @@
     {
         return dateTime.ToString("MMM d, yyyy");
     }
+
+    private static string FormatNoteTypeLabel(string noteType) => noteType switch
+    {
+        nameof(NoteType.Evaluation) => "Evaluation",
+        nameof(NoteType.ProgressNote) => "Progress Note",
+        nameof(NoteType.Daily) => "Daily Note",
+        nameof(NoteType.Discharge) => "Discharge Summary",
+        _ => string.IsNullOrWhiteSpace(noteType) ? "Clinical Note" : noteType
+    };
 
     private static string GetUserFacingMessage(Exception exception)
     {

@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.StaticFiles;
@@ -186,6 +187,10 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services
     .AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    ConfigureForwardedHeaders(builder.Configuration, builder.Environment, options);
+});
 
 var app = builder.Build();
 var apiClusterAddressResolver = app.Services.GetRequiredService<ApiClusterAddressResolver>();
@@ -201,6 +206,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 
 // Sprint G: Apply security headers to all Web responses.
@@ -418,6 +424,46 @@ app.MapGet("/diagnostics/runtime", (
 .RequireAuthorization(AuthorizationPolicies.AdminOnly)
 .WithName("GetWebRuntimeDiagnostics");
 
+app.MapGet("/diagnostics/development/communications", async (
+    IHttpClientFactory httpClientFactory,
+    string? purpose,
+    string? channel,
+    int? take,
+    CancellationToken cancellationToken) =>
+{
+    var queryValues = new List<KeyValuePair<string, string?>>();
+    if (!string.IsNullOrWhiteSpace(purpose))
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("purpose", purpose));
+    }
+
+    if (!string.IsNullOrWhiteSpace(channel))
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("channel", channel));
+    }
+
+    if (take.HasValue)
+    {
+        queryValues.Add(new KeyValuePair<string, string?>("take", take.Value.ToString()));
+    }
+
+    var queryString = queryValues.Count == 0
+        ? QueryString.Empty
+        : QueryString.Create(queryValues);
+
+    using var response = await httpClientFactory
+        .CreateClient("ServerAPI")
+        .GetAsync($"/diagnostics/development/communications{queryString}", cancellationToken);
+    var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+
+    return Results.Content(
+        payload,
+        response.Content.Headers.ContentType?.ToString() ?? "application/json",
+        statusCode: (int)response.StatusCode);
+})
+.RequireAuthorization(AuthorizationPolicies.AdminOnly)
+.WithName("GetWebDevelopmentCommunicationDiagnostics");
+
 app.MapRazorComponents<PTDoc.Web.Components.App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(PTDoc.UI.Components.Routes).Assembly);
@@ -443,6 +489,112 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
     options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict;
+}
+
+static void ConfigureForwardedHeaders(
+    IConfiguration configuration,
+    IHostEnvironment environment,
+    ForwardedHeadersOptions options)
+{
+    var knownProxyValues = ReadStringList(configuration, "ForwardedHeaders:KnownProxies").ToList();
+    var knownNetworkValues = ReadStringList(configuration, "ForwardedHeaders:KnownNetworks").ToList();
+    var hasExplicitTrustConfiguration = knownProxyValues.Count > 0 || knownNetworkValues.Count > 0;
+    var isLocalEnvironment = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+    var isEnabled = isLocalEnvironment || configuration.GetValue<bool>("ForwardedHeaders:Enabled");
+
+    if (!isEnabled)
+    {
+        options.ForwardedHeaders = ForwardedHeaders.None;
+        return;
+    }
+
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit = Math.Max(1, configuration.GetValue<int?>("ForwardedHeaders:ForwardLimit") ?? 1);
+
+    if (!isLocalEnvironment && !hasExplicitTrustConfiguration)
+    {
+        throw new InvalidOperationException(
+            "ForwardedHeaders:Enabled requires ForwardedHeaders:KnownProxies or ForwardedHeaders:KnownNetworks outside Development and Testing.");
+    }
+
+    if (!hasExplicitTrustConfiguration)
+    {
+        // Preserve ASP.NET Core's loopback-only defaults for local/test hosts.
+        return;
+    }
+
+    options.KnownProxies.Clear();
+    options.KnownNetworks.Clear();
+
+    foreach (var proxy in knownProxyValues)
+    {
+        if (!IPAddress.TryParse(proxy, out var proxyAddress))
+        {
+            throw new InvalidOperationException($"ForwardedHeaders:KnownProxies contains invalid IP address '{proxy}'.");
+        }
+
+        if (!isLocalEnvironment &&
+            (IPAddress.Any.Equals(proxyAddress) || IPAddress.IPv6Any.Equals(proxyAddress)))
+        {
+            throw new InvalidOperationException("ForwardedHeaders:KnownProxies must not trust wildcard addresses outside Development and Testing.");
+        }
+
+        options.KnownProxies.Add(proxyAddress);
+    }
+
+    foreach (var network in knownNetworkValues)
+    {
+        options.KnownNetworks.Add(ParseKnownNetwork(network, isLocalEnvironment));
+    }
+}
+
+static IEnumerable<string> ReadStringList(IConfiguration configuration, string key)
+{
+    var values = configuration
+        .GetSection(key)
+        .GetChildren()
+        .Select(child => child.Value)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .ToList();
+
+    if (values.Count > 0)
+    {
+        return values;
+    }
+
+    var raw = configuration[key];
+    return string.IsNullOrWhiteSpace(raw)
+        ? Array.Empty<string>()
+        : raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string value, bool isLocalEnvironment)
+{
+    var separator = value.LastIndexOf('/');
+    if (separator <= 0 ||
+        separator == value.Length - 1 ||
+        !IPAddress.TryParse(value[..separator], out var prefix) ||
+        !int.TryParse(value[(separator + 1)..], out var prefixLength))
+    {
+        throw new InvalidOperationException($"ForwardedHeaders:KnownNetworks contains invalid CIDR network '{value}'.");
+    }
+
+    var maxPrefixLength = prefix.GetAddressBytes().Length == 4 ? 32 : 128;
+    if (prefixLength < 0 || prefixLength > maxPrefixLength)
+    {
+        throw new InvalidOperationException($"ForwardedHeaders:KnownNetworks contains invalid prefix length in '{value}'.");
+    }
+
+    if (!isLocalEnvironment && prefixLength == 0)
+    {
+        throw new InvalidOperationException("ForwardedHeaders:KnownNetworks must not trust all clients outside Development and Testing.");
+    }
+
+    return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength);
 }
 
 static void ValidateEntraExternalIdConfiguration(EntraExternalIdOptions options)

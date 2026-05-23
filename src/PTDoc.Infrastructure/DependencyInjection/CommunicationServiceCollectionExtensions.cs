@@ -19,6 +19,7 @@ public static class CommunicationServiceCollectionExtensions
         services.AddSingleton(Options.Create(options));
         ValidateConfiguration(options, environment);
 
+        services.AddSingleton<DevelopmentCommunicationMessageStore>();
         services.AddScoped<ICommunicationService, CommunicationService>();
         services.AddScoped<IContactNormalizer, ContactNormalizer>();
         services.AddScoped<IIntakeCommunicationWorkflow, IntakeCommunicationWorkflow>();

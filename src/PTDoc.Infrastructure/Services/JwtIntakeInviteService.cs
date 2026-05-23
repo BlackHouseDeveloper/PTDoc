@@ -125,11 +125,11 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         return new IntakeInviteLinkResult(true, intake.Id, intake.PatientId, inviteUrl, expiry, null);
     }
 
-    public async Task<IntakeInviteResult> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
+    public async Task<IntakeInviteValidationResponse> ValidateInviteTokenAsync(string inviteToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(inviteToken))
         {
-            return new IntakeInviteResult(false, null, null, "Invalid invite token.");
+            return new IntakeInviteValidationResponse(false, null, "Invalid invite token.");
         }
 
         try
@@ -141,7 +141,7 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             if (intakeId == Guid.Empty || patientId == Guid.Empty || string.IsNullOrWhiteSpace(rawSecret))
             {
-                return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
+                return new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired.");
             }
 
             var intake = await _db.IntakeForms
@@ -150,30 +150,34 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
 
             if (intake is null || intake.PatientId != patientId)
             {
-                return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
+                return new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired.");
             }
 
             if (intake.IsLocked || intake.SubmittedAt.HasValue)
             {
-                return new IntakeInviteResult(false, null, null, "This intake has already been submitted.");
+                return new IntakeInviteValidationResponse(false, null, "This intake has already been submitted.");
             }
 
             if (intake.ExpiresAt.HasValue && intake.ExpiresAt.Value < DateTime.UtcNow)
             {
-                return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
+                return new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired.");
             }
 
             if (!VerifyInviteSecret(rawSecret, intake.AccessToken))
             {
-                return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
+                return new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired.");
             }
 
-            return IssueAccessToken(patientId: patientId, intakeId: intakeId);
+            var expiresAt = intake.ExpiresAt.HasValue
+                ? new DateTimeOffset(DateTime.SpecifyKind(intake.ExpiresAt.Value, DateTimeKind.Utc))
+                : (DateTimeOffset?)null;
+
+            return new IntakeInviteValidationResponse(true, expiresAt, null);
         }
         catch (Exception ex) when (IsExpectedTokenException(ex))
         {
             _logger.LogWarning(ex, "Intake invite token validation failed safe.");
-            return new IntakeInviteResult(false, null, null, "Invite link is invalid or has expired.");
+            return new IntakeInviteValidationResponse(false, null, "Invite link is invalid or has expired.");
         }
     }
 

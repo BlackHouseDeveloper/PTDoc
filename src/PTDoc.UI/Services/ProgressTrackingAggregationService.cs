@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components;
@@ -11,7 +12,8 @@ namespace PTDoc.UI.Services;
 
 public sealed class ProgressTrackingAggregationService(
     INoteService noteService,
-    IAppointmentService appointmentService)
+    IAppointmentService appointmentService,
+    IOutcomeMeasureRegistry outcomeMeasureRegistry)
 {
     private const int BatchReadLimit = 100;
 
@@ -76,6 +78,7 @@ public sealed class ProgressTrackingAggregationService(
 
     public async Task<IReadOnlyList<ProgressTrendPointVm>> LoadTrendPointsAsync(
         IReadOnlyList<Guid> noteIds,
+        OutcomeMeasureType? measureType = null,
         CancellationToken cancellationToken = default)
     {
         var recentNoteIds = noteIds
@@ -90,7 +93,8 @@ public sealed class ProgressTrackingAggregationService(
         }
 
         var details = await BatchLoadNoteDetailsAsync(recentNoteIds, cancellationToken);
-        var points = new List<(DateTime Date, int Score)>();
+        var points = new List<(DateTime Date, ParsedOutcomeMeasure Measure)>();
+        var resolvedMeasureType = measureType;
 
         foreach (var noteId in recentNoteIds)
         {
@@ -106,9 +110,24 @@ public sealed class ProgressTrackingAggregationService(
             }
 
             var payload = ParsePayload(note.ContentJson);
-            if (TryGetProgressScore(payload, out var score))
+            if (payload?.OutcomeMeasures is not { Count: > 0 } measures)
             {
-                points.Add((note.DateOfService, score));
+                continue;
+            }
+
+            resolvedMeasureType ??= GetLatestOutcomeMeasure(measures)?.MeasureType;
+            if (resolvedMeasureType is null)
+            {
+                continue;
+            }
+
+            var measure = measures
+                .Where(item => item.MeasureType == resolvedMeasureType.Value)
+                .OrderByDescending(item => item.RecordedAtUtc ?? DateTime.MinValue)
+                .FirstOrDefault();
+            if (measure is not null)
+            {
+                points.Add((note.DateOfService, measure));
             }
         }
 
@@ -117,7 +136,11 @@ public sealed class ProgressTrackingAggregationService(
             .Select(point => new ProgressTrendPointVm
             {
                 Label = point.Date.ToString("MMM d", CultureInfo.InvariantCulture),
-                Value = point.Score
+                Value = GetNormalizedScorePercent(point.Measure),
+                MeasureType = point.Measure.MeasureType,
+                MeasureLabel = GetOutcomeMeasureLabel(point.Measure.MeasureType),
+                ScoreDisplay = FormatOutcomeScore(point.Measure),
+                Interpretation = GetOutcomeInterpretation(point.Measure)
             })
             .ToList();
     }
@@ -146,7 +169,9 @@ public sealed class ProgressTrackingAggregationService(
             .Take(4)
             .ToList();
 
-        var currentScore = ResolveCurrentScore(payload, goalStatuses.TotalGoals, goalStatuses.MetGoals, out var hasOutcomeScore);
+        var latestOutcomeMeasure = payload is null ? null : GetLatestOutcomeMeasure(payload.OutcomeMeasures);
+        var hasOutcomeScore = latestOutcomeMeasure is not null;
+        var currentScore = latestOutcomeMeasure is null ? 0 : GetNormalizedScorePercent(latestOutcomeMeasure);
 
         return Task.FromResult(new ProgressTrackingPatientVm
         {
@@ -164,6 +189,10 @@ public sealed class ProgressTrackingAggregationService(
             CurrentScore = currentScore,
             ScoreDelta = 0,
             HasOutcomeScore = hasOutcomeScore,
+            CurrentOutcomeMeasureType = latestOutcomeMeasure?.MeasureType,
+            CurrentOutcomeMeasureLabel = latestOutcomeMeasure is null ? string.Empty : GetOutcomeMeasureLabel(latestOutcomeMeasure.MeasureType),
+            CurrentOutcomeScoreDisplay = latestOutcomeMeasure is null ? string.Empty : FormatOutcomeScore(latestOutcomeMeasure),
+            CurrentOutcomeInterpretation = latestOutcomeMeasure is null ? string.Empty : GetOutcomeInterpretation(latestOutcomeMeasure),
             MetGoalCount = goalStatuses.MetGoals,
             ActiveGoalCount = goalStatuses.ActiveGoals,
             ArchivedGoalCount = goalStatuses.ArchivedGoals,
@@ -190,6 +219,9 @@ public sealed class ProgressTrackingAggregationService(
                 alerts.Add(new ClinicalAlertVm
                 {
                     PatientId = patient.Id,
+                    TargetUrl = patient.RecentNoteIds.Count == 0
+                        ? $"/patient/{patient.PatientId:D}"
+                        : $"/patient/{patient.PatientId:D}/note/{patient.RecentNoteIds[0]:D}?section=review",
                     Message = $"{patient.DisplayName}: latest note is still pending review.",
                     Meta = $"{patient.Condition} · Updated {FormatAge(ageInDays)} ago",
                     Severity = "warning",
@@ -201,6 +233,7 @@ public sealed class ProgressTrackingAggregationService(
                 alerts.Add(new ClinicalAlertVm
                 {
                     PatientId = patient.Id,
+                    TargetUrl = $"/patient/{patient.PatientId:D}",
                     Message = $"{patient.DisplayName}: reassessment may be due based on recent activity.",
                     Meta = $"{patient.Condition} · Last assessment {FormatAge(ageInDays)} ago",
                     Severity = "info",
@@ -386,55 +419,44 @@ public sealed class ProgressTrackingAggregationService(
         return (met, active, archived, goals.Count);
     }
 
-    private static int ResolveCurrentScore(
-        ParsedProgressTrackingPayload? payload,
-        int totalGoals,
-        int metGoals,
-        out bool hasScore)
+    private ParsedOutcomeMeasure? GetLatestOutcomeMeasure(IReadOnlyList<ParsedOutcomeMeasure> measures)
     {
-        if (TryGetLatestOutcomeMeasureScore(payload, out var score))
+        if (measures.Count == 0)
         {
-            hasScore = true;
-            return score;
+            return null;
         }
 
-        if (totalGoals > 0)
-        {
-            hasScore = true;
-            return Math.Clamp((int)Math.Round((double)metGoals / totalGoals * 100, MidpointRounding.AwayFromZero), 0, 100);
-        }
-
-        hasScore = false;
-        return 0;
-    }
-
-    private static bool TryGetLatestOutcomeMeasureScore(ParsedProgressTrackingPayload? payload, out int score)
-    {
-        score = 0;
-
-        if (payload?.OutcomeMeasures is not { Count: > 0 } measures)
-        {
-            return false;
-        }
-
-        var latestMeasure = measures
+        return measures
             .OrderByDescending(measure => measure.RecordedAtUtc ?? DateTime.MinValue)
             .FirstOrDefault();
+    }
 
-        if (latestMeasure is null)
+    private int GetNormalizedScorePercent(ParsedOutcomeMeasure measure)
+    {
+        var definition = outcomeMeasureRegistry.GetDefinition(measure.MeasureType);
+        var range = definition.MaxScore - definition.MinScore;
+        if (range <= 0)
         {
-            return false;
+            return 0;
         }
 
-        score = Math.Clamp((int)Math.Round(latestMeasure.Score, MidpointRounding.AwayFromZero), 0, 100);
-        return true;
+        var normalized = (measure.Score - definition.MinScore) / range * 100;
+        return Math.Clamp((int)Math.Round(normalized, MidpointRounding.AwayFromZero), 0, 100);
     }
 
-    private static bool TryGetProgressScore(ParsedProgressTrackingPayload? payload, out int score)
+    private string GetOutcomeMeasureLabel(OutcomeMeasureType measureType) =>
+        outcomeMeasureRegistry.GetDefinition(measureType).Abbreviation;
+
+    private string FormatOutcomeScore(ParsedOutcomeMeasure measure)
     {
-        score = 0;
-        return TryGetLatestOutcomeMeasureScore(payload, out score);
+        var definition = outcomeMeasureRegistry.GetDefinition(measure.MeasureType);
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{measure.Score:0.#} {definition.ScoreUnit}");
     }
+
+    private string GetOutcomeInterpretation(ParsedOutcomeMeasure measure) =>
+        outcomeMeasureRegistry.InterpretScore(measure.MeasureType, measure.Score);
 
     private static bool TryParseScore(string? value, out double score)
     {
@@ -492,8 +514,10 @@ public sealed class ProgressTrackingAggregationService(
                 {
                     var outcomeMeasures = v2Payload.Objective?.OutcomeMeasures?
                         .OfType<OutcomeMeasureEntryV2>()
+                        .Where(entry => Enum.IsDefined(typeof(OutcomeMeasureType), entry.MeasureType))
                         .Select(entry => new ParsedOutcomeMeasure
                         {
+                            MeasureType = entry.MeasureType,
                             Score = entry.Score,
                             RecordedAtUtc = entry.RecordedAtUtc
                         })
@@ -566,10 +590,11 @@ public sealed class ProgressTrackingAggregationService(
                     continue;
                 }
 
-                var scoreText = TryGetPropertyIgnoreCase(measure, "score", out var scoreElement) && scoreElement.ValueKind == JsonValueKind.String
-                    ? scoreElement.GetString()
+                var scoreText = TryGetPropertyIgnoreCase(measure, "score", out var scoreElement)
+                    ? GetScalarText(scoreElement)
                     : null;
-                if (!TryParseScore(scoreText, out var parsedScore))
+                if (!TryParseScore(scoreText, out var parsedScore)
+                    || !TryResolveLegacyMeasureType(measure, out var measureType))
                 {
                     continue;
                 }
@@ -584,6 +609,7 @@ public sealed class ProgressTrackingAggregationService(
 
                 outcomeMeasures.Add(new ParsedOutcomeMeasure
                 {
+                    MeasureType = measureType,
                     Score = parsedScore,
                     RecordedAtUtc = recordedAtUtc
                 });
@@ -657,6 +683,82 @@ public sealed class ProgressTrackingAggregationService(
         return false;
     }
 
+    private static string? GetScalarText(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetRawText(),
+            _ => null
+        };
+    }
+
+    private static bool TryResolveLegacyMeasureType(JsonElement measure, out OutcomeMeasureType measureType)
+    {
+        measureType = default;
+        foreach (var propertyName in new[] { "measureType", "type", "name", "measure", "abbreviation" })
+        {
+            if (!TryGetPropertyIgnoreCase(measure, propertyName, out var element))
+            {
+                continue;
+            }
+
+            if (element.ValueKind == JsonValueKind.Number
+                && element.TryGetInt32(out var numeric)
+                && Enum.IsDefined(typeof(OutcomeMeasureType), numeric))
+            {
+                measureType = (OutcomeMeasureType)numeric;
+                return true;
+            }
+
+            var raw = GetScalarText(element);
+            if (!string.IsNullOrWhiteSpace(raw)
+                && TryResolveOutcomeMeasureType(raw, out measureType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveOutcomeMeasureType(string raw, out OutcomeMeasureType measureType)
+    {
+        var normalized = raw.Trim();
+        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeric)
+            && Enum.IsDefined(typeof(OutcomeMeasureType), numeric))
+        {
+            measureType = (OutcomeMeasureType)numeric;
+            return true;
+        }
+
+        var key = normalized.Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("_", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var resolved = key.ToUpperInvariant() switch
+        {
+            "ODI" or "OSWESTRY" or "OSWESTRYDISABILITYINDEX" => OutcomeMeasureType.OswestryDisabilityIndex,
+            "DASH" => OutcomeMeasureType.DASH,
+            "QUICKDASH" => OutcomeMeasureType.QuickDASH,
+            "LEFS" or "LOWEREXTREMITYFUNCTIONALSCALE" => OutcomeMeasureType.LEFS,
+            "NDI" or "NECKDISABILITYINDEX" => OutcomeMeasureType.NeckDisabilityIndex,
+            "PSFS" or "PATIENTSPECIFICFUNCTIONALSCALE" => OutcomeMeasureType.PSFS,
+            "VAS" or "VISUALANALOGSCALE" => OutcomeMeasureType.VAS,
+            "NPRS" or "NUMERICPAINRATINGSCALE" => OutcomeMeasureType.NPRS,
+            _ => (OutcomeMeasureType?)null
+        };
+
+        if (resolved is null)
+        {
+            return Enum.TryParse(normalized, ignoreCase: true, out measureType)
+                && Enum.IsDefined(typeof(OutcomeMeasureType), measureType);
+        }
+
+        measureType = resolved.Value;
+        return true;
+    }
+
     private sealed class ParsedProgressTrackingPayload
     {
         public IReadOnlyList<ParsedOutcomeMeasure> OutcomeMeasures { get; init; } = [];
@@ -665,6 +767,7 @@ public sealed class ProgressTrackingAggregationService(
 
     private sealed class ParsedOutcomeMeasure
     {
+        public OutcomeMeasureType MeasureType { get; init; }
         public double Score { get; init; }
         public DateTime? RecordedAtUtc { get; init; }
     }

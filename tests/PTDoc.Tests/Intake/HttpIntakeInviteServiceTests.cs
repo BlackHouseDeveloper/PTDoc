@@ -54,7 +54,6 @@ public sealed class HttpIntakeInviteServiceTests
             return StubHttpMessageHandler.JsonResponse("""
             {
               "isValid": true,
-              "accessToken": "session-token",
               "expiresAt": "2026-03-31T16:00:00Z"
             }
             """);
@@ -72,7 +71,6 @@ public sealed class HttpIntakeInviteServiceTests
         Assert.Equal("invite-token", document.RootElement.GetProperty("inviteToken").GetString());
 
         Assert.True(result.IsValid);
-        Assert.Equal("session-token", result.AccessToken);
         Assert.NotNull(result.ExpiresAt);
     }
 

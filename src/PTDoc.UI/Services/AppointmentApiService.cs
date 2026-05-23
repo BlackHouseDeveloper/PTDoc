@@ -87,7 +87,7 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessStatusCodeAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
     }
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Dashboard;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -21,6 +22,10 @@ public static class DashboardEndpoints
         group.MapGet("/alerts", GetAlerts)
             .WithName("GetDashboardAlerts")
             .WithSummary("Get live clinical dashboard alerts for notes and intake follow-up");
+
+        group.MapGet("/snapshot", GetSnapshot)
+            .WithName("GetDashboardSnapshot")
+            .WithSummary("Get the clinical dashboard overview, alerts, notes, and activity snapshot");
     }
 
     private static async Task<IResult> GetAlerts(
@@ -32,20 +37,7 @@ public static class DashboardEndpoints
         var now = DateTimeOffset.UtcNow;
         var today = now.UtcDateTime.Date;
         var tomorrow = today.AddDays(1);
-
-        var alerts = new List<DashboardAlertItemResponse>();
-
-        alerts.AddRange(await BuildUnsignedNoteAlertsAsync(db, today, now, cancellationToken));
-        alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, cancellationToken));
-        alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, cancellationToken));
-
-        var orderedAlerts = alerts
-            .OrderBy(alert => PriorityRank(alert.Priority))
-            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
-            .ThenBy(alert => KindRank(alert.Kind))
-            .ThenBy(alert => alert.Id, StringComparer.Ordinal)
-            .Take(requestedTake)
-            .ToList();
+        var orderedAlerts = await BuildVisibleAlertsAsync(db, requestedTake, today, tomorrow, now, cancellationToken);
 
         return Results.Ok(new DashboardAlertsResponse
         {
@@ -53,6 +45,309 @@ public static class DashboardEndpoints
             UrgentCount = orderedAlerts.Count(alert => alert.IsUrgent),
             GeneratedAtUtc = now
         });
+    }
+
+    private static async Task<IResult> GetSnapshot(
+        [FromServices] ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var today = now.UtcDateTime.Date;
+        var tomorrow = today.AddDays(1);
+
+        var overview = await BuildOverviewCountsAsync(db, today, tomorrow, cancellationToken);
+        var alerts = await BuildVisibleAlertsAsync(db, DefaultTake, today, tomorrow, now, cancellationToken);
+        var urgentAlertCount = await CountUrgentAlertsAsync(db, today, now, overview.NotesDueToday, cancellationToken);
+        var recentNotes = await BuildRecentNotesAsync(db, cancellationToken);
+        var recentActivities = await BuildRecentActivitiesAsync(db, today, tomorrow, cancellationToken);
+
+        return Results.Ok(new DashboardSnapshotResponse
+        {
+            Overview = overview,
+            Alerts = alerts,
+            UrgentAlertCount = urgentAlertCount,
+            TotalAlertCount = overview.PendingItems,
+            RecentNotes = recentNotes,
+            RecentActivities = recentActivities,
+            GeneratedAtUtc = now
+        });
+    }
+
+    private static async Task<List<DashboardAlertItemResponse>> BuildVisibleAlertsAsync(
+        ApplicationDbContext db,
+        int take,
+        DateTime today,
+        DateTime tomorrow,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var requestedTake = Math.Clamp(take, 1, MaxTake);
+        var alerts = new List<DashboardAlertItemResponse>();
+
+        alerts.AddRange(await BuildUnsignedNoteAlertsAsync(db, today, now, cancellationToken));
+        alerts.AddRange(await BuildSubmittedIntakeReviewAlertsAsync(db, now, cancellationToken));
+        alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, cancellationToken));
+        alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, cancellationToken));
+
+        return alerts
+            .OrderBy(alert => PriorityRank(alert.Priority))
+            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
+            .ThenBy(alert => KindRank(alert.Kind))
+            .ThenBy(alert => alert.Id, StringComparer.Ordinal)
+            .Take(requestedTake)
+            .ToList();
+    }
+
+    private static async Task<DashboardOverviewCountsResponse> BuildOverviewCountsAsync(
+        ApplicationDbContext db,
+        DateTime today,
+        DateTime tomorrow,
+        CancellationToken cancellationToken)
+    {
+        var appointmentRows = await db.Appointments
+            .AsNoTracking()
+            .Where(appointment =>
+                appointment.StartTimeUtc >= today &&
+                appointment.StartTimeUtc < tomorrow &&
+                appointment.Patient != null &&
+                !appointment.Patient.IsArchived)
+            .Select(appointment => new
+            {
+                appointment.Id,
+                appointment.PatientId,
+                appointment.Status
+            })
+            .ToListAsync(cancellationToken);
+
+        var activeAppointmentRows = appointmentRows
+            .Where(appointment =>
+                appointment.Status == AppointmentStatus.CheckedIn ||
+                appointment.Status == AppointmentStatus.InProgress ||
+                appointment.Status == AppointmentStatus.Completed)
+            .ToList();
+
+        var activeAppointmentIds = activeAppointmentRows.Select(appointment => appointment.Id).ToHashSet();
+        var activeAppointmentPatientIds = activeAppointmentRows.Select(appointment => appointment.PatientId).ToHashSet();
+
+        var relatedTodayNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(note =>
+                !note.IsAddendum &&
+                ((note.AppointmentId.HasValue && activeAppointmentIds.Contains(note.AppointmentId.Value)) ||
+                 (activeAppointmentPatientIds.Contains(note.PatientId) &&
+                  note.DateOfService >= today &&
+                  note.DateOfService < tomorrow)))
+            .Select(note => new RelatedNoteCandidate(
+                note.PatientId,
+                note.AppointmentId,
+                note.DateOfService))
+            .ToListAsync(cancellationToken);
+
+        var notesDueToday = activeAppointmentRows.Count(appointment =>
+            !HasAnyNoteForAppointmentOrDate(
+                new AppointmentAlertCandidate(appointment.Id, appointment.PatientId, string.Empty, string.Empty, null, today),
+                relatedTodayNotes,
+                today,
+                tomorrow));
+
+        var draftNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .CountAsync(note =>
+                !note.IsAddendum &&
+                note.NoteStatus == NoteStatus.Draft &&
+                note.Patient != null &&
+                !note.Patient.IsArchived,
+                cancellationToken);
+
+        var unsignedNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .CountAsync(note =>
+                !note.IsAddendum &&
+                note.NoteStatus != NoteStatus.Signed &&
+                note.Patient != null &&
+                !note.Patient.IsArchived,
+                cancellationToken);
+
+        var incompleteIntakes = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                !intake.IsLocked &&
+                intake.SubmittedAt == null &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
+        var submittedIntakesAwaitingReview = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
+        return new DashboardOverviewCountsResponse
+        {
+            PatientsToday = appointmentRows.Select(appointment => appointment.PatientId).Distinct().Count(),
+            AppointmentsToday = appointmentRows.Count,
+            NotesDueToday = notesDueToday,
+            PendingItems = notesDueToday + unsignedNotes + incompleteIntakes + submittedIntakesAwaitingReview,
+            DraftNotes = draftNotes,
+            UnsignedNotes = unsignedNotes,
+            IncompleteIntakes = incompleteIntakes,
+            SubmittedIntakesAwaitingReview = submittedIntakesAwaitingReview
+        };
+    }
+
+    private static async Task<int> CountUrgentAlertsAsync(
+        ApplicationDbContext db,
+        DateTime today,
+        DateTimeOffset now,
+        int notesDueToday,
+        CancellationToken cancellationToken)
+    {
+        var staleIntakeThreshold = now.UtcDateTime.AddHours(-24);
+
+        var overdueUnsignedNotes = await db.ClinicalNotes
+            .AsNoTracking()
+            .CountAsync(note =>
+                !note.IsAddendum &&
+                note.NoteStatus != NoteStatus.Signed &&
+                note.DateOfService < today &&
+                note.Patient != null &&
+                !note.Patient.IsArchived,
+                cancellationToken);
+
+        var staleIncompleteIntakes = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                !intake.IsLocked &&
+                intake.SubmittedAt == null &&
+                intake.LastModifiedUtc <= staleIntakeThreshold &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
+        var staleSubmittedIntakesAwaitingReview = await db.IntakeForms
+            .AsNoTracking()
+            .CountAsync(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.SubmittedAt <= staleIntakeThreshold &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived,
+                cancellationToken);
+
+        return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes + staleSubmittedIntakesAwaitingReview;
+    }
+
+    private static async Task<IReadOnlyList<NoteListItemApiResponse>> BuildRecentNotesAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        return await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(note => !note.IsAddendum && note.Patient != null && !note.Patient.IsArchived)
+            .OrderByDescending(note => note.LastModifiedUtc)
+            .ThenByDescending(note => note.DateOfService)
+            .Take(5)
+            .Select(note => new NoteListItemApiResponse
+            {
+                Id = note.Id,
+                PatientId = note.PatientId,
+                PatientName = note.Patient != null
+                    ? note.Patient.FirstName + " " + note.Patient.LastName
+                    : string.Empty,
+                NoteType = note.NoteType.ToString(),
+                IsSigned = note.NoteStatus == NoteStatus.Signed,
+                NoteStatus = note.NoteStatus,
+                DateOfService = note.DateOfService,
+                LastModifiedUtc = note.LastModifiedUtc,
+                CptCodesJson = note.CptCodesJson
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<DashboardRecentActivityResponse>> BuildRecentActivitiesAsync(
+        ApplicationDbContext db,
+        DateTime today,
+        DateTime tomorrow,
+        CancellationToken cancellationToken)
+    {
+        var notes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(note => !note.IsAddendum && note.Patient != null && !note.Patient.IsArchived)
+            .OrderByDescending(note => note.LastModifiedUtc)
+            .Take(20)
+            .Select(note => new
+            {
+                note.Id,
+                note.PatientId,
+                PatientName = note.Patient != null
+                    ? note.Patient.FirstName + " " + note.Patient.LastName
+                    : string.Empty,
+                note.NoteType,
+                note.NoteStatus,
+                note.LastModifiedUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var appointments = await db.Appointments
+            .AsNoTracking()
+            .Where(appointment =>
+                appointment.StartTimeUtc >= today &&
+                appointment.StartTimeUtc < tomorrow &&
+                appointment.Patient != null &&
+                !appointment.Patient.IsArchived)
+            .OrderBy(appointment => appointment.StartTimeUtc)
+            .Select(appointment => new
+            {
+                appointment.Id,
+                appointment.PatientId,
+                PatientName = appointment.Patient != null
+                    ? appointment.Patient.FirstName + " " + appointment.Patient.LastName
+                    : string.Empty,
+                appointment.AppointmentType,
+                appointment.Status,
+                appointment.StartTimeUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var noteActivities = notes.Select(note => new DashboardRecentActivityResponse
+        {
+            Id = note.Id.ToString("N"),
+            Type = note.NoteStatus == NoteStatus.Signed
+                ? ActivityType.NoteCompleted.ToString()
+                : ActivityType.NoteUpdated.ToString(),
+            Description = note.NoteStatus == NoteStatus.Signed
+                ? $"Signed {note.NoteType}"
+                : $"Updated {note.NoteType}",
+            PatientId = note.PatientId.ToString("D"),
+            PatientName = note.PatientName,
+            Timestamp = note.LastModifiedUtc
+        });
+
+        var appointmentActivities = appointments.Select(appointment => new DashboardRecentActivityResponse
+        {
+            Id = appointment.Id.ToString("N"),
+            Type = appointment.Status == AppointmentStatus.CheckedIn
+                ? ActivityType.AppointmentCheckedIn.ToString()
+                : ActivityType.AppointmentScheduled.ToString(),
+            Description = appointment.Status == AppointmentStatus.CheckedIn
+                ? $"Checked in {appointment.AppointmentType} appointment"
+                : $"Scheduled {appointment.AppointmentType} appointment",
+            PatientId = appointment.PatientId.ToString("D"),
+            PatientName = appointment.PatientName,
+            Timestamp = appointment.StartTimeUtc
+        });
+
+        return noteActivities
+            .Concat(appointmentActivities)
+            .OrderByDescending(activity => activity.Timestamp)
+            .Take(10)
+            .ToList();
     }
 
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildNotesDueTodayAlertsAsync(
@@ -171,6 +466,56 @@ public static class DashboardEndpoints
         }).ToList();
     }
 
+    private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildSubmittedIntakeReviewAlertsAsync(
+        ApplicationDbContext db,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var staleThreshold = now.UtcDateTime.AddHours(-24);
+
+        var intakes = await db.IntakeForms
+            .AsNoTracking()
+            .Include(intake => intake.Patient)
+            .Where(intake =>
+                intake.IsLocked &&
+                intake.SubmittedAt != null &&
+                intake.ReviewedAtUtc == null &&
+                intake.Patient != null &&
+                !intake.Patient.IsArchived)
+            .OrderBy(intake => intake.SubmittedAt)
+            .ThenBy(intake => intake.LastModifiedUtc)
+            .Take(MaxTake * 4)
+            .Select(intake => new SubmittedIntakeReviewAlertCandidate(
+                intake.Id,
+                intake.PatientId,
+                intake.Patient!.FirstName,
+                intake.Patient.LastName,
+                intake.Patient.MedicalRecordNumber,
+                intake.SubmittedAt!.Value))
+            .ToListAsync(cancellationToken);
+
+        return intakes.Select(intake =>
+        {
+            var isUrgent = intake.SubmittedAtUtc <= staleThreshold;
+            return new DashboardAlertItemResponse
+            {
+                Id = $"submittedIntakeReview:{intake.Id:N}",
+                Kind = DashboardAlertKinds.SubmittedIntakeReview,
+                Priority = isUrgent ? DashboardAlertPriorities.High : DashboardAlertPriorities.Medium,
+                Title = "Intake Review Needed",
+                Message = "Patient intake is submitted and awaiting clinician review.",
+                PatientId = intake.PatientId,
+                PatientName = FormatPatientName(intake.PatientFirstName, intake.PatientLastName),
+                PatientMedicalRecordNumber = intake.PatientMedicalRecordNumber,
+                Timestamp = ToUtcOffset(intake.SubmittedAtUtc),
+                DueDateUtc = intake.SubmittedAtUtc,
+                TargetUrl = $"/intake/{intake.PatientId:D}",
+                ActionLabel = "Review",
+                IsUrgent = isUrgent
+            };
+        }).ToList();
+    }
+
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildUnsignedNoteAlertsAsync(
         ApplicationDbContext db,
         DateTime today,
@@ -272,8 +617,9 @@ public static class DashboardEndpoints
     {
         DashboardAlertKinds.NotesDueToday => 0,
         DashboardAlertKinds.UnsignedNote => 1,
-        DashboardAlertKinds.IncompleteIntake => 2,
-        _ => 3
+        DashboardAlertKinds.SubmittedIntakeReview => 2,
+        DashboardAlertKinds.IncompleteIntake => 3,
+        _ => 4
     };
 
     private static DateTimeOffset ToUtcOffset(DateTime value)
@@ -321,6 +667,7 @@ public static class DashboardEndpoints
         public const string NotesDueToday = "notesDueToday";
         public const string IncompleteIntake = "incompleteIntake";
         public const string UnsignedNote = "unsignedNote";
+        public const string SubmittedIntakeReview = "submittedIntakeReview";
     }
 
     private static class DashboardAlertPriorities
@@ -344,6 +691,14 @@ public static class DashboardEndpoints
         string PatientLastName,
         string? PatientMedicalRecordNumber,
         DateTime LastModifiedUtc);
+
+    private sealed record SubmittedIntakeReviewAlertCandidate(
+        Guid Id,
+        Guid PatientId,
+        string PatientFirstName,
+        string PatientLastName,
+        string? PatientMedicalRecordNumber,
+        DateTime SubmittedAtUtc);
 
     private sealed record NoteAlertCandidate(
         Guid Id,

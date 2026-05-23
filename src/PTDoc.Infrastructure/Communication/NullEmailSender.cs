@@ -8,13 +8,16 @@ namespace PTDoc.Infrastructure.Communication;
 public sealed class NullEmailSender : IEmailSender
 {
     private readonly IHostEnvironment _environment;
+    private readonly DevelopmentCommunicationMessageStore _messageStore;
     private readonly ILogger<NullEmailSender> _logger;
 
     public NullEmailSender(
         IHostEnvironment environment,
+        DevelopmentCommunicationMessageStore messageStore,
         ILogger<NullEmailSender> logger)
     {
         _environment = environment;
+        _messageStore = messageStore;
         _logger = logger;
     }
 
@@ -24,7 +27,11 @@ public sealed class NullEmailSender : IEmailSender
     {
         EnsureAllowed();
 
-        _logger.LogInformation("Null email delivery accepted.");
+        var captured = _messageStore.CaptureEmail(message);
+        _logger.LogInformation(
+            captured
+                ? "Null email delivery accepted and captured for development diagnostics."
+                : "Null email delivery accepted without diagnostics capture.");
 
         return Task.FromResult(new DeliveryResult
         {

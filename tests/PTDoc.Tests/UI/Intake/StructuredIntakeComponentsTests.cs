@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Outcomes;
@@ -314,5 +315,38 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.True(submitButton.HasAttribute("disabled"));
         Assert.All(cut.FindAll("button.review-step__edit-button"), button => Assert.True(button.HasAttribute("disabled")));
         Assert.All(cut.FindAll("input"), input => Assert.True(input.HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void ReviewStep_ReadOnlyReview_ShowsClinicianMarkReviewedAction_WhenEligible()
+    {
+        var state = new IntakeWizardState
+        {
+            IntakeId = Guid.NewGuid(),
+            IsLocked = true,
+            IsSubmitted = true,
+            TermsOfServiceAccepted = true,
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+        var markedReviewed = false;
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.CanMarkReviewed, true)
+            .Add(component => component.ShowReviewedStatus, true)
+            .Add(component => component.OnMarkReviewed, EventCallback.Factory.Create(this, () => markedReviewed = true)));
+
+        Assert.Contains("Clinician Review Required", cut.Markup, StringComparison.Ordinal);
+        var markReviewedButton = cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Mark Reviewed", StringComparison.Ordinal));
+
+        markReviewedButton.Click();
+
+        Assert.True(markedReviewed);
     }
 }

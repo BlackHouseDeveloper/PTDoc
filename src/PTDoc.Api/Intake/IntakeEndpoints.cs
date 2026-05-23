@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -356,11 +357,17 @@ public static class IntakeEndpoints
     // GET /api/v1/intake/patients/eligible
     private static async Task<IResult> ListEligiblePatients(
         [FromQuery] string? query,
-        [FromQuery] int take,
+        [FromQuery] string? take,
         [FromServices] IIntakeService intakeService,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var patients = await intakeService.SearchEligiblePatientsAsync(query, take, cancellationToken);
+        if (!ListQueryParameterParser.TryNormalizeTake(take, 100, 250, httpContext, out var normalizedTake, out var failure))
+        {
+            return failure!;
+        }
+
+        var patients = await intakeService.SearchEligiblePatientsAsync(query, normalizedTake, cancellationToken);
         return Results.Ok(patients);
     }
 
@@ -519,10 +526,10 @@ public static class IntakeEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IAuditService auditService,
+        [FromServices] ISyncEngine syncEngine,
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
-            .AsNoTracking()
             .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
 
         if (intake is null)
@@ -532,7 +539,20 @@ public static class IntakeEndpoints
         if (!isProperlySubmitted)
             return Results.Conflict(new { error = "Intake must be submitted and locked before it can be reviewed." });
 
+        if (intake.ReviewedAtUtc.HasValue)
+            return Results.Ok(ToResponse(intake));
+
         var reviewerId = identityContext.GetCurrentUserId();
+        var nowUtc = DateTime.UtcNow;
+
+        intake.ReviewedAtUtc = nowUtc;
+        intake.ReviewedByUserId = reviewerId;
+        intake.LastModifiedUtc = nowUtc;
+        intake.ModifiedByUserId = reviewerId;
+        intake.SyncState = SyncState.Pending;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(
             AuditEvent.IntakeReviewed(intake.Id, reviewerId), cancellationToken);
@@ -810,6 +830,8 @@ public static class IntakeEndpoints
         Locked = f.IsLocked,
         TemplateVersion = f.TemplateVersion,
         SubmittedAt = f.SubmittedAt,
+        ReviewedAtUtc = f.ReviewedAtUtc,
+        ReviewedByUserId = f.ReviewedByUserId,
         ClinicId = f.ClinicId,
         LastModifiedUtc = f.LastModifiedUtc
     };

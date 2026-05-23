@@ -284,6 +284,7 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/ai/goals",       AuthorizationPolicies.ClinicalStaff),
 
         // ── PDF export (Pdf/PdfEndpoints.cs) ─────────────────────────────────
+        new("GET",  "/api/v1/notes/{noteId:guid}/export/hierarchy", AuthorizationPolicies.NoteExport),
         new("POST", "/api/v1/notes/{noteId:guid}/export/pdf", AuthorizationPolicies.NoteExport),
 
         // ── Daily Treatment Note workflow (Notes/DailyNoteEndpoints.cs) ───────
@@ -297,11 +298,13 @@ public class AuthorizationCoverageTests
 
         // ── Dashboard (Dashboard/DashboardEndpoints.cs) ──────────────────────
         new("GET", "/api/v1/dashboard/alerts", AuthorizationPolicies.ClinicalStaff),
+        new("GET", "/api/v1/dashboard/snapshot", AuthorizationPolicies.ClinicalStaff),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/runtime", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
+        new("GET", "/diagnostics/development/communications", AuthorizationPolicies.AdminOnly),
         new("PUT", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
         new("DELETE", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
 

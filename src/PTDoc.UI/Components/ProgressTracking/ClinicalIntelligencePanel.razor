@@ -17,7 +17,7 @@
                             <p class="progress-alert-message">@alert.Message</p>
                             <p class="progress-alert-meta">@alert.Meta</p>
                         </div>
-                        <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(alert.PatientId)">
+                        <button type="button" @onclick="() => OnSelectPatient.InvokeAsync(alert.TargetUrl)">
                             @alert.ActionLabel
                         </button>
                     </article>

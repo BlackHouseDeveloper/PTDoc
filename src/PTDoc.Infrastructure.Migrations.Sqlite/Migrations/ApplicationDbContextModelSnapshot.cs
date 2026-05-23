@@ -552,6 +552,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("StructuredDataJson")
                         .HasColumnType("TEXT");
 
@@ -577,6 +583,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("LastModifiedUtc");
 
                     b.HasIndex("PatientId");
+
+                    b.HasIndex("ReviewedAtUtc");
 
                     b.ToTable("IntakeForms");
                 });

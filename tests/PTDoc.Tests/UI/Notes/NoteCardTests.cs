@@ -14,17 +14,19 @@ public sealed class NoteCardTests : TestContext
         var cut = RenderComponent<NoteCard>(parameters => parameters
             .Add(component => component.Note, CreateNote(canEdit: false, readOnlyReason: "Read-only")));
 
-        Assert.DoesNotContain(">Edit<", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Continue Draft<", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Read-only", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void EditableNote_ShowsEditAction()
+    public void EditableNote_ShowsContinueDraftAction()
     {
         var cut = RenderComponent<NoteCard>(parameters => parameters
             .Add(component => component.Note, CreateNote(canEdit: true, readOnlyReason: null)));
 
-        Assert.Contains(">Edit<", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains(">Continue Draft<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--edit"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--view"));
     }
 
     [Fact]
@@ -38,11 +40,64 @@ public sealed class NoteCardTests : TestContext
         Assert.Null(article.GetAttribute("tabindex"));
 
         var buttons = cut.FindAll("button");
-        Assert.Equal(4, buttons.Count);
-        Assert.Contains(buttons, button => button.GetAttribute("aria-label")?.StartsWith("Open Progress Note", StringComparison.Ordinal) == true);
-        Assert.Contains(buttons, button => button.GetAttribute("aria-label")?.StartsWith("View Progress Note", StringComparison.Ordinal) == true);
-        Assert.Contains(buttons, button => button.GetAttribute("aria-label")?.StartsWith("Edit Progress Note", StringComparison.Ordinal) == true);
+        Assert.Equal(2, buttons.Count);
+        Assert.Contains(buttons, button => button.GetAttribute("aria-label")?.StartsWith("Continue Draft Progress Note", StringComparison.Ordinal) == true);
         Assert.Contains(buttons, button => button.GetAttribute("aria-label")?.StartsWith("Open PDF tools", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void PendingCoSignNote_ShowsFinalizeAction()
+    {
+        var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
+        note.Status = "Pending Co-Sign";
+        note.IsPendingCoSign = true;
+        note.CanResolveAttention = true;
+
+        var cut = RenderComponent<NoteCard>(parameters => parameters
+            .Add(component => component.Note, note));
+
+        Assert.Contains(">Finalize<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--finalize"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--view"));
+        Assert.Contains("Co-sign pending", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PendingCoSignNote_WithoutResolvePermission_ShowsViewAction()
+    {
+        var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
+        note.Status = "Pending Co-Sign";
+        note.IsPendingCoSign = true;
+        note.CanResolveAttention = false;
+
+        var cut = RenderComponent<NoteCard>(parameters => parameters
+            .Add(component => component.Note, note));
+
+        Assert.Contains(">View<", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find(".note-card-action-icon--view"));
+        Assert.Empty(cut.FindAll(".note-card-action-icon--finalize"));
+        Assert.DoesNotContain(">Finalize<", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PendingCoSignNote_WithoutResolvePermission_InvokesViewAction()
+    {
+        var viewed = false;
+        var edited = false;
+        var note = CreateNote(canEdit: false, readOnlyReason: "Co-sign pending");
+        note.Status = "Pending Co-Sign";
+        note.IsPendingCoSign = true;
+        note.CanResolveAttention = false;
+
+        var cut = RenderComponent<NoteCard>(parameters => parameters
+            .Add(component => component.Note, note)
+            .Add(component => component.OnView, _ => viewed = true)
+            .Add(component => component.OnEdit, _ => edited = true));
+
+        cut.Find("button").Click();
+
+        Assert.True(viewed);
+        Assert.False(edited);
     }
 
     [Fact]
@@ -69,6 +124,38 @@ public sealed class NoteCardTests : TestContext
         Assert.DoesNotContain("⚠", cut.Markup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NeedsAttentionBanner_ReadOnlyPendingCoSignShowsViewPrimaryAction()
+    {
+        var cut = RenderComponent<NotesNeedsAttentionBanner>(parameters => parameters
+            .Add(component => component.Items, new[]
+            {
+                CreatePendingCoSignAttentionItem(canResolveAttention: false)
+            }));
+
+        Assert.Contains(">View<", cut.Markup, StringComparison.Ordinal);
+        var primaryAction = cut.Find(".notes-needs-attention-primary");
+        Assert.Contains("notes-needs-attention-primary--view", primaryAction.ClassList);
+        Assert.NotNull(cut.Find(".notes-needs-attention-primary-icon--view"));
+        Assert.Empty(cut.FindAll(".notes-needs-attention-primary-icon--fix"));
+        Assert.DoesNotContain(">Finalize<", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NeedsAttentionBanner_ResolvablePendingCoSignShowsFinalizePrimaryAction()
+    {
+        var cut = RenderComponent<NotesNeedsAttentionBanner>(parameters => parameters
+            .Add(component => component.Items, new[]
+            {
+                CreatePendingCoSignAttentionItem(canResolveAttention: true)
+            }));
+
+        Assert.Contains(">Finalize<", cut.Markup, StringComparison.Ordinal);
+        var primaryAction = cut.Find(".notes-needs-attention-primary");
+        Assert.Contains("notes-needs-attention-primary--fix", primaryAction.ClassList);
+        Assert.NotNull(cut.Find(".notes-needs-attention-primary-icon--fix"));
+    }
+
     private static NoteListItemVm CreateNote(bool canEdit, string? readOnlyReason) => new()
     {
         Id = Guid.NewGuid().ToString(),
@@ -82,5 +169,19 @@ public sealed class NoteCardTests : TestContext
         CanEdit = canEdit,
         CanDownloadPdf = true,
         ReadOnlyReason = readOnlyReason
+    };
+
+    private static NoteListItemVm CreatePendingCoSignAttentionItem(bool canResolveAttention) => new()
+    {
+        Id = Guid.NewGuid().ToString(),
+        PatientId = Guid.NewGuid().ToString(),
+        PatientName = "Alex Patient",
+        NoteType = "Progress Note",
+        Status = "Pending Co-Sign",
+        CreatedDate = new DateTime(2026, 4, 1),
+        LastModified = new DateTime(2026, 4, 1),
+        IsPendingCoSign = true,
+        CanResolveAttention = canResolveAttention,
+        AttentionReason = "Awaiting PT co-signature before the note can be fully finalized."
     };
 }

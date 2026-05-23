@@ -53,6 +53,23 @@
                     </RoleGate>
                 }
 
+                @if (ShowClinicianPatientSelector && !ShouldShowWizard)
+                {
+                    <section class="intake-page__empty-state" role="status">
+                        <h2>Select a patient to start intake</h2>
+                        <p>Use the patient selector above to load an existing intake draft or start a draft for an eligible patient.</p>
+                    </section>
+                }
+
+                @if (ShowMissingPatientContext)
+                {
+                    <section class="intake-page__not-found" role="status">
+                        <h2>Intake Link Required</h2>
+                        <p>Use the secure intake link from your clinic to open this form.</p>
+                        <p>If you received this page without a patient-specific link, contact your care provider for a new intake invitation.</p>
+                    </section>
+                }
+
                 @if (_isLoadingDraft)
                 {
                     <section class="intake-page__notice" role="status" aria-live="polite">
@@ -67,35 +84,42 @@
                     </section>
                 }
 
-                <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
-                    @switch (State.CurrentStep)
-                    {
-                        case IntakeStep.Demographics:
-                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                        case IntakeStep.PainAssessment:
-                            <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                        case IntakeStep.PainDetails:
-                            <PainDetailsStep State="@State"
-                                             OnBack="HandleBackAsync"
-                                             OnContinue="HandlePainDetailsContinueAsync"
-                                             OnStateChanged="HandleStateChangedAsync"
-                                             ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                            break;
-                        case IntakeStep.Review:
-                            <ReviewStep State="@State"
-                                        ValidationMessage="@_validationMessage"
-                                        OnBack="HandleBackAsync"
-                                        OnSubmit="HandleSubmitAsync"
-                                        OnEditStep="HandleEditStepAsync"
-                                        ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                            break;
-                        default:
-                            <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                            break;
-                    }
-                </fieldset>
+                @if (ShouldShowWizard)
+                {
+                    <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
+                        @switch (State.CurrentStep)
+                        {
+                            case IntakeStep.Demographics:
+                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                            case IntakeStep.PainAssessment:
+                                <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                            case IntakeStep.PainDetails:
+                                <PainDetailsStep State="@State"
+                                                 OnBack="HandleBackAsync"
+                                                 OnContinue="HandlePainDetailsContinueAsync"
+                                                 OnStateChanged="HandleStateChangedAsync"
+                                                 ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                break;
+                            case IntakeStep.Review:
+                                <ReviewStep State="@State"
+                                            ValidationMessage="@_validationMessage"
+                                            OnBack="HandleBackAsync"
+                                            OnSubmit="HandleSubmitAsync"
+                                            OnEditStep="HandleEditStepAsync"
+                                            OnMarkReviewed="HandleMarkReviewedAsync"
+                                            CanMarkReviewed="@CanMarkIntakeReviewed"
+                                            IsMarkingReviewed="@_isMarkingReviewed"
+                                            ShowReviewedStatus="@ShowClinicianReviewStatus"
+                                            ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                break;
+                            default:
+                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                break;
+                        }
+                    </fieldset>
+                }
             }
         </main>
     </div>
@@ -111,8 +135,10 @@
     private bool _canSelectPatient;
     private bool _canManageDrafts;
     private bool _canViewOutcomeMeasureRecommendations;
+    private bool _canMarkIntakeReviewed;
     private bool _isLoadingDraft;
     private bool _isSavingDraft;
+    private bool _isMarkingReviewed;
     private string? _validationMessage;
     private string _draftUnavailableTitle = "Intake Unavailable";
     private string _draftUnavailableMessage = "We could not load an intake draft for this patient.";
@@ -121,9 +147,22 @@
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner},{Roles.FrontDesk}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
+    private bool ShowMissingPatientContext => State.IsPatientMode && !PatientId.HasValue && !State.PatientId.HasValue;
+    private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
     private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
-    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || !CanEditDraft;
+    private bool CanMarkIntakeReviewed =>
+        _canMarkIntakeReviewed &&
+        !State.IsPatientMode &&
+        State.IsLocked &&
+        State.IsSubmitted &&
+        !State.ReviewedAtUtc.HasValue;
+    private bool ShowClinicianReviewStatus =>
+        _canMarkIntakeReviewed &&
+        !State.IsPatientMode &&
+        State.IsLocked &&
+        State.IsSubmitted;
+    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
     private string? ReadOnlyNoticeMessage => State.IsLocked
         ? "This intake has been submitted and locked. Editing is disabled."
         : (!CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
@@ -155,6 +194,12 @@
              user.IsInRole(Roles.FrontDesk));
 
         _canViewOutcomeMeasureRecommendations = isAuthenticated &&
+            (user.IsInRole(Roles.PT) ||
+             user.IsInRole(Roles.PTA) ||
+             user.IsInRole(Roles.Admin) ||
+             user.IsInRole(Roles.Owner));
+
+        _canMarkIntakeReviewed = isAuthenticated &&
             (user.IsInRole(Roles.PT) ||
              user.IsInRole(Roles.PTA) ||
              user.IsInRole(Roles.Admin) ||
@@ -308,6 +353,14 @@
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
+            return;
+        }
+
+        if (!State.PatientId.HasValue)
+        {
+            _validationMessage = State.IsPatientMode
+                ? "Use a patient-specific intake link before starting this form."
+                : "Select a patient before starting an intake draft.";
             return;
         }
 
@@ -505,6 +558,46 @@
         return Task.CompletedTask;
     }
 
+    private async Task HandleMarkReviewedAsync()
+    {
+        _validationMessage = null;
+
+        if (!CanMarkIntakeReviewed)
+        {
+            return;
+        }
+
+        if (!State.IntakeId.HasValue)
+        {
+            _validationMessage = "Intake record is unavailable for review.";
+            return;
+        }
+
+        _isMarkingReviewed = true;
+        try
+        {
+            var reviewed = await IntakeService.MarkReviewedAsync(State.IntakeId.Value);
+            State.ReviewedAtUtc = reviewed.ReviewedAtUtc;
+            State.ReviewedByUserId = reviewed.ReviewedByUserId;
+            State.LastModifiedUtc = reviewed.LastModifiedUtc;
+            State.IsLocked = reviewed.IsLocked;
+            State.IsSubmitted = reviewed.IsSubmitted;
+            _validationMessage = "Intake marked reviewed.";
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _validationMessage = ex.Message;
+        }
+        finally
+        {
+            _isMarkingReviewed = false;
+        }
+    }
+
     private async Task SaveDraftIfPossibleAsync()
     {
         if (!State.PatientId.HasValue || !CanEditDraft || _isSavingDraft)
@@ -616,6 +709,7 @@
     {
         var draft = new IntakeResponseDraft
         {
+            IntakeId = state.IntakeId,
             PatientId = state.PatientId,
             CurrentStep = (int)state.CurrentStep,
             ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
@@ -667,7 +761,10 @@
             SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = state.IsSubmitted,
-            IsLocked = state.IsLocked
+            IsLocked = state.IsLocked,
+            ReviewedAtUtc = state.ReviewedAtUtc,
+            ReviewedByUserId = state.ReviewedByUserId,
+            LastModifiedUtc = state.LastModifiedUtc
         };
 
         draft.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(draft);
@@ -692,6 +789,7 @@
 
         return new IntakeWizardState
         {
+            IntakeId = hydratedDraft.IntakeId,
             PatientId = hydratedDraft.PatientId,
             CurrentStep = Enum.IsDefined(typeof(IntakeStep), hydratedDraft.CurrentStep)
                 ? (IntakeStep)hydratedDraft.CurrentStep
@@ -745,7 +843,10 @@
             SelectedHouseLayoutOptions = hydratedDraft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = hydratedDraft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
             IsSubmitted = hydratedDraft.IsSubmitted,
-            IsLocked = hydratedDraft.IsLocked
+            IsLocked = hydratedDraft.IsLocked,
+            ReviewedAtUtc = hydratedDraft.ReviewedAtUtc,
+            ReviewedByUserId = hydratedDraft.ReviewedByUserId,
+            LastModifiedUtc = hydratedDraft.LastModifiedUtc
         };
     }
 

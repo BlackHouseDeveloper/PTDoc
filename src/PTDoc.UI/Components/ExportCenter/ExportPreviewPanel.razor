@@ -58,7 +58,14 @@
         {
             <div class="record-count-disabled">
                 <p class="record-count-disabled__title">No preview target</p>
-                <p class="record-count-disabled__text">@_previewTarget.UnavailableReason</p>
+                <p id="@CurrentUnavailableReasonId" class="record-count-disabled__text">@CurrentUnavailableReason</p>
+            </div>
+        }
+        else if (!CanPreviewDocument)
+        {
+            <div class="record-count-disabled">
+                <p class="record-count-disabled__title">Finalization required</p>
+                <p id="@CurrentUnavailableReasonId" class="record-count-disabled__text">@FinalizedNoteRequiredMessage</p>
             </div>
         }
         else if (_isPreviewLoading)
@@ -80,7 +87,7 @@
             <div class="record-count-disabled">
                 <p class="record-count-disabled__title">Preview ready</p>
                 <p class="record-count-disabled__text">
-                    Generate a hierarchy preview for @_previewTarget.Title.
+                    Generate a finalized-note hierarchy preview for @_previewTarget.Title.
                 </p>
             </div>
         }
@@ -103,7 +110,7 @@
         </div>
     }
 
-    @if (_previewTarget.CanPreview && !_previewTarget.CanDownloadPdf)
+    @if (_previewTarget.CanPreview && !_previewTarget.IsSigned)
     {
         <div class="phi-warning-card" role="status">
             <span class="phi-warning-icon" aria-hidden="true">
@@ -115,7 +122,7 @@
             </span>
             <div class="phi-warning-content">
                 <div class="phi-warning-title">Finalization required</div>
-                <div class="phi-warning-text">Hierarchy preview is available for this note, but PDF download stays disabled until the note is signed.</div>
+                <div class="phi-warning-text">@FinalizedNoteRequiredMessage</div>
             </div>
         </div>
     }
@@ -164,7 +171,7 @@
     }
 
     <div class="export-preview-panel__actions">
-        <button class="btn btn-secondary" type="button" @onclick="HandleGeneratePreviewAsync" disabled="@(!_previewTarget.CanPreview || _isPreviewLoading || _isResolvingTarget)" aria-describedby="@UnavailableActionDescriptionId">
+        <button class="btn btn-secondary" type="button" @onclick="HandleGeneratePreviewAsync" disabled="@(!CanPreviewDocument || _isPreviewLoading || _isResolvingTarget)" aria-describedby="@UnavailableActionDescriptionId">
             @if (_isPreviewLoading)
             {
                 <span class="spinner" aria-hidden="true"></span>
@@ -211,7 +218,11 @@
     private ExportPreviewTarget _previewTarget = new();
     private IJSObjectReference? _downloadModule;
     private CancellationTokenSource? _previewTargetCts;
+    private CancellationTokenSource? _operationCts;
     private readonly string _unsupportedReasonId = $"export-preview-unavailable-{Guid.NewGuid():N}";
+    private readonly string _targetUnavailableReasonId = $"export-preview-target-unavailable-{Guid.NewGuid():N}";
+    private const string InvalidDateRangeMessage = "Start date must be before or equal to end date before export preview can be resolved.";
+    private const string FinalizedNoteRequiredMessage = "Only finalized signed notes can be previewed or downloaded from Export Center.";
 
     [Parameter]
     [EditorRequired]
@@ -225,22 +236,48 @@
     [EditorRequired]
     public ExportDraftState State { get; set; } = new();
 
-    private bool SupportsPreview => SelectedTab == ExportTab.SoapNotes && SelectedFormat == ExportFormat.PDF;
+    private bool SupportsPreview => SelectedTab == ExportTab.SoapNotes && SelectedFormat == ExportFormat.PDF && !HasInvalidDateRange;
+    private bool HasInvalidDateRange => State.DateRangeStart.HasValue
+        && State.DateRangeEnd.HasValue
+        && State.DateRangeStart.Value.Date > State.DateRangeEnd.Value.Date;
+    private bool CanPreviewDocument => _previewTarget.CanPreview && _previewTarget.IsSigned;
 
     private bool IsProgressSummaryExport => SelectedTab == ExportTab.Reports
         && State.SelectedReportTypes.Contains("progress-summary", StringComparer.OrdinalIgnoreCase);
 
     private string UnsupportedReason => IsProgressSummaryExport
         ? "Progress Summary export is selected, but the backend report export is not implemented yet. PDF generation is disabled instead of falling back to SOAP Notes."
+        : HasInvalidDateRange
+            ? InvalidDateRangeMessage
         : SelectedTab != ExportTab.SoapNotes
             ? "Preview is currently available only for SOAP note exports."
             : "Preview is currently available only for PDF note exports.";
 
     private string UnsupportedReasonId => _unsupportedReasonId;
+    private string CurrentUnavailableReasonId => _targetUnavailableReasonId;
+    private string CurrentUnavailableReason => string.IsNullOrWhiteSpace(_previewTarget.UnavailableReason)
+        ? "No SOAP note matches the current export filters."
+        : _previewTarget.UnavailableReason;
 
-    private string? UnavailableActionDescriptionId => IsProgressSummaryExport && !SupportsPreview
-        ? UnsupportedReasonId
-        : null;
+    private string? UnavailableActionDescriptionId
+    {
+        get
+        {
+            if (!SupportsPreview)
+            {
+                return UnsupportedReasonId;
+            }
+
+            if (_isResolvingTarget)
+            {
+                return null;
+            }
+
+            return !CanPreviewDocument || !_previewTarget.CanDownloadPdf
+                ? CurrentUnavailableReasonId
+                : null;
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -254,6 +291,7 @@
         _hierarchy = null;
         _previewErrorMessage = null;
         _statusMessage = null;
+        CancelOperationToken();
         State.HasGeneratedPreview = false;
         State.RecordCount = null;
         State.IsLoadingPreview = false;
@@ -266,10 +304,23 @@
     {
         _previewTargetCts?.Cancel();
         _previewTargetCts?.Dispose();
+        _operationCts?.Cancel();
+        _operationCts?.Dispose();
 
         if (_downloadModule is not null)
         {
-            await _downloadModule.DisposeAsync();
+            try
+            {
+                await _downloadModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Navigating away can disconnect the Blazor circuit before JS cleanup finishes.
+            }
+            catch (ObjectDisposedException)
+            {
+                // The module may already be disposed during circuit teardown.
+            }
         }
     }
 
@@ -282,6 +333,7 @@
 
         if (!SupportsPreview)
         {
+            _isResolvingTarget = false;
             _previewTarget = new ExportPreviewTarget
             {
                 UnavailableReason = UnsupportedReason
@@ -291,6 +343,7 @@
 
         if (State.SelectedProviderIds.Count > 0)
         {
+            _isResolvingTarget = false;
             _previewTarget = new ExportPreviewTarget
             {
                 UnavailableReason = "Preview cannot apply provider filters yet because the current note list projection does not expose clinician identity."
@@ -320,7 +373,7 @@
             _previewTarget = new ExportPreviewTarget
             {
                 NoteId = response.NoteId,
-                Title = response.Title,
+                Title = NormalizePreviewTitle(response.Title),
                 Subtitle = response.Subtitle,
                 NoteStatus = response.NoteStatus,
                 SelectionNotice = response.SelectionNotice,
@@ -357,19 +410,25 @@
         }
         finally
         {
-            _isResolvingTarget = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _isResolvingTarget = false;
+            }
         }
     }
 
     private async Task HandleGeneratePreviewAsync()
     {
-        if (!_previewTarget.CanPreview || !_previewTarget.NoteId.HasValue)
+        if (!CanPreviewDocument || !_previewTarget.NoteId.HasValue)
         {
-            _previewErrorMessage = _previewTarget.UnavailableReason;
+            _previewErrorMessage = _previewTarget.IsSigned
+                ? CurrentUnavailableReason
+                : FinalizedNoteRequiredMessage;
             _statusMessage = null;
             return;
         }
 
+        var cancellationToken = ResetOperationToken();
         _isPreviewLoading = true;
         State.IsLoadingPreview = true;
         _previewErrorMessage = null;
@@ -377,7 +436,12 @@
 
         try
         {
-            var result = await NoteWorkspaceService.GetDocumentHierarchyAsync(_previewTarget.NoteId.Value);
+            var result = await NoteWorkspaceService.GetDocumentHierarchyAsync(_previewTarget.NoteId.Value, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             if (!result.Success || result.Hierarchy is null)
             {
                 _hierarchy = null;
@@ -388,6 +452,10 @@
             _hierarchy = result.Hierarchy;
             State.HasGeneratedPreview = true;
             State.RecordCount = result.Hierarchy.Root.Children.Count;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (HttpRequestException ex)
         {
@@ -413,8 +481,11 @@
         }
         finally
         {
-            _isPreviewLoading = false;
-            State.IsLoadingPreview = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _isPreviewLoading = false;
+                State.IsLoadingPreview = false;
+            }
         }
     }
 
@@ -423,12 +494,13 @@
         if (!_previewTarget.CanDownloadPdf || !_previewTarget.NoteId.HasValue)
         {
             _previewErrorMessage = _previewTarget.IsSigned
-                ? _previewTarget.UnavailableReason
+                ? CurrentUnavailableReason
                 : "Only signed notes can be downloaded as PDF.";
             _statusMessage = null;
             return;
         }
 
+        var cancellationToken = ResetOperationToken();
         _isDownloading = true;
         State.IsDownloading = true;
         _previewErrorMessage = null;
@@ -436,22 +508,35 @@
 
         try
         {
-            var result = await NoteWorkspaceService.ExportPdfAsync(_previewTarget.NoteId.Value);
+            var result = await NoteWorkspaceService.ExportPdfAsync(_previewTarget.NoteId.Value, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             if (!result.Success)
             {
                 _previewErrorMessage = result.ErrorMessage ?? "Unable to download the PDF.";
                 return;
             }
 
-            _downloadModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/export-preview.js");
+            _downloadModule ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                cancellationToken,
+                "./_content/PTDoc.UI/js/export-preview.js");
             using var streamReference = new DotNetStreamReference(new MemoryStream(result.Content));
             await _downloadModule.InvokeVoidAsync(
                 "downloadStreamFile",
+                cancellationToken,
                 result.FileName,
                 result.ContentType,
                 streamReference);
 
             _statusMessage = "PDF download started.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (HttpRequestException ex)
         {
@@ -473,8 +558,11 @@
         }
         finally
         {
-            _isDownloading = false;
-            State.IsDownloading = false;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _isDownloading = false;
+                State.IsDownloading = false;
+            }
         }
     }
 
@@ -495,7 +583,30 @@
             return "No matching note";
         }
 
+        if (!_previewTarget.IsSigned)
+        {
+            return "Unsigned note";
+        }
+
         return _previewTarget.Title;
+    }
+
+    private CancellationToken ResetOperationToken()
+    {
+        CancelOperationToken();
+        _operationCts = new CancellationTokenSource();
+        return _operationCts.Token;
+    }
+
+    private void CancelOperationToken()
+    {
+        _operationCts?.Cancel();
+        _operationCts?.Dispose();
+        _operationCts = null;
+        _isPreviewLoading = false;
+        _isDownloading = false;
+        State.IsLoadingPreview = false;
+        State.IsDownloading = false;
     }
 
     private string BuildPreviewKey()
@@ -557,5 +668,18 @@
         }
 
         return $"Until {state.DateRangeEnd:MMM dd, yyyy}";
+    }
+
+    private static string NormalizePreviewTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return title;
+        }
+
+        return title
+            .Replace("ProgressNote for", "Progress Note for", StringComparison.Ordinal)
+            .Replace("Daily for", "Daily Note for", StringComparison.Ordinal)
+            .Replace("Discharge for", "Discharge Summary for", StringComparison.Ordinal);
     }
 }

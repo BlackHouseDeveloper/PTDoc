@@ -35,6 +35,26 @@
     margin: 0;
 }
 
+.intake-page__empty-state {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: var(--spacing-2);
+    padding: var(--spacing-5);
+}
+
+.intake-page__empty-state h2 {
+    color: var(--card-foreground);
+    font-size: 1.125rem;
+    margin: 0;
+}
+
+.intake-page__empty-state p {
+    color: var(--muted-foreground);
+    margin: 0;
+}
+
 .intake-page__notice {
     background: color-mix(in srgb, var(--info) 8%, var(--card));
     border: 1px solid color-mix(in srgb, var(--info) 24%, var(--border));

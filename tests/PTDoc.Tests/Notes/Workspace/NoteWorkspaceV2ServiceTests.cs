@@ -1178,6 +1178,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var loaded = await _service.LoadAsync(patient.Id, note.Id);
 
         Assert.NotNull(loaded);
+        Assert.Equal(NoteStatus.Signed, loaded!.NoteStatus);
         Assert.Equal(6, loaded!.Payload.Subjective.CurrentPainScore);
 
         var stored = await _context.ClinicalNotes

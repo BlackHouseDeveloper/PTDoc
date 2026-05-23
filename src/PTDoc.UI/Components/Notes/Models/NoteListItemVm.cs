@@ -18,6 +18,7 @@ public class NoteListItemVm
     public bool IsIncomplete { get; set; }
     public bool HasErrors { get; set; }
     public bool CanEdit { get; set; }
+    public bool CanResolveAttention { get; set; }
     public bool CanDownloadPdf { get; set; }
     public string? ReadOnlyReason { get; set; }
 

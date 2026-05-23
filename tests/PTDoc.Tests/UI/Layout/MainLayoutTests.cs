@@ -15,20 +15,22 @@ public sealed class MainLayoutTests : TestContext
     private readonly TestThemeService _themeService = new();
     private readonly TestSyncService _syncService = new();
     private readonly TestConnectivityService _connectivityService = new();
+    private readonly TestAuthorizationContext _authorization;
 
     public MainLayoutTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddLogging();
-        var authorization = this.AddTestAuthorization();
-        authorization.SetAuthorized("test-user");
-        authorization.SetRoles(Roles.PT);
-        authorization.SetPolicies(
+        _authorization = this.AddTestAuthorization();
+        _authorization.SetAuthorized("test-user");
+        _authorization.SetRoles(Roles.PT);
+        _authorization.SetPolicies(
             AuthorizationPolicies.SchedulingAccess,
             AuthorizationPolicies.PatientRead,
             AuthorizationPolicies.IntakeRead,
             AuthorizationPolicies.NoteRead,
-            AuthorizationPolicies.ClinicalStaff);
+            AuthorizationPolicies.ClinicalStaff,
+            AuthorizationPolicies.NoteExport);
         Services.AddSingleton<IThemeService>(_themeService);
         Services.AddSingleton<ISyncService>(_syncService);
         Services.AddSingleton<IConnectivityService>(_connectivityService);
@@ -68,6 +70,31 @@ public sealed class MainLayoutTests : TestContext
         Assert.Single(cut.FindAll("button").Where(button => button.GetAttribute("aria-label") == "Close menu"));
         Assert.NotEmpty(cut.FindAll(".sidebar-backdrop"));
         Assert.Empty(cut.FindAll(".sidebar-backdrop[aria-label]"));
+    }
+
+    [Fact]
+    public void NavMenu_NoteExportUser_SeesExportCenter()
+    {
+        var cut = RenderLayout();
+
+        Assert.Contains("Export Center", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NavMenu_OwnerSeesSettingsButNotExportCenter()
+    {
+        _authorization.SetRoles(Roles.Owner);
+        _authorization.SetPolicies(
+            AuthorizationPolicies.SchedulingAccess,
+            AuthorizationPolicies.PatientRead,
+            AuthorizationPolicies.IntakeRead,
+            AuthorizationPolicies.NoteRead,
+            AuthorizationPolicies.ClinicalStaff);
+
+        var cut = RenderLayout();
+
+        Assert.DoesNotContain("Export Center", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Settings", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

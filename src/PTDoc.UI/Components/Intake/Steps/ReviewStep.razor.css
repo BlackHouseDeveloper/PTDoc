@@ -325,6 +325,39 @@
     border-color: color-mix(in srgb, var(--info) 24%, var(--border));
 }
 
+.review-step__review-callout {
+    align-items: center;
+    background: color-mix(in srgb, var(--info) 10%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--info) 24%, var(--border));
+    border-radius: var(--radius-lg);
+    display: flex;
+    gap: var(--spacing-4);
+    justify-content: space-between;
+    padding: var(--spacing-4);
+}
+
+.review-step__review-callout--complete {
+    background: color-mix(in srgb, var(--success) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+}
+
+.review-step__review-callout h2 {
+    color: var(--foreground);
+    font-size: var(--text-base);
+    margin: 0 0 var(--spacing-1);
+}
+
+.review-step__review-callout p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+.review-step__review-action {
+    min-height: calc(var(--spacing-8) + var(--spacing-2));
+    white-space: nowrap;
+}
+
 .review-step__success-box {
     background: color-mix(in srgb, var(--success) 10%, var(--card));
     border-color: color-mix(in srgb, var(--success) 24%, var(--border));
@@ -415,6 +448,11 @@
 
     .review-step__row {
         align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .review-step__review-callout {
+        align-items: stretch;
         flex-direction: column;
     }
 

@@ -7,6 +7,7 @@ namespace PTDoc.UI.Services;
 public interface IDashboardAlertService
 {
     Task<DashboardAlertsResponse> GetAlertsAsync(int take = 10, CancellationToken cancellationToken = default);
+    Task<DashboardSnapshotResponse> GetSnapshotAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class HttpDashboardAlertService(HttpClient httpClient) : IDashboardAlertService
@@ -26,5 +27,15 @@ public sealed class HttpDashboardAlertService(HttpClient httpClient) : IDashboar
             cancellationToken);
 
         return response ?? new DashboardAlertsResponse();
+    }
+
+    public async Task<DashboardSnapshotResponse> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetFromJsonAsync<DashboardSnapshotResponse>(
+            "/api/v1/dashboard/snapshot",
+            SerializerOptions,
+            cancellationToken);
+
+        return response ?? new DashboardSnapshotResponse();
     }
 }

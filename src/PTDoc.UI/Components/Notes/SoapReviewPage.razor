@@ -19,28 +19,31 @@
                 </div>
             </div>
 
-            <button type="button"
-                    class="soap-review-page__text-action"
-                    disabled="@(IsReadOnly || IsRegeneratingSummary || !CanRegenerateSummary)"
-                    @onclick="() => OnRegenerateSummary.InvokeAsync()">
-                @if (IsRegeneratingSummary)
-                {
-                    <span class="soap-review-page__spinner" aria-hidden="true"></span>
-                    <span>Regenerating…</span>
-                }
-                else
-                {
-                    <span class="soap-review-page__action-icon" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M11.6668 2.91663V5.83329H8.75016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                            <path d="M2.3335 11.0834V8.16671H5.25016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                            <path d="M3.5535 5.73579C3.80037 5.03874 4.25596 4.43428 4.8585 4.00557C5.46104 3.57687 6.18129 3.34486 6.92044 3.34133C7.65959 3.3378 8.38201 3.56291 8.98861 3.98584C9.59522 4.40878 10.0566 5.00888 10.3102 5.70355L11.6668 5.83329" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                            <path d="M10.4465 8.26421C10.1996 8.96126 9.74404 9.56572 9.1415 9.99442C8.53896 10.4231 7.81871 10.6551 7.07956 10.6587C6.34041 10.6622 5.61799 10.4371 5.01139 10.0142C4.40478 9.59122 3.94338 8.99112 3.68983 8.29646L2.33316 8.16671" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </span>
-                    <span>Regenerate</span>
-                }
-            </button>
+            @if (!IsReadOnly)
+            {
+                <button type="button"
+                        class="soap-review-page__text-action"
+                        disabled="@(IsRegeneratingSummary || !CanRegenerateSummary)"
+                        @onclick="() => OnRegenerateSummary.InvokeAsync()">
+                    @if (IsRegeneratingSummary)
+                    {
+                        <span class="soap-review-page__spinner" aria-hidden="true"></span>
+                        <span>Regenerating…</span>
+                    }
+                    else
+                    {
+                        <span class="soap-review-page__action-icon" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M11.6668 2.91663V5.83329H8.75016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M2.3335 11.0834V8.16671H5.25016" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M3.5535 5.73579C3.80037 5.03874 4.25596 4.43428 4.8585 4.00557C5.46104 3.57687 6.18129 3.34486 6.92044 3.34133C7.65959 3.3378 8.38201 3.56291 8.98861 3.98584C9.59522 4.40878 10.0566 5.00888 10.3102 5.70355L11.6668 5.83329" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M10.4465 8.26421C10.1996 8.96126 9.74404 9.56572 9.1415 9.99442C8.53896 10.4231 7.81871 10.6551 7.07956 10.6587C6.34041 10.6622 5.61799 10.4371 5.01139 10.0142C4.40478 9.59122 3.94338 8.99112 3.68983 8.29646L2.33316 8.16671" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </span>
+                        <span>Regenerate</span>
+                    }
+                </button>
+            }
         </div>
 
         @if (!IsReadOnly && !CanRegenerateSummary && !string.IsNullOrWhiteSpace(RegenerateSummaryDisabledReason))
@@ -59,18 +62,16 @@
             <p>@GetDisplayedClinicalSummary()</p>
         </div>
 
-        @if (IsPendingClinicalSummary)
+        @if (IsPendingClinicalSummary && !IsReadOnly)
         {
             <div class="soap-review-page__action-bar" aria-label="AI summary review actions">
                 <button type="button"
                         class="soap-review-page__button soap-review-page__button--secondary"
-                        disabled="@IsReadOnly"
                         @onclick="() => OnDiscardPendingSummary.InvokeAsync()">
                     <span>Discard</span>
                 </button>
                 <button type="button"
                         class="soap-review-page__button soap-review-page__button--primary"
-                        disabled="@IsReadOnly"
                         @onclick="() => OnAcceptPendingSummary.InvokeAsync()">
                     <span>Accept Summary</span>
                 </button>
@@ -154,17 +155,19 @@
                 <h2>Subjective</h2>
             </div>
 
-            <button type="button"
-                    class="soap-review-page__text-action"
-                    disabled="@IsReadOnly"
-                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Subjective)">
-                <span class="soap-review-page__action-icon" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-                <span>Edit</span>
-            </button>
+            @if (!IsReadOnly)
+            {
+                <button type="button"
+                        class="soap-review-page__text-action"
+                        @onclick="() => OnEditSection.InvokeAsync(SoapSection.Subjective)">
+                    <span class="soap-review-page__action-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span>Edit</span>
+                </button>
+            }
         </div>
 
         <div class="soap-review-page__section-grid">
@@ -213,17 +216,19 @@
                 <h2>Objective</h2>
             </div>
 
-            <button type="button"
-                    class="soap-review-page__text-action"
-                    disabled="@IsReadOnly"
-                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Objective)">
-                <span class="soap-review-page__action-icon" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-                <span>Edit</span>
-            </button>
+            @if (!IsReadOnly)
+            {
+                <button type="button"
+                        class="soap-review-page__text-action"
+                        @onclick="() => OnEditSection.InvokeAsync(SoapSection.Objective)">
+                    <span class="soap-review-page__action-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span>Edit</span>
+                </button>
+            }
         </div>
 
         <div class="soap-review-page__section-grid">
@@ -263,17 +268,19 @@
                 <h2>Assessment</h2>
             </div>
 
-            <button type="button"
-                    class="soap-review-page__text-action"
-                    disabled="@IsReadOnly"
-                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Assessment)">
-                <span class="soap-review-page__action-icon" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-                <span>Edit</span>
-            </button>
+            @if (!IsReadOnly)
+            {
+                <button type="button"
+                        class="soap-review-page__text-action"
+                        @onclick="() => OnEditSection.InvokeAsync(SoapSection.Assessment)">
+                    <span class="soap-review-page__action-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span>Edit</span>
+                </button>
+            }
         </div>
 
         <div class="soap-review-page__section-grid">
@@ -301,20 +308,23 @@
                         </div>
                     </div>
 
-                    <button type="button"
-                            class="soap-review-page__text-action"
-                            disabled="@(IsReadOnly || IsRegeneratingGoals)"
-                            @onclick="() => OnRegenerateGoals.InvokeAsync()">
-                        @if (IsRegeneratingGoals)
-                        {
-                            <span class="soap-review-page__spinner" aria-hidden="true"></span>
-                            <span>Regenerating…</span>
-                        }
-                        else
-                        {
-                            <span>Regenerate</span>
-                        }
-                    </button>
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button"
+                                class="soap-review-page__text-action"
+                                disabled="@IsRegeneratingGoals"
+                                @onclick="() => OnRegenerateGoals.InvokeAsync()">
+                            @if (IsRegeneratingGoals)
+                            {
+                                <span class="soap-review-page__spinner" aria-hidden="true"></span>
+                                <span>Regenerating…</span>
+                            }
+                            else
+                            {
+                                <span>Regenerate</span>
+                            }
+                        </button>
+                    }
                 </div>
 
                 <ul class="soap-review-page__goal-list">
@@ -347,17 +357,19 @@
                 <h2>Plan</h2>
             </div>
 
-            <button type="button"
-                    class="soap-review-page__text-action"
-                    disabled="@IsReadOnly"
-                    @onclick="() => OnEditSection.InvokeAsync(SoapSection.Plan)">
-                <span class="soap-review-page__action-icon" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-                <span>Edit</span>
-            </button>
+            @if (!IsReadOnly)
+            {
+                <button type="button"
+                        class="soap-review-page__text-action"
+                        @onclick="() => OnEditSection.InvokeAsync(SoapSection.Plan)">
+                    <span class="soap-review-page__action-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9.91683 2.91663L11.0835 4.08329M4.0835 9.91663L3.50016 12.2499L5.8335 11.6666L10.5002 6.99996C10.8223 6.67779 11.0033 6.24084 11.0033 5.78579C11.0033 5.33075 10.8223 4.8938 10.5002 4.57163L9.4285 3.49996C9.10633 3.17779 8.66938 2.99677 8.21433 2.99677C7.75928 2.99677 7.32233 3.17779 7.00016 3.49996L4.0835 6.41663V9.91663Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span>Edit</span>
+                </button>
+            }
         </div>
 
         <div class="soap-review-page__section-grid">

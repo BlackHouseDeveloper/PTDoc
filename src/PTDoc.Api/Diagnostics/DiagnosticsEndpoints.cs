@@ -4,6 +4,8 @@ using PTDoc.Api.AI;
 using PTDoc.Application.AI;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Services;
+using PTDoc.Core.Communication;
+using PTDoc.Infrastructure.Communication;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Api.Diagnostics;
@@ -177,6 +179,51 @@ public static class DiagnosticsEndpoints
         })
         .WithName("GetAiFaultDiagnostics");
 
+        group.MapGet("/development/communications", (
+            IConfiguration configuration,
+            IHostEnvironment environment,
+            DevelopmentCommunicationMessageStore messageStore,
+            string? purpose,
+            string? channel,
+            int? take) =>
+        {
+            if (!IsDevelopmentCommunicationDiagnosticsAvailable(configuration, environment))
+            {
+                return Results.NotFound();
+            }
+
+            var filterFailure = ValidateCommunicationFilters(purpose, channel, out var purposeFilter, out var channelFilter);
+            if (filterFailure is not null)
+            {
+                return filterFailure;
+            }
+
+            var normalizedTake = Math.Clamp(take ?? 25, 1, 100);
+            var messages = messageStore
+                .List(100)
+                .Where(message => purposeFilter is null || message.Purpose == purposeFilter)
+                .Where(message => channelFilter is null || message.Channel == channelFilter)
+                .Take(normalizedTake)
+                .Select(message => new
+                {
+                    message.Id,
+                    message.CapturedAtUtc,
+                    channel = message.Channel.ToString(),
+                    purpose = message.Purpose.ToString(),
+                    message.Recipient,
+                    message.Subject,
+                    message.PlainTextBody,
+                    message.HtmlBody
+                })
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                messages
+            });
+        })
+        .WithName("GetDevelopmentCommunicationDiagnostics");
+
         group.MapPut("/ai-faults", (
             AiDiagnosticsFaultRequest request,
             IConfiguration configuration,
@@ -329,6 +376,51 @@ public static class DiagnosticsEndpoints
         {
             errors ??= new Dictionary<string, string[]>();
             errors[nameof(AiDiagnosticsFaultRequest.TargetUserId)] = ["TargetUserId must be a non-empty GUID when supplied."];
+        }
+
+        return errors is null ? null : Results.ValidationProblem(errors);
+    }
+
+    private static bool IsDevelopmentCommunicationDiagnosticsAvailable(
+        IConfiguration configuration,
+        IHostEnvironment environment)
+        => DeveloperDiagnosticsModeResolver.IsEnabled(configuration)
+            && (environment.IsDevelopment() || environment.IsEnvironment("Testing"));
+
+    private static IResult? ValidateCommunicationFilters(
+        string? purpose,
+        string? channel,
+        out DeliveryPurpose? purposeFilter,
+        out DeliveryChannel? channelFilter)
+    {
+        purposeFilter = null;
+        channelFilter = null;
+        Dictionary<string, string[]>? errors = null;
+
+        if (!string.IsNullOrWhiteSpace(purpose))
+        {
+            if (Enum.TryParse<DeliveryPurpose>(purpose, ignoreCase: true, out var parsedPurpose))
+            {
+                purposeFilter = parsedPurpose;
+            }
+            else
+            {
+                errors ??= new Dictionary<string, string[]>();
+                errors[nameof(purpose)] = ["Purpose must be one of: PasswordReset, IntakeLink, IntakeOtp."];
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(channel))
+        {
+            if (Enum.TryParse<DeliveryChannel>(channel, ignoreCase: true, out var parsedChannel))
+            {
+                channelFilter = parsedChannel;
+            }
+            else
+            {
+                errors ??= new Dictionary<string, string[]>();
+                errors[nameof(channel)] = ["Channel must be one of: Email, Sms."];
+            }
         }
 
         return errors is null ? null : Results.ValidationProblem(errors);

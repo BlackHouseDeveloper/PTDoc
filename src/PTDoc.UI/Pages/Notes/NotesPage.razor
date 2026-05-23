@@ -64,7 +64,6 @@
 
                 <NotesRecentSection
                     Items="regularRecentNotes"
-                    OnOpen="HandleOpenNote"
                     OnView="HandleViewNote"
                     OnEdit="HandleEditNote"
                     OnDownloadPdf="HandleDownloadPdf"
@@ -92,37 +91,45 @@
     private List<NoteListItemVm> notesNeedingAttention = new();
     private List<NoteListItemVm> regularRecentNotes = new();
     private CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _filterDebounceCts;
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
     private bool _isLoading = true;
     private string? _loadErrorMessage;
-
-    private static DateTime RecentCutoff => DateTime.UtcNow.Date.AddDays(-30);
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         _user = authState.User;
-        await LoadNotesAsync();
+        await LoadNotesAsync(_cts.Token);
         BuildFilterOptions();
         ApplyFilters();
     }
 
-    private async Task LoadNotesAsync()
+    private async Task LoadNotesAsync(CancellationToken cancellationToken)
     {
         _isLoading = true;
         _loadErrorMessage = null;
+        StateHasChanged();
 
         try
         {
+            var dateRange = ResolveDateRange(filterState.DateRange);
             var result = await NoteService.GetNotesAsync(
                 patientId: null,
-                noteType: null,
-                status: null,
+                noteType: NormalizeAllFilterValue(filterState.NoteType),
+                status: NormalizeAllFilterValue(filterState.Status),
                 take: 200,
-                cancellationToken: _cts.Token);
+                cancellationToken: cancellationToken,
+                search: NormalizeAllFilterValue(filterState.SearchQuery),
+                dateRangeStart: dateRange.Start,
+                dateRangeEnd: dateRange.End);
 
             notes.Clear();
             notes.AddRange(result.Select(ToVm));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
         }
         catch (Exception ex)
         {
@@ -139,7 +146,8 @@
 
     private async Task RetryLoadNotesAsync()
     {
-        await LoadNotesAsync();
+        ResetLoadCancellation();
+        await LoadNotesAsync(_cts.Token);
         BuildFilterOptions();
         ApplyFilters();
     }
@@ -174,7 +182,8 @@
             IsUnsigned = !dto.IsSigned,
             IsPendingCoSign = noteStatus == NoteStatus.PendingCoSign,
             CanEdit = CanEditNote(noteStatus, dto.NoteType),
-            CanDownloadPdf = CanDownloadPdf(),
+            CanResolveAttention = CanResolveAttention(noteStatus, dto.NoteType),
+            CanDownloadPdf = CanDownloadPdf(noteStatus),
             ReadOnlyReason = GetReadOnlyReason(noteStatus, dto.NoteType)
         };
     }
@@ -195,11 +204,22 @@
             && noteType.Contains("Daily", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool CanDownloadPdf()
+    private bool CanResolveAttention(NoteStatus noteStatus, string noteType)
     {
-        return _user.IsInRole(Roles.PT)
+        if (noteStatus == NoteStatus.PendingCoSign)
+        {
+            return _user.IsInRole(Roles.PT);
+        }
+
+        return CanEditNote(noteStatus, noteType);
+    }
+
+    private bool CanDownloadPdf(NoteStatus noteStatus)
+    {
+        return noteStatus == NoteStatus.Signed
+            && (_user.IsInRole(Roles.PT)
             || _user.IsInRole(Roles.PTA)
-            || _user.IsInRole(Roles.Admin);
+            || _user.IsInRole(Roles.Admin));
     }
 
     private string? GetReadOnlyReason(NoteStatus noteStatus, string noteType)
@@ -248,22 +268,45 @@
 
         noteTypes.AddRange(notes.Select(n => n.NoteType).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value));
         patients.AddRange(notes.Select(n => n.PatientName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value));
+
+        AddSelectedOptionIfMissing(noteTypes, filterState.NoteType);
+        AddSelectedOptionIfMissing(patients, filterState.Patient);
     }
 
-    private void HandleFilterChanged(NotesFilterState next)
+    private static void AddSelectedOptionIfMissing(List<string> options, string? selectedValue)
     {
+        if (string.IsNullOrWhiteSpace(selectedValue) ||
+            string.Equals(selectedValue, "all", StringComparison.OrdinalIgnoreCase) ||
+            options.Contains(selectedValue, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        options.Add(selectedValue);
+        options.Sort(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task HandleFilterChanged(NotesFilterState next)
+    {
+        var searchChanged = !string.Equals(filterState.SearchQuery, next.SearchQuery, StringComparison.Ordinal);
         filterState.SearchQuery = next.SearchQuery;
         filterState.NoteType = next.NoteType;
         filterState.Patient = next.Patient;
         filterState.Status = next.Status;
         filterState.DateRange = next.DateRange;
-        ApplyFilters();
+
+        if (searchChanged)
+        {
+            await DebouncedReloadNotesAsync();
+            return;
+        }
+
+        await ReloadNotesForFiltersAsync();
     }
 
     private void ApplyFilters()
     {
         var filtered = notes
-            .Where(note => note.CreatedDate.Date >= RecentCutoff)
             .Where(MatchesSearch)
             .Where(MatchesNoteType)
             .Where(MatchesPatient)
@@ -274,6 +317,37 @@
 
         notesNeedingAttention = filtered.Where(note => note.NeedsAttention).ToList();
         regularRecentNotes = filtered.Where(note => !note.NeedsAttention).ToList();
+    }
+
+    private async Task ReloadNotesForFiltersAsync()
+    {
+        _filterDebounceCts?.Cancel();
+        ResetLoadCancellation();
+        await LoadNotesAsync(_cts.Token);
+        BuildFilterOptions();
+        ApplyFilters();
+    }
+
+    private async Task DebouncedReloadNotesAsync()
+    {
+        _filterDebounceCts?.Cancel();
+        _filterDebounceCts?.Dispose();
+        _filterDebounceCts = new CancellationTokenSource();
+        var debounceToken = _filterDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(250, debounceToken);
+        }
+        catch (OperationCanceledException) when (debounceToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        ResetLoadCancellation();
+        await LoadNotesAsync(_cts.Token);
+        BuildFilterOptions();
+        ApplyFilters();
     }
 
     private bool MatchesSearch(NoteListItemVm note)
@@ -332,9 +406,23 @@
         };
     }
 
-    private void HandleOpenNote(NoteListItemVm note)
+    private static (DateTime? Start, DateTime? End) ResolveDateRange(string? dateRange)
     {
-        NavigateToNoteWorkspace(note);
+        var today = DateTime.UtcNow.Date;
+        return dateRange switch
+        {
+            "today" => (today, today),
+            "week" => (today.AddDays(-7), today),
+            "month" => (today.AddDays(-30), today),
+            _ => (null, null)
+        };
+    }
+
+    private static string? NormalizeAllFilterValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, "all", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : value.Trim();
     }
 
     private void HandleResolveAttentionNote(NoteListItemVm note)
@@ -356,12 +444,15 @@
     {
         if (!note.CanDownloadPdf)
         {
-            ToastService.ShowWarning("Your role does not have permission to export note PDFs.");
+            var message = string.Equals(note.Status, "Submitted", StringComparison.OrdinalIgnoreCase)
+                ? "Your role does not have permission to export note PDFs."
+                : "Only submitted notes can be exported as PDFs.";
+            ToastService.ShowWarning(message);
             return;
         }
 
         // PDF export is handled in the note workspace. Navigate there to download.
-        NavigateToNoteWorkspace(note);
+        NavigateToNoteWorkspace(note, "review");
     }
 
     private void NavigateToNoteWorkspace(NoteListItemVm note, string? requestedSection = null)
@@ -388,7 +479,16 @@
 
     public void Dispose()
     {
+        _filterDebounceCts?.Cancel();
+        _filterDebounceCts?.Dispose();
         _cts.Cancel();
         _cts.Dispose();
+    }
+
+    private void ResetLoadCancellation()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
     }
 }

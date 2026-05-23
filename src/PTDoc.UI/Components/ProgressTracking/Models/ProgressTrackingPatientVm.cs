@@ -1,4 +1,5 @@
 using PTDoc.UI.Components;
+using PTDoc.Core.Models;
 
 namespace PTDoc.UI.Components.ProgressTracking.Models;
 
@@ -17,6 +18,10 @@ public sealed class ProgressTrackingPatientVm
     public int CurrentScore { get; init; }
     public int ScoreDelta { get; init; }
     public bool HasOutcomeScore { get; init; }
+    public OutcomeMeasureType? CurrentOutcomeMeasureType { get; init; }
+    public string CurrentOutcomeMeasureLabel { get; init; } = string.Empty;
+    public string CurrentOutcomeScoreDisplay { get; init; } = string.Empty;
+    public string CurrentOutcomeInterpretation { get; init; } = string.Empty;
     public int MetGoalCount { get; init; }
     public int ActiveGoalCount { get; init; }
     public int ArchivedGoalCount { get; init; }
