@@ -132,6 +132,34 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(DatabaseSeeder.BetaClinicId, user.ClinicId);
     }
 
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_ReusesExistingBetaSlugClinic()
+    {
+        await using var context = CreateInMemoryContext();
+        var existingClinicId = Guid.NewGuid();
+        context.Clinics.Add(new Clinic
+        {
+            Id = existingClinicId,
+            Name = "Existing PFPT Beta",
+            Slug = "pfpt-beta",
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var clinic = await context.Clinics.SingleAsync(clinic => clinic.Slug == "pfpt-beta");
+        Assert.Equal(existingClinicId, clinic.Id);
+        Assert.Equal("Physically Fit Physical Therapy", clinic.Name);
+        Assert.True(clinic.IsActive);
+
+        var users = await context.Users
+            .Where(user => user.ClinicId == existingClinicId)
+            .ToListAsync();
+        Assert.Equal(4, users.Count);
+    }
+
     [Theory]
     [InlineData("january.beta", "january.beta@physicallyfitpt.test", Roles.Admin)]
     [InlineData("dani.beta", "dani.beta@physicallyfitpt.test", Roles.PT)]

@@ -513,7 +513,8 @@ public static class DatabaseSeeder
         ILogger logger,
         DateTime now)
     {
-        var clinic = await context.Clinics.FirstOrDefaultAsync(c => c.Id == BetaClinicId);
+        var clinic = await context.Clinics.FirstOrDefaultAsync(c => c.Id == BetaClinicId)
+            ?? await context.Clinics.FirstOrDefaultAsync(c => c.Slug == "pfpt-beta");
         if (clinic is null)
         {
             clinic = new Clinic
@@ -522,6 +523,13 @@ public static class DatabaseSeeder
                 CreatedAt = now
             };
             context.Clinics.Add(clinic);
+        }
+        else if (clinic.Id != BetaClinicId)
+        {
+            logger.LogWarning(
+                "Found existing clinic with slug {Slug} but unexpected Id {ClinicId}; using existing clinic for Beta access seeding.",
+                clinic.Slug,
+                clinic.Id);
         }
 
         clinic.Name = "Physically Fit Physical Therapy";
