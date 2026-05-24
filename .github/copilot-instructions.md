@@ -10,11 +10,13 @@
 5. **Don't refactor unrelated code** unless explicitly required
 6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
 7. **Update the changelog** - if the session changes repository contents, update `docs/CHANGELOG.md` before handing off. If no entry is appropriate, say so explicitly.
+8. **Commit only after verification** - never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
 - Ask the user to run builds/tests and provide output.
 - Use provided build/test output to drive fixes and iteration.
+- A commit requires explicit user confirmation that the relevant build and tests passed, unless the user explicitly authorizes committing without that confirmation.
 
 **Reference Docs Only When Relevant**
 - Do NOT open/cite every doc for every task

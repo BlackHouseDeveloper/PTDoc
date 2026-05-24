@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Agent commit verification guardrail
+
+- **`AGENTS.md`**, **`.github/copilot-instructions.md`** — Documented that agents and Copilot must not create git commits unless the user has confirmed relevant build/test success or explicitly permits committing without that confirmation. Reason: preserve verification discipline before repository history is updated.
+
 ### Added - Responsive regression prevention
 
 - **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor*`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.UI/Services/*ViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Services/WebViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`tests/PTDoc.Web.UiQa/*`**, **`.github/workflows/ui-responsive-qa.yml`**, **`docs/RESPONSIVE_QA.md`**, **`docs/DEVELOPMENT.md`**, **`tests/PTDoc.Tests/UI/Layout/*`** — Added a developer-gated viewport diagnostics overlay, a separate Playwright responsive QA project, a manual UI responsive QA workflow, and focused component coverage for diagnostics/sidebar collapsed behavior. Reason: beta layout regressions should be caught by CSS viewport, theme, and layout-mode behavior instead of physical-screen assumptions.
