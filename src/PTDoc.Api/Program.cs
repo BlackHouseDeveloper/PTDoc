@@ -731,10 +731,15 @@ if (app.Environment.IsEnvironment("Beta"))
     using var scope = app.Services.CreateScope();
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var betaAccessSeedPin = app.Configuration["BetaAccess:SeedPin"];
 
     try
     {
-        if (!await context.Database.CanConnectAsync())
+        if (!IsValidBetaAccessSeedPin(betaAccessSeedPin))
+        {
+            logger.LogWarning("Skipping Beta access seed because BetaAccess:SeedPin is not configured as a 4-digit PIN.");
+        }
+        else if (!await context.Database.CanConnectAsync())
         {
             logger.LogWarning("Skipping Beta access seed because the database is not reachable.");
         }
@@ -750,7 +755,7 @@ if (app.Environment.IsEnvironment("Beta"))
             }
             else
             {
-                await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger);
+                await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger, betaAccessSeedPin!);
             }
         }
     }
@@ -1013,6 +1018,11 @@ static string GetPasswordResetRateLimitPartitionKey(
 
     return "unknown";
 }
+
+static bool IsValidBetaAccessSeedPin(string? seedPin) =>
+    !string.IsNullOrWhiteSpace(seedPin)
+    && seedPin.Length == 4
+    && seedPin.All(char.IsDigit);
 
 static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext context)
 {

@@ -155,7 +155,7 @@ public static class DatabaseSeeder
     /// <summary>
     /// Seeds the small, authoritative Beta access fixture used for manual beta testing.
     /// </summary>
-    public static async Task SeedBetaAccessDataAsync(ApplicationDbContext context, ILogger logger)
+    public static async Task SeedBetaAccessDataAsync(ApplicationDbContext context, ILogger logger, string seedPin)
     {
         logger.LogInformation("Checking Beta access seed data...");
 
@@ -195,9 +195,9 @@ public static class DatabaseSeeder
             }
 
             user.Username = normalizedUsername;
-            if (!HasBetaSeedPin(user.PinHash))
+            if (!HasBetaSeedPin(user.PinHash, seedPin))
             {
-                user.PinHash = AuthService.HashPin("1234");
+                user.PinHash = AuthService.HashPin(seedPin);
             }
 
             user.FirstName = spec.FirstName;
@@ -533,7 +533,7 @@ public static class DatabaseSeeder
         return clinic;
     }
 
-    private static bool HasBetaSeedPin(string? pinHash)
+    private static bool HasBetaSeedPin(string? pinHash, string seedPin)
     {
         if (string.IsNullOrWhiteSpace(pinHash))
         {
@@ -542,7 +542,7 @@ public static class DatabaseSeeder
 
         try
         {
-            return BCrypt.Net.BCrypt.Verify("1234", pinHash);
+            return BCrypt.Net.BCrypt.Verify(seedPin, pinHash);
         }
         catch (BCrypt.Net.SaltParseException)
         {

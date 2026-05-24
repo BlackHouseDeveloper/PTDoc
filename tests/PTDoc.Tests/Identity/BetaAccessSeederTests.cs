@@ -16,12 +16,14 @@ namespace PTDoc.Tests.Identity;
 [Trait("Category", "CoreCi")]
 public sealed class BetaAccessSeederTests
 {
+    private const string TestBetaSeedPin = "8642";
+
     [Fact]
     public async Task SeedBetaAccessDataAsync_CreatesPfptClinicAndSeededUsers()
     {
         await using var context = CreateInMemoryContext();
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         var clinic = await context.Clinics.SingleAsync(clinic => clinic.Id == DatabaseSeeder.BetaClinicId);
         Assert.Equal("Physically Fit Physical Therapy", clinic.Name);
@@ -45,7 +47,7 @@ public sealed class BetaAccessSeederTests
     {
         await using var context = CreateInMemoryContext();
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         var dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
         dani.IsActive = false;
@@ -53,7 +55,7 @@ public sealed class BetaAccessSeederTests
         dani.PinHash = AuthService.HashPin("9999");
         await context.SaveChangesAsync();
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         Assert.Equal(4, await context.Users.CountAsync(user => user.ClinicId == DatabaseSeeder.BetaClinicId));
         dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
@@ -62,7 +64,7 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(DatabaseSeeder.BetaClinicId, dani.ClinicId);
 
         var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
-        var result = await authService.AuthenticateAsync("dani.beta", "1234", "127.0.0.1", "BetaAccessSeederTests");
+        var result = await authService.AuthenticateAsync("dani.beta", TestBetaSeedPin, "127.0.0.1", "BetaAccessSeederTests");
 
         Assert.NotNull(result);
         Assert.Equal(AuthStatus.Success, result!.Status);
@@ -74,13 +76,13 @@ public sealed class BetaAccessSeederTests
     {
         await using var context = CreateInMemoryContext();
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         var dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
         var originalPinHash = dani.PinHash;
         var originalLicenseExpirationDate = dani.LicenseExpirationDate;
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
         Assert.Equal(originalPinHash, dani.PinHash);
@@ -116,7 +118,7 @@ public sealed class BetaAccessSeederTests
             false,
             DateTime.UtcNow);
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
         var users = await context.Users
             .Where(user => user.Username.ToLower() == "dani.beta")
@@ -141,11 +143,11 @@ public sealed class BetaAccessSeederTests
         string role)
     {
         await using var context = CreateInMemoryContext();
-        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
         var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
 
-        var usernameResult = await authService.AuthenticateAsync(username, "1234", "127.0.0.1", "BetaAccessSeederTests");
-        var emailResult = await authService.AuthenticateAsync(email, "1234", "127.0.0.1", "BetaAccessSeederTests");
+        var usernameResult = await authService.AuthenticateAsync(username, TestBetaSeedPin, "127.0.0.1", "BetaAccessSeederTests");
+        var emailResult = await authService.AuthenticateAsync(email, TestBetaSeedPin, "127.0.0.1", "BetaAccessSeederTests");
 
         Assert.NotNull(usernameResult);
         Assert.NotNull(emailResult);
