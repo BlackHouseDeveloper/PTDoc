@@ -37,11 +37,17 @@
 }
 
 .menu-toggle--open {
-    margin-left: calc(250px - var(--spacing-8));
+    margin-left: 0;
 }
 
 .menu-toggle--closed {
     margin-left: 0;
+}
+
+@media (min-width: 1200px) {
+    .menu-toggle--open {
+        margin-left: calc(250px - var(--spacing-8));
+    }
 }
 
 .menu-toggle:hover {
