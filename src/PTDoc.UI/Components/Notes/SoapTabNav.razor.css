@@ -7,6 +7,7 @@
     overflow-x: auto;
     padding: var(--spacing-3) var(--spacing-4) var(--spacing-2);
     scrollbar-width: none;
+    min-width: 0;
 }
 
 .soap-tab-nav::-webkit-scrollbar {
@@ -25,7 +26,7 @@
     gap: var(--spacing-2);
     justify-content: center;
     min-height: var(--touch-target-desktop);
-    min-width: max-content;
+    min-width: 0;
     padding: var(--spacing-2) var(--spacing-3);
     text-align: center;
     transition: color var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
@@ -51,6 +52,9 @@
 .soap-tab-nav__label {
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .soap-tab-nav__tab--completed,
@@ -99,5 +103,6 @@
     .soap-tab-nav__tab {
         flex: 0 0 auto;
         justify-content: flex-start;
+        min-width: max-content;
     }
 }

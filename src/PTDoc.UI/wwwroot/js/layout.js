@@ -3,7 +3,7 @@ let mobileLayoutReference = null;
 let mobileLayoutChangeHandler = null;
 
 function getMobileLayoutQuery() {
-    mobileLayoutQuery ??= window.matchMedia("(max-width: 767px)");
+    mobileLayoutQuery ??= window.matchMedia("(max-width: 1199px)");
     return mobileLayoutQuery;
 }
 

@@ -13,7 +13,7 @@
         @if (ShouldRenderSidebar)
         {
             <div class="sidebar @GetSidebarClass()">
-                <NavMenu OnNotificationsClick="OpenNotificationsModal" OnNavigate="CloseMenuOnMobileAsync" />
+                <NavMenu IsCompact="IsCompactSidebar" OnNotificationsClick="OpenNotificationsModal" OnNavigate="CloseMenuOnMobileAsync" />
             </div>
         }
 
@@ -36,6 +36,8 @@
 
 <ToastContainer />
 
+<ViewportDiagnosticsOverlay />
+
 @code {
     private bool isMenuOpen;
     private bool isNotificationsModalOpen;
@@ -44,6 +46,7 @@
     private bool isMobileLayout;
 
     private bool ShouldRenderSidebar => !isMobileLayout || isMenuOpen;
+    private bool IsCompactSidebar => !isMobileLayout && !isMenuOpen;
 
     private string GetSidebarClass()
     {

@@ -46,6 +46,7 @@ public static class MauiProgram
         builder.Services.AddScoped<IUserService, MauiUserService>();
         builder.Services.AddScoped<AuthenticatedHttpMessageHandler>();
         builder.Services.AddScoped<IThemeService, MauiThemeService>();
+        builder.Services.AddSingleton<IViewportDiagnosticsService, DisabledViewportDiagnosticsService>();
         builder.Services.AddSingleton<IConnectivityService, MauiConnectivityService>();
         builder.Services.AddSingleton<LocalSyncCoordinator>();
         builder.Services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<LocalSyncCoordinator>());

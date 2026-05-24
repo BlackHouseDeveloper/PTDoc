@@ -34,6 +34,7 @@ public sealed class MainLayoutTests : TestContext
         Services.AddSingleton<IThemeService>(_themeService);
         Services.AddSingleton<ISyncService>(_syncService);
         Services.AddSingleton<IConnectivityService>(_connectivityService);
+        Services.AddSingleton<IViewportDiagnosticsService, DisabledViewportDiagnosticsService>();
         Services.AddSingleton<IToastService, TestToastService>();
         Services.AddSingleton<INotificationCenterService, TestNotificationCenterService>();
     }
@@ -70,6 +71,34 @@ public sealed class MainLayoutTests : TestContext
         Assert.Single(cut.FindAll("button").Where(button => button.GetAttribute("aria-label") == "Close menu"));
         Assert.NotEmpty(cut.FindAll(".sidebar-backdrop"));
         Assert.Empty(cut.FindAll(".sidebar-backdrop[aria-label]"));
+    }
+
+    [Fact]
+    public async Task DrawerLayout_BackdropClosesSidebarAndRemovesNav()
+    {
+        var cut = RenderLayout();
+        await cut.InvokeAsync(() => cut.Instance.OnMobileLayoutChanged(true));
+        cut.Find("button.menu-toggle").Click();
+
+        cut.Find(".sidebar-backdrop").Click();
+
+        Assert.Empty(cut.FindAll(".sidebar"));
+        Assert.Empty(cut.FindAll("nav[aria-label='Main navigation']"));
+    }
+
+    [Fact]
+    public async Task DesktopCollapsedLayout_HidesNavBarBrandAndKeepsNavigationIcons()
+    {
+        var cut = RenderLayout();
+        await cut.InvokeAsync(() => cut.Instance.OnMobileLayoutChanged(true));
+        await cut.InvokeAsync(() => cut.Instance.OnMobileLayoutChanged(false));
+
+        cut.Find("button.menu-toggle").Click();
+
+        Assert.NotEmpty(cut.FindAll(".sidebar.closed"));
+        Assert.Empty(cut.FindAll(".ptdoc-nav-brand"));
+        Assert.NotEmpty(cut.FindAll(".ptdoc-nav-icon"));
+        Assert.NotEmpty(cut.FindAll(".ptdoc-nav-logout-btn img"));
     }
 
     [Fact]

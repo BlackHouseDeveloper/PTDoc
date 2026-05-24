@@ -37,7 +37,8 @@
 }
 
 .tab-button:not(.selected):hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--muted);
+    color: var(--foreground);
 }
 
 .tab-button:focus-visible {

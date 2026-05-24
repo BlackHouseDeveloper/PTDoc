@@ -1,0 +1,92 @@
+@namespace PTDoc.UI.Components.Layout
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject IViewportDiagnosticsService DiagnosticsService
+@implements IAsyncDisposable
+
+@if (snapshot?.IsVisible == true)
+{
+    <aside class="viewport-diagnostics"
+           aria-label="Viewport diagnostics"
+           data-viewport-diagnostics-overlay>
+        <div class="viewport-diagnostics__title">Viewport</div>
+        <dl class="viewport-diagnostics__grid">
+            <dt>CSS</dt>
+            <dd>@snapshot.Width x @snapshot.Height</dd>
+            <dt>DPR</dt>
+            <dd>@snapshot.DevicePixelRatio.ToString("0.##")</dd>
+            <dt>Zoom</dt>
+            <dd>@snapshot.ZoomEstimate.ToString("0.##")x</dd>
+            <dt>Theme</dt>
+            <dd>@snapshot.Theme</dd>
+            <dt>Layout</dt>
+            <dd>@snapshot.LayoutMode</dd>
+        </dl>
+    </aside>
+}
+
+@code {
+    private IJSObjectReference? module;
+    private DotNetObjectReference<ViewportDiagnosticsOverlay>? diagnosticsReference;
+    private ViewportDiagnosticsSnapshot? snapshot;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/viewport-diagnostics.js");
+            diagnosticsReference = DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("initializeViewportDiagnostics", diagnosticsReference, DiagnosticsService.IsEnabled);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Viewport diagnostics JS interop error: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public Task OnViewportDiagnosticsChanged(ViewportDiagnosticsSnapshot value)
+    {
+        snapshot = value;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("disposeViewportDiagnostics");
+                await module.DisposeAsync();
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException)
+            {
+                // The Blazor Server circuit can disconnect before component disposal completes.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore disposal races during circuit teardown.
+            }
+        }
+
+        diagnosticsReference?.Dispose();
+    }
+
+    public sealed class ViewportDiagnosticsSnapshot
+    {
+        public bool IsVisible { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public double DevicePixelRatio { get; set; } = 1;
+        public double ZoomEstimate { get; set; } = 1;
+        public string Theme { get; set; } = "light";
+        public string LayoutMode { get; set; } = "desktop-full";
+    }
+}
+

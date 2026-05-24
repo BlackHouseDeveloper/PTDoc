@@ -7,6 +7,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-4);
+    min-width: 0;
 }
 
 .note-card-action-button:focus-visible {
@@ -20,12 +21,14 @@
     justify-content: space-between;
     gap: var(--spacing-4);
     padding-right: var(--spacing-6);
+    min-width: 0;
 }
 
 .note-card-patient-row {
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-4);
+    min-width: 0;
 }
 
 .note-card-patient-icon-default,
@@ -48,6 +51,7 @@
 .note-card-patient-content {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .note-card-patient-name {
@@ -56,6 +60,9 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 24px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .note-card-patient-id {
@@ -130,6 +137,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-4);
+    flex-wrap: wrap;
 }
 
 .note-card-date-row {
@@ -161,7 +169,7 @@
 .note-card-actions {
     width: calc(100% - var(--spacing-6));
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 104px), 1fr));
     gap: var(--spacing-3);
 }
 
@@ -179,6 +187,7 @@
     font-weight: var(--font-weight-medium);
     line-height: 16px;
     cursor: pointer;
+    min-width: 0;
 }
 
 .note-card-action-button:hover {
@@ -204,6 +213,26 @@
     font-weight: var(--font-weight-medium);
     line-height: 16px;
     text-align: center;
+}
+
+@media (max-width: 1199px) {
+    .note-card {
+        padding: var(--spacing-4);
+    }
+
+    .note-card-header {
+        flex-wrap: wrap;
+    }
+
+    .note-card-header,
+    .note-card-body {
+        padding-right: 0;
+    }
+
+    .note-card-divider,
+    .note-card-actions {
+        width: 100%;
+    }
 }
 
 @media (max-width: 767px) {
