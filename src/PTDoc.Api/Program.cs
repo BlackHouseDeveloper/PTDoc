@@ -719,11 +719,20 @@ if (autoMigrate)
         logger.LogInformation("Database migrations applied successfully.");
     }
 
-    // Seed test data in development only
+    // Seed test data in development only.
     if (app.Environment.IsDevelopment())
     {
         await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedTestDataAsync(context, logger);
     }
+}
+
+if (app.Environment.IsEnvironment("Beta"))
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger);
 }
 
 app.UseForwardedHeaders();

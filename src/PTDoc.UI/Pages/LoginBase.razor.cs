@@ -65,7 +65,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
         : "email";
     protected string LoginReturnUrl => returnUrl;
     protected string registrationConfirmationTitle = "Registration submitted";
-    protected string registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
+    protected string registrationConfirmationMessage = PendingApprovalMessage;
+    protected const string PendingApprovalMessage =
+        "Your account has been created and is waiting for administrator approval.";
     private bool _pendingLoginFieldReset;
 
     protected enum AuthMode
@@ -179,7 +181,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         isPendingApprovalNotice = false;
         isExternalLoginRedirecting = false;
         registrationConfirmationTitle = "Registration submitted";
-        registrationConfirmationMessage = "Your account is pending admin approval. You can sign in once your clinic administrator activates access.";
+        registrationConfirmationMessage = PendingApprovalMessage;
 
         if (mode == AuthMode.Login)
         {
@@ -319,7 +321,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 Logger.LogInformation("Sign up completed successfully.");
                 registrationConfirmationTitle = result.IsPending ? "Registration submitted" : "Account created";
                 registrationConfirmationMessage = result.IsPending
-                    ? "Your account is pending admin approval. You can sign in once your clinic administrator activates access."
+                    ? PendingApprovalMessage
                     : "Your account was created successfully. Return to Login to continue.";
                 ResetSignUpModel();
                 showPendingConfirmation = true;

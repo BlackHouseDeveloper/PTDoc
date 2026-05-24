@@ -71,6 +71,19 @@ AzureOpenAIApiVersion=<API version>
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
 
+## Seeded Beta Access
+
+When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, idempotent access fixture for manual beta validation. These accounts are not seeded in Production.
+
+| Username | Email | Role | PIN |
+|----------|-------|------|-----|
+| `january.beta` | `january.beta@physicallyfitpt.test` | Admin | `1234` |
+| `dani.beta` | `dani.beta@physicallyfitpt.test` | PT | `1234` |
+| `pta.beta` | `pta.beta@physicallyfitpt.test` | PTA | `1234` |
+| `patient.beta` | `patient.beta@physicallyfitpt.test` | Patient | `1234` |
+
+The seeded clinic is `Physically Fit Physical Therapy` with slug `pfpt-beta`. The Beta seeder is authoritative for these test accounts so access remains predictable after redeploys.
+
 ## GitHub Actions Deployment
 
 Use the manual `Deploy Beta` workflow. It builds, tests, publishes, and deploys the Web and API artifacts separately.
@@ -96,5 +109,7 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm `http://ptdoc.bhdevsites.com` redirects to HTTPS.
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
+- Confirm seeded Beta users can sign in with PIN `1234`.
+- Confirm a new signup receives the pending administrator approval message instead of a generic login failure.
 - Confirm no beta network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor Interactive Server connections stay established after login and navigation.

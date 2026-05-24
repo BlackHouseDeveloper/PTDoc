@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Beta authentication access
+
+- **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/Identity/AuthEndpoints.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.UI/Pages/Login*.razor*`**, **`tests/PTDoc.Tests/Identity/BetaAccessSeederTests.cs`**, **`tests/PTDoc.Tests/Integration/WebLoginEndpointIntegrationTests.cs`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added Beta-only seeded access for Admin, PT, PTA, and Patient accounts tied to the PFPT Beta clinic, routed Patient logins away from clinician dashboard defaults, clarified pending-approval messaging, documented seeded Beta credentials, and added focused seeder/login regressions. Reason: beta testers need predictable sign-in and approval behavior without adding new user/company/role nomenclature.
+
 ### Fixed - Beta Web static assets
 
 - **`src/PTDoc.Web/Program.cs`**, **`.github/workflows/deploy-beta.yml`**, **`tests/PTDoc.Tests/Integration/WebStaticAssetIntegrationTests.cs`** — Made the Web static-asset fallback recognize published `PTDoc.UI` assets under `wwwroot/_content/PTDoc.UI`, limited source-tree asset fallbacks to Development/Testing, added a beta deploy artifact check for the required UI CSS/logo/script files, and covered Beta static asset serving in integration tests. Reason: live beta validation showed the login page rendering unstyled because `PTDoc.UI` static assets returned 404 while the Blazor Server app itself was running.

@@ -60,7 +60,7 @@ public static class PinAuthEndpoints
                 Status = StatusCodes.Status403Forbidden,
                 Title = "Account is locked."
             };
-            problemDetails.Extensions["status"] = AuthStatus.AccountLocked.ToString();
+            problemDetails.Extensions["authStatus"] = AuthStatus.AccountLocked.ToString();
             return Results.Json(problemDetails, statusCode: problemDetails.Status);
         }
 
@@ -69,9 +69,10 @@ public static class PinAuthEndpoints
             var problemDetails = new ProblemDetails
             {
                 Status = StatusCodes.Status403Forbidden,
-                Title = "Account pending admin approval."
+                Title = "Account waiting for administrator approval.",
+                Detail = "Your account has been created and is waiting for administrator approval."
             };
-            problemDetails.Extensions["status"] = AuthStatus.PendingApproval.ToString();
+            problemDetails.Extensions["authStatus"] = AuthStatus.PendingApproval.ToString();
             return Results.Json(problemDetails, statusCode: problemDetails.Status);
         }
 
