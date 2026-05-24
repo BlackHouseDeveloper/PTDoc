@@ -732,7 +732,32 @@ if (app.Environment.IsEnvironment("Beta"))
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger);
+    try
+    {
+        if (!await context.Database.CanConnectAsync())
+        {
+            logger.LogWarning("Skipping Beta access seed because the database is not reachable.");
+        }
+        else
+        {
+            var pendingMigrations = (await context.Database.GetPendingMigrationsAsync()).ToList();
+            if (pendingMigrations.Count > 0)
+            {
+                logger.LogWarning(
+                    "Skipping Beta access seed because {PendingCount} migration(s) are pending: {Migrations}",
+                    pendingMigrations.Count,
+                    string.Join(", ", pendingMigrations));
+            }
+            else
+            {
+                await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Skipping Beta access seed because the database is not ready.");
+    }
 }
 
 app.UseForwardedHeaders();

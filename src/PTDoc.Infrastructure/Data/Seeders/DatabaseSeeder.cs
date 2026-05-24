@@ -174,6 +174,13 @@ public static class DatabaseSeeder
 
             if (user is null)
             {
+                // Legacy fallback for rows that predate save-time identifier normalization.
+                user = await context.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedUsername)
+                    ?? await context.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+            }
+
+            if (user is null)
+            {
                 user = new User
                 {
                     Id = Guid.NewGuid(),

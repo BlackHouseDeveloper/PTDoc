@@ -74,6 +74,7 @@ Do not commit real connection strings, signing keys, publish profiles, ACS crede
 ## Seeded Beta Access
 
 When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, idempotent access fixture for manual beta validation. These accounts are not seeded in Production.
+Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-of-band before starting or redeploying the API. If the database is unreachable or migrations are pending, the API logs a warning and skips Beta access seeding for that startup.
 
 | Username | Email | Role | PIN |
 |----------|-------|------|-----|
