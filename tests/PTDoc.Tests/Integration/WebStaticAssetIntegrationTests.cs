@@ -1,12 +1,18 @@
 using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Hosting;
 
 namespace PTDoc.Tests.Integration;
 
+[Collection("EnvironmentVariables")]
 [Trait("Category", "CoreCi")]
 public sealed class WebStaticAssetIntegrationTests
 {
+    private const string BetaEnvironmentName = "Beta";
+    private const string EntraClientSecretEnvironmentVariable = "EntraExternalId__ClientSecret";
+    private const string TestEntraClientSecret = "web-static-asset-test-client-secret-placeholder";
+
     public static TheoryData<string, string, string> ServedAssets =>
         new()
         {
@@ -15,7 +21,12 @@ public sealed class WebStaticAssetIntegrationTests
             { "Development", "/PTDoc.Web.styles.css", "text/css" },
             { "Development", "/js/auth.js", "javascript" },
             { "Development", "/_content/PTDoc.UI/js/modal.js", "javascript" },
-            { "Development", "/_content/PTDoc.UI/images/nav-home.svg", "image/svg+xml" }
+            { "Development", "/_content/PTDoc.UI/images/nav-home.svg", "image/svg+xml" },
+            { "Beta", "/_content/PTDoc.UI/css/app.css", "text/css" },
+            { "Beta", "/_content/PTDoc.UI/PTDoc.UI.bundle.scp.css", "text/css" },
+            { "Beta", "/PTDoc.Web.styles.css", "text/css" },
+            { "Beta", "/_content/PTDoc.UI/js/theme.js", "javascript" },
+            { "Beta", "/_content/PTDoc.UI/ptdoclogo.png", "image/png" }
         };
 
     [Theory]
@@ -75,13 +86,67 @@ public sealed class WebStaticAssetIntegrationTests
         Assert.Contains("Page not found", body, StringComparison.Ordinal);
     }
 
-    private sealed class PTDocWebFactory(string environmentName)
-        : WebApplicationFactory<PTDoc.Web.Components.App>
+    private sealed class PTDocWebFactory : WebApplicationFactory<PTDoc.Web.Components.App>
     {
+        private readonly string environmentName;
+        private readonly string webContentRoot;
+        private readonly string? publishedWebRoot;
+
+        public PTDocWebFactory(string environmentName)
+        {
+            this.environmentName = environmentName;
+            webContentRoot = ResolveWebContentRoot();
+
+            if (string.Equals(environmentName, BetaEnvironmentName, StringComparison.Ordinal))
+            {
+                publishedWebRoot = CreatePublishedWebRoot(webContentRoot);
+            }
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(environmentName);
-            builder.UseContentRoot(ResolveWebContentRoot());
+            builder.UseContentRoot(webContentRoot);
+
+            if (publishedWebRoot is not null)
+            {
+                builder.UseWebRoot(publishedWebRoot);
+            }
+        }
+
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            if (!string.Equals(environmentName, BetaEnvironmentName, StringComparison.Ordinal))
+            {
+                return base.CreateHost(builder);
+            }
+
+            var previousClientSecret = Environment.GetEnvironmentVariable(EntraClientSecretEnvironmentVariable);
+            Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, TestEntraClientSecret);
+
+            try
+            {
+                return base.CreateHost(builder);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(EntraClientSecretEnvironmentVariable, previousClientSecret);
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                base.Dispose(disposing);
+            }
+            finally
+            {
+                if (publishedWebRoot is not null && Directory.Exists(publishedWebRoot))
+                {
+                    Directory.Delete(publishedWebRoot, recursive: true);
+                }
+            }
         }
 
         private static string ResolveWebContentRoot()
@@ -100,6 +165,93 @@ public sealed class WebStaticAssetIntegrationTests
             }
 
             throw new InvalidOperationException("Could not locate src/PTDoc.Web for static asset integration tests.");
+        }
+
+        private static string CreatePublishedWebRoot(string webContentRoot)
+        {
+            var repositoryRoot = ResolveRepositoryRoot(webContentRoot);
+            var root = Path.Combine(Path.GetTempPath(), $"ptdoc-web-assets-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+
+            try
+            {
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "css", "app.css"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "css", "app.css"));
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "js", "theme.js"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "js", "theme.js"));
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "ptdoclogo.png"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "ptdoclogo.png"));
+                CopyFirstExisting(
+                    [
+                        Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Debug", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css"),
+                        Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Release", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css")
+                    ],
+                    Path.Combine(root, "_content", "PTDoc.UI", "PTDoc.UI.bundle.scp.css"));
+                CopyFirstExisting(
+                    [
+                        Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Debug", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css"),
+                        Path.Combine(repositoryRoot, "src", "PTDoc.Web", "obj", "Release", "net8.0", "scopedcss", "bundle", "PTDoc.Web.styles.css")
+                    ],
+                    Path.Combine(root, "PTDoc.Web.styles.css"));
+
+                return root;
+            }
+            catch
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+
+                throw;
+            }
+        }
+
+        private static string ResolveRepositoryRoot(string webContentRoot)
+        {
+            var directory = new DirectoryInfo(webContentRoot);
+
+            while (directory is not null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "src", "PTDoc.Web", "PTDoc.Web.csproj"))
+                    && File.Exists(Path.Combine(directory.FullName, "src", "PTDoc.UI", "PTDoc.UI.csproj")))
+                {
+                    return directory.FullName;
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new InvalidOperationException("Could not locate repository root for static asset integration tests.");
+        }
+
+        private static void CopyFirstExisting(IReadOnlyList<string> sourceCandidates, string destination)
+        {
+            foreach (var source in sourceCandidates)
+            {
+                if (File.Exists(source))
+                {
+                    CopyFile(source, destination);
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Could not locate generated scoped CSS asset. Build the test project before running static asset integration tests.");
+        }
+
+        private static void CopyFile(string source, string destination)
+        {
+            if (!File.Exists(source))
+            {
+                throw new InvalidOperationException($"Could not locate required static asset '{source}'.");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination, overwrite: true);
         }
     }
 }

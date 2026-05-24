@@ -628,24 +628,29 @@ static string? GetAssemblyMetadata(Assembly assembly, string key)
 
 static void UsePTDocStaticAssetFallbacks(WebApplication app)
 {
-    var repositoryRoot = ResolveRepositoryRoot(app.Environment.ContentRootPath);
+    var useSourceAssetFallbacks = app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing");
+    var repositoryRoot = useSourceAssetFallbacks
+        ? ResolveRepositoryRoot(app.Environment.ContentRootPath)
+        : null;
     var webProjectRoot = repositoryRoot is null
         ? app.Environment.ContentRootPath
         : Path.Combine(repositoryRoot, "src", "PTDoc.Web");
-    var uiProjectRoot = repositoryRoot is null
-        ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "PTDoc.UI"))
-        : Path.Combine(repositoryRoot, "src", "PTDoc.UI");
-    var webRoot = Path.Combine(webProjectRoot, "wwwroot");
+    var webRoot = app.Environment.WebRootPath ?? Path.Combine(webProjectRoot, "wwwroot");
     var uiStaticRootPaths = new List<string>
     {
-        Path.Combine(uiProjectRoot, "wwwroot")
+        Path.Combine(webRoot, "_content", "PTDoc.UI")
     };
     var webScopedCssRootPaths = new List<string>();
 
-    // Development source runs and WebApplicationFactory tests need scoped CSS from intermediate
-    // build output. Published/non-development hosts should rely on static web assets instead.
-    if (app.Environment.IsDevelopment())
+    // Source runs and WebApplicationFactory tests need source/static CSS fallbacks.
+    // Published/non-development hosts should rely on static web assets instead.
+    if (useSourceAssetFallbacks)
     {
+        var uiProjectRoot = repositoryRoot is null
+            ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "PTDoc.UI"))
+            : Path.Combine(repositoryRoot, "src", "PTDoc.UI");
+
+        uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "wwwroot"));
         uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "projectbundle"));
         uiStaticRootPaths.Add(Path.Combine(uiProjectRoot, "obj", "Release", "net8.0", "scopedcss", "projectbundle"));
         webScopedCssRootPaths.Add(Path.Combine(webProjectRoot, "obj", "Debug", "net8.0", "scopedcss", "bundle"));
@@ -808,7 +813,7 @@ static string? ResolveStaticAssetPhysicalPath(
 
     if (string.Equals(value, "/PTDoc.Web.styles.css", StringComparison.OrdinalIgnoreCase))
     {
-        return ResolveExistingFile(webScopedCssRoots, "PTDoc.Web.styles.css");
+        return ResolveExistingFile(webScopedCssRoots.Append(webRoot), "PTDoc.Web.styles.css");
     }
 
     if (value.StartsWith("/js/", StringComparison.OrdinalIgnoreCase)

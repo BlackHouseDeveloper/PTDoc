@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta Web static assets
+
+- **`src/PTDoc.Web/Program.cs`**, **`.github/workflows/deploy-beta.yml`**, **`tests/PTDoc.Tests/Integration/WebStaticAssetIntegrationTests.cs`** — Made the Web static-asset fallback recognize published `PTDoc.UI` assets under `wwwroot/_content/PTDoc.UI`, limited source-tree asset fallbacks to Development/Testing, added a beta deploy artifact check for the required UI CSS/logo/script files, and covered Beta static asset serving in integration tests. Reason: live beta validation showed the login page rendering unstyled because `PTDoc.UI` static assets returned 404 while the Blazor Server app itself was running.
+
 ### Added - Beta deployment foundation
 
 - **`src/PTDoc.Web/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/Program.cs`**, **`.github/workflows/deploy-beta.yml`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`docs/CI.md`**, **`docs/ARCHITECTURE.md`**, **`docs/DEVELOPMENT.md`**, **`tests/PTDoc.Tests/Integration/BetaDeploymentConfigurationTests.cs`**, **`tests/PTDoc.Tests/Security/AuthorizationCoverageTests.cs`** — Added Beta environment configuration for separate Azure App Services, config-driven API CORS, unauthenticated `GET /health`, a manual Web/API deployment workflow, beta runbook documentation, and focused regression coverage. Reason: beta must run the Blazor Interactive Server frontend and API from stable Azure App Services without localhost, dev tunnel, or temporary Azure hostname dependencies.
