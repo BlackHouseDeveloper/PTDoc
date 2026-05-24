@@ -188,7 +188,11 @@ public static class DatabaseSeeder
             }
 
             user.Username = normalizedUsername;
-            user.PinHash = AuthService.HashPin("1234");
+            if (!HasBetaSeedPin(user.PinHash))
+            {
+                user.PinHash = AuthService.HashPin("1234");
+            }
+
             user.FirstName = spec.FirstName;
             user.LastName = spec.LastName;
             user.Role = spec.Role;
@@ -199,9 +203,14 @@ public static class DatabaseSeeder
             user.LicenseState = string.IsNullOrWhiteSpace(spec.LicenseState)
                 ? null
                 : spec.LicenseState.ToUpperInvariant();
-            user.LicenseExpirationDate = string.IsNullOrWhiteSpace(spec.LicenseNumber)
-                ? null
-                : now.AddYears(2);
+            if (string.IsNullOrWhiteSpace(spec.LicenseNumber))
+            {
+                user.LicenseExpirationDate = null;
+            }
+            else if (user.LicenseExpirationDate is null || user.LicenseExpirationDate <= now)
+            {
+                user.LicenseExpirationDate = now.AddYears(2);
+            }
         }
 
         await context.SaveChangesAsync();
@@ -515,6 +524,23 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
         logger.LogInformation("Ensured PFPT Beta clinic.");
         return clinic;
+    }
+
+    private static bool HasBetaSeedPin(string? pinHash)
+    {
+        if (string.IsNullOrWhiteSpace(pinHash))
+        {
+            return false;
+        }
+
+        try
+        {
+            return BCrypt.Net.BCrypt.Verify("1234", pinHash);
+        }
+        catch (BCrypt.Net.SaltParseException)
+        {
+            return false;
+        }
     }
 
     private static async Task EnsureSystemUserAsync(

@@ -68,6 +68,24 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(Roles.PT, result.Role);
     }
 
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_DoesNotRewriteStablePinOrFutureLicenseExpiration()
+    {
+        await using var context = CreateInMemoryContext();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+
+        var dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
+        var originalPinHash = dani.PinHash;
+        var originalLicenseExpirationDate = dani.LicenseExpirationDate;
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance);
+
+        dani = await context.Users.SingleAsync(user => user.Username == "dani.beta");
+        Assert.Equal(originalPinHash, dani.PinHash);
+        Assert.Equal(originalLicenseExpirationDate, dani.LicenseExpirationDate);
+    }
+
     [Theory]
     [InlineData("january.beta", "january.beta@physicallyfitpt.test", Roles.Admin)]
     [InlineData("dani.beta", "dani.beta@physicallyfitpt.test", Roles.PT)]
