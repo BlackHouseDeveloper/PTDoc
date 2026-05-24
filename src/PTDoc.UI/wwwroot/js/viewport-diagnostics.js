@@ -13,6 +13,11 @@ export function initializeViewportDiagnostics(reference, isServerEnabled) {
   serverEnabled = Boolean(isServerEnabled);
 
   applyQueryOverride();
+  if (!isDiagnosticsEnabled()) {
+    dotNetReference = null;
+    return;
+  }
+
   notify();
 
   resizeHandler = debounce(notify);
@@ -76,7 +81,7 @@ function captureViewportDiagnostics() {
   const devicePixelRatio = Number(window.devicePixelRatio || 1);
 
   return {
-    isVisible: serverEnabled || getStoredOverride(),
+    isVisible: isDiagnosticsEnabled(),
     width,
     height,
     devicePixelRatio,
@@ -84,6 +89,10 @@ function captureViewportDiagnostics() {
     theme: getTheme(),
     layoutMode: getLayoutMode(width)
   };
+}
+
+function isDiagnosticsEnabled() {
+  return serverEnabled || getStoredOverride();
 }
 
 function estimateZoom(width) {
@@ -133,4 +142,3 @@ function applyQueryOverride() {
 function getStoredOverride() {
   return localStorage.getItem(STORAGE_KEY) === 'true';
 }
-

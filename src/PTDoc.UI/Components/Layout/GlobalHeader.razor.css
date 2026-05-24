@@ -233,10 +233,6 @@
         padding: 0 var(--spacing-4);
     }
 
-    .menu-toggle--open {
-        margin-left: calc(250px - var(--spacing-6));
-    }
-
     .sync-button-text {
         display: none;
     }
@@ -257,7 +253,4 @@
         gap: var(--spacing-2);
     }
 
-    .menu-toggle--open {
-        margin-left: calc(250px - var(--spacing-8));
-    }
 }
