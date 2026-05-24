@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 
 namespace PTDoc.Tests.Integration;
 
@@ -87,6 +89,82 @@ public sealed class WebLoginEndpointIntegrationTests
         Assert.Single(recordingFactory.RequestPayloads);
         Assert.Contains("\"username\":\"alice\"", recordingFactory.RequestPayloads[0], StringComparison.Ordinal);
         Assert.Contains("\"pin\":\"1234\"", recordingFactory.RequestPayloads[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AuthLogin_PendingApproval_RedirectsToPendingApprovalNotice()
+    {
+        var recordingFactory = new RecordingHttpClientFactory(_ =>
+            new HttpResponseMessage(HttpStatusCode.Forbidden)
+            {
+                Content = JsonContent.Create(new
+                {
+                    Status = 403,
+                    AuthStatus = AuthStatus.PendingApproval.ToString()
+                })
+            });
+
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["username"] = "pending.user",
+            ["pin"] = "1234",
+            ["returnUrl"] = "/"
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/login?pending_approval=1", response.Headers.Location?.OriginalString);
+    }
+
+    [Theory]
+    [InlineData(Roles.Admin, "/", "/")]
+    [InlineData(Roles.PT, "/", "/")]
+    [InlineData(Roles.PTA, "/", "/")]
+    [InlineData(Roles.Patient, "/", "/intake")]
+    [InlineData(Roles.Patient, "/patients", "/intake")]
+    [InlineData(Roles.Patient, "/settings", "/intake")]
+    [InlineData(Roles.Patient, "/intake", "/intake")]
+    public async Task AuthLogin_ResolvesDefaultLandingByRole(
+        string role,
+        string returnUrl,
+        string expectedRedirect)
+    {
+        var recordingFactory = new RecordingHttpClientFactory(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    Status = "Succeeded",
+                    UserId = Guid.NewGuid(),
+                    Username = "beta-user",
+                    Token = "token",
+                    ExpiresAt = DateTime.UtcNow.AddHours(1),
+                    Role = role
+                })
+            });
+
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["username"] = "beta-user",
+            ["pin"] = "1234",
+            ["returnUrl"] = returnUrl
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(expectedRedirect, response.Headers.Location?.OriginalString);
     }
 
     [Fact]

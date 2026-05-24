@@ -23,6 +23,10 @@ public static class DatabaseSeeder
     /// Matches the demo clinic_id claim in CredentialValidator.
     /// </summary>
     public static readonly Guid DefaultClinicId = Guid.Parse("00000000-0000-0000-0000-000000000100");
+    /// <summary>
+    /// Well-known ID for the PFPT Beta clinic used by Beta-only seeded access accounts.
+    /// </summary>
+    public static readonly Guid BetaClinicId = Guid.Parse("00000000-0000-0000-0000-000000000200");
     private static readonly Guid HistoricalVasPatientId = Guid.Parse("5f2d7a29-3c5f-4a0c-9c6b-2d45c8f78a31");
     private static readonly Guid HistoricalVasNoteId = Guid.Parse("8d0c3d47-5e33-46a4-9c6d-6d6c01d7e8f4");
     private static readonly Guid HistoricalVasOutcomeMeasureResultId = Guid.Parse("2b80b173-53b2-4d92-b017-6cfa52aca5c1");
@@ -63,6 +67,14 @@ public static class DatabaseSeeder
         new("cprice", "Cameron", "Price", "cameron.price@ptdoc.local", Roles.PTA, "PTA223457", "CA"),
         new("wross", "Wesley", "Ross", "wesley.ross@ptdoc.local", Roles.PTA, "PTA223458", "CA"),
         new("ahall", "Avery", "Hall", "avery.hall@ptdoc.local", Roles.PTA, "PTA223459", "CA")
+    ];
+
+    private static readonly IReadOnlyList<BetaUserSeedSpec> BetaAccessUsers =
+    [
+        new("january.beta", "January", "Austin", "january.beta@physicallyfitpt.test", Roles.Admin, null, null),
+        new("dani.beta", "Dani", "Beta", "dani.beta@physicallyfitpt.test", Roles.PT, "PT-BETA-001", "CA"),
+        new("pta.beta", "PTA", "Beta", "pta.beta@physicallyfitpt.test", Roles.PTA, "PTA-BETA-001", "CA"),
+        new("patient.beta", "Patient", "Beta", "patient.beta@physicallyfitpt.test", Roles.Patient, null, null)
     ];
 
     private static readonly PatientSeedCondition[] PatientConditions =
@@ -138,6 +150,84 @@ public static class DatabaseSeeder
             patientCount,
             appointmentCount,
             noteCount);
+    }
+
+    /// <summary>
+    /// Seeds the small, authoritative Beta access fixture used for manual beta testing.
+    /// </summary>
+    public static async Task SeedBetaAccessDataAsync(ApplicationDbContext context, ILogger logger, string seedPin)
+    {
+        logger.LogInformation("Checking Beta access seed data...");
+
+        var now = DateTime.UtcNow;
+        var clinic = await EnsureBetaClinicAsync(context, logger, now);
+        var createdCount = 0;
+        var updatedCount = 0;
+
+        foreach (var spec in BetaAccessUsers)
+        {
+            var normalizedUsername = spec.Username.Trim().ToLowerInvariant();
+            var normalizedEmail = spec.Email.Trim().ToLowerInvariant();
+
+            var user = await context.Users.FirstOrDefaultAsync(u => u.Username == normalizedUsername)
+                ?? await context.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+
+            if (user is null)
+            {
+                // Legacy fallback for rows that predate save-time identifier normalization.
+                user = await context.Users.FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedUsername)
+                    ?? await context.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+            }
+
+            if (user is null)
+            {
+                user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    CreatedAt = now
+                };
+                context.Users.Add(user);
+                createdCount++;
+            }
+            else
+            {
+                updatedCount++;
+            }
+
+            user.Username = normalizedUsername;
+            if (!HasBetaSeedPin(user.PinHash, seedPin))
+            {
+                user.PinHash = AuthService.HashPin(seedPin);
+            }
+
+            user.FirstName = spec.FirstName;
+            user.LastName = spec.LastName;
+            user.Role = spec.Role;
+            user.Email = normalizedEmail;
+            user.IsActive = true;
+            user.ClinicId = clinic.Id;
+            user.LicenseNumber = spec.LicenseNumber;
+            user.LicenseState = string.IsNullOrWhiteSpace(spec.LicenseState)
+                ? null
+                : spec.LicenseState.ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(spec.LicenseNumber))
+            {
+                user.LicenseExpirationDate = null;
+            }
+            else if (user.LicenseExpirationDate is null || user.LicenseExpirationDate <= now)
+            {
+                user.LicenseExpirationDate = now.AddYears(2);
+            }
+        }
+
+        await context.SaveChangesAsync();
+
+        logger.LogInformation(
+            "Beta access seed complete for clinic {ClinicId}. Created={CreatedCount}, Updated={UpdatedCount}, Users={UserCount}.",
+            clinic.Id,
+            createdCount,
+            updatedCount,
+            BetaAccessUsers.Count);
     }
 
     private static async Task EnsureOutcomeMeasureQaFixturesAsync(
@@ -416,6 +506,56 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
         logger.LogInformation("Seeded default development clinic.");
         return clinic;
+    }
+
+    private static async Task<Clinic> EnsureBetaClinicAsync(
+        ApplicationDbContext context,
+        ILogger logger,
+        DateTime now)
+    {
+        var clinic = await context.Clinics.FirstOrDefaultAsync(c => c.Id == BetaClinicId)
+            ?? await context.Clinics.FirstOrDefaultAsync(c => c.Slug == "pfpt-beta");
+        if (clinic is null)
+        {
+            clinic = new Clinic
+            {
+                Id = BetaClinicId,
+                CreatedAt = now
+            };
+            context.Clinics.Add(clinic);
+        }
+        else if (clinic.Id != BetaClinicId)
+        {
+            logger.LogWarning(
+                "Found existing clinic with slug {Slug} but unexpected Id {ClinicId}; using existing clinic for Beta access seeding.",
+                clinic.Slug,
+                clinic.Id);
+        }
+
+        clinic.Name = "Physically Fit Physical Therapy";
+        clinic.Slug = "pfpt-beta";
+        clinic.IsActive = true;
+
+        await context.SaveChangesAsync();
+        logger.LogInformation("Ensured PFPT Beta clinic.");
+        return clinic;
+    }
+
+    private static bool HasBetaSeedPin(string? pinHash, string seedPin)
+    {
+        if (string.IsNullOrWhiteSpace(pinHash))
+        {
+            return false;
+        }
+
+        try
+        {
+            return BCrypt.Net.BCrypt.Verify(seedPin, pinHash);
+        }
+        catch (BCrypt.Net.SaltParseException)
+        {
+            return false;
+        }
     }
 
     private static async Task EnsureSystemUserAsync(
@@ -1584,6 +1724,15 @@ public static class DatabaseSeeder
         string Role,
         string LicenseNumber,
         string LicenseState);
+
+    private sealed record BetaUserSeedSpec(
+        string Username,
+        string FirstName,
+        string LastName,
+        string Email,
+        string Role,
+        string? LicenseNumber,
+        string? LicenseState);
 
     private sealed record PatientSeedCondition(
         string DiagnosisCode,

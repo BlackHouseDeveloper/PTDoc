@@ -49,6 +49,7 @@ Database__AutoMigrate=false
 ConnectionStrings__DefaultConnection=<Azure SQL connection string>
 Jwt__SigningKey=<minimum 32 character secret>
 IntakeInvite__SigningKey=<minimum 32 character secret>
+BetaAccess__SeedPin=<4 digit beta access PIN from secret store>
 IntakeInvite__PublicWebBaseUrl=https://ptdoc.bhdevsites.com
 Communication__PublicBaseUrl=https://ptdoc.bhdevsites.com
 Communication__RecipientHashSalt=<random high-entropy secret>
@@ -70,6 +71,21 @@ AzureOpenAIApiVersion=<API version>
 ```
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
+
+## Seeded Beta Access
+
+When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, idempotent access fixture for manual beta validation. These accounts are not seeded in Production.
+Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-of-band before starting or redeploying the API. If the database is unreachable or migrations are pending, the API logs a warning and skips Beta access seeding for that startup.
+The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed.
+
+| Username | Email | Role |
+|----------|-------|------|
+| `january.beta` | `january.beta@physicallyfitpt.test` | Admin |
+| `dani.beta` | `dani.beta@physicallyfitpt.test` | PT |
+| `pta.beta` | `pta.beta@physicallyfitpt.test` | PTA |
+| `patient.beta` | `patient.beta@physicallyfitpt.test` | Patient |
+
+The seeded clinic is `Physically Fit Physical Therapy` with slug `pfpt-beta`. The Beta seeder is authoritative for these test accounts so access remains predictable after redeploys.
 
 ## GitHub Actions Deployment
 
@@ -96,5 +112,7 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm `http://ptdoc.bhdevsites.com` redirects to HTTPS.
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
+- Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
+- Confirm a new signup receives the pending administrator approval message instead of a generic login failure.
 - Confirm no beta network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor Interactive Server connections stay established after login and navigation.

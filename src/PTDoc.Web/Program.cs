@@ -26,6 +26,7 @@ using System.Security.Claims;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseStaticWebAssets();
@@ -335,7 +336,8 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
         if (authResponse.StatusCode == HttpStatusCode.Forbidden)
         {
             var errorResponse = await authResponse.Content.ReadFromJsonAsync<WebAuthErrorResponse>(cancellationToken: httpContext.RequestAborted);
-            if (string.Equals(errorResponse?.Status, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(errorResponse?.AuthStatus, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(errorResponse?.StatusText, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 return Results.Redirect("/login?pending_approval=1");
             }
@@ -364,7 +366,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
         var principal = CreateWebPrincipal(loginResponse);
         await httpContext.SignInAsync(PTDocAuthSchemes.Cookie, principal);
 
-        return Results.Redirect(returnUrlValidation.Value);
+        return Results.Redirect(ResolvePostLoginRedirect(loginResponse.Role, returnUrlValidation.Value));
     }
 })
 .AllowAnonymous();
@@ -915,6 +917,37 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
     return new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocAuthSchemes.Cookie));
 }
 
+static string ResolvePostLoginRedirect(string role, string returnUrl)
+{
+    var safeReturnUrl = string.IsNullOrWhiteSpace(returnUrl)
+        ? "/"
+        : returnUrl;
+
+    if (!string.Equals(role, Roles.Patient, StringComparison.OrdinalIgnoreCase))
+    {
+        return safeReturnUrl;
+    }
+
+    return IsClinicianRouteForPatient(safeReturnUrl)
+        ? "/intake"
+        : safeReturnUrl;
+}
+
+static bool IsClinicianRouteForPatient(string returnUrl)
+{
+    var path = returnUrl.Split('?', '#')[0];
+
+    return string.Equals(path, "/", StringComparison.Ordinal)
+        || path.StartsWith("/patients", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/patient/", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/notes", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/appointments", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/progress-tracking", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/reports", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/export", StringComparison.OrdinalIgnoreCase);
+}
+
 file sealed class WebPinLoginRequest
 {
     public required string Username { get; init; }
@@ -941,7 +974,13 @@ file sealed class WebPinLoginResponse
 
 file sealed class WebAuthErrorResponse
 {
-    public string? Status { get; init; }
+    public JsonElement? Status { get; init; }
+
+    public string? AuthStatus { get; init; }
 
     public string? Error { get; init; }
+
+    public string? StatusText => Status?.ValueKind == JsonValueKind.String
+        ? Status.Value.GetString()
+        : null;
 }
