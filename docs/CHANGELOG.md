@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Responsive review follow-ups
+
+- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.UI/Components/Layout/GlobalHeader.razor.css`**, **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`docs/RESPONSIVE_QA.md`** — Avoided importing/initializing viewport diagnostics unless developer diagnostics or a query-string override is active, removed remaining tight-layout menu-toggle offsets, and renamed the responsive QA auth helper to reflect its fail-fast behavior. Reason: address PR review feedback while preserving the responsive QA overlay path.
+
 ### Changed - Responsive QA auth guardrail
 
 - **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`tests/PTDoc.Web.UiQa/README.md`**, **`docs/RESPONSIVE_QA.md`** — Made browser responsive QA fail fast when login is required but neither credentials nor a valid storage-state session is provided. Reason: missing GitHub Actions secrets or local auth setup must not make the responsive regression suite appear successful through skipped tests.

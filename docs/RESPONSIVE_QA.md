@@ -86,7 +86,7 @@ Disable the local override with:
 ?ptdocViewportDiagnostics=0
 ```
 
-The query-string override persists in localStorage as `ptdoc.viewportDiagnostics`, so testers can reload or navigate while preserving the overlay state.
+The query-string override is written to localStorage as `ptdoc.viewportDiagnostics` while diagnostics are active. When developer diagnostics are disabled, use the query string to start or stop the overlay for a fresh page load.
 
 ## Manual GitHub Workflow
 

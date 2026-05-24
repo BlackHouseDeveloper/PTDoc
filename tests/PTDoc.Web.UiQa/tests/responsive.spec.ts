@@ -42,7 +42,7 @@ test.describe('PTDoc responsive UI QA', () => {
     for (const route of routeCases) {
       test(`${route.name} is usable at ${viewport.name} in light mode`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await authenticateOrSkip(page);
+        await authenticateIfNeeded(page);
         await setTheme(page, 'light');
         await gotoAppRoute(page, route.path);
 
@@ -57,7 +57,7 @@ test.describe('PTDoc responsive UI QA', () => {
 
   test('dashboard is readable at 1280x720 in dark mode', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await authenticateOrSkip(page);
+    await authenticateIfNeeded(page);
     await setTheme(page, 'dark');
     await gotoAppRoute(page, '/');
 
@@ -71,7 +71,7 @@ test.describe('PTDoc responsive UI QA', () => {
 
   test('desktop sidebar collapses to an icon rail without clipping controls', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await authenticateOrSkip(page);
+    await authenticateIfNeeded(page);
     await gotoAppRoute(page, '/');
     await expectPageReady(page, /Dashboard/i);
 
@@ -94,7 +94,7 @@ test.describe('PTDoc responsive UI QA', () => {
 
   test('drawer sidebar opens and closes below 1200 CSS pixels', async ({ page }) => {
     await page.setViewportSize({ width: 1199, height: 720 });
-    await authenticateOrSkip(page);
+    await authenticateIfNeeded(page);
     await gotoAppRoute(page, '/');
     await expectPageReady(page, /Dashboard/i);
 
@@ -115,7 +115,7 @@ test.describe('PTDoc responsive UI QA', () => {
 
   test('appointments scheduler allows internal width without document overflow at 1280x720', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await authenticateOrSkip(page);
+    await authenticateIfNeeded(page);
     await gotoAppRoute(page, '/appointments');
     await expectPageReady(page, /Appointments/i);
 
@@ -125,7 +125,7 @@ test.describe('PTDoc responsive UI QA', () => {
   });
 });
 
-async function authenticateOrSkip(page: Page) {
+async function authenticateIfNeeded(page: Page) {
   attachConsoleCapture(page);
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
