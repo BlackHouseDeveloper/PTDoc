@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Responsive regression prevention
+
+- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor*`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.UI/Services/*ViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Services/WebViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`tests/PTDoc.Web.UiQa/*`**, **`.github/workflows/ui-responsive-qa.yml`**, **`docs/RESPONSIVE_QA.md`**, **`docs/DEVELOPMENT.md`**, **`tests/PTDoc.Tests/UI/Layout/*`** — Added a developer-gated viewport diagnostics overlay, a separate Playwright responsive QA project, a manual UI responsive QA workflow, and focused component coverage for diagnostics/sidebar collapsed behavior. Reason: beta layout regressions should be caught by CSS viewport, theme, and layout-mode behavior instead of physical-screen assumptions.
+
+### Fixed - Beta responsive layout and dark mode readability
+
+- **`src/PTDoc.UI/Components/Layout/*`**, **`src/PTDoc.UI/wwwroot/css/*`**, **`src/PTDoc.UI/Pages/Dashboard.razor.css`**, **`src/PTDoc.UI/Pages/Appointments.razor.css`**, **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor.css`**, **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor.css`**, **`src/PTDoc.UI/Components/Appointments/*`**, **`src/PTDoc.UI/Components/Intake/*`**, **`src/PTDoc.UI/Components/Notes/*`**, **`tests/PTDoc.Tests/UI/Layout/MainLayoutTests.cs`** — Moved the sidebar drawer breakpoint to tight laptop widths, added responsive min-width/wrapping guards across dashboard, appointments, intake, and notes surfaces, replaced low-contrast hardcoded dark-mode styling with token-driven colors, and covered drawer backdrop close behavior. Reason: beta testers on Windows laptops must be able to use the app at 100% browser zoom without clipped navigation, forced 75% zoom, or unreadable dark-mode text.
+
 ### Added - Beta authentication access
 
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/Identity/AuthEndpoints.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.UI/Pages/Login.razor`**, **`src/PTDoc.UI/Pages/LoginBase.razor.cs`**, **`tests/PTDoc.Tests/Identity/BetaAccessSeederTests.cs`**, **`tests/PTDoc.Tests/Integration/WebLoginEndpointIntegrationTests.cs`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added Beta-only seeded access for Admin, PT, PTA, and Patient accounts tied to the PFPT Beta clinic with the seed PIN supplied by configuration, routed Patient logins away from clinician dashboard defaults, clarified pending-approval messaging, documented seeded Beta access, and added focused seeder/login regressions. Reason: beta testers need predictable sign-in and approval behavior without adding new user/company/role nomenclature or committed Beta credentials.

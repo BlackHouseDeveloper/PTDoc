@@ -1,0 +1,14 @@
+{
+  "name": "ptdoc-web-ui-qa",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Responsive and theme QA checks for the PTDoc Web UI.",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "test": "playwright test",
+    "test:responsive": "playwright test tests/responsive.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0"
+  }
+}

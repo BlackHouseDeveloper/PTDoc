@@ -106,6 +106,12 @@ dotnet test --collect:"XPlat Code Coverage"
 dotnet test --filter Category=Integration
 ```
 
+### Responsive UI QA
+
+Use the separate Playwright project in `tests/PTDoc.Web.UiQa` for browser-level responsive checks. It covers the beta CSS-pixel viewport matrix, light/dark mode, sidebar layout states, page-level overflow, framework overlays, and relevant console errors without adding browser dependencies to the normal .NET CoreCi project.
+
+See [Responsive UI QA](RESPONSIVE_QA.md) for local commands, required environment variables, viewport diagnostics overlay usage, and the manual GitHub Actions workflow.
+
 ### Database Development
 
 #### Creating Migrations

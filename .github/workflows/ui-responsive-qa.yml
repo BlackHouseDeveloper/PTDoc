@@ -1,0 +1,114 @@
+name: UI Responsive QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_base_url:
+        description: "PTDoc Web base URL. Use http://localhost:5145 to start local Web/API in the workflow."
+        required: true
+        default: "http://localhost:5145"
+      upload_artifacts:
+        description: "Upload Playwright report, traces, screenshots, and app logs even when tests pass."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-qa:
+    name: Responsive QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PTDOC_WEB_BASE_URL: ${{ inputs.web_base_url }}
+      PTDOC_UI_QA_USERNAME: ${{ secrets.PTDOC_UI_QA_USERNAME }}
+      PTDOC_UI_QA_PIN: ${{ secrets.PTDOC_UI_QA_PIN }}
+      PTDOC_UI_QA_NOTE_WORKSPACE_PATH: ${{ vars.PTDOC_UI_QA_NOTE_WORKSPACE_PATH }}
+      PTDOC_DEVELOPER_MODE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET for local workflow target
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Bootstrap development secrets for local workflow target
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        run: ./setup-dev-secrets.sh
+
+      - name: Start API for local workflow target
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        run: |
+          dotnet run --project src/PTDoc.Api --urls http://localhost:5170 > "${RUNNER_TEMP}/ptdoc-api.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/ptdoc-api.pid"
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          PTDoc_DB_PATH: ${{ runner.temp }}/ptdoc-uiqa.db
+
+      - name: Wait for API liveness
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        run: |
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:5170/health/live; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "${RUNNER_TEMP}/ptdoc-api.log"
+          exit 1
+
+      - name: Start Web for local workflow target
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        run: |
+          dotnet run --project src/PTDoc.Web --urls http://localhost:5145 > "${RUNNER_TEMP}/ptdoc-web.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/ptdoc-web.pid"
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+
+      - name: Wait for Web
+        if: ${{ inputs.web_base_url == 'http://localhost:5145' }}
+        run: |
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:5145 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "${RUNNER_TEMP}/ptdoc-web.log"
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install UI QA dependencies
+        working-directory: tests/PTDoc.Web.UiQa
+        run: npm install
+
+      - name: Install Playwright Chromium
+        working-directory: tests/PTDoc.Web.UiQa
+        run: npx playwright install --with-deps chromium
+
+      - name: Run responsive UI QA
+        working-directory: tests/PTDoc.Web.UiQa
+        run: npm run test:responsive
+
+      - name: Upload UI QA artifacts
+        if: ${{ failure() || inputs.upload_artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-responsive-qa-artifacts
+          if-no-files-found: ignore
+          path: |
+            tests/PTDoc.Web.UiQa/test-results/
+            tests/PTDoc.Web.UiQa/playwright-report/
+            ${{ runner.temp }}/ptdoc-api.log
+            ${{ runner.temp }}/ptdoc-web.log
