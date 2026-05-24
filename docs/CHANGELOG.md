@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Responsive QA auth guardrail
+
+- **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`tests/PTDoc.Web.UiQa/README.md`**, **`docs/RESPONSIVE_QA.md`** — Made browser responsive QA fail fast when login is required but neither credentials nor a valid storage-state session is provided. Reason: missing GitHub Actions secrets or local auth setup must not make the responsive regression suite appear successful through skipped tests.
+
 ### Changed - Agent commit verification guardrail
 
 - **`AGENTS.md`**, **`.github/copilot-instructions.md`** — Documented that agents and Copilot must not create git commits unless the user has confirmed relevant build/test success or explicitly permits committing without that confirmation. Reason: preserve verification discipline before repository history is updated.

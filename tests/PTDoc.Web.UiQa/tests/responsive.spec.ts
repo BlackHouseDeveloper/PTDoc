@@ -138,12 +138,14 @@ async function authenticateOrSkip(page: Page) {
 
   const username = process.env.PTDOC_UI_QA_USERNAME;
   const pin = process.env.PTDOC_UI_QA_PIN;
-  test.skip(!username || !pin, 'Set PTDOC_UI_QA_USERNAME and PTDOC_UI_QA_PIN, or provide PTDOC_UI_QA_STORAGE_STATE.');
+  if (!username || !pin) {
+    throw new Error('Login form is visible, but PTDOC_UI_QA_USERNAME/PTDOC_UI_QA_PIN are not set and PTDOC_UI_QA_STORAGE_STATE did not provide an authenticated session. Set credentials or provide a valid storage-state file.');
+  }
 
   const loginResponse = await page.request.post('/auth/login', {
     form: {
-      username: username!,
-      pin: pin!,
+      username,
+      pin,
       returnUrl: '/'
     },
     maxRedirects: 0,

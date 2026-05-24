@@ -30,7 +30,7 @@ The tests support either:
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN` for local or beta seeded credentials.
 - `PTDOC_UI_QA_STORAGE_STATE` pointing to a Playwright storage-state JSON file.
 
-Do not commit credentials or generated storage-state files.
+Do not commit credentials or generated storage-state files. If a route requires login and neither credentials nor a valid storage-state file establishes a session, the suite fails fast instead of reporting skipped tests.
 
 For local `http://localhost:5145` runs, the harness signs in through the Web `/auth/login` endpoint and normalizes the returned auth cookie for HTTP browser automation. Deployed HTTPS runs keep the cookie behavior provided by the hosted app.
 

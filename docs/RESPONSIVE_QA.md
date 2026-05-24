@@ -35,7 +35,7 @@ PTDOC_UI_QA_PIN=<pin> \
 npm run test:responsive
 ```
 
-Never commit credentials or generated Playwright storage-state files.
+Never commit credentials or generated Playwright storage-state files. If a route requires login and neither credentials nor a valid storage-state file establishes a session, the suite fails fast instead of reporting skipped tests.
 
 For `http://localhost:5145`, the Playwright harness signs in through the Web `/auth/login` endpoint and normalizes the returned session cookie for local HTTP browser automation. Hosted HTTPS environments use the app's normal secure cookie behavior.
 
