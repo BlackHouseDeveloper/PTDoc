@@ -135,6 +135,71 @@ public sealed class NotesPageTests : TestContext
         });
     }
 
+    [Fact]
+    public void QueryFilters_AreAppliedToInitialNotesLoad()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddLogging();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IToastService>(new CapturingToastService());
+
+        var today = DateTime.UtcNow.Date;
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        noteService
+            .Setup(service => service.GetNotesAsync(
+                null,
+                null,
+                "Unsigned",
+                200,
+                null,
+                null,
+                It.IsAny<CancellationToken>(),
+                null,
+                today,
+                today,
+                0))
+            .ReturnsAsync(new[]
+            {
+                new NoteListItemApiResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientId = Guid.NewGuid(),
+                    PatientName = "Unsigned Patient",
+                    NoteType = NoteType.Daily.ToString(),
+                    NoteStatus = NoteStatus.Draft,
+                    IsSigned = false,
+                    DateOfService = today,
+                    LastModifiedUtc = today,
+                    CptCodesJson = "[]"
+                }
+            });
+        Services.AddSingleton(noteService.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/notes?status=Unsigned&dateRange=today");
+
+        var authStateTask = Services
+            .GetRequiredService<AuthenticationStateProvider>()
+            .GetAuthenticationStateAsync();
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<CascadingValue<Task<AuthenticationState>>>(0);
+            builder.AddAttribute(1, "Value", authStateTask);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent<NotesPage>(3);
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        root.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unsigned Patient", root.Markup, StringComparison.Ordinal);
+        });
+    }
+
     private sealed class CapturingToastService : IToastService
     {
         private readonly List<string> _errorMessages = new();

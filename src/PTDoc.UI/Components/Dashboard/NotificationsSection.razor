@@ -35,55 +35,61 @@
                 else
                 {
                     <div class="dashboard-alerts__list" role="list">
-                        @foreach (var alert in VisibleAlerts)
+                        @foreach (var group in VisibleAlertGroups)
                         {
-                            <article class="@BuildAlertClass(alert)"
-                                     role="listitem"
-                                     data-testid="dashboard-alert-card"
-                                     data-alert-kind="@alert.Kind">
-                                <div class="dashboard-alert-card__icon" aria-hidden="true">
-                                    @RenderAlertIcon(alert.Kind)
-                                </div>
+                            <section class="dashboard-alerts__group" aria-label="@group.Category" data-testid="dashboard-alert-group">
+                                <h3 class="dashboard-alerts__group-title">@group.Category</h3>
+                                @foreach (var alert in group.Alerts)
+                                {
+                                    <article class="@BuildAlertClass(alert)"
+                                             role="listitem"
+                                             data-testid="dashboard-alert-card"
+                                             data-alert-kind="@alert.Kind">
+                                        <div class="dashboard-alert-card__icon" aria-hidden="true">
+                                            @RenderAlertIcon(alert.Kind)
+                                        </div>
 
-                                <div class="dashboard-alert-card__body">
-                                    <div class="dashboard-alert-card__title-row">
-                                        <h3>@alert.Title</h3>
-                                        <span class="@BuildPriorityClass(alert.Priority)">@FormatPriority(alert.Priority)</span>
-                                    </div>
-                                    <p class="dashboard-alert-card__message">@alert.Message</p>
-                                    <div class="dashboard-alert-card__meta">
-                                        <strong>@alert.PatientName</strong>
-                                        <span>ID: @DisplayPatientIdentifier(alert)</span>
-                                        @if (alert.DueDateUtc.HasValue)
-                                        {
-                                            <span class="dashboard-alert-card__due">@FormatDueDate(alert.DueDateUtc.Value)</span>
-                                        }
-                                        <time datetime="@alert.Timestamp.ToString("O")">@FormatTimestamp(alert.Timestamp)</time>
-                                    </div>
-                                </div>
+                                        <div class="dashboard-alert-card__body">
+                                            <div class="dashboard-alert-card__title-row">
+                                                <h3>@alert.Title</h3>
+                                                <span class="@BuildPriorityClass(alert.Priority)">@FormatPriority(alert.Priority)</span>
+                                            </div>
+                                            <p class="dashboard-alert-card__message">@alert.Message</p>
+                                            <div class="dashboard-alert-card__meta">
+                                                <strong>@alert.PatientName</strong>
+                                                <span>ID: @DisplayPatientIdentifier(alert)</span>
+                                                @if (alert.DueDateUtc.HasValue)
+                                                {
+                                                    <span class="dashboard-alert-card__due">@FormatDueDate(alert.DueDateUtc.Value)</span>
+                                                }
+                                                <time datetime="@alert.Timestamp.ToString("O")">@FormatTimestamp(alert.Timestamp)</time>
+                                            </div>
+                                        </div>
 
-                                <div class="dashboard-alert-card__actions">
-                                    @if (!string.IsNullOrWhiteSpace(alert.TargetUrl))
-                                    {
-                                        <button type="button"
-                                                class="@BuildActionClass(alert)"
-                                                aria-label="@($"{alert.ActionLabel} for {alert.PatientName}")"
-                                                @onclick="() => NavigateToAlert(alert)">
-                                            @RenderActionIcon(alert.ActionLabel)
-                                            <span>@alert.ActionLabel</span>
-                                        </button>
-                                    }
-                                    <button type="button"
-                                            class="dashboard-alert-card__dismiss"
-                                            aria-label="@($"Dismiss {alert.Title} for {alert.PatientName}")"
-                                            @onclick="() => DismissAlert(alert.Id)">
-                                        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                            <path d="M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                            <path d="M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </article>
+                                        <div class="dashboard-alert-card__actions">
+                                            @if (!string.IsNullOrWhiteSpace(alert.TargetUrl))
+                                            {
+                                                <button type="button"
+                                                        class="@BuildActionClass(alert)"
+                                                        aria-label="@($"{alert.ActionLabel} for {alert.PatientName}")"
+                                                        @onclick="() => NavigateToAlert(alert)">
+                                                    @RenderActionIcon(alert.ActionLabel)
+                                                    <span>@alert.ActionLabel</span>
+                                                </button>
+                                            }
+                                            <button type="button"
+                                                    class="dashboard-alert-card__dismiss"
+                                                    aria-label="@($"Dismiss {alert.Title} for {alert.PatientName}")"
+                                                    @onclick="() => DismissAlert(alert.Id)">
+                                                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                    <path d="M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                    <path d="M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </article>
+                                }
+                            </section>
                         }
                     </div>
                 }
@@ -100,6 +106,13 @@
 
     private List<DashboardAlertItemResponse> VisibleAlerts =>
         Alerts.Where(alert => !_dismissedAlertIds.Contains(alert.Id)).ToList();
+
+    private List<DashboardAlertGroup> VisibleAlertGroups =>
+        VisibleAlerts
+            .GroupBy(GetAlertCategory)
+            .OrderBy(group => AlertCategoryRank(group.Key))
+            .Select(group => new DashboardAlertGroup(group.Key, group.ToList()))
+            .ToList();
 
     private int VisibleUrgentCount => VisibleAlerts.Count(alert => alert.IsUrgent);
 
@@ -157,6 +170,32 @@
         "medium" => "Medium",
         "low" => "Low",
         _ => "Priority"
+    };
+
+    private static string GetAlertCategory(DashboardAlertItemResponse alert)
+    {
+        var normalizedKind = NormalizeCssToken(alert.Kind);
+        if (normalizedKind.Contains("authorization", StringComparison.Ordinal))
+        {
+            return "Authorization";
+        }
+
+        return normalizedKind switch
+        {
+            "incompleteintake" or "submittedintakereview" => "Intake",
+            "unsignednote" => "Unsigned items",
+            "notesduetoday" => "Notes",
+            _ => "Notes"
+        };
+    }
+
+    private static int AlertCategoryRank(string category) => category switch
+    {
+        "Notes" => 0,
+        "Authorization" => 1,
+        "Intake" => 2,
+        "Unsigned items" => 3,
+        _ => 4
     };
 
     private static string DisplayPatientIdentifier(DashboardAlertItemResponse alert) =>
@@ -240,4 +279,6 @@
         builder.CloseElement();
         builder.CloseElement();
     };
+
+    private sealed record DashboardAlertGroup(string Category, List<DashboardAlertItemResponse> Alerts);
 }

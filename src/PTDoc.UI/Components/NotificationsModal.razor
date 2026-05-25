@@ -1,5 +1,6 @@
 @inject IJSRuntime JS
 @inject PTDoc.UI.Services.INotificationCenterService NotificationCenterService
+@inject PTDoc.UI.Services.INavigationBadgeRefreshNotifier NavigationBadgeRefreshNotifier
 @inject NavigationManager NavigationManager
 @inject IToastService ToastService
 @using PTDoc.UI.Services
@@ -376,6 +377,7 @@
         {
             var state = await NotificationCenterService.MarkAllReadAsync();
             ApplyState(state);
+            NavigationBadgeRefreshNotifier.RequestRefresh();
         }
         catch (Exception ex)
         {
@@ -394,6 +396,7 @@
         {
             var state = await NotificationCenterService.ClearAllAsync();
             ApplyState(state);
+            NavigationBadgeRefreshNotifier.RequestRefresh();
         }
         catch (Exception ex)
         {
@@ -412,6 +415,7 @@
         {
             var state = await NotificationCenterService.MarkReadAsync(item.Id);
             ApplyState(state);
+            NavigationBadgeRefreshNotifier.RequestRefresh();
 
             if (!string.IsNullOrWhiteSpace(item.TargetUrl))
             {

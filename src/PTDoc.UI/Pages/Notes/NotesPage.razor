@@ -86,7 +86,7 @@
     private readonly List<NoteListItemVm> notes = new();
     private readonly List<string> noteTypes = new();
     private readonly List<string> patients = new();
-    private readonly List<string> statuses = new() { "Draft", "Pending Co-Sign", "Submitted", "Needs Attention" };
+    private readonly List<string> statuses = new() { "Draft", "Pending Co-Sign", "Submitted", "Unsigned", "Needs Attention" };
 
     private List<NoteListItemVm> notesNeedingAttention = new();
     private List<NoteListItemVm> regularRecentNotes = new();
@@ -100,6 +100,7 @@
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         _user = authState.User;
+        ApplyQueryFilters();
         await LoadNotesAsync(_cts.Token);
         BuildFilterOptions();
         ApplyFilters();
@@ -385,6 +386,11 @@
             return note.NeedsAttention;
         }
 
+        if (string.Equals(filterState.Status, "Unsigned", StringComparison.OrdinalIgnoreCase))
+        {
+            return note.IsUnsigned;
+        }
+
         return string.Equals(note.Status, filterState.Status, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -423,6 +429,73 @@
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, "all", StringComparison.OrdinalIgnoreCase)
             ? null
             : value.Trim();
+    }
+
+    private void ApplyQueryFilters()
+    {
+        var queryValues = ParseQuery(NavigationManager.ToAbsoluteUri(NavigationManager.Uri).Query);
+
+        if (queryValues.TryGetValue("status", out var status) && IsAllowedStatus(status))
+        {
+            filterState.Status = status;
+        }
+
+        if (queryValues.TryGetValue("dateRange", out var dateRange) && IsAllowedDateRange(dateRange))
+        {
+            filterState.DateRange = dateRange;
+        }
+
+        if (queryValues.TryGetValue("noteType", out var noteType) && !string.IsNullOrWhiteSpace(noteType))
+        {
+            filterState.NoteType = noteType;
+        }
+
+        if (queryValues.TryGetValue("patient", out var patient) && !string.IsNullOrWhiteSpace(patient))
+        {
+            filterState.Patient = patient;
+        }
+
+        if (queryValues.TryGetValue("search", out var search) && !string.IsNullOrWhiteSpace(search))
+        {
+            filterState.SearchQuery = search;
+        }
+    }
+
+    private bool IsAllowedStatus(string status) =>
+        string.Equals(status, "all", StringComparison.OrdinalIgnoreCase) ||
+        statuses.Contains(status, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsAllowedDateRange(string dateRange) =>
+        string.Equals(dateRange, "all", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(dateRange, "today", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(dateRange, "week", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(dateRange, "month", StringComparison.OrdinalIgnoreCase);
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return values;
+        }
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0 || string.IsNullOrWhiteSpace(parts[0]))
+            {
+                continue;
+            }
+
+            var key = Uri.UnescapeDataString(parts[0].Replace("+", " ", StringComparison.Ordinal));
+            var value = parts.Length > 1
+                ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal))
+                : string.Empty;
+
+            values[key] = value;
+        }
+
+        return values;
     }
 
     private void HandleResolveAttentionNote(NoteListItemVm note)

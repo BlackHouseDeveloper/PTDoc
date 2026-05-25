@@ -1,15 +1,21 @@
-﻿@namespace PTDoc.UI.Components.Layout
+@namespace PTDoc.UI.Components.Layout
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Authorization
+@using PTDoc.Application.DTOs
+@using PTDoc.UI.Services
+@inject INavigationBadgeService NavigationBadgeService
+@inject INavigationBadgeRefreshNotifier NavigationBadgeRefreshNotifier
+@inject ILogger<NavMenu> Logger
+@implements IDisposable
 
 <div class="ptdoc-nav-container">
     @if (!IsCompact)
     {
         <div class="ptdoc-nav-brand">
-            <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
+            <NavBarBrand OnNotificationsClick="OnNotificationsClick" NotificationCount="@NotificationCount" />
         </div>
     }
-    
+
     <div class="ptdoc-nav-scrollable">
         <nav class="ptdoc-nav" aria-label="Main navigation">
             <!-- Primary Navigation -->
@@ -51,7 +57,10 @@
                                 <img src="_content/PTDoc.UI/images/nav-intake.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Intake</span>
                             </div>
-                            <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                            @if (IntakeCount > 0)
+                            {
+                                <div class="ptdoc-nav-badge" aria-label="@($"{IntakeCount} intake items needing action")">@FormatBadgeCount(IntakeCount)</div>
+                            }
                         </NavLink>
                     </Authorized>
                 </AuthorizeView>
@@ -63,7 +72,10 @@
                                 <img src="_content/PTDoc.UI/images/nav-notes.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Notes</span>
                             </div>
-                            <div class="ptdoc-nav-badge" aria-label="1 pending">1</div>
+                            @if (NotesCount > 0)
+                            {
+                                <div class="ptdoc-nav-badge" aria-label="@($"{NotesCount} notes needing attention")">@FormatBadgeCount(NotesCount)</div>
+                            }
                         </NavLink>
                     </Authorized>
                 </AuthorizeView>
@@ -131,9 +143,62 @@
     [Parameter]
     public EventCallback OnNavigate { get; set; }
 
+    private NavigationBadgeCountsResponse? _badgeCounts;
+    private CancellationTokenSource? _badgeCts;
+    private bool _isDisposed;
+
+    private int IntakeCount => _badgeCounts?.IntakeCount ?? 0;
+    private int NotesCount => _badgeCounts?.NotesCount ?? 0;
+    private int NotificationCount => _badgeCounts?.NotificationsCount ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationBadgeRefreshNotifier.RefreshRequested += OnBadgeRefreshRequested;
+        await LoadBadgeCountsAsync();
+    }
+
     private async Task HandleNavigate()
     {
         await OnNavigate.InvokeAsync();
     }
-}
 
+    private void OnBadgeRefreshRequested()
+    {
+        _ = InvokeAsync(LoadBadgeCountsAsync);
+    }
+
+    private async Task LoadBadgeCountsAsync()
+    {
+        _badgeCts?.Cancel();
+        _badgeCts?.Dispose();
+        var badgeCts = new CancellationTokenSource();
+        _badgeCts = badgeCts;
+
+        try
+        {
+            _badgeCounts = await NavigationBadgeService.GetCountsAsync(badgeCts.Token);
+            if (!_isDisposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (_isDisposed || badgeCts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Navigation badge counts could not be loaded.");
+        }
+    }
+
+    private static string FormatBadgeCount(int count) => count > 99 ? "99+" : count.ToString();
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        NavigationBadgeRefreshNotifier.RefreshRequested -= OnBadgeRefreshRequested;
+        _badgeCts?.Cancel();
+        _badgeCts?.Dispose();
+    }
+}

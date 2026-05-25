@@ -1,116 +1,149 @@
-@* Recently Edited POCs Card - Shows plans of care currently being edited *@
+@using PTDoc.Application.DTOs
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
+
+@* Recently Edited POCs Card - Shows plan-of-care summaries derived from clinical notes. *@
 
 <div class="card recently-edited-pocs-card">
-    <div class="card-header">
+    <div class="card-header poc-card-header">
         <div class="card-header-left">
-            <svg class="section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M9.33333 2H4C3.64638 2 3.30724 2.14048 3.05719 2.39052C2.80714 2.64057 2.66667 2.97971 2.66667 3.33333V12.6667C2.66667 13.0203 2.80714 13.3594 3.05719 13.6095C3.30724 13.8595 3.64638 14 4 14H12C12.3536 14 12.6928 13.8595 12.9428 13.6095C13.1929 13.3594 13.3333 13.0203 13.3333 12.6667V6L9.33333 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M9.33333 2V6H13.3333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg class="section-icon poc-section-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M5.33333 1.33337V4.00004" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M10.6667 1.33337V4.00004" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2.33333 6.33337H13.6667" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 2.66663H4C3.26362 2.66663 2.66667 3.26358 2.66667 3.99996V12C2.66667 12.7363 3.26362 13.3333 4 13.3333H12C12.7364 13.3333 13.3333 12.7363 13.3333 12V3.99996C13.3333 3.26358 12.7364 2.66663 12 2.66663Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <h3 class="card-title">Recently Edited POCs</h3>
+            <h3 class="card-title poc-card-title">Recently Edited Plan of Care</h3>
         </div>
-        <button type="button" class="view-all-link" aria-label="View all POCs">
+        <button type="button" class="view-all-link poc-view-all" aria-label="View all notes" @onclick="HandleViewAll">
             View All
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M3.33333 8H12.6667" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8.66667 4L12.6667 8L8.66667 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </button>
     </div>
-    
-    <div class="card-content">
-        @if (_pocs == null || !_pocs.Any())
+
+    <div class="card-content poc-card-content">
+        @if (Items.Count == 0)
         {
             <div class="empty-state">
-                <p class="empty-state-text">No recently edited POCs</p>
+                <p class="empty-state-text">No recently edited plans of care</p>
             </div>
         }
         else
         {
             <div class="pocs-list">
-                @foreach (var poc in _pocs)
+                @foreach (var poc in Items)
                 {
-                    <div class="poc-item">
+                    <article class="poc-item">
                         <div class="poc-header">
                             <div class="poc-patient-info">
-                                <span class="poc-patient-name">@poc.PatientName</span>
-                                <span class="poc-status-badge poc-status-@poc.Status.ToLower()">@poc.Status</span>
+                                <div class="poc-patient-line">
+                                    <span class="poc-patient-name">@poc.PatientName</span>
+                                    <span class="poc-status-badge @GetStatusCssClass(poc.Status)">@FormatStatus(poc.Status)</span>
+                                </div>
+                                <div class="poc-id">@BuildMetaText(poc)</div>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline" aria-label="View POC for @poc.PatientName">
-                                View
-                            </button>
+                            @if (!string.IsNullOrWhiteSpace(poc.TargetUrl))
+                            {
+                                <button type="button"
+                                        class="poc-view-button"
+                                        aria-label="View plan of care for @poc.PatientName"
+                                        @onclick="() => HandleOpen(poc)">
+                                    View
+                                </button>
+                            }
                         </div>
-                        
-                        <div class="poc-id">POC @poc.Id • @poc.DaysOld days @poc.TimeFrame</div>
-                        
-                        <div class="poc-metrics">
-                            <div class="poc-metric">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M6 3V6L8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                <span>Wk @poc.WeekCurrent/@poc.WeekTotal</span>
-                            </div>
-                            
-                            <div class="poc-metric poc-metric-@(poc.VisitsCurrent >= poc.VisitsTotal ? "complete" : "progress")">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    @if (poc.VisitsCurrent >= poc.VisitsTotal)
-                                    {
-                                        <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    }
-                                    else
-                                    {
-                                        <path d="M6 2V6L8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    }
-                                </svg>
-                                <span>@poc.VisitsCurrent/@poc.VisitsTotal</span>
-                            </div>
-                            
-                            <div class="poc-metric">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M6 1V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
-                                </svg>
-                                <span>@poc.Sessions/@poc.SessionsTotal</span>
-                            </div>
-                            
-                            <div class="poc-metric">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <path d="M11 1H1V11H11V1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    <path d="M3 3H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                                    <path d="M3 6H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                                </svg>
-                                <span>ICD @poc.IcdCount</span>
-                            </div>
-                        </div>
-                        
-                        <div class="poc-utilization">
-                            <span class="utilization-label">Utilization</span>
-                            <span class="utilization-value">@poc.UtilizationPercentage%</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: @poc.UtilizationPercentage%"></div>
-                        </div>
-                        
-                        @if (!string.IsNullOrEmpty(poc.Alert))
+
+                        @if (HasMetrics(poc))
                         {
-                            <div class="poc-alert poc-alert-@((poc.AlertType ?? "info").ToLowerInvariant())">
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    @if (poc.AlertType == "warning")
-                                    {
-                                        <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M6 4V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M6 8H6.005" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    }
-                                    else
-                                    {
-                                        <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M4.5 4.5L7.5 7.5M7.5 4.5L4.5 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    }
+                            <div class="poc-metrics" aria-label="Plan of care metrics">
+                                @if (poc.WeekCurrent.HasValue && poc.WeekTotal.HasValue)
+                                {
+                                    <div class="poc-metric">
+                                        <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M6 3V6L8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <span>Wk <strong>@poc.WeekCurrent/@poc.WeekTotal</strong></span>
+                                    </div>
+                                }
+
+                                @if (poc.VisitsCurrent.HasValue && poc.VisitsTotal.HasValue)
+                                {
+                                    <div class="poc-metric poc-metric-progress">
+                                        <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M1 7H3.2L4.4 3L6.6 9L8 5H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                        <span><strong>@poc.VisitsCurrent/@poc.VisitsTotal</strong></span>
+                                    </div>
+                                }
+
+                                @if (poc.Sessions.HasValue && poc.SessionsTotal.HasValue)
+                                {
+                                    <div class="poc-metric poc-metric-info">
+                                        <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+                                            <circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+                                        </svg>
+                                        <span><strong>@poc.Sessions/@poc.SessionsTotal</strong></span>
+                                    </div>
+                                }
+                                else if (poc.Sessions.HasValue)
+                                {
+                                    <div class="poc-metric poc-metric-info">
+                                        <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+                                            <circle cx="6" cy="6" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+                                        </svg>
+                                        <span><strong>@poc.Sessions</strong> CPT units</span>
+                                    </div>
+                                }
+
+                                @if (poc.IcdCount.HasValue)
+                                {
+                                    <div class="poc-metric @(poc.IcdCount.Value == 0 ? "poc-metric-error" : "poc-metric-complete")">
+                                        <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            @if (poc.IcdCount.Value == 0)
+                                            {
+                                                <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5"/>
+                                                <path d="M6 3.5V6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                                <path d="M6 8.5H6.005" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                            }
+                                            else
+                                            {
+                                                <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                            }
+                                        </svg>
+                                        <span>ICD <strong>@poc.IcdCount</strong></span>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (poc.UtilizationPercentage.HasValue)
+                        {
+                            <div class="poc-utilization">
+                                <span class="utilization-label">Utilization</span>
+                                <span class="utilization-value">@ClampPercent(poc.UtilizationPercentage.Value)%</span>
+                            </div>
+                            <div class="progress-bar poc-progress-bar" aria-hidden="true">
+                                <div class="progress-fill" style="width: @ClampPercent(poc.UtilizationPercentage.Value)%"></div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(poc.Alert))
+                        {
+                            <div class="poc-alert @GetAlertCssClass(poc.AlertType)">
+                                <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <path d="M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z" stroke="currentColor" stroke-width="1.5"/>
+                                    <path d="M6 3.5V6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                    <path d="M6 8.5H6.005" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                                 </svg>
                                 @poc.Alert
                             </div>
                         }
-                    </div>
+                    </article>
                 }
             </div>
         }
@@ -118,86 +151,100 @@
 </div>
 
 @code {
-    private List<RecentlyEditedPOC>? _pocs;
-    
-    protected override void OnInitialized()
+    [Parameter] public IReadOnlyList<DashboardPlanOfCareSummaryResponse> Items { get; set; } = Array.Empty<DashboardPlanOfCareSummaryResponse>();
+
+    private void HandleViewAll() => Navigation.NavigateTo("/notes");
+
+    private void HandleOpen(DashboardPlanOfCareSummaryResponse poc)
     {
-        // Mock data - replace with actual service call
-        _pocs = new List<RecentlyEditedPOC>
+        if (!string.IsNullOrWhiteSpace(poc.TargetUrl))
         {
-            new RecentlyEditedPOC 
-            { 
-                Id = "POC-2024-001",
-                PatientName = "Sarah Johnson",
-                Status = "active",
-                DaysOld = 708,
-                TimeFrame = "ago",
-                WeekCurrent = 7,
-                WeekTotal = 12,
-                VisitsCurrent = 18,
-                VisitsTotal = 36,
-                Sessions = 2,
-                SessionsTotal = 3,
-                IcdCount = 2,
-                UtilizationPercentage = 50,
-                Alert = null,
-                AlertType = null
-            },
-            new RecentlyEditedPOC 
-            { 
-                Id = "POC-2024-002",
-                PatientName = "Michael",
-                Status = "expiring",
-                DaysOld = 710,
-                TimeFrame = "ago",
-                WeekCurrent = 10,
-                WeekTotal = 12,
-                VisitsCurrent = 28,
-                VisitsTotal = 30,
-                Sessions = 3,
-                SessionsTotal = 4,
-                IcdCount = 2,
-                UtilizationPercentage = 93,
-                Alert = "2w, 2v left",
-                AlertType = "warning"
-            },
-            new RecentlyEditedPOC 
-            { 
-                Id = "POC-2024-003",
-                PatientName = "Emily Rodriguez",
-                Status = "active",
-                DaysOld = 710,
-                TimeFrame = "ago",
-                WeekCurrent = 4,
-                WeekTotal = 8,
-                VisitsCurrent = 9,
-                VisitsTotal = 24,
-                Sessions = 1,
-                SessionsTotal = 2,
-                IcdCount = 1,
-                UtilizationPercentage = 38,
-                Alert = "Add 1 ICD-10 code(s)",
-                AlertType = "error"
-            }
+            Navigation.NavigateTo(poc.TargetUrl);
+        }
+    }
+
+    private static bool HasMetrics(DashboardPlanOfCareSummaryResponse poc) =>
+        (poc.WeekCurrent.HasValue && poc.WeekTotal.HasValue) ||
+        (poc.VisitsCurrent.HasValue && poc.VisitsTotal.HasValue) ||
+        poc.Sessions.HasValue ||
+        poc.IcdCount.HasValue;
+
+    private static string BuildMetaText(DashboardPlanOfCareSummaryResponse poc)
+    {
+        var pieces = new List<string>
+        {
+            string.IsNullOrWhiteSpace(poc.Title) ? "Plan of Care" : poc.Title,
+            FormatRelativeTime(poc.LastEditedAt)
+        };
+
+        if (!string.IsNullOrWhiteSpace(poc.LastEditedBy))
+        {
+            pieces.Add($"edited by {poc.LastEditedBy}");
+        }
+
+        return string.Join(" • ", pieces);
+    }
+
+    private static string FormatStatus(string status) =>
+        string.IsNullOrWhiteSpace(status) ? "active" : status;
+
+    private static string GetStatusCssClass(string status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "poc-status-active";
+        }
+
+        var normalized = status.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "signed" or "active" => "poc-status-active",
+            "pending review" or "pending co-sign" or "pending" => "poc-status-pending",
+            "draft" => "poc-status-draft",
+            _ => "poc-status-active"
         };
     }
-    
-    private class RecentlyEditedPOC
+
+    private static string GetAlertCssClass(string? alertType) =>
+        string.Equals(alertType, "error", StringComparison.OrdinalIgnoreCase)
+            ? "poc-alert-error"
+            : "poc-alert-warning";
+
+    private static int ClampPercent(int value) => Math.Clamp(value, 0, 100);
+
+    private static string FormatRelativeTime(DateTime timestamp)
     {
-        public string Id { get; set; } = string.Empty;
-        public string PatientName { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;
-        public int DaysOld { get; set; }
-        public string TimeFrame { get; set; } = string.Empty;
-        public int WeekCurrent { get; set; }
-        public int WeekTotal { get; set; }
-        public int VisitsCurrent { get; set; }
-        public int VisitsTotal { get; set; }
-        public int Sessions { get; set; }
-        public int SessionsTotal { get; set; }
-        public int IcdCount { get; set; }
-        public int UtilizationPercentage { get; set; }
-        public string? Alert { get; set; }
-        public string? AlertType { get; set; }
+        var utc = timestamp.Kind switch
+        {
+            DateTimeKind.Utc => timestamp,
+            DateTimeKind.Local => timestamp.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)
+        };
+
+        var elapsed = DateTime.UtcNow - utc;
+        if (elapsed.TotalMinutes < 1)
+        {
+            return "just now";
+        }
+
+        if (elapsed.TotalHours < 1)
+        {
+            var minutes = Math.Max(1, (int)Math.Floor(elapsed.TotalMinutes));
+            return minutes == 1 ? "1 min ago" : $"{minutes} mins ago";
+        }
+
+        if (elapsed.TotalDays < 1)
+        {
+            var hours = Math.Max(1, (int)Math.Floor(elapsed.TotalHours));
+            return hours == 1 ? "1 hr ago" : $"{hours} hrs ago";
+        }
+
+        if (elapsed.TotalDays < 30)
+        {
+            var days = Math.Max(1, (int)Math.Floor(elapsed.TotalDays));
+            return days == 1 ? "1 day ago" : $"{days} days ago";
+        }
+
+        return utc.ToString("MMM d, yyyy");
     }
 }

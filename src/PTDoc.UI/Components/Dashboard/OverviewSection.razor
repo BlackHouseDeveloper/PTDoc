@@ -1,4 +1,5 @@
 @* Overview Section - Dashboard metrics grid with 7 key metrics *@
+@inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
 <div class="overview-section">
     <div class="overview-header">
@@ -11,7 +12,7 @@
 
     <div class="dashboard-grid">
         <!-- Patients Today Card (Primary - highlighted) -->
-        <div class="metric-card metric-card-primary">
+        <button type="button" class="metric-card metric-card-primary metric-card--action" aria-label="Open today's appointments" @onclick='() => NavigateTo("/appointments")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-primary">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -25,10 +26,10 @@
                     <span class="metric-badge metric-badge-success">Scheduled</span>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Appointments Card -->
-        <div class="metric-card">
+        <button type="button" class="metric-card metric-card--action" aria-label="Open appointments" @onclick='() => NavigateTo("/appointments")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-info">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -44,10 +45,10 @@
                     <p class="metric-sublabel">Today</p>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Notes Due Card -->
-        <div class="metric-card">
+        <button type="button" class="metric-card metric-card--action" aria-label="Open notes due today" @onclick='() => NavigateTo("/notes?status=Unsigned&dateRange=today")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-warning">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -64,10 +65,10 @@
                     <span class="metric-badge metric-badge-warning">Due Today</span>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Pending Card -->
-        <div class="metric-card">
+        <button type="button" class="metric-card metric-card--action" aria-label="Open items needing attention" @onclick='() => NavigateTo("/notes?status=Needs%20Attention")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-pending">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -81,10 +82,10 @@
                     <p class="metric-sublabel">In Progress</p>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Drafts Card -->
-        <div class="metric-card">
+        <button type="button" class="metric-card metric-card--action" aria-label="Open draft notes" @onclick='() => NavigateTo("/notes?status=Draft")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-draft">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -97,10 +98,10 @@
                     <span class="metric-badge metric-badge-draft">Unsaved</span>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Unsigned Card (Destructive - highlighted) -->
-        <div class="metric-card metric-card-destructive">
+        <button type="button" class="metric-card metric-card-destructive metric-card--action" aria-label="Open unsigned notes" @onclick='() => NavigateTo("/notes?status=Unsigned")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-destructive">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -113,10 +114,10 @@
                     <span class="metric-badge metric-badge-destructive">Need Signature</span>
                 </div>
             </div>
-        </div>
+        </button>
 
         <!-- Intakes Card (Warning border) -->
-        <div class="metric-card metric-card-warning">
+        <button type="button" class="metric-card metric-card-warning metric-card--action" aria-label="Open intake work queue" @onclick='() => NavigateTo("/intake")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-intake">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -131,29 +132,34 @@
                     <span class="metric-badge metric-badge-intake">Incomplete</span>
                 </div>
             </div>
-        </div>
+        </button>
     </div>
 </div>
 
 @code {
     [Parameter]
-    public int PatientsToday { get; set; } = 3;
+    public int PatientsToday { get; set; }
     
     [Parameter]
-    public int Appointments { get; set; } = 3;
+    public int Appointments { get; set; }
     
     [Parameter]
-    public int NotesDue { get; set; } = 2;
+    public int NotesDue { get; set; }
     
     [Parameter]
-    public int Pending { get; set; } = 4;
+    public int Pending { get; set; }
     
     [Parameter]
-    public int Drafts { get; set; } = 1;
+    public int Drafts { get; set; }
     
     [Parameter]
-    public int Unsigned { get; set; } = 3;
+    public int Unsigned { get; set; }
     
     [Parameter]
-    public int Intakes { get; set; } = 3;
+    public int Intakes { get; set; }
+
+    private void NavigateTo(string targetUrl)
+    {
+        Navigation.NavigateTo(targetUrl);
+    }
 }

@@ -29,6 +29,7 @@ using PTDoc.Api.Identity;
 using PTDoc.Api.Intake;
 using PTDoc.Api.Integrations;
 using PTDoc.Api.Notes;
+using PTDoc.Api.Navigation;
 using PTDoc.Api.Patients;
 using PTDoc.Api.Pdf;
 using PTDoc.Api.ReferenceData;
@@ -844,6 +845,7 @@ app.MapDiagnosticsEndpoints(); // Sprint F: operational database diagnostics
 app.MapDailyNoteEndpoints(); // Daily Treatment Note workflow
 app.MapDashboardEndpoints(); // Live clinical dashboard alerts
 app.MapNotificationEndpoints(); // In-app notification center
+app.MapNavigationBadgeEndpoints(); // Live navigation badge counts
 app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
 app.MapIcd10Endpoints(); // ICD-10 code search (bundled)
 app.MapIntakeReferenceDataEndpoints(); // Intake body part / medication / pain descriptor reference data

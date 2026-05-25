@@ -22,6 +22,9 @@ public sealed class NotificationsSectionTests : TestContext
         Assert.Contains("Note Due Today", cut.Markup);
         Assert.Contains("Incomplete Intake", cut.Markup);
         Assert.Contains("Unsigned Note", cut.Markup);
+        Assert.Contains("Notes", cut.Markup);
+        Assert.Contains("Intake", cut.Markup);
+        Assert.Contains("Unsigned items", cut.Markup);
         Assert.Contains("High Priority", cut.Markup);
         Assert.Contains("Medium", cut.Markup);
         Assert.Contains("Emily Rodriguez", cut.Markup);

@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Dashboard;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Text.Json;
 
 namespace PTDoc.Api.Dashboard;
 
@@ -12,6 +14,7 @@ public static class DashboardEndpoints
 {
     private const int DefaultTake = 10;
     private const int MaxTake = 50;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static void MapDashboardEndpoints(this IEndpointRouteBuilder app)
     {
@@ -59,6 +62,7 @@ public static class DashboardEndpoints
         var alerts = await BuildVisibleAlertsAsync(db, DefaultTake, today, tomorrow, now, cancellationToken);
         var urgentAlertCount = await CountUrgentAlertsAsync(db, today, now, overview.NotesDueToday, cancellationToken);
         var recentNotes = await BuildRecentNotesAsync(db, cancellationToken);
+        var recentPlansOfCare = await BuildRecentPlansOfCareAsync(db, cancellationToken);
         var recentActivities = await BuildRecentActivitiesAsync(db, today, tomorrow, cancellationToken);
 
         return Results.Ok(new DashboardSnapshotResponse
@@ -68,6 +72,7 @@ public static class DashboardEndpoints
             UrgentAlertCount = urgentAlertCount,
             TotalAlertCount = overview.PendingItems,
             RecentNotes = recentNotes,
+            RecentPlansOfCare = recentPlansOfCare,
             RecentActivities = recentActivities,
             GeneratedAtUtc = now
         });
@@ -268,6 +273,84 @@ public static class DashboardEndpoints
                 CptCodesJson = note.CptCodesJson
             })
             .ToListAsync(cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<DashboardPlanOfCareSummaryResponse>> BuildRecentPlansOfCareAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var notes = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(note =>
+                !note.IsAddendum &&
+                (note.NoteType == NoteType.Evaluation || note.NoteType == NoteType.ProgressNote) &&
+                note.Patient != null &&
+                !note.Patient.IsArchived)
+            .OrderByDescending(note => note.LastModifiedUtc)
+            .ThenByDescending(note => note.DateOfService)
+            .Take(5)
+            .Select(note => new PlanOfCareNoteCandidate(
+                note.Id,
+                note.PatientId,
+                note.Patient != null ? note.Patient.FirstName + " " + note.Patient.LastName : string.Empty,
+                note.NoteType,
+                note.NoteStatus,
+                note.IsReEvaluation,
+                note.DateOfService,
+                note.LastModifiedUtc,
+                note.ModifiedByUserId,
+                note.ContentJson,
+                note.CptCodesJson))
+            .ToListAsync(cancellationToken);
+
+        var editorIds = notes
+            .Select(note => note.ModifiedByUserId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        var editorLookup = editorIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Users
+                .AsNoTracking()
+                .Where(user => editorIds.Contains(user.Id))
+                .Select(user => new
+                {
+                    user.Id,
+                    Name = (user.FirstName + " " + user.LastName).Trim()
+                })
+                .ToDictionaryAsync(user => user.Id, user => user.Name, cancellationToken);
+
+        return notes.Select(note =>
+        {
+            var payload = TryDeserializeWorkspacePayload(note.ContentJson);
+            var icdCount = payload?.Assessment?.DiagnosisCodes.Count;
+            var cptUnits = TryCountCptUnits(note.CptCodesJson);
+            int? targetVisits = TryGetSingleValue(payload?.Plan?.TreatmentFrequencyDaysPerWeek) is { } daysPerWeek &&
+                               TryGetSingleValue(payload?.Plan?.TreatmentDurationWeeks) is { } durationWeeks
+                ? daysPerWeek * durationWeeks
+                : null;
+
+            return new DashboardPlanOfCareSummaryResponse
+            {
+                Id = note.Id,
+                PatientId = note.PatientId,
+                PatientName = string.IsNullOrWhiteSpace(note.PatientName)
+                    ? "Unknown patient"
+                    : note.PatientName,
+                Title = BuildPlanOfCareTitle(note),
+                Status = ToPlanOfCareStatus(note.NoteStatus),
+                LastEditedAt = note.LastModifiedUtc,
+                LastEditedBy = editorLookup.TryGetValue(note.ModifiedByUserId, out var editorName) && !string.IsNullOrWhiteSpace(editorName)
+                    ? editorName
+                    : null,
+                TargetUrl = $"/patient/{note.PatientId:D}/note/{note.Id:D}",
+                WeekTotal = targetVisits.HasValue ? TryGetSingleValue(payload?.Plan?.TreatmentDurationWeeks) : null,
+                VisitsTotal = targetVisits,
+                Sessions = cptUnits,
+                IcdCount = icdCount
+            };
+        }).ToList();
     }
 
     private static async Task<IReadOnlyList<DashboardRecentActivityResponse>> BuildRecentActivitiesAsync(
@@ -662,6 +745,89 @@ public static class DashboardEndpoints
         return builder.ToString();
     }
 
+    private static string BuildPlanOfCareTitle(PlanOfCareNoteCandidate note)
+    {
+        if (note.NoteType == NoteType.Evaluation && note.IsReEvaluation)
+        {
+            return "Re-Evaluation Plan of Care";
+        }
+
+        return note.NoteType switch
+        {
+            NoteType.Evaluation => "Evaluation Plan of Care",
+            NoteType.ProgressNote => "Progress Note Plan of Care",
+            _ => $"{FormatEnumLabel(note.NoteType.ToString())} Plan of Care"
+        };
+    }
+
+    private static string ToPlanOfCareStatus(NoteStatus status) => status switch
+    {
+        NoteStatus.Signed => "Signed",
+        NoteStatus.PendingCoSign => "Pending Review",
+        NoteStatus.Draft => "Draft",
+        _ => "Active"
+    };
+
+    private static NoteWorkspaceV2Payload? TryDeserializeWorkspacePayload(string contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson) || contentJson == "{}")
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(contentJson, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static int? TryCountCptUnits(string cptCodesJson)
+    {
+        if (string.IsNullOrWhiteSpace(cptCodesJson) || cptCodesJson == "[]")
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(cptCodesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var total = 0;
+            foreach (var code in document.RootElement.EnumerateArray())
+            {
+                total += code.TryGetProperty("units", out var camelUnits) && camelUnits.TryGetInt32(out var camelValue)
+                    ? Math.Max(0, camelValue)
+                    : code.TryGetProperty("Units", out var pascalUnits) && pascalUnits.TryGetInt32(out var pascalValue)
+                        ? Math.Max(0, pascalValue)
+                        : 1;
+            }
+
+            return total;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static int? TryGetSingleValue(IReadOnlyCollection<int>? values)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return null;
+        }
+
+        return values.Count == 1 ? values.First() : null;
+    }
+
     private static class DashboardAlertKinds
     {
         public const string NotesDueToday = "notesDueToday";
@@ -715,4 +881,17 @@ public static class DashboardEndpoints
         Guid PatientId,
         Guid? AppointmentId,
         DateTime DateOfService);
+
+    private sealed record PlanOfCareNoteCandidate(
+        Guid Id,
+        Guid PatientId,
+        string PatientName,
+        NoteType NoteType,
+        NoteStatus NoteStatus,
+        bool IsReEvaluation,
+        DateTime DateOfService,
+        DateTime LastModifiedUtc,
+        Guid ModifiedByUserId,
+        string ContentJson,
+        string CptCodesJson);
 }

@@ -761,12 +761,12 @@ h1:focus {
 
 .action-icon-primary {
     background: rgba(var(--primary-rgb, 22, 163, 74), 0.1);
-    color: var(--primary);
+    color: currentColor;
 }
 
 .action-icon-info {
     background: rgba(var(--info-rgb, 66, 133, 244), 0.1);
-    color: var(--info);
+    color: currentColor;
 }
 
 .action-icon {
@@ -872,9 +872,23 @@ h1:focus {
     min-height: 184px;
 }
 
+.metric-card--action {
+    appearance: none;
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .metric-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
+}
+
+.metric-card:not(.metric-card--action):hover {
+    transform: none;
+    box-shadow: none;
 }
 
 /* Primary Card (Patients Today - highlighted) */

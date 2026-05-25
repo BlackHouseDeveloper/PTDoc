@@ -116,6 +116,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
     width: var(--touch-target-mobile);
     height: var(--touch-target-mobile);
     border-radius: var(--radius-md);
@@ -136,6 +137,25 @@
 .navbar-brand-action-btn:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+}
+
+.navbar-brand-notification-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 var(--spacing-1);
+    border: 1px solid rgba(var(--destructive-rgb), 0.35);
+    border-radius: 999px;
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    line-height: 1;
 }
 
 /* Theme Toggle Icon Visibility */

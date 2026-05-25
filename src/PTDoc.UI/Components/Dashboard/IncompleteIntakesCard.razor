@@ -10,12 +10,6 @@
             <h3 class="card-title">Incomplete Intake Forms</h3>
             <span class="count-badge">@(_intakes?.Count ?? 0)</span>
         </div>
-        <button type="button" class="view-all-link" aria-label="View all intakes">
-            View All
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M4.5 9L7.5 6L4.5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </button>
     </div>
     
     <div class="card-content">
@@ -107,40 +101,7 @@
     
     protected override void OnInitialized()
     {
-        // Mock data - replace with actual service call
-        _intakes = new List<IncompleteIntake>
-        {
-            new IncompleteIntake 
-            { 
-                Id = "PT-2024-009",
-                PatientName = "Lisa",
-                Priority = "high",
-                CompletionPercentage = 0,
-                DaysSent = 4,
-                RemindersSent = 3,
-                UrgentMessage = "Urgent: No progress after 4 days"
-            },
-            new IncompleteIntake 
-            { 
-                Id = "PT-2024-005",
-                PatientName = "Emily R",
-                Priority = "medium",
-                CompletionPercentage = 33,
-                DaysSent = 2,
-                RemindersSent = 2,
-                UrgentMessage = null
-            },
-            new IncompleteIntake 
-            { 
-                Id = "PT-2024-007",
-                PatientName = "David Kim",
-                Priority = "low",
-                CompletionPercentage = 16,
-                DaysSent = 1,
-                RemindersSent = 1,
-                UrgentMessage = null
-            }
-        };
+        _intakes = [];
     }
     
     private class IncompleteIntake

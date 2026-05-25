@@ -248,6 +248,180 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.True(snapshot.Alerts.Count <= 10);
     }
 
+    [Fact]
+    public async Task DashboardSnapshot_Returns_RecentPlansOfCare_FromEvaluationAndProgressNotes()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+
+        var planPatient = CreatePatient("Poppy", "PlanCare", clinician.Id, medicalRecordNumber: "POC-RECENT");
+        var progressPatient = CreatePatient("Paxton", "ProgressPoc", clinician.Id, medicalRecordNumber: "POC-PROGRESS");
+        var archivedPatient = CreatePatient("Aria", "ArchivedPoc", clinician.Id, medicalRecordNumber: "POC-ARCHIVED", isArchived: true);
+        var dailyPatient = CreatePatient("Drew", "DailyNote", clinician.Id, medicalRecordNumber: "POC-DAILY");
+        var addendumPatient = CreatePatient("Avery", "AddendumPoc", clinician.Id, medicalRecordNumber: "POC-ADDENDUM");
+
+        var now = DateTime.UtcNow.AddYears(1);
+        var planNote = CreateClinicalNote(
+            planPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            now.Date,
+            now.AddMinutes(5),
+            noteType: NoteType.Evaluation,
+            contentJson: """
+                {
+                  "noteType": 0,
+                  "assessment": {
+                    "diagnosisCodes": [
+                      { "code": "M25.511", "description": "Pain in right shoulder" },
+                      { "code": "M62.81", "description": "Muscle weakness" }
+                    ]
+                  },
+                  "plan": {
+                    "treatmentFrequencyDaysPerWeek": [2],
+                    "treatmentDurationWeeks": [6]
+                  }
+                }
+                """,
+            cptCodesJson: """
+                [
+                  { "code": "97110", "units": 2 },
+                  { "code": "97530", "units": 1 }
+                ]
+                """);
+        var progressNote = CreateClinicalNote(
+            progressPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.PendingCoSign,
+            now.Date,
+            now.AddMinutes(4),
+            noteType: NoteType.ProgressNote);
+        var archivedNote = CreateClinicalNote(
+            archivedPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            now.Date,
+            now.AddMinutes(3),
+            noteType: NoteType.Evaluation);
+        var dailyNote = CreateClinicalNote(
+            dailyPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            now.Date,
+            now.AddMinutes(2),
+            noteType: NoteType.Daily);
+        var addendumNote = CreateClinicalNote(
+            addendumPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            now.Date,
+            now.AddMinutes(1),
+            isAddendum: true,
+            noteType: NoteType.Evaluation);
+
+        db.Patients.AddRange(planPatient, progressPatient, archivedPatient, dailyPatient, addendumPatient);
+        db.ClinicalNotes.AddRange(planNote, progressNote, archivedNote, dailyNote, addendumNote);
+
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var response = await client.GetAsync("/api/v1/dashboard/snapshot");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var snapshot = await response.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+        Assert.NotNull(snapshot);
+
+        var plans = snapshot!.RecentPlansOfCare;
+        var planSummary = Assert.Single(plans, plan => plan.Id == planNote.Id);
+        Assert.Equal(planPatient.Id, planSummary.PatientId);
+        Assert.Equal("Poppy PlanCare", planSummary.PatientName);
+        Assert.Equal("Evaluation Plan of Care", planSummary.Title);
+        Assert.Equal("Draft", planSummary.Status);
+        Assert.Equal($"/patient/{planPatient.Id:D}/note/{planNote.Id:D}", planSummary.TargetUrl);
+        Assert.Equal(2, planSummary.IcdCount);
+        Assert.Equal(3, planSummary.Sessions);
+        Assert.Equal(12, planSummary.VisitsTotal);
+        Assert.Equal(6, planSummary.WeekTotal);
+        Assert.False(string.IsNullOrWhiteSpace(planSummary.LastEditedBy));
+
+        var progressSummary = Assert.Single(plans, plan => plan.Id == progressNote.Id);
+        Assert.Equal("Pending Review", progressSummary.Status);
+
+        Assert.DoesNotContain(plans, plan => plan.Id == archivedNote.Id);
+        Assert.DoesNotContain(plans, plan => plan.Id == dailyNote.Id);
+        Assert.DoesNotContain(plans, plan => plan.Id == addendumNote.Id);
+    }
+
+    [Fact]
+    public async Task NavigationBadges_Returns_LiveCounts_ForClinicalActionItems()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+
+        var today = DateTime.UtcNow.Date;
+        var badgeClinician = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = $"badge-clinician-{Guid.NewGuid():N}",
+            PinHash = "integration-test-pin-hash",
+            FirstName = "Badge",
+            LastName = "Clinician",
+            Role = Roles.PT,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        var missingNotePatient = CreatePatient("Nadia", "BadgeMissingNote", clinician.Id, medicalRecordNumber: "BADGE-MISSING");
+        var unsignedPatient = CreatePatient("Uma", "BadgeUnsigned", clinician.Id, medicalRecordNumber: "BADGE-UNSIGNED");
+        var intakePatient = CreatePatient("Ian", "BadgeIntake", clinician.Id, medicalRecordNumber: "BADGE-INTAKE");
+        var reviewPatient = CreatePatient("Rhea", "BadgeReview", clinician.Id, medicalRecordNumber: "BADGE-REVIEW");
+
+        db.Users.Add(badgeClinician);
+        db.Patients.AddRange(missingNotePatient, unsignedPatient, intakePatient, reviewPatient);
+        db.Appointments.Add(CreateAppointment(missingNotePatient.Id, badgeClinician.Id, today.AddHours(9), AppointmentStatus.Completed));
+        db.ClinicalNotes.Add(CreateClinicalNote(
+            unsignedPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            today.AddDays(-1),
+            today));
+        db.IntakeForms.AddRange(
+            CreateIntakeForm(intakePatient.Id, clinician.Id, isLocked: false, lastModifiedUtc: today.AddHours(8)),
+            CreateIntakeForm(reviewPatient.Id, clinician.Id, isLocked: true, submittedAt: today.AddHours(8), lastModifiedUtc: today.AddHours(8)));
+        db.UserNotifications.Add(new UserNotification
+        {
+            UserId = clinician.Id,
+            Title = "Badge notification",
+            Message = "Unread notification for nav badge count",
+            Timestamp = DateTimeOffset.UtcNow,
+            Type = "system",
+            IsRead = false,
+            IsArchived = false
+        });
+
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var response = await client.GetAsync("/api/v1/navigation/badges");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var counts = await response.Content.ReadFromJsonAsync<NavigationBadgeCountsResponse>();
+        Assert.NotNull(counts);
+        Assert.True(counts!.IntakeCount >= 2);
+        Assert.True(counts.NotesCount >= 2);
+        Assert.True(counts.NotificationsCount >= 1);
+        Assert.True(counts.GeneratedAtUtc > DateTimeOffset.MinValue);
+    }
+
     private static Patient CreatePatient(
         string firstName,
         string lastName,
@@ -312,16 +486,19 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         NoteStatus status,
         DateTime dateOfService,
         DateTime lastModifiedUtc,
-        bool isAddendum = false) => new()
+        bool isAddendum = false,
+        NoteType noteType = NoteType.Daily,
+        string contentJson = "{}",
+        string cptCodesJson = "[]") => new()
         {
             Id = Guid.NewGuid(),
             PatientId = patientId,
             AppointmentId = appointmentId,
             IsAddendum = isAddendum,
-            NoteType = NoteType.Daily,
+            NoteType = noteType,
             NoteStatus = status,
-            ContentJson = "{}",
-            CptCodesJson = "[]",
+            ContentJson = contentJson,
+            CptCodesJson = cptCodesJson,
             DateOfService = dateOfService,
             CreatedUtc = lastModifiedUtc,
             LastModifiedUtc = lastModifiedUtc,
