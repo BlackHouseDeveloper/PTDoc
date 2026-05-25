@@ -6,9 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
-using PTDoc.UI.Pages;
 using PTDoc.UI.Services;
+using PatientsPage = PTDoc.UI.Pages.Patients;
 
 namespace PTDoc.Tests.UI.Pages;
 
@@ -39,7 +40,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() =>
         {
@@ -63,7 +64,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true, toastService);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() =>
         {
@@ -88,7 +89,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         Assert.Equal("true", cut.Find(".patients-page-content").GetAttribute("aria-busy"));
 
@@ -111,7 +112,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: false);
 
-        var readOnly = RenderComponent<Patients>();
+        var readOnly = RenderComponent<PatientsPage>();
 
         readOnly.WaitForAssertion(() =>
         {
@@ -131,7 +132,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
         cut.Find(".global-page-header-primary-action").Click();
@@ -158,7 +159,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true, toastService);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
         cut.Find(".global-page-header-primary-action").Click();
@@ -173,6 +174,180 @@ public sealed class PatientsPageTests : TestContext
             Assert.NotEmpty(cut.FindAll(".modal-container"));
             Assert.DoesNotContain("raw backend failure", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Review the patient details and try again.", toastService.ErrorMessages);
+        });
+    }
+
+    [Fact]
+    public void SuccessfulCreate_ClearsActiveSearchAndShowsCreatedPatient()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var createdPatient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Casey",
+            LastName = "Created",
+            Email = "casey.created@example.com",
+            Phone = "555-0102",
+            DateOfBirth = new DateTime(1992, 2, 2)
+        };
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        patientService
+            .Setup(service => service.SearchAsync("archived-filter", 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        patientService
+            .Setup(service => service.CreateAsync(It.IsAny<CreatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(createdPatient);
+        var eligiblePatient = new PatientListItemResponse
+        {
+            Id = patientId,
+            DisplayName = "Casey Created",
+            FirstName = "Casey",
+            LastName = "Created",
+            Email = "casey.created@example.com",
+            Phone = "555-0102",
+            DateOfBirth = createdPatient.DateOfBirth
+        };
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.SearchEligiblePatientsAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { eligiblePatient });
+        intakeService
+            .Setup(service => service.EnsureDraftAsync(patientId, It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(IntakeEnsureDraftResult.Created(new IntakeResponseDraft
+            {
+                IntakeId = intakeId,
+                PatientId = patientId
+            }));
+        var intakeDeliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        intakeDeliveryService
+            .Setup(service => service.GetDeliveryStatusAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeDeliveryStatusResponse
+            {
+                IntakeId = intakeId,
+                PatientId = patientId,
+                InviteActive = true
+            });
+
+        RegisterServices(
+            patientService.Object,
+            includePatientWrite: true,
+            intakeService: intakeService.Object,
+            intakeDeliveryService: intakeDeliveryService.Object);
+
+        var cut = RenderComponent<PatientsPage>();
+        cut.WaitForAssertion(() => Assert.Contains("No patients found", cut.Markup, StringComparison.Ordinal));
+
+        cut.Find(".patient-search-input-field").Input("archived-filter");
+        cut.WaitForAssertion(() =>
+        {
+            patientService.Verify(
+                service => service.SearchAsync("archived-filter", 200, It.IsAny<CancellationToken>()),
+                Times.Once);
+            Assert.Equal("false", cut.Find(".patients-page-content").GetAttribute("aria-busy"));
+        });
+
+        cut.Find(".global-page-header-primary-action").Click();
+        cut.WaitForElement("#firstName");
+        cut.Find("#firstName").Change("Casey");
+        cut.Find("#lastName").Change("Created");
+        cut.Find("#email").Change("casey.created@example.com");
+        cut.Find("#dob").Change("1992-02-02");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Casey Created", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(string.Empty, cut.Find(".patient-search-input-field").GetAttribute("value"));
+            Assert.NotEmpty(cut.FindAll($"button[data-testid='patient-card-{patientId}']"));
+            Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value"));
+        });
+    }
+
+    [Fact]
+    public void AddPatientAndSendIntake_CreatesPatientAndOpensPreselectedSendIntake()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var createdPatient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Jamie",
+            LastName = "Intake",
+            Email = "jamie.intake@example.com",
+            Phone = "555-0111",
+            DateOfBirth = new DateTime(1986, 3, 4)
+        };
+        var eligiblePatient = new PatientListItemResponse
+        {
+            Id = patientId,
+            DisplayName = "Jamie Intake",
+            FirstName = "Jamie",
+            LastName = "Intake",
+            Email = "jamie.intake@example.com",
+            Phone = "555-0111",
+            DateOfBirth = createdPatient.DateOfBirth
+        };
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        patientService
+            .Setup(service => service.CreateAsync(It.IsAny<CreatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(createdPatient);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.SearchEligiblePatientsAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { eligiblePatient });
+        intakeService
+            .Setup(service => service.EnsureDraftAsync(patientId, It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(IntakeEnsureDraftResult.Created(new IntakeResponseDraft
+            {
+                IntakeId = intakeId,
+                PatientId = patientId
+            }));
+        var intakeDeliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        intakeDeliveryService
+            .Setup(service => service.GetDeliveryStatusAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeDeliveryStatusResponse
+            {
+                IntakeId = intakeId,
+                PatientId = patientId,
+                InviteActive = true
+            });
+
+        RegisterServices(
+            patientService.Object,
+            includePatientWrite: true,
+            intakeService: intakeService.Object,
+            intakeDeliveryService: intakeDeliveryService.Object);
+
+        var cut = RenderComponent<PatientsPage>();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
+
+        cut.Find(".global-page-header-primary-action").Click();
+        cut.WaitForElement("#firstName");
+        cut.Find("#firstName").Change("Jamie");
+        cut.Find("#lastName").Change("Intake");
+        cut.Find("#email").Change("jamie.intake@example.com");
+        cut.Find("#phone").Change("555-0111");
+        cut.Find("#dob").Change("1986-03-04");
+        cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value"));
+            Assert.Equal("jamie.intake@example.com", cut.Find("#email").GetAttribute("value"));
+            Assert.Equal("555-0111", cut.Find("#phone").GetAttribute("value"));
         });
     }
 
@@ -198,7 +373,7 @@ public sealed class PatientsPageTests : TestContext
 
         RegisterServices(patientService.Object, includePatientWrite: true);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() =>
         {
@@ -218,7 +393,7 @@ public sealed class PatientsPageTests : TestContext
         var patientService = new ControllablePatientService();
         RegisterServices(patientService, includePatientWrite: true);
 
-        var cut = RenderComponent<Patients>();
+        var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() => Assert.Contains("No patients found", cut.Markup, StringComparison.Ordinal));
 
@@ -258,7 +433,9 @@ public sealed class PatientsPageTests : TestContext
     private void RegisterServices(
         IPatientService patientService,
         bool includePatientWrite,
-        IToastService? toastService = null)
+        IToastService? toastService = null,
+        IIntakeService? intakeService = null,
+        IIntakeDeliveryService? intakeDeliveryService = null)
     {
         Services.AddLogging();
         var authorization = this.AddTestAuthorization();
@@ -274,6 +451,8 @@ public sealed class PatientsPageTests : TestContext
         }
 
         Services.AddSingleton(patientService);
+        Services.AddSingleton(intakeService ?? Mock.Of<IIntakeService>());
+        Services.AddSingleton(intakeDeliveryService ?? Mock.Of<IIntakeDeliveryService>());
         Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
         Services.AddSingleton(toastService ?? new CapturingToastService());
     }

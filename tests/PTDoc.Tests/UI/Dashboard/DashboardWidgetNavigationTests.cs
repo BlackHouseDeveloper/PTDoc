@@ -217,6 +217,116 @@ public sealed class DashboardWidgetNavigationTests : TestContext
     }
 
     [Fact]
+    public void AddPatientSuccess_OpensSendIntakeModalWithCreatedPatientPreselected()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+        authorization.SetPolicies(
+            AuthorizationPolicies.ClinicalStaff,
+            AuthorizationPolicies.PatientWrite,
+            AuthorizationPolicies.IntakeWrite);
+
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var createdPatient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Morgan",
+            LastName = "Dashboard",
+            Email = "morgan.dashboard@example.com",
+            Phone = "555-0199",
+            DateOfBirth = new DateTime(1991, 5, 6)
+        };
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.CreateAsync(It.IsAny<CreatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(createdPatient);
+
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.SearchEligiblePatientsAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        intakeService
+            .Setup(service => service.EnsureDraftAsync(patientId, It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(IntakeEnsureDraftResult.Created(new IntakeResponseDraft
+            {
+                IntakeId = intakeId,
+                PatientId = patientId
+            }));
+
+        var intakeDeliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        intakeDeliveryService
+            .Setup(service => service.GetDeliveryStatusAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeDeliveryStatusResponse
+            {
+                IntakeId = intakeId,
+                PatientId = patientId,
+                InviteActive = true
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IToastService, ToastService>();
+        Services.AddSingleton<IPatientService>(patientService.Object);
+        Services.AddSingleton<IIntakeService>(intakeService.Object);
+        Services.AddSingleton<IIntakeDeliveryService>(intakeDeliveryService.Object);
+        Services.AddSingleton<IDashboardAlertService>(new StaticDashboardAlertService(new DashboardSnapshotResponse
+        {
+            Overview = new DashboardOverviewCountsResponse
+            {
+                PatientsToday = 1
+            }
+        }));
+
+        var authStateTask = Services
+            .GetRequiredService<AuthenticationStateProvider>()
+            .GetAuthenticationStateAsync();
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<CascadingValue<Task<AuthenticationState>>>(0);
+            builder.AddAttribute(1, "Value", authStateTask);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent<PTDoc.UI.Pages.Dashboard>(3);
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        root.WaitForAssertion(() => Assert.Contains("Recent Activity", root.Markup, StringComparison.Ordinal));
+        root.WaitForElement("button[aria-label='Add new patient']");
+        root.Find("button[aria-label='Add new patient']").Click();
+        root.Find("#firstName").Change("Morgan");
+        root.Find("#lastName").Change("Dashboard");
+        root.Find("#email").Change("morgan.dashboard@example.com");
+        root.Find("#phone").Change("555-0199");
+        root.Find("#dob").Change("1991-05-06");
+        root.Find("form").Submit();
+
+        root.WaitForAssertion(() =>
+        {
+            Assert.Contains("Send Intake Form", root.Markup, StringComparison.Ordinal);
+            Assert.Equal(patientId.ToString("D"), root.Find("#patient-select").GetAttribute("value"));
+            Assert.Equal("morgan.dashboard@example.com", root.Find("#email").GetAttribute("value"));
+            Assert.Equal("555-0199", root.Find("#phone").GetAttribute("value"));
+        });
+
+        patientService.Verify(service => service.CreateAsync(
+            It.Is<CreatePatientRequest>(request =>
+                request.FirstName == "Morgan" &&
+                request.LastName == "Dashboard" &&
+                request.Email == "morgan.dashboard@example.com" &&
+                request.Phone == "555-0199" &&
+                request.DateOfBirth == new DateTime(1991, 5, 6)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        intakeDeliveryService.Verify(
+            service => service.SendInviteAsync(It.IsAny<IntakeSendInviteRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void ExpiringAuthorizationsWidget_UsesPatientIdForLinks_AndUpdateNavigation()
     {
         var navigation = Services.GetRequiredService<NavigationManager>();

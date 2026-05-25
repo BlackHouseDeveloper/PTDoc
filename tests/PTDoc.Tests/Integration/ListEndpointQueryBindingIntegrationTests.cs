@@ -2,11 +2,13 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Data.Seeders;
 
 namespace PTDoc.Tests.Integration;
 
@@ -58,6 +60,29 @@ public sealed class ListEndpointQueryBindingIntegrationTests : IClassFixture<PtD
         Assert.NotNull(patients);
         Assert.Equal(250, patients!.Count);
         Assert.All(patients, patient => Assert.Contains(marker, patient.DisplayName, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Avery Adams")]
+    [InlineData("BETA-PT-001")]
+    [InlineData("avery.adams.beta@physicallyfitpt.test")]
+    public async Task PatientList_Search_MatchesSeededBetaPatientByNameMrnAndEmail(string query)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await DatabaseSeeder.SeedBetaAccessDataAsync(db, NullLogger.Instance, "8642");
+
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var response = await client.GetAsync($"/api/v1/patients?query={Uri.EscapeDataString(query)}&take=20");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var patients = await response.Content.ReadFromJsonAsync<List<PatientListItemResponse>>();
+        Assert.NotNull(patients);
+        Assert.Contains(patients!, patient =>
+            patient.DisplayName == "Avery Adams" &&
+            patient.MedicalRecordNumber == "BETA-PT-001" &&
+            patient.Email == "avery.adams.beta@physicallyfitpt.test");
     }
 
     [Fact]

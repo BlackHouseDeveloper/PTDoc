@@ -10,7 +10,7 @@
 @if (IsOpen)
 {
     <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
-        <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog"
+        <div id="@modalId" class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog"
              aria-labelledby="send-intake-title" aria-describedby="send-intake-description" aria-modal="true">
 
             <div class="modal-header">
@@ -26,9 +26,16 @@
             <form class="modal-body" @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
                 @if (!string.IsNullOrWhiteSpace(_errorMessage))
                 {
-                    <div class="success-box" role="alert">
+                    <div class="success-box success-box--warning" role="alert" data-testid="send-intake-error">
                         <strong>Unable to continue.</strong>
                         <p>@_errorMessage</p>
+                    </div>
+                }
+                else if (AvailablePatients.Count == 0)
+                {
+                    <div class="success-box success-box--warning" role="status" data-testid="send-intake-empty-state">
+                        <strong>No eligible patients are available.</strong>
+                        <p>Create a patient or choose a patient without a locked intake before sending an invite.</p>
                     </div>
                 }
 
@@ -43,7 +50,7 @@
                             @ref="firstInputRef"
                             required
                             aria-required="true"
-                            disabled="@_isBusy">
+                            disabled="@(_isBusy || AvailablePatients.Count == 0)">
                             <option value="">Select a patient</option>
                             @foreach (var patient in AvailablePatients)
                             {
@@ -96,7 +103,7 @@
 
                 <div class="form-field">
                     <div class="modal-footer" style="padding: 0; justify-content: flex-start;">
-                        <button type="button" class="btn-cancel" @onclick="GenerateLinkAsync" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId))">
+                        <button type="button" class="btn-cancel" @onclick="GenerateLinkAsync" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId) || _patientSelectionBlocked)">
                             Generate Link &amp; QR
                         </button>
                         <button type="button" class="btn-info" @onclick="CopyLinkAsync" disabled="@(_isBusy || _bundle is null || HasLoopbackInviteLinkWarning)">
@@ -115,7 +122,7 @@
 
                     @if (HasLoopbackInviteLinkWarning)
                     {
-                        <div class="success-box" role="alert">
+                        <div class="success-box success-box--warning" role="alert" data-testid="send-intake-loopback-warning">
                             <strong>This link only works on this computer.</strong>
                             <p>Configure a public PTDoc URL before copying or sending this invite to a patient.</p>
                         </div>
@@ -148,7 +155,7 @@
                     <button type="button" class="btn-cancel" @onclick="Close" disabled="@_isBusy">
                         Cancel
                     </button>
-                    <button type="submit" class="btn-info" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId) || HasLoopbackInviteLinkWarning)">
+                    <button type="submit" class="btn-info" disabled="@(_isBusy || string.IsNullOrWhiteSpace(SelectedPatientId) || _patientSelectionBlocked || HasLoopbackInviteLinkWarning)">
                         <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M14 2L7 9M14 2L9.33333 14.6667L7 9M14 2L2 6.66667L7 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
@@ -178,22 +185,47 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public EventCallback<IntakeFormData> OnSubmit { get; set; }
     [Parameter] public List<PatientOption> AvailablePatients { get; set; } = new();
+    [Parameter] public string? InitialPatientId { get; set; }
 
     private ElementReference firstInputRef;
     private ElementReference modalContainerRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<SendIntakeModal>? dotNetRef;
     private readonly string modalId = $"modal-{Guid.NewGuid():N}";
+    private bool _isModalActive;
+    private string? _appliedInitialPatientId;
 
     private string SelectedPatientId { get; set; } = string.Empty;
     private string Email { get; set; } = string.Empty;
     private string PhoneNumber { get; set; } = string.Empty;
     private bool _isBusy;
     private string? _errorMessage;
+    private bool _patientSelectionBlocked;
     private Guid? _intakeId;
     private IntakeDeliveryBundleResponse? _bundle;
     private IntakeDeliveryStatusResponse? _status;
     private bool HasLoopbackInviteLinkWarning => HasLoopbackInviteLink(_bundle?.InviteUrl) && !IsCurrentOriginLoopback();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen)
+        {
+            _appliedInitialPatientId = null;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(InitialPatientId)
+            || string.Equals(_appliedInitialPatientId, InitialPatientId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (AvailablePatients.Any(patient => string.Equals(patient.Id, InitialPatientId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _appliedInitialPatientId = InitialPatientId;
+            await SelectPatientAsync(InitialPatientId);
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -204,36 +236,51 @@
                 modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
                 dotNetRef = DotNetObjectReference.Create(this);
             }
+            catch (Exception ex) when (IsExpectedJsCancellation(ex))
+            {
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to load modal.js: {ex.Message}");
             }
         }
 
-        if (IsOpen && modalModule != null && dotNetRef != null)
+        if (IsOpen && !_isModalActive && modalModule != null && dotNetRef != null)
         {
             try
             {
+                _isModalActive = true;
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
                 await firstInputRef.FocusAsync();
+            }
+            catch (Exception ex) when (IsExpectedJsCancellation(ex))
+            {
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Modal JS interop error: {ex.Message}");
             }
         }
-        else if (!IsOpen && modalModule != null)
+        else if (!IsOpen && _isModalActive && modalModule != null)
         {
             try
             {
+                _isModalActive = false;
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
                 await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+            catch (Exception ex) when (IsExpectedJsCancellation(ex))
+            {
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Modal cleanup error: {ex.Message}");
             }
+        }
+        else if (!IsOpen)
+        {
+            _isModalActive = false;
         }
     }
 
@@ -244,14 +291,24 @@
     }
 
     private async Task HandlePatientChanged(ChangeEventArgs args)
+        => await SelectPatientAsync(args.Value?.ToString() ?? string.Empty);
+
+    private async Task SelectPatientAsync(string patientIdValue)
     {
-        SelectedPatientId = args.Value?.ToString() ?? string.Empty;
+        SelectedPatientId = patientIdValue;
         _errorMessage = null;
+        _patientSelectionBlocked = false;
         _bundle = null;
         _status = null;
         _intakeId = null;
 
-        var selectedPatient = AvailablePatients.FirstOrDefault(patient => patient.Id == SelectedPatientId);
+        var selectedPatient = AvailablePatients.FirstOrDefault(patient =>
+            string.Equals(patient.Id, SelectedPatientId, StringComparison.OrdinalIgnoreCase));
+        if (selectedPatient is not null)
+        {
+            SelectedPatientId = selectedPatient.Id;
+        }
+
         Email = selectedPatient?.Email ?? string.Empty;
         PhoneNumber = selectedPatient?.PhoneNumber ?? string.Empty;
 
@@ -272,12 +329,14 @@
 
                 if (ensureResult.Status == IntakeEnsureDraftStatus.Locked)
                 {
+                    _patientSelectionBlocked = true;
                     _errorMessage = ensureResult.ErrorMessage ?? "This patient already has a locked intake and cannot receive a new invite.";
                     return;
                 }
 
                 if (ensureResult.Status == IntakeEnsureDraftStatus.PatientNotFound)
                 {
+                    _patientSelectionBlocked = true;
                     _errorMessage = ensureResult.ErrorMessage ?? "The selected patient could not be found.";
                     return;
                 }
@@ -314,7 +373,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = "Unable to generate an intake link. Please try again.";
+            _errorMessage = GetSafeWorkflowError(ex, "Unable to generate an intake link. Please try again.");
             Console.WriteLine($"[SendIntakeModal] GenerateLink error: {ex.Message}");
         }
         finally
@@ -353,7 +412,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = "Unable to copy the intake link. Please try again.";
+            _errorMessage = GetSafeWorkflowError(ex, "Unable to copy the intake link. Please try again.");
             Console.WriteLine($"[SendIntakeModal] CopyLink error: {ex.Message}");
         }
         finally
@@ -437,7 +496,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = "Unable to send the intake invitation. Please try again.";
+            _errorMessage = GetSafeWorkflowError(ex, "Unable to send the intake invitation. Please try again.");
             Console.WriteLine($"[SendIntakeModal] Submit error: {ex.Message}");
         }
         finally
@@ -508,9 +567,11 @@
         Email = string.Empty;
         PhoneNumber = string.Empty;
         _errorMessage = null;
+        _patientSelectionBlocked = false;
         _intakeId = null;
         _bundle = null;
         _status = null;
+        _appliedInitialPatientId = null;
     }
 
     private void HandleOverlayClick()
@@ -531,6 +592,22 @@
 
     private bool IsCurrentOriginLoopback()
         => Uri.TryCreate(NavigationManager.Uri, UriKind.Absolute, out var uri) && uri.IsLoopback;
+
+    private static string GetSafeWorkflowError(Exception exception, string fallback)
+    {
+        if (exception is InvalidOperationException
+            && !string.IsNullOrWhiteSpace(exception.Message)
+            && !exception.Message.Contains('\n', StringComparison.Ordinal)
+            && !exception.Message.Contains('\r', StringComparison.Ordinal))
+        {
+            return exception.Message;
+        }
+
+        return fallback;
+    }
+
+    private static bool IsExpectedJsCancellation(Exception exception)
+        => exception is OperationCanceledException or Microsoft.JSInterop.JSDisconnectedException;
 
     public async ValueTask DisposeAsync()
     {

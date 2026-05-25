@@ -72,6 +72,40 @@ public sealed class BetaAccessSeederTests
     }
 
     [Fact]
+    public async Task SeedBetaAccessDataAsync_CreatesIdempotentSearchablePatientFixtures()
+    {
+        await using var context = CreateInMemoryContext();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var patients = await context.Patients
+            .Where(patient => patient.ClinicId == DatabaseSeeder.BetaClinicId
+                && patient.MedicalRecordNumber != null
+                && patient.MedicalRecordNumber!.StartsWith("BETA-PT-"))
+            .OrderBy(patient => patient.MedicalRecordNumber)
+            .ToListAsync();
+
+        Assert.Equal(4, patients.Count);
+        Assert.Contains(patients, patient =>
+            patient.FirstName == "Avery" &&
+            patient.LastName == "Adams" &&
+            patient.MedicalRecordNumber == "BETA-PT-001" &&
+            patient.Email == "avery.adams.beta@physicallyfitpt.test");
+        Assert.Contains(patients, patient =>
+            patient.FirstName == "Jordan" &&
+            patient.LastName == "Lee" &&
+            patient.MedicalRecordNumber == "BETA-PT-002" &&
+            patient.Email == "jordan.lee.beta@physicallyfitpt.test");
+        Assert.All(patients, patient =>
+        {
+            Assert.False(patient.IsArchived);
+            Assert.Equal(DatabaseSeeder.BetaClinicId, patient.ClinicId);
+            Assert.True(patient.ConsentSigned);
+        });
+    }
+
+    [Fact]
     public async Task SeedBetaAccessDataAsync_DoesNotRewriteStablePinOrFutureLicenseExpiration()
     {
         await using var context = CreateInMemoryContext();

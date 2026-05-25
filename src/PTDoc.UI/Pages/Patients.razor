@@ -7,6 +7,7 @@
 @using PTDoc.UI.Components.Patients.Models
 @inject NavigationManager NavigationManager
 @inject IPatientService PatientService
+@inject IIntakeService IntakeService
 @inject IToastService ToastService
 @inject ILogger<Patients> Logger
 @rendermode InteractiveServer
@@ -78,6 +79,13 @@
     OnSubmit="@HandleAddPatient"
 />
 
+<SendIntakeModal
+    IsOpen="@isSendIntakeModalOpen"
+    IsOpenChanged="@HandleSendIntakeOpenChanged"
+    AvailablePatients="@availablePatients"
+    InitialPatientId="@initialSendIntakePatientId"
+    OnSubmit="@HandleIntakeSubmit" />
+
 @code {
     private readonly HeaderConfiguration patientsHeaderWithAction = new()
     {
@@ -103,9 +111,13 @@
 
     private bool isLoading = false;
     private bool isAddPatientModalOpen = false;
+    private bool isSendIntakeModalOpen = false;
+    private bool isLoadingAvailablePatients = false;
     private string searchQuery = string.Empty;
+    private string? initialSendIntakePatientId;
     private string? loadErrorMessage;
     private List<PatientListItemVm> patients = new();
+    private List<SendIntakeModal.PatientOption> availablePatients = new();
     private CancellationTokenSource? _searchCts;
     private int _loadSequence;
     private string AriaBusy => isLoading ? "true" : "false";
@@ -206,9 +218,16 @@
                 Email = formData.Email,
                 Phone = formData.PhoneNumber
             };
-            await PatientService.CreateAsync(request);
+            var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess("Patient added.");
-            await LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
+
+            searchQuery = string.Empty;
+            await LoadPatientsAsync();
+            EnsureCreatedPatientVisible(created);
+            StateHasChanged();
+
+            await PrepareSendIntakeForPatientAsync(created);
+
             return true;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
@@ -236,6 +255,69 @@
         NavigationManager.NavigateTo($"/patient/{patient.Id}");
     }
 
+    private async Task PrepareSendIntakeForPatientAsync(PatientResponse patient)
+    {
+        initialSendIntakePatientId = patient.Id.ToString("D");
+        await LoadAvailablePatientsAsync();
+        UpsertAvailablePatient(ToPatientOption(patient));
+        isSendIntakeModalOpen = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadAvailablePatientsAsync()
+    {
+        if (isLoadingAvailablePatients)
+        {
+            return;
+        }
+
+        try
+        {
+            isLoadingAvailablePatients = true;
+            var results = await IntakeService.SearchEligiblePatientsAsync(take: 200);
+            availablePatients = results.Select(ToPatientOption).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load eligible patients for intake invite workflow.");
+            ToastService.ShowError("Unable to load eligible patients for intake invites.");
+        }
+        finally
+        {
+            isLoadingAvailablePatients = false;
+        }
+    }
+
+    private Task HandleSendIntakeOpenChanged(bool value)
+    {
+        isSendIntakeModalOpen = value;
+        if (!value)
+        {
+            initialSendIntakePatientId = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
+    {
+        initialSendIntakePatientId = null;
+        return Task.CompletedTask;
+    }
+
+    private void EnsureCreatedPatientVisible(PatientResponse patient)
+    {
+        var created = ToVm(patient);
+        patients.RemoveAll(existing => string.Equals(existing.Id, created.Id, StringComparison.Ordinal));
+        patients.Insert(0, created);
+    }
+
+    private void UpsertAvailablePatient(SendIntakeModal.PatientOption patient)
+    {
+        availablePatients.RemoveAll(existing => string.Equals(existing.Id, patient.Id, StringComparison.Ordinal));
+        availablePatients.Insert(0, patient);
+    }
+
     private static PatientListItemVm ToVm(PatientListItemResponse p) => new()
     {
         Id = p.Id.ToString(),
@@ -247,6 +329,37 @@
         StatusLabel = p.IsArchived ? "Inactive" : "Active",
         StatusVariant = p.IsArchived ? BadgeVariant.Default : BadgeVariant.Success
     };
+
+    private static PatientListItemVm ToVm(PatientResponse p) => new()
+    {
+        Id = p.Id.ToString("D"),
+        DisplayName = BuildDisplayName(p.FirstName, p.LastName),
+        MedicalRecordNumber = p.MedicalRecordNumber,
+        Email = p.Email,
+        Phone = p.Phone,
+        DateOfBirth = p.DateOfBirth == default ? null : p.DateOfBirth.ToString("MMM d, yyyy"),
+        StatusLabel = p.IsArchived ? "Inactive" : "Active",
+        StatusVariant = p.IsArchived ? BadgeVariant.Default : BadgeVariant.Success
+    };
+
+    private static SendIntakeModal.PatientOption ToPatientOption(PatientListItemResponse p) => new()
+    {
+        Id = p.Id.ToString("D"),
+        Name = p.DisplayName,
+        Email = p.Email,
+        PhoneNumber = p.Phone
+    };
+
+    private static SendIntakeModal.PatientOption ToPatientOption(PatientResponse p) => new()
+    {
+        Id = p.Id.ToString("D"),
+        Name = BuildDisplayName(p.FirstName, p.LastName),
+        Email = p.Email,
+        PhoneNumber = p.Phone
+    };
+
+    private static string BuildDisplayName(string firstName, string lastName)
+        => $"{firstName} {lastName}".Trim();
 
     public void Dispose()
     {
