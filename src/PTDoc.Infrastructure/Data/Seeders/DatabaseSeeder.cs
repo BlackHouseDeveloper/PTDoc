@@ -391,13 +391,16 @@ public static class DatabaseSeeder
         });
         EnsurePatientFixtureVisibility(shoulderPatient, clinicId, seedActorId, now);
 
-        await RemoveNewerEvaluationNotesAsync(context, SubmittedShoulderPatientId, new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc));
+        var shoulderIntakeSubmittedAt = await ResolveSubmittedShoulderIntakeSubmittedAtAsync(
+            context,
+            SubmittedShoulderPatientId,
+            new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc));
 
         var laterQualifyingIntakes = await context.IntakeForms
             .Where(form => form.PatientId == SubmittedShoulderPatientId
                 && form.Id != SubmittedShoulderIntakeFormId
                 && (form.IsLocked || form.SubmittedAt.HasValue)
-                && ((form.SubmittedAt ?? form.LastModifiedUtc) > new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc)))
+                && ((form.SubmittedAt ?? form.LastModifiedUtc) > shoulderIntakeSubmittedAt))
             .ToListAsync();
 
         foreach (var laterQualifyingIntake in laterQualifyingIntakes)
@@ -441,10 +444,10 @@ public static class DatabaseSeeder
                 StructuredDataJson = shoulderStructuredDataJson,
                 PainMapData = shoulderPainMapData,
                 Consents = shoulderConsents,
-                SubmittedAt = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc),
+                SubmittedAt = shoulderIntakeSubmittedAt,
                 IsLocked = true,
                 ClinicId = clinicId,
-                LastModifiedUtc = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc),
+                LastModifiedUtc = shoulderIntakeSubmittedAt,
                 ModifiedByUserId = seedActorId,
                 SyncState = SyncState.Pending
             };
@@ -461,10 +464,10 @@ public static class DatabaseSeeder
             shoulderIntake.StructuredDataJson = shoulderStructuredDataJson;
             shoulderIntake.PainMapData = shoulderPainMapData;
             shoulderIntake.Consents = shoulderConsents;
-            shoulderIntake.SubmittedAt = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc);
+            shoulderIntake.SubmittedAt = shoulderIntakeSubmittedAt;
             shoulderIntake.IsLocked = true;
             shoulderIntake.ClinicId = clinicId;
-            shoulderIntake.LastModifiedUtc = new DateTime(2026, 4, 10, 15, 0, 0, DateTimeKind.Utc);
+            shoulderIntake.LastModifiedUtc = shoulderIntakeSubmittedAt;
             shoulderIntake.ModifiedByUserId = seedActorId;
             shoulderIntake.SyncState = SyncState.Pending;
         }
@@ -1460,40 +1463,22 @@ public static class DatabaseSeeder
         note.SyncState = SyncState.Pending;
     }
 
-    private static async Task RemoveNewerEvaluationNotesAsync(
+    private static async Task<DateTime> ResolveSubmittedShoulderIntakeSubmittedAtAsync(
         ApplicationDbContext context,
         Guid patientId,
-        DateTime intakeReferenceTimeUtc)
+        DateTime defaultSubmittedAtUtc)
     {
-        var newerEvaluations = await context.ClinicalNotes
+        var newestEvaluationReferenceUtc = await context.ClinicalNotes
+            .AsNoTracking()
             .Where(note => note.PatientId == patientId
                 && note.NoteType == NoteType.Evaluation
-                && note.DateOfService > intakeReferenceTimeUtc)
-            .ToListAsync();
+                && (note.DateOfService > defaultSubmittedAtUtc || note.CreatedUtc > defaultSubmittedAtUtc))
+            .Select(note => (DateTime?)(note.CreatedUtc > note.DateOfService ? note.CreatedUtc : note.DateOfService))
+            .MaxAsync();
 
-        if (newerEvaluations.Count == 0)
-        {
-            return;
-        }
-
-        var noteIds = newerEvaluations.Select(note => note.Id).ToList();
-        var linkedOutcomeMeasures = await context.OutcomeMeasureResults
-            .Where(result => result.NoteId != null && noteIds.Contains(result.NoteId.Value))
-            .ToListAsync();
-        var linkedMetrics = await context.ObjectiveMetrics
-            .Where(metric => noteIds.Contains(metric.NoteId))
-            .ToListAsync();
-        var linkedGoals = await context.PatientGoals
-            .Where(goal =>
-                (goal.OriginatingNoteId != null && noteIds.Contains(goal.OriginatingNoteId.Value))
-                || (goal.MetByNoteId != null && noteIds.Contains(goal.MetByNoteId.Value))
-                || (goal.ArchivedByNoteId != null && noteIds.Contains(goal.ArchivedByNoteId.Value)))
-            .ToListAsync();
-
-        context.OutcomeMeasureResults.RemoveRange(linkedOutcomeMeasures);
-        context.ObjectiveMetrics.RemoveRange(linkedMetrics);
-        context.PatientGoals.RemoveRange(linkedGoals);
-        context.ClinicalNotes.RemoveRange(newerEvaluations);
+        return newestEvaluationReferenceUtc.HasValue
+            ? DateTime.SpecifyKind(newestEvaluationReferenceUtc.Value.AddMinutes(5), DateTimeKind.Utc)
+            : defaultSubmittedAtUtc;
     }
 
     private static IntakeResponseDraft BuildSubmittedShoulderDraft(

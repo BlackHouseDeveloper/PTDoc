@@ -102,6 +102,48 @@ public sealed class DatabaseSeederQaFixtureTests : IDisposable
         Assert.DoesNotContain(seed.Payload.Objective.RecommendedOutcomeMeasures, value => string.Equals(value, "VAS", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task SeedTestDataAsync_PreservesNewerEvaluationNotes_AndKeepsShoulderFixtureUsable()
+    {
+        await DatabaseSeeder.SeedTestDataAsync(_context, NullLogger.Instance);
+
+        var newerEvaluationId = Guid.NewGuid();
+        var clinicianId = await _context.Users
+            .Where(user => user.Role == Roles.PT)
+            .Select(user => user.Id)
+            .FirstAsync();
+
+        _context.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = newerEvaluationId,
+            PatientId = SubmittedShoulderPatientId,
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Signed,
+            ContentJson = "{}",
+            CptCodesJson = "[]",
+            DateOfService = new DateTime(2026, 4, 12, 15, 0, 0, DateTimeKind.Utc),
+            CreatedUtc = new DateTime(2026, 4, 12, 15, 0, 0, DateTimeKind.Utc),
+            LastModifiedUtc = new DateTime(2026, 4, 12, 16, 0, 0, DateTimeKind.Utc),
+            ClinicId = DatabaseSeeder.DefaultClinicId,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending,
+            SignatureHash = "signed-newer-evaluation",
+            SignedUtc = new DateTime(2026, 4, 12, 16, 0, 0, DateTimeKind.Utc),
+            SignedByUserId = clinicianId
+        });
+        await _context.SaveChangesAsync();
+
+        await DatabaseSeeder.SeedTestDataAsync(_context, NullLogger.Instance);
+
+        Assert.True(await _context.ClinicalNotes.AnyAsync(note => note.Id == newerEvaluationId));
+
+        var shoulderIntake = await _context.IntakeForms.SingleAsync(form => form.Id == SubmittedShoulderIntakeFormId);
+        Assert.True(shoulderIntake.SubmittedAt > new DateTime(2026, 4, 12, 15, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(1, await _context.ClinicalNotes.CountAsync(note => note.Id == newerEvaluationId));
+        Assert.Equal(1, await _context.IntakeForms.CountAsync(form => form.Id == SubmittedShoulderIntakeFormId));
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();
