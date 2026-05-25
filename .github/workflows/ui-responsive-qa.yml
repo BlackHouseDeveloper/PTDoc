@@ -91,7 +91,7 @@ jobs:
 
       - name: Install UI QA dependencies
         working-directory: tests/PTDoc.Web.UiQa
-        run: npm install
+        run: npm ci
 
       - name: Install Playwright Chromium
         working-directory: tests/PTDoc.Web.UiQa

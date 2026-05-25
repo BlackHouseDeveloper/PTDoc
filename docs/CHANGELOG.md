@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - Responsive review follow-ups
 
-- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.UI/Components/Layout/GlobalHeader.razor.css`**, **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`docs/RESPONSIVE_QA.md`** — Avoided importing/initializing viewport diagnostics unless developer diagnostics or a query-string override is active, removed remaining tight-layout menu-toggle offsets, and renamed the responsive QA auth helper to reflect its fail-fast behavior. Reason: address PR review feedback while preserving the responsive QA overlay path.
+- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.Web/Services/WebViewportDiagnosticsService.cs`**, **`src/PTDoc.UI/Components/Layout/GlobalHeader.razor.css`**, **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`.github/workflows/ui-responsive-qa.yml`**, **`docs/RESPONSIVE_QA.md`** — Avoided importing/initializing viewport diagnostics unless developer diagnostics or a query-string override is active, matched Web diagnostics fallback to the repo's DEBUG/Release developer-mode behavior, removed remaining tight-layout menu-toggle offsets, renamed the responsive QA auth helper to reflect its fail-fast behavior, and made the manual UI QA workflow use `npm ci`. Reason: address PR review feedback while preserving the responsive QA overlay path and reproducible browser installs.
 
 ### Changed - Responsive QA auth guardrail
 
