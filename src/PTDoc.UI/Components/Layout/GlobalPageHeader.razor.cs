@@ -10,6 +10,7 @@ public class GlobalPageHeaderBase : ComponentBase
 
     [Parameter] public HeaderConfiguration? Configuration { get; set; }
     [Parameter] public EventCallback OnPrimaryAction { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool ShowBackButton { get; set; }
     [Parameter] public string? BackRoute { get; set; }
     [Parameter] public string BackButtonAriaLabel { get; set; } = "Go back";

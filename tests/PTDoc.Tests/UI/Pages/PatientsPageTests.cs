@@ -145,6 +145,81 @@ public sealed class PatientsPageTests : TestContext
     }
 
     [Fact]
+    public void SendIntakeAction_WithIntakeWrite_OpensExistingSendIntakeModal()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.SearchEligiblePatientsAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new PatientListItemResponse
+                {
+                    Id = patientId,
+                    DisplayName = "Avery Intake",
+                    FirstName = "Avery",
+                    LastName = "Intake",
+                    Email = "avery.intake@example.com",
+                    Phone = "555-0123",
+                    DateOfBirth = new DateTime(1984, 5, 6)
+                }
+            });
+        intakeService
+            .Setup(service => service.EnsureDraftAsync(patientId, It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(IntakeEnsureDraftResult.Existing(new IntakeResponseDraft
+            {
+                IntakeId = intakeId,
+                PatientId = patientId
+            }));
+        var intakeDeliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        intakeDeliveryService
+            .Setup(service => service.GetDeliveryStatusAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeDeliveryStatusResponse
+            {
+                IntakeId = intakeId,
+                PatientId = patientId,
+                InviteActive = true
+            });
+
+        RegisterServices(
+            patientService.Object,
+            includePatientWrite: false,
+            includeIntakeWrite: true,
+            intakeService: intakeService.Object,
+            intakeDeliveryService: intakeDeliveryService.Object);
+
+        var cut = RenderComponent<PatientsPage>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var action = Assert.Single(cut.FindAll(".global-page-header-primary-action"));
+            Assert.Contains("Send Intake", action.TextContent, StringComparison.Ordinal);
+        });
+        cut.Find(".global-page-header-primary-action").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Avery Intake", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(string.Empty, cut.Find("#patient-select").GetAttribute("value"));
+        });
+        cut.Find("#patient-select").Change(patientId.ToString("D"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value"));
+            Assert.Equal("avery.intake@example.com", cut.Find("#email").GetAttribute("value"));
+            Assert.Equal("555-0123", cut.Find("#phone").GetAttribute("value"));
+        });
+    }
+
+    [Fact]
     public void FailedCreate_KeepsModalOpenAndShowsSafeFeedback()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -434,6 +509,7 @@ public sealed class PatientsPageTests : TestContext
         IPatientService patientService,
         bool includePatientWrite,
         IToastService? toastService = null,
+        bool includeIntakeWrite = false,
         IIntakeService? intakeService = null,
         IIntakeDeliveryService? intakeDeliveryService = null)
     {
@@ -445,9 +521,21 @@ public sealed class PatientsPageTests : TestContext
         {
             authorization.SetPolicies(AuthorizationPolicies.PatientRead, AuthorizationPolicies.PatientWrite);
         }
+        else if (includeIntakeWrite)
+        {
+            authorization.SetPolicies(AuthorizationPolicies.PatientRead, AuthorizationPolicies.IntakeWrite);
+        }
         else
         {
             authorization.SetPolicies(AuthorizationPolicies.PatientRead);
+        }
+
+        if (includePatientWrite && includeIntakeWrite)
+        {
+            authorization.SetPolicies(
+                AuthorizationPolicies.PatientRead,
+                AuthorizationPolicies.PatientWrite,
+                AuthorizationPolicies.IntakeWrite);
         }
 
         Services.AddSingleton(patientService);

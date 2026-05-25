@@ -22,15 +22,22 @@
             </div>
         </div>
 
-        @if (EffectiveConfiguration.ShowPrimaryAction && !string.IsNullOrWhiteSpace(EffectiveConfiguration.PrimaryActionText))
+        @if ((EffectiveConfiguration.ShowPrimaryAction && !string.IsNullOrWhiteSpace(EffectiveConfiguration.PrimaryActionText))
+            || ChildContent is not null)
         {
-            <button type="button" class="global-page-header-primary-action" @onclick="HandlePrimaryActionAsync">
-                <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>@EffectiveConfiguration.PrimaryActionText</span>
-            </button>
+            <div class="global-page-header-actions">
+                @if (EffectiveConfiguration.ShowPrimaryAction && !string.IsNullOrWhiteSpace(EffectiveConfiguration.PrimaryActionText))
+                {
+                    <button type="button" class="global-page-header-primary-action" @onclick="HandlePrimaryActionAsync">
+                        <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>@EffectiveConfiguration.PrimaryActionText</span>
+                    </button>
+                }
+                @ChildContent
+            </div>
         }
     </div>
 </header>

@@ -421,6 +421,7 @@ autom4te.cache/
 tarballs/
 test-results/
 playwright-report/
+output/playwright/
 
 # Mac bundle stuff
 *.dmg

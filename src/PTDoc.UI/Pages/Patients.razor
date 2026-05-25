@@ -16,17 +16,30 @@
 <PageTitle>Patients - PTDoc</PageTitle>
 
 <div class="patients-page">
-    <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
-        <Authorized>
-            <GlobalPageHeader Configuration="patientsHeaderWithAction" OnPrimaryAction="OpenAddPatientModal" />
-        </Authorized>
-        <NotAuthorized>
-            <GlobalPageHeader Configuration="patientsHeaderReadOnly" />
-        </NotAuthorized>
-        <Authorizing>
-            <GlobalPageHeader Configuration="patientsHeaderReadOnly" />
-        </Authorizing>
-    </AuthorizeView>
+    <GlobalPageHeader Configuration="patientsHeader">
+        <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+            <Authorized>
+                <button type="button" class="global-page-header-primary-action" @onclick="OpenAddPatientModal">
+                    <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Add Patient</span>
+                </button>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
+            <Authorized>
+                <button type="button" class="global-page-header-primary-action" @onclick="HandleSendIntakeAsync">
+                    <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M14.6667 2L7.33334 9.33333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M14.6667 2L10 14.6667L7.33334 9.33333L2 6.66667L14.6667 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Send Intake</span>
+                </button>
+            </Authorized>
+        </AuthorizeView>
+    </GlobalPageHeader>
 
     <div class="patients-page-body">
         <div class="patients-page-search">
@@ -87,19 +100,7 @@
     OnSubmit="@HandleIntakeSubmit" />
 
 @code {
-    private readonly HeaderConfiguration patientsHeaderWithAction = new()
-    {
-        Route = "/patients",
-        Title = "Patients",
-        Subtitle = "Patient directory",
-        ShowPrimaryAction = true,
-        PrimaryActionText = "Add Patient",
-        PrimaryActionRoute = "/patients?action=patients.add",
-        ShowSyncControls = false,
-        ShowStatusBadge = false
-    };
-
-    private readonly HeaderConfiguration patientsHeaderReadOnly = new()
+    private readonly HeaderConfiguration patientsHeader = new()
     {
         Route = "/patients",
         Title = "Patients",
@@ -198,6 +199,17 @@
     private void OpenAddPatientModal()
     {
         isAddPatientModalOpen = true;
+    }
+
+    private async Task HandleSendIntakeAsync()
+    {
+        initialSendIntakePatientId = null;
+        if (availablePatients.Count == 0)
+        {
+            await LoadAvailablePatientsAsync();
+        }
+
+        isSendIntakeModalOpen = true;
     }
 
     private async Task<bool> HandleAddPatient(AddPatientModal.PatientFormData formData)
