@@ -33,7 +33,7 @@
                 id="patient-profile-tab-timeline"
                 role="tab"
                 aria-selected="@IsSelectedTab("timeline")"
-                aria-controls="patient-profile-panel-timeline"
+                aria-controls="patient-profile-panel-current"
                 data-testid="patient-profile-tab-timeline"
                 @onclick="@(() => SelectTab("timeline"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -47,7 +47,7 @@
                 id="patient-profile-tab-notes"
                 role="tab"
                 aria-selected="@IsSelectedTab("notes")"
-                aria-controls="patient-profile-panel-notes"
+                aria-controls="patient-profile-panel-current"
                 data-testid="patient-profile-tab-notes"
                 @onclick="@(() => SelectTab("notes"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -59,7 +59,7 @@
     </div>
 
     <div class="patient-clinical-info-content"
-         id="@SelectedPanelId"
+         id="patient-profile-panel-current"
          role="tabpanel"
          aria-labelledby="@SelectedTabId"
          data-testid="@SelectedPanelTestId">
@@ -178,8 +178,6 @@
 
     private string IsSelectedTab(string tab)
         => string.Equals(selectedTab, tab, StringComparison.Ordinal) ? "true" : "false";
-
-    private string SelectedPanelId => $"patient-profile-panel-{selectedTab}";
 
     private string SelectedTabId => $"patient-profile-tab-{selectedTab}";
 

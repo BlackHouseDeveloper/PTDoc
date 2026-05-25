@@ -40,8 +40,9 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         Assert.Equal("tablist", tabList.GetAttribute("role"));
         Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("role"));
         Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
-        Assert.Equal("patient-profile-panel-timeline", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-controls"));
+        Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-controls"));
         Assert.Equal("tabpanel", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("role"));
+        Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-timeline']").Id);
         Assert.Contains("Evaluation signed", cut.Markup, StringComparison.Ordinal);
 
         cut.Find("[data-testid='patient-profile-tab-notes']").Click();
@@ -50,7 +51,9 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         {
             Assert.Equal("false", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
             Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-selected"));
+            Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-controls"));
             Assert.Equal("patient-profile-tab-notes", cut.Find("[data-testid='patient-profile-panel-notes']").GetAttribute("aria-labelledby"));
+            Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-notes']").Id);
             Assert.Contains("Daily", cut.Markup, StringComparison.Ordinal);
         });
     }

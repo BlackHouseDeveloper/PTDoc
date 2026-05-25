@@ -106,6 +106,44 @@ public sealed class BetaAccessSeederTests
     }
 
     [Fact]
+    public async Task SeedBetaAccessDataAsync_DoesNotMoveFixtureMrnFromAnotherClinic()
+    {
+        await using var context = CreateInMemoryContext();
+        var otherClinicId = Guid.NewGuid();
+        var existingPatientId = Guid.NewGuid();
+        context.Clinics.Add(new Clinic
+        {
+            Id = otherClinicId,
+            Name = "Other Clinic",
+            Slug = "other-clinic",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.Patients.Add(new Patient
+        {
+            Id = existingPatientId,
+            FirstName = "Existing",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            Email = "existing.patient@example.test",
+            MedicalRecordNumber = "BETA-PT-001",
+            ClinicId = otherClinicId
+        });
+        await context.SaveChangesAsync();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var existingPatient = await context.Patients.SingleAsync(patient => patient.Id == existingPatientId);
+        Assert.Equal(otherClinicId, existingPatient.ClinicId);
+        Assert.Equal("Existing", existingPatient.FirstName);
+        Assert.Equal("existing.patient@example.test", existingPatient.Email);
+
+        Assert.False(await context.Patients.AnyAsync(patient =>
+            patient.ClinicId == DatabaseSeeder.BetaClinicId &&
+            patient.MedicalRecordNumber == "BETA-PT-001"));
+    }
+
+    [Fact]
     public async Task SeedBetaAccessDataAsync_DoesNotRewriteStablePinOrFutureLicenseExpiration()
     {
         await using var context = CreateInMemoryContext();

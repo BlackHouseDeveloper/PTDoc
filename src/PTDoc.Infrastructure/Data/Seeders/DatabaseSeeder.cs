@@ -255,19 +255,32 @@ public static class DatabaseSeeder
         var fixtureMrns = BetaPatientFixtures
             .Select(fixture => fixture.MedicalRecordNumber)
             .ToList();
-        var existingPatients = await context.Patients
-            .Where(patient => patient.MedicalRecordNumber != null && fixtureMrns.Contains(patient.MedicalRecordNumber!))
+        var matchingPatients = await context.Patients
+            .Where(patient => patient.MedicalRecordNumber != null
+                && fixtureMrns.Contains(patient.MedicalRecordNumber!))
             .ToListAsync();
-        var existingByMrn = existingPatients
+        var existingByMrn = matchingPatients
+            .Where(patient => patient.ClinicId == clinicId)
             .GroupBy(patient => patient.MedicalRecordNumber!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var reservedFixtureMrns = matchingPatients
+            .Where(patient => patient.ClinicId != clinicId)
+            .Select(patient => patient.MedicalRecordNumber!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var createdCount = 0;
         var updatedCount = 0;
+        var skippedCount = 0;
 
         foreach (var fixture in BetaPatientFixtures)
         {
             if (!existingByMrn.TryGetValue(fixture.MedicalRecordNumber, out var patient))
             {
+                if (reservedFixtureMrns.Contains(fixture.MedicalRecordNumber))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
                 patient = new Patient
                 {
                     Id = Guid.NewGuid()
@@ -315,7 +328,7 @@ public static class DatabaseSeeder
         }
 
         await context.SaveChangesAsync();
-        return new BetaPatientFixtureSeedResult(createdCount, updatedCount, BetaPatientFixtures.Count);
+        return new BetaPatientFixtureSeedResult(createdCount, updatedCount, skippedCount, BetaPatientFixtures.Count - skippedCount);
     }
 
     private static async Task EnsureOutcomeMeasureQaFixturesAsync(
@@ -1820,6 +1833,7 @@ public static class DatabaseSeeder
     private sealed record BetaPatientFixtureSeedResult(
         int Created,
         int Updated,
+        int Skipped,
         int Total);
 
     private sealed record PatientSeedCondition(
