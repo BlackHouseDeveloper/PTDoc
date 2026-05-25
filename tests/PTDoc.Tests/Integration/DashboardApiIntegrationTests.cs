@@ -260,6 +260,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         var archivedPatient = CreatePatient("Aria", "ArchivedPoc", clinician.Id, medicalRecordNumber: "POC-ARCHIVED", isArchived: true);
         var dailyPatient = CreatePatient("Drew", "DailyNote", clinician.Id, medicalRecordNumber: "POC-DAILY");
         var addendumPatient = CreatePatient("Avery", "AddendumPoc", clinician.Id, medicalRecordNumber: "POC-ADDENDUM");
+        var legacyPatient = CreatePatient("Lena", "LegacyPoc", clinician.Id, medicalRecordNumber: "POC-LEGACY");
 
         var now = DateTime.UtcNow.AddYears(1);
         var planNote = CreateClinicalNote(
@@ -324,9 +325,25 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             now.AddMinutes(1),
             isAddendum: true,
             noteType: NoteType.Evaluation);
+        var legacyNullDiagnosisNote = CreateClinicalNote(
+            legacyPatient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            now.Date,
+            now.AddMinutes(-1),
+            noteType: NoteType.Evaluation,
+            contentJson: """
+                {
+                  "noteType": 0,
+                  "assessment": {
+                    "diagnosisCodes": null
+                  }
+                }
+                """);
 
-        db.Patients.AddRange(planPatient, progressPatient, archivedPatient, dailyPatient, addendumPatient);
-        db.ClinicalNotes.AddRange(planNote, progressNote, archivedNote, dailyNote, addendumNote);
+        db.Patients.AddRange(planPatient, progressPatient, archivedPatient, dailyPatient, addendumPatient, legacyPatient);
+        db.ClinicalNotes.AddRange(planNote, progressNote, archivedNote, dailyNote, addendumNote, legacyNullDiagnosisNote);
 
         await db.SaveChangesAsync();
 
@@ -353,6 +370,9 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         var progressSummary = Assert.Single(plans, plan => plan.Id == progressNote.Id);
         Assert.Equal("Pending Review", progressSummary.Status);
+
+        var legacySummary = Assert.Single(plans, plan => plan.Id == legacyNullDiagnosisNote.Id);
+        Assert.Null(legacySummary.IcdCount);
 
         Assert.DoesNotContain(plans, plan => plan.Id == archivedNote.Id);
         Assert.DoesNotContain(plans, plan => plan.Id == dailyNote.Id);

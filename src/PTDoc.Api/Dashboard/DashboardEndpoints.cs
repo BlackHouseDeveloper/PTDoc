@@ -324,7 +324,7 @@ public static class DashboardEndpoints
         return notes.Select(note =>
         {
             var payload = TryDeserializeWorkspacePayload(note.ContentJson);
-            var icdCount = payload?.Assessment?.DiagnosisCodes.Count;
+            var icdCount = payload?.Assessment?.DiagnosisCodes?.Count;
             var cptUnits = TryCountCptUnits(note.CptCodesJson);
             int? targetVisits = TryGetSingleValue(payload?.Plan?.TreatmentFrequencyDaysPerWeek) is { } daysPerWeek &&
                                TryGetSingleValue(payload?.Plan?.TreatmentDurationWeeks) is { } durationWeeks
