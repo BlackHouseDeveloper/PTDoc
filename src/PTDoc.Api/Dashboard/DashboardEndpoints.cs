@@ -803,6 +803,11 @@ public static class DashboardEndpoints
             var total = 0;
             foreach (var code in document.RootElement.EnumerateArray())
             {
+                if (code.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
                 total += code.TryGetProperty("units", out var camelUnits) && camelUnits.TryGetInt32(out var camelValue)
                     ? Math.Max(0, camelValue)
                     : code.TryGetProperty("Units", out var pascalUnits) && pascalUnits.TryGetInt32(out var pascalValue)

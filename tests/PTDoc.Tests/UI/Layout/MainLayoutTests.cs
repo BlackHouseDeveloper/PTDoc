@@ -169,6 +169,26 @@ public sealed class MainLayoutTests : TestContext
     }
 
     [Fact]
+    public void NavMenu_UsesSingularLabels_ForOneIntakeAndOneNoteBadge()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse
+        {
+            IntakeCount = 1,
+            NotesCount = 1
+        };
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("1 intake item needing action", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("1 note needing attention", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 intake items needing action", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 notes needing attention", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void NavMenu_HidesBadges_WhenCountsAreZero()
     {
         _navigationBadgeService.Counts = new NavigationBadgeCountsResponse();

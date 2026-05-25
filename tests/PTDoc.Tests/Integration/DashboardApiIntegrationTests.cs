@@ -340,7 +340,8 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
                     "diagnosisCodes": null
                   }
                 }
-                """);
+                """,
+            cptCodesJson: """["97110"]""");
 
         db.Patients.AddRange(planPatient, progressPatient, archivedPatient, dailyPatient, addendumPatient, legacyPatient);
         db.ClinicalNotes.AddRange(planNote, progressNote, archivedNote, dailyNote, addendumNote, legacyNullDiagnosisNote);
@@ -373,6 +374,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         var legacySummary = Assert.Single(plans, plan => plan.Id == legacyNullDiagnosisNote.Id);
         Assert.Null(legacySummary.IcdCount);
+        Assert.Equal(0, legacySummary.Sessions);
 
         Assert.DoesNotContain(plans, plan => plan.Id == archivedNote.Id);
         Assert.DoesNotContain(plans, plan => plan.Id == dailyNote.Id);

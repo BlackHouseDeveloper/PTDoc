@@ -59,7 +59,7 @@
                             </div>
                             @if (IntakeCount > 0)
                             {
-                                <div class="ptdoc-nav-badge" aria-label="@($"{IntakeCount} intake items needing action")">@FormatBadgeCount(IntakeCount)</div>
+                                <div class="ptdoc-nav-badge" aria-label="@BuildIntakeBadgeLabel(IntakeCount)">@FormatBadgeCount(IntakeCount)</div>
                             }
                         </NavLink>
                     </Authorized>
@@ -74,7 +74,7 @@
                             </div>
                             @if (NotesCount > 0)
                             {
-                                <div class="ptdoc-nav-badge" aria-label="@($"{NotesCount} notes needing attention")">@FormatBadgeCount(NotesCount)</div>
+                                <div class="ptdoc-nav-badge" aria-label="@BuildNotesBadgeLabel(NotesCount)">@FormatBadgeCount(NotesCount)</div>
                             }
                         </NavLink>
                     </Authorized>
@@ -197,6 +197,11 @@
     }
 
     private static string FormatBadgeCount(int count) => count > 99 ? "99+" : count.ToString();
+    private static string BuildIntakeBadgeLabel(int count) =>
+        count == 1 ? "1 intake item needing action" : $"{count} intake items needing action";
+
+    private static string BuildNotesBadgeLabel(int count) =>
+        count == 1 ? "1 note needing attention" : $"{count} notes needing attention";
 
     public void Dispose()
     {
