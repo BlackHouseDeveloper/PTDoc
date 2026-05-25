@@ -9,6 +9,8 @@ let mutationObserver = null;
 let updateTimer = null;
 
 export function initializeViewportDiagnostics(reference, isServerEnabled) {
+  disposeViewportDiagnostics();
+
   dotNetReference = reference;
   serverEnabled = Boolean(isServerEnabled);
 
