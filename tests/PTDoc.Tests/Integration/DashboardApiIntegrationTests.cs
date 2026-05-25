@@ -422,6 +422,35 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.True(counts.GeneratedAtUtc > DateTimeOffset.MinValue);
     }
 
+    [Fact]
+    public async Task NavigationBadges_HidesNoteCounts_WhenCallerCannotReadNotes()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var patient = CreatePatient("Noah", "FrontDeskHiddenNote", clinician.Id, medicalRecordNumber: "BADGE-FD");
+
+        db.Patients.Add(patient);
+        db.ClinicalNotes.Add(CreateClinicalNote(
+            patient.Id,
+            clinician.Id,
+            null,
+            NoteStatus.Draft,
+            DateTime.UtcNow.Date,
+            DateTime.UtcNow));
+
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var response = await client.GetAsync("/api/v1/navigation/badges");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var counts = await response.Content.ReadFromJsonAsync<NavigationBadgeCountsResponse>();
+        Assert.NotNull(counts);
+        Assert.Equal(0, counts!.NotesCount);
+    }
+
     private static Patient CreatePatient(
         string firstName,
         string lastName,

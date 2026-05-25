@@ -80,9 +80,11 @@
     private string currentUserRoleTitle = "User";
     private string currentUserRoleBadge = "User";
 
-    private string NotificationsAriaLabel => NotificationCount > 0
-        ? $"{NotificationCount} unread notifications"
-        : "Notifications";
+    private string NotificationsAriaLabel => NotificationCount == 1
+        ? "1 unread notification"
+        : NotificationCount > 1
+            ? $"{NotificationCount} unread notifications"
+            : "Notifications";
 
     private static string FormatBadgeCount(int count) => count > 99 ? "99+" : count.ToString();
 

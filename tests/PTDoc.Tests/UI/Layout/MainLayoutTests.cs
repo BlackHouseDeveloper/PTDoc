@@ -152,6 +152,23 @@ public sealed class MainLayoutTests : TestContext
     }
 
     [Fact]
+    public void NavMenu_UsesSingularNotificationLabel_ForOneUnreadNotification()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse
+        {
+            NotificationsCount = 1
+        };
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("1 unread notification", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 unread notifications", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void NavMenu_HidesBadges_WhenCountsAreZero()
     {
         _navigationBadgeService.Counts = new NavigationBadgeCountsResponse();

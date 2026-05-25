@@ -487,15 +487,34 @@
                 continue;
             }
 
-            var key = Uri.UnescapeDataString(parts[0].Replace("+", " ", StringComparison.Ordinal));
-            var value = parts.Length > 1
-                ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal))
+            if (!TryDecodeQueryPart(parts[0], out var key))
+            {
+                continue;
+            }
+
+            var value = parts.Length > 1 && TryDecodeQueryPart(parts[1], out var decodedValue)
+                ? decodedValue
                 : string.Empty;
 
             values[key] = value;
         }
 
         return values;
+    }
+
+    private static bool TryDecodeQueryPart(string rawValue, out string decodedValue)
+    {
+        decodedValue = string.Empty;
+
+        try
+        {
+            decodedValue = Uri.UnescapeDataString(rawValue.Replace("+", " ", StringComparison.Ordinal));
+            return !string.IsNullOrWhiteSpace(decodedValue);
+        }
+        catch (Exception ex) when (ex is UriFormatException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void HandleResolveAttentionNote(NoteListItemVm note)

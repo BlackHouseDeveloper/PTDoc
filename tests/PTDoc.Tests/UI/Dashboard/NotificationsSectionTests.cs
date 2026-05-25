@@ -30,6 +30,8 @@ public sealed class NotificationsSectionTests : TestContext
         Assert.Contains("Emily Rodriguez", cut.Markup);
         Assert.Contains("ID: PT003", cut.Markup);
         Assert.Contains("Due:", cut.Markup);
+        Assert.All(cut.FindAll("[data-testid='dashboard-alert-group']"), group =>
+            Assert.Equal("group", group.GetAttribute("role")));
 
         var navigation = Services.GetRequiredService<NavigationManager>();
         cut.Find("button[aria-label='Start for Michael Chen']").Click();

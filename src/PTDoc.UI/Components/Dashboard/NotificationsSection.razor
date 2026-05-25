@@ -37,7 +37,7 @@
                     <div class="dashboard-alerts__list" role="list">
                         @foreach (var group in VisibleAlertGroups)
                         {
-                            <section class="dashboard-alerts__group" aria-label="@group.Category" data-testid="dashboard-alert-group">
+                            <section class="dashboard-alerts__group" role="group" aria-label="@group.Category" data-testid="dashboard-alert-group">
                                 <h3 class="dashboard-alerts__group-title">@group.Category</h3>
                                 @foreach (var alert in group.Alerts)
                                 {

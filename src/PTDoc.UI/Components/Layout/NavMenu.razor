@@ -176,11 +176,14 @@
 
         try
         {
-            _badgeCounts = await NavigationBadgeService.GetCountsAsync(badgeCts.Token);
-            if (!_isDisposed)
+            var badgeCounts = await NavigationBadgeService.GetCountsAsync(badgeCts.Token);
+            if (_isDisposed || !ReferenceEquals(_badgeCts, badgeCts))
             {
-                await InvokeAsync(StateHasChanged);
+                return;
             }
+
+            _badgeCounts = badgeCounts;
+            await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException) when (_isDisposed || badgeCts.IsCancellationRequested)
         {
@@ -189,6 +192,7 @@
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Navigation badge counts could not be loaded.");
+            // Keep the last successful counts on refresh failure; initial failures still render no badges.
         }
     }
 
