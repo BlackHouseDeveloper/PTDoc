@@ -433,94 +433,170 @@
 }
 
 /* Recently Edited POCs Card */
+.poc-card-header {
+    align-items: center;
+}
+
+.poc-section-icon {
+    color: var(--primary);
+}
+
+.poc-card-title {
+    max-width: var(--poc-card-title-width);
+    line-height: var(--line-height-tight);
+}
+
+.poc-view-all {
+    color: var(--foreground);
+    flex-shrink: 0;
+}
+
+.poc-card-content {
+    padding: var(--spacing-4);
+}
+
 .pocs-list {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-4);
+    gap: var(--spacing-3);
 }
 
 .poc-item {
-    padding: var(--spacing-4);
-    background: var(--muted);
+    padding: var(--spacing-3);
+    background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     transition: all var(--transition-fast);
 }
 
 .dark .poc-item {
-    background: var(--accent);
+    background: var(--card);
 }
 
 .poc-item:hover {
     box-shadow: var(--shadow-sm);
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
 
 .poc-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: var(--spacing-3);
     margin-bottom: var(--spacing-2);
 }
 
 .poc-patient-info {
     display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+    min-width: 0;
+}
+
+.poc-patient-line {
+    display: flex;
     align-items: center;
     gap: var(--spacing-2);
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .poc-patient-name {
     font-size: var(--text-base);
     font-weight: var(--font-weight-semibold);
-    color: var(--secondary-foreground);
-}
-
-.dark .poc-patient-name {
     color: var(--foreground);
+    line-height: var(--line-height-tight);
+    overflow-wrap: anywhere;
 }
 
 .poc-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: var(--spacing-1) var(--spacing-2);
     font-size: var(--text-xs);
     font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     line-height: 1;
     text-transform: lowercase;
 }
 
 .poc-status-active {
-    background: var(--success);
-    color: var(--success-foreground);
+    background: color-mix(in srgb, var(--success) 16%, var(--card));
+    color: var(--success);
+    border: 1px solid color-mix(in srgb, var(--success) 50%, var(--border));
 }
 
-.poc-status-expiring {
-    background: var(--warning);
-    color: var(--warning-foreground);
+.poc-status-pending {
+    background: color-mix(in srgb, var(--warning) 14%, var(--card));
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+}
+
+.poc-status-draft {
+    background: color-mix(in srgb, var(--info) 12%, var(--card));
+    color: var(--info);
+    border: 1px solid color-mix(in srgb, var(--info) 42%, var(--border));
 }
 
 .poc-id {
     font-size: var(--text-xs);
     color: var(--muted-foreground);
-    margin-bottom: var(--spacing-3);
+    line-height: var(--line-height-normal);
+    overflow-wrap: anywhere;
+}
+
+.poc-view-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-0) var(--spacing-2);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-fast);
+}
+
+.poc-view-button:hover {
+    background: var(--muted);
+    color: var(--primary);
+}
+
+.poc-view-button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .poc-metrics {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-3);
-    margin-bottom: var(--spacing-3);
+    margin: var(--spacing-3) 0;
 }
 
 .poc-metric {
     display: flex;
     align-items: center;
     gap: var(--spacing-1);
-    font-size: var(--text-xs);
-    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    line-height: var(--line-height-tight);
 }
 
 .poc-metric svg {
-    width: 12px;
-    height: 12px;
+    width: var(--spacing-3);
+    height: var(--spacing-3);
+    flex-shrink: 0;
+    color: var(--primary);
+}
+
+.poc-metric strong {
+    font-weight: var(--font-weight-semibold);
 }
 
 .poc-metric-complete {
@@ -528,7 +604,19 @@
 }
 
 .poc-metric-progress {
+    color: var(--foreground);
+}
+
+.poc-metric-progress svg {
+    color: var(--primary);
+}
+
+.poc-metric-info svg {
     color: var(--info);
+}
+
+.poc-metric-error svg {
+    color: var(--destructive);
 }
 
 .poc-utilization {
@@ -549,6 +637,10 @@
     color: var(--foreground);
 }
 
+.poc-progress-bar {
+    background: color-mix(in srgb, var(--primary) 18%, var(--card));
+}
+
 .poc-alert {
     display: flex;
     align-items: center;
@@ -561,29 +653,21 @@
 }
 
 .poc-alert svg {
-    width: 12px;
-    height: 12px;
+    width: var(--spacing-3);
+    height: var(--spacing-3);
     flex-shrink: 0;
 }
 
 .poc-alert-warning {
-    background: rgba(var(--warning-rgb, 249, 171, 0), 0.15);
+    background: color-mix(in srgb, var(--warning) 12%, var(--card));
     color: var(--warning);
-    border: 1px solid var(--warning);
-}
-
-.dark .poc-alert-warning {
-    background: rgba(var(--warning-rgb, 249, 171, 0), 0.2);
+    border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
 }
 
 .poc-alert-error {
-    background: rgba(var(--destructive-rgb, 217, 48, 37), 0.15);
+    background: color-mix(in srgb, var(--destructive) 10%, var(--card));
     color: var(--destructive);
-    border: 1px solid var(--destructive);
-}
-
-.dark .poc-alert-error {
-    background: rgba(var(--destructive-rgb, 217, 48, 37), 0.2);
+    border: 1px solid color-mix(in srgb, var(--destructive) 42%, var(--border));
 }
 
 /* Responsive Styles */

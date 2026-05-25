@@ -121,12 +121,12 @@
 
             <!-- Right Column: Supplemental Cards -->
             <div class="dashboard-right-column">
-                <RecentNotesCard Notes="@_recentNotes" />
                 <RecentActivityCard Activities="@_recentActivities"
                                     IsLoading="@_isRecentActivityLoading"
                                     HasError="@_recentActivityLoadFailed"
                                     ErrorMessage="@_recentActivityErrorMessage"
                                     OnRetry="RetryRecentActivityAsync" />
+                <RecentlyEditedPOCsCard Items="@_recentPlansOfCare" />
             </div>
         </div>
     }
@@ -166,6 +166,7 @@
     private int _unsignedNotesNeedingSignature;
     private int _incompleteIntakes;
     private List<NoteListItemApiResponse> _recentNotes = [];
+    private List<DashboardPlanOfCareSummaryResponse> _recentPlansOfCare = [];
     private List<RecentActivity> _recentActivities = [];
     private List<DashboardAlertItemResponse> _dashboardAlerts = [];
     private List<SendIntakeModal.PatientOption> availablePatients = new();
@@ -178,6 +179,7 @@
         _unsignedNotesNeedingSignature > 0 ||
         _incompleteIntakes > 0 ||
         _recentNotes.Count > 0 ||
+        _recentPlansOfCare.Count > 0 ||
         _recentActivities.Count > 0 ||
         _dashboardAlerts.Count > 0;
 
@@ -351,6 +353,7 @@
         _incompleteIntakes = snapshot.Overview.IncompleteIntakes;
         _dashboardAlerts = snapshot.Alerts.ToList();
         _recentNotes = snapshot.RecentNotes.ToList();
+        _recentPlansOfCare = snapshot.RecentPlansOfCare.ToList();
         _recentActivities = snapshot.RecentActivities.Select(ToRecentActivity).ToList();
     }
 

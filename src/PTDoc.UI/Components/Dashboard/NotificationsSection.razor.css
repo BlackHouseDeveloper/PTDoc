@@ -118,6 +118,19 @@
     gap: var(--spacing-4);
 }
 
+.dashboard-alerts__group {
+    display: grid;
+    gap: var(--spacing-3);
+}
+
+.dashboard-alerts__group-title {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+}
+
 .dashboard-alerts__empty {
     padding: var(--spacing-8);
     border: 1px dashed var(--border);

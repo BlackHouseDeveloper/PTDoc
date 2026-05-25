@@ -301,6 +301,7 @@ public class AuthorizationCoverageTests
         // ── Dashboard (Dashboard/DashboardEndpoints.cs) ──────────────────────
         new("GET", "/api/v1/dashboard/alerts", AuthorizationPolicies.ClinicalStaff),
         new("GET", "/api/v1/dashboard/snapshot", AuthorizationPolicies.ClinicalStaff),
+        new("GET", "/api/v1/navigation/badges", AuthorizationPolicies.PatientRead),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),

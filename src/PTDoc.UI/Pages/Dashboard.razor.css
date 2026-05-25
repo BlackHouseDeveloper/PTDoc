@@ -153,11 +153,11 @@
 }
 
 .action-icon-primary {
-    /* Inherited from .action-icon-container */
+    color: currentColor;
 }
 
 .action-icon-info {
-    /* Inherited from .action-icon-container */
+    color: currentColor;
 }
 
 .action-icon {
@@ -393,8 +393,21 @@
     transition: box-shadow var(--transition-fast);
 }
 
+.metric-card--action {
+    appearance: none;
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .metric-card:hover {
     box-shadow: var(--shadow-md);
+}
+
+.metric-card:not(.metric-card--action):hover {
+    box-shadow: none;
 }
 
 .metric-card h3 {

@@ -3,6 +3,7 @@ using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
 using PTDoc.UI.Components.Layout;
 using PTDoc.UI.Services;
@@ -15,6 +16,7 @@ public sealed class MainLayoutTests : TestContext
     private readonly TestThemeService _themeService = new();
     private readonly TestSyncService _syncService = new();
     private readonly TestConnectivityService _connectivityService = new();
+    private readonly TestNavigationBadgeService _navigationBadgeService = new();
     private readonly TestAuthorizationContext _authorization;
 
     public MainLayoutTests()
@@ -37,6 +39,8 @@ public sealed class MainLayoutTests : TestContext
         Services.AddSingleton<IViewportDiagnosticsService, DisabledViewportDiagnosticsService>();
         Services.AddSingleton<IToastService, TestToastService>();
         Services.AddSingleton<INotificationCenterService, TestNotificationCenterService>();
+        Services.AddSingleton<INavigationBadgeService>(_navigationBadgeService);
+        Services.AddSingleton<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
     }
 
     [Fact]
@@ -124,6 +128,92 @@ public sealed class MainLayoutTests : TestContext
 
         Assert.DoesNotContain("Export Center", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Settings", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NavMenu_RendersLiveBadgeCounts_WhenCountsArePositive()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse
+        {
+            IntakeCount = 2,
+            NotesCount = 5,
+            NotificationsCount = 3
+        };
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("2 intake items needing action", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("5 notes needing attention", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("3 unread notifications", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("aria-label=\"1 pending\"", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NavMenu_UsesSingularNotificationLabel_ForOneUnreadNotification()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse
+        {
+            NotificationsCount = 1
+        };
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("1 unread notification", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 unread notifications", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NavMenu_UsesSingularLabels_ForOneIntakeAndOneNoteBadge()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse
+        {
+            IntakeCount = 1,
+            NotesCount = 1
+        };
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("1 intake item needing action", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("1 note needing attention", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 intake items needing action", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 notes needing attention", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NavMenu_HidesBadges_WhenCountsAreZero()
+    {
+        _navigationBadgeService.Counts = new NavigationBadgeCountsResponse();
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(cut.FindAll(".ptdoc-nav-badge"));
+            Assert.DoesNotContain("aria-label=\"1 pending\"", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NavMenu_HidesBadges_WhenBadgeServiceFails()
+    {
+        _navigationBadgeService.ExceptionToThrow = new HttpRequestException("badge endpoint unavailable");
+
+        var cut = RenderLayout();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(cut.FindAll(".ptdoc-nav-badge"));
+            Assert.DoesNotContain("badge endpoint unavailable", cut.Markup, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -239,5 +329,21 @@ public sealed class MainLayoutTests : TestContext
 
         public Task<NotificationCenterState> ClearAllAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new NotificationCenterState());
+    }
+
+    private sealed class TestNavigationBadgeService : INavigationBadgeService
+    {
+        public NavigationBadgeCountsResponse Counts { get; set; } = new();
+        public Exception? ExceptionToThrow { get; set; }
+
+        public Task<NavigationBadgeCountsResponse> GetCountsAsync(CancellationToken cancellationToken = default)
+        {
+            if (ExceptionToThrow is { } exception)
+            {
+                throw exception;
+            }
+
+            return Task.FromResult(Counts);
+        }
     }
 }

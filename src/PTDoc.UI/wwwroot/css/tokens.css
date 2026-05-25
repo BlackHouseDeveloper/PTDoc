@@ -172,6 +172,9 @@
   /* Success Box Tokens (derived from --primary-rgb for green highlight boxes) */
   --success-box-bg: rgba(var(--primary-rgb), 0.1);
   --success-box-border: rgba(var(--primary-rgb), 0.2);
+
+  /* Dashboard Plan of Care Card Tokens */
+  --poc-card-title-width: 12rem;
 }
 
 .dark {
