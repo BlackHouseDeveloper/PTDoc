@@ -41,7 +41,7 @@
     flex-direction: column;
     width: 80px;
     flex-shrink: 0;
-    border-right: 1px solid rgba(0, 0, 0, 0.03);
+    border-right: 1px solid var(--border);
 }
 
 .time-header {
@@ -70,7 +70,7 @@
     font-size: var(--text-xs);
     font-weight: var(--font-weight-normal);
     color: var(--muted-foreground);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid var(--border);
 }
 
 .clinician-column {
@@ -78,7 +78,7 @@
     flex-direction: column;
     width: 280px;
     flex-shrink: 0;
-    border-right: 1px solid rgba(0, 0, 0, 0.03);
+    border-right: 1px solid var(--border);
     position: relative;
 }
 
@@ -136,7 +136,7 @@
 }
 
 .appointment-slot {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid var(--border);
 }
 
 .appointment-block {
@@ -168,7 +168,7 @@
 }
 
 .appointment-block.in-progress {
-    background: rgba(22, 163, 74, 0.1);
+    background: rgba(var(--primary-rgb), 0.1);
     border-color: var(--primary);
 }
 

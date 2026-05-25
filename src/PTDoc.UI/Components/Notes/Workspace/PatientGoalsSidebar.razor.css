@@ -4,6 +4,8 @@
     gap: var(--spacing-4);
     width: 280px;
     flex-shrink: 0;
+    max-width: 100%;
+    min-width: 0;
 }
 
 /* ── Goals Card ──────────────────────── */
@@ -55,6 +57,9 @@
     color: var(--foreground);
     margin: 0;
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .pgs-card__badge {
@@ -168,6 +173,8 @@
     font-weight: var(--font-weight-medium);
     color: var(--foreground);
     flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .pgs-card__goal-type-badge {
@@ -241,6 +248,13 @@
 
 .pgs-hints__body {
     flex: 1;
+    min-width: 0;
+}
+
+@media (max-width: 1199px) {
+    .patient-goals-sidebar {
+        width: 100%;
+    }
 }
 
 .pgs-hints__placeholder {

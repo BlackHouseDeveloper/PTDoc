@@ -3,9 +3,12 @@
 @using Microsoft.AspNetCore.Components.Authorization
 
 <div class="ptdoc-nav-container">
-    <div class="ptdoc-nav-brand">
-        <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
-    </div>
+    @if (!IsCompact)
+    {
+        <div class="ptdoc-nav-brand">
+            <NavBarBrand OnNotificationsClick="OnNotificationsClick" />
+        </div>
+    }
     
     <div class="ptdoc-nav-scrollable">
         <nav class="ptdoc-nav" aria-label="Main navigation">
@@ -119,6 +122,9 @@
 </div>
 
 @code {
+    [Parameter]
+    public bool IsCompact { get; set; }
+
     [Parameter]
     public EventCallback OnNotificationsClick { get; set; }
 

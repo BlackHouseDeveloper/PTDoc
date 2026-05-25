@@ -19,6 +19,8 @@
   --tertiary-foreground: #000000;
   --muted: #f9fafb;
   --muted-foreground: #737373;
+  --surface-subtle: #f9fafb;
+  --text-primary: var(--foreground);
   --accent: #dcfce7;
   --accent-foreground: #1a2b50;
   --destructive: #d93025;
@@ -190,6 +192,8 @@
   --tertiary-foreground: #000000;
   --muted: #3a3a3a;
   --muted-foreground: #a3a3a3;
+  --surface-subtle: #3a3a3a;
+  --text-primary: var(--foreground);
   --accent: #2a2a2a;
   --accent-foreground: #22c55e;
   --destructive: #ef4444;
@@ -234,12 +238,12 @@
   /* Action Button - Primary (Green) */
   --action-btn-primary-bg: #22c55e;
   --action-btn-primary-border: rgba(34, 197, 94, 0.2);
-  --action-btn-primary-text: var(--secondary-foreground);
+  --action-btn-primary-text: var(--primary-foreground);
 
   /* Action Button - Info (Blue) */
   --action-btn-info-bg: #60a5fa;
   --action-btn-info-border: rgba(96, 165, 250, 0.2);
-  --action-btn-info-text: var(--secondary-foreground);
+  --action-btn-info-text: var(--info-foreground);
 
   /* Action Button - Sizing */
   --action-btn-min-height: 60px;
@@ -254,7 +258,7 @@
 
   /* Action Icon */
   --action-icon-size: 24px;
-  --action-icon-color: var(--secondary-foreground);
+  --action-icon-color: currentColor;
 
   /* Action Button - Typography */
   --action-title-size: 18px;

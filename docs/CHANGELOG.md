@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Responsive review follow-ups
+
+- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.Web/Services/WebViewportDiagnosticsService.cs`**, **`src/PTDoc.UI/Components/Layout/GlobalHeader.razor.css`**, **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`.github/workflows/ui-responsive-qa.yml`**, **`docs/RESPONSIVE_QA.md`** — Avoided importing/initializing viewport diagnostics unless developer diagnostics or a query-string override is active, matched Web diagnostics fallback to the repo's DEBUG/Release developer-mode behavior, removed remaining tight-layout menu-toggle offsets, renamed the responsive QA auth helper to reflect its fail-fast behavior, and made the manual UI QA workflow use `npm ci`. Reason: address PR review feedback while preserving the responsive QA overlay path and reproducible browser installs.
+
+### Changed - Responsive QA auth guardrail
+
+- **`tests/PTDoc.Web.UiQa/tests/responsive.spec.ts`**, **`tests/PTDoc.Web.UiQa/README.md`**, **`docs/RESPONSIVE_QA.md`** — Made browser responsive QA fail fast when login is required but neither credentials nor a valid storage-state session is provided. Reason: missing GitHub Actions secrets or local auth setup must not make the responsive regression suite appear successful through skipped tests.
+
+### Changed - Agent commit verification guardrail
+
+- **`AGENTS.md`**, **`.github/copilot-instructions.md`** — Documented that agents and Copilot must not create git commits unless the user has confirmed relevant build/test success or explicitly permits committing without that confirmation. Reason: preserve verification discipline before repository history is updated.
+
+### Added - Responsive regression prevention
+
+- **`src/PTDoc.UI/Components/Layout/ViewportDiagnosticsOverlay.razor*`**, **`src/PTDoc.UI/wwwroot/js/viewport-diagnostics.js`**, **`src/PTDoc.UI/Services/*ViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Services/WebViewportDiagnosticsService.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.Maui/MauiProgram.cs`**, **`tests/PTDoc.Web.UiQa/*`**, **`.github/workflows/ui-responsive-qa.yml`**, **`docs/RESPONSIVE_QA.md`**, **`docs/DEVELOPMENT.md`**, **`tests/PTDoc.Tests/UI/Layout/*`** — Added a developer-gated viewport diagnostics overlay, a separate Playwright responsive QA project, a manual UI responsive QA workflow, and focused component coverage for diagnostics/sidebar collapsed behavior. Reason: beta layout regressions should be caught by CSS viewport, theme, and layout-mode behavior instead of physical-screen assumptions.
+
+### Fixed - Beta responsive layout and dark mode readability
+
+- **`src/PTDoc.UI/Components/Layout/*`**, **`src/PTDoc.UI/wwwroot/css/*`**, **`src/PTDoc.UI/Pages/Dashboard.razor.css`**, **`src/PTDoc.UI/Pages/Appointments.razor.css`**, **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor.css`**, **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor.css`**, **`src/PTDoc.UI/Components/Appointments/*`**, **`src/PTDoc.UI/Components/Intake/*`**, **`src/PTDoc.UI/Components/Notes/*`**, **`tests/PTDoc.Tests/UI/Layout/MainLayoutTests.cs`** — Moved the sidebar drawer breakpoint to tight laptop widths, added responsive min-width/wrapping guards across dashboard, appointments, intake, and notes surfaces, replaced low-contrast hardcoded dark-mode styling with token-driven colors, and covered drawer backdrop close behavior. Reason: beta testers on Windows laptops must be able to use the app at 100% browser zoom without clipped navigation, forced 75% zoom, or unreadable dark-mode text.
+
 ### Added - Beta authentication access
 
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/Identity/AuthEndpoints.cs`**, **`src/PTDoc.Web/Program.cs`**, **`src/PTDoc.UI/Pages/Login.razor`**, **`src/PTDoc.UI/Pages/LoginBase.razor.cs`**, **`tests/PTDoc.Tests/Identity/BetaAccessSeederTests.cs`**, **`tests/PTDoc.Tests/Integration/WebLoginEndpointIntegrationTests.cs`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added Beta-only seeded access for Admin, PT, PTA, and Patient accounts tied to the PFPT Beta clinic with the seed PIN supplied by configuration, routed Patient logins away from clinician dashboard defaults, clarified pending-approval messaging, documented seeded Beta access, and added focused seeder/login regressions. Reason: beta testers need predictable sign-in and approval behavior without adding new user/company/role nomenclature or committed Beta credentials.

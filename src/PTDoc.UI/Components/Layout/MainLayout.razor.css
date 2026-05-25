@@ -10,6 +10,7 @@
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-width: 0;
 }
 
 .sidebar {
@@ -27,7 +28,9 @@
 
 main {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     height: calc(100vh - 69px);
 }
 
@@ -35,16 +38,19 @@ main {
     padding: var(--spacing-6);
     max-width: none;
     margin: 0;
+    min-width: 0;
+    width: 100%;
 }
 
-/* Mobile: sidebar slides in from left */
-@media (max-width: 767px) {
+/* Tight viewports: sidebar becomes an overlay drawer. */
+@media (max-width: 1199px) {
     .sidebar {
         position: fixed;
         top: 69px;
         left: 0;
         bottom: 0;
-        width: 250px;
+        width: min(280px, calc(100vw - var(--spacing-6)));
+        max-width: calc(100vw - var(--spacing-6));
         z-index: var(--z-sidebar);
         transform: translateX(-100%);
     }
@@ -67,12 +73,17 @@ main {
     main {
         width: 100%;
     }
+
+    .content {
+        padding: var(--spacing-4);
+    }
 }
 
-/* Tablet and desktop: sidebar is always visible */
-@media (min-width: 768px) {
+/* Desktop: sidebar is visible and can collapse to an icon rail. */
+@media (min-width: 1200px) {
     .sidebar {
         width: 250px;
+        min-width: 250px;
         height: calc(100vh - 69px);
         position: sticky;
         top: 69px;
@@ -87,6 +98,11 @@ main {
     .sidebar.closed ::deep .ptdoc-nav-container {
         padding: var(--spacing-3);
         align-items: center;
+        gap: var(--spacing-3);
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-brand {
+        display: none;
     }
 
     .sidebar.closed ::deep .ptdoc-nav-section-label,
@@ -101,6 +117,18 @@ main {
     .sidebar.closed ::deep .ptdoc-nav-logout-btn {
         justify-content: center;
         padding: var(--spacing-2);
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-scrollable,
+    .sidebar.closed ::deep .ptdoc-nav-section,
+    .sidebar.closed ::deep .ptdoc-nav-footer {
+        width: 100%;
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-content {
+        flex: 0 0 auto;
+        justify-content: center;
+        gap: 0;
     }
 
     .sidebar.closed ::deep .ptdoc-nav-icon {

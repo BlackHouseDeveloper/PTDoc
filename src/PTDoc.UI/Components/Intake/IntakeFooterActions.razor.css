@@ -1,11 +1,24 @@
 .intake-footer-actions {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-4);
     justify-content: space-between;
     width: 100%;
 }
 
 .intake-footer-actions .btn-primary {
-    min-width: calc(var(--spacing-16) * 2);
+    min-width: min(100%, calc(var(--spacing-16) * 2));
+}
+
+@media (max-width: 767px) {
+    .intake-footer-actions {
+        align-items: stretch;
+        flex-direction: column-reverse;
+        gap: var(--spacing-3);
+    }
+
+    .intake-footer-actions button {
+        width: 100%;
+    }
 }

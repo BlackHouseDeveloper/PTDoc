@@ -10,6 +10,7 @@
     background: var(--card);
     border-top: calc(var(--spacing-1) / 4) solid var(--border);
     box-shadow: var(--shadow-sm);
+    min-width: 0;
 }
 
 /* ── Left ──────────────────── */
@@ -44,6 +45,7 @@
     align-items: center;
     gap: var(--spacing-2);
     flex: 1;
+    min-width: 0;
     justify-content: center;
     flex-wrap: wrap;
 }
@@ -107,6 +109,9 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-3);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
 }
 
 .soap-sticky-footer__save-btn {
@@ -148,6 +153,39 @@
     cursor: pointer;
     min-height: var(--touch-target-desktop);
     transition: opacity 0.15s ease;
+}
+
+@media (max-width: 1199px) {
+    .soap-sticky-footer {
+        align-items: stretch;
+        flex-wrap: wrap;
+        gap: var(--spacing-3);
+        padding: var(--spacing-3) var(--spacing-4);
+    }
+
+    .soap-sticky-footer__center {
+        order: 3;
+        flex-basis: 100%;
+        justify-content: flex-start;
+    }
+
+    .soap-sticky-footer__actions {
+        flex: 1 1 auto;
+    }
+}
+
+@media (max-width: 640px) {
+    .soap-sticky-footer__back,
+    .soap-sticky-footer__save-btn,
+    .soap-sticky-footer__submit-btn {
+        flex: 1 1 100%;
+        justify-content: center;
+        white-space: normal;
+    }
+
+    .soap-sticky-footer__actions {
+        width: 100%;
+    }
 }
 
 .soap-sticky-footer__submit-btn:hover {

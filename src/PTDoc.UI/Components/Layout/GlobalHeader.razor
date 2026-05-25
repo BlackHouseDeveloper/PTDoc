@@ -6,7 +6,7 @@
         <!-- Menu Toggle Button -->
         <button 
             type="button" 
-            class="menu-toggle"
+            class="menu-toggle @(IsMenuOpen ? "menu-toggle--open" : "menu-toggle--closed")"
             aria-label="@(IsMenuOpen ? "Close menu" : "Open menu")"
             aria-expanded="@IsMenuOpen.ToString().ToLower()"
             @onclick="ToggleMenu">
