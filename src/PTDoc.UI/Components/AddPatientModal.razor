@@ -213,7 +213,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+                LogSafeException("LoadModalModule", ex);
             }
         }
 
@@ -250,7 +250,7 @@
                     await CleanupModalInteropAsync(logErrors: false);
                 }
 
-                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+                LogSafeException("ModalInterop", ex);
             }
         }
         else if (!IsOpen && _isModalActive && modalModule != null)
@@ -341,9 +341,8 @@
         }
         catch (Exception ex)
         {
-            SubmitError = string.IsNullOrWhiteSpace(ex.Message)
-                ? "The patient was not created. Review the details and try again."
-                : ex.Message;
+            SubmitError = "The patient was not created. Review the details and try again.";
+            LogSafeException("Submit", ex);
         }
         finally
         {
@@ -453,10 +452,13 @@
         {
             if (logErrors)
             {
-                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+                LogSafeException("ModalCleanup", ex);
             }
         }
     }
+
+    private static void LogSafeException(string operation, Exception exception)
+        => Console.WriteLine($"[AddPatientModal] {operation} error type: {exception.GetType().Name}");
 
     public async ValueTask DisposeAsync()
     {

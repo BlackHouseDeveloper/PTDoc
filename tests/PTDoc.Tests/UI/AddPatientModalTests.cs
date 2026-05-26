@@ -80,6 +80,30 @@ public sealed class AddPatientModalTests : TestContext
     }
 
     [Fact]
+    public void Submit_WhenParentThrows_ShowsSafeErrorAndDoesNotExposeExceptionMessage()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, _ =>
+                throw new InvalidOperationException("Raw backend failure for Jane Smith")));
+
+        cut.Find("#firstName").Change("Alex");
+        cut.Find("#lastName").Change("Patient");
+        cut.Find("#email").Change("alex.patient@example.com");
+        cut.Find("#dob").Change("1990-01-01");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("The patient was not created. Review the details and try again.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Jane Smith", cut.Markup, StringComparison.Ordinal);
+            Assert.NotEmpty(cut.FindAll(".modal-container"));
+        });
+    }
+
+    [Fact]
     public void Submit_WhenParentSucceeds_ClosesModalAndRaisesStateChange()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
