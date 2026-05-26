@@ -241,7 +241,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+                LogSafeWorkflowException("LoadModalModule", ex);
             }
         }
 
@@ -272,7 +272,7 @@
                     await CleanupModalInteropAsync(logErrors: false);
                 }
 
-                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+                LogSafeWorkflowException("ModalInterop", ex);
             }
         }
         else if (!IsOpen && _isModalActive && modalModule != null)
@@ -352,7 +352,7 @@
             catch (Exception ex)
             {
                 _errorMessage = "Unable to prepare the intake draft. Please try again.";
-                Console.WriteLine($"[SendIntakeModal] EnsureDraft error: {ex.Message}");
+                LogSafeWorkflowException("EnsureDraft", ex);
             }
             finally
             {
@@ -376,7 +376,7 @@
         catch (Exception ex)
         {
             _errorMessage = GetSafeWorkflowError(ex, "Unable to generate an intake link. Please try again.");
-            Console.WriteLine($"[SendIntakeModal] GenerateLink error: {ex.Message}");
+            LogSafeWorkflowException("GenerateLink", ex);
         }
         finally
         {
@@ -415,7 +415,7 @@
         catch (Exception ex)
         {
             _errorMessage = GetSafeWorkflowError(ex, "Unable to copy the intake link. Please try again.");
-            Console.WriteLine($"[SendIntakeModal] CopyLink error: {ex.Message}");
+            LogSafeWorkflowException("CopyLink", ex);
         }
         finally
         {
@@ -499,7 +499,7 @@
         catch (Exception ex)
         {
             _errorMessage = GetSafeWorkflowError(ex, "Unable to send the intake invitation. Please try again.");
-            Console.WriteLine($"[SendIntakeModal] Submit error: {ex.Message}");
+            LogSafeWorkflowException("Submit", ex);
         }
         finally
         {
@@ -638,10 +638,13 @@
         {
             if (logErrors)
             {
-                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+                LogSafeWorkflowException("ModalCleanup", ex);
             }
         }
     }
+
+    private static void LogSafeWorkflowException(string operation, Exception exception)
+        => Console.WriteLine($"[SendIntakeModal] {operation} error type: {exception.GetType().Name}");
 
     public async ValueTask DisposeAsync()
     {
