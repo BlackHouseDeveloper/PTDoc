@@ -324,7 +324,10 @@
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
             await RetryDashboardAsync();
 
-            await PrepareSendIntakeForPatientAsync(created);
+            if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
+            {
+                await PrepareSendIntakeForPatientAsync(created);
+            }
 
             return true;
         }

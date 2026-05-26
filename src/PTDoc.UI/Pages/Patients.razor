@@ -238,7 +238,10 @@
             EnsureCreatedPatientVisible(created);
             StateHasChanged();
 
-            await PrepareSendIntakeForPatientAsync(created);
+            if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
+            {
+                await PrepareSendIntakeForPatientAsync(created);
+            }
 
             return true;
         }

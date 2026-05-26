@@ -303,7 +303,9 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         root.Find("#email").Change("morgan.dashboard@example.com");
         root.Find("#phone").Change("555-0199");
         root.Find("#dob").Change("1991-05-06");
-        root.Find("form").Submit();
+        root.FindAll("button")
+            .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
+            .Click();
 
         root.WaitForAssertion(() =>
         {

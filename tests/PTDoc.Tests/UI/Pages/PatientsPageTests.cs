@@ -339,8 +339,7 @@ public sealed class PatientsPageTests : TestContext
             Assert.Contains("Casey Created", cut.Markup, StringComparison.Ordinal);
             Assert.Equal(string.Empty, cut.Find(".patient-search-input-field").GetAttribute("value"));
             Assert.NotEmpty(cut.FindAll($"button[data-testid='patient-card-{patientId}']"));
-            Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
-            Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value"));
+            Assert.DoesNotContain("Send Intake Form", cut.Markup, StringComparison.Ordinal);
         });
     }
 

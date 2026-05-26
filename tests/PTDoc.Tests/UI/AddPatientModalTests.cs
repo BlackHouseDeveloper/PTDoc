@@ -146,6 +146,34 @@ public sealed class AddPatientModalTests : TestContext
         Assert.Equal("true", cut.Find("#dob").GetAttribute("aria-invalid"));
     }
 
+    [Theory]
+    [InlineData("2")]
+    [InlineData("20")]
+    [InlineData("02/13/2001")]
+    public void Submit_WithNonIsoDateOfBirth_ShowsDateValidationAndDoesNotCallSubmit(string dateOfBirth)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var submitCalled = false;
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, _ =>
+            {
+                submitCalled = true;
+                return Task.FromResult(true);
+            }));
+
+        cut.Find("#firstName").Change("Alex");
+        cut.Find("#lastName").Change("Patient");
+        cut.Find("#email").Change("alex.patient@example.com");
+        cut.Find("#dob").Input(dateOfBirth);
+        cut.Find("form").Submit();
+
+        Assert.False(submitCalled);
+        Assert.Contains("Enter a valid date of birth.", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("true", cut.Find("#dob").GetAttribute("aria-invalid"));
+    }
+
     [Fact]
     public void AddPatientAndSendIntake_SubmitsCombinedIntent()
     {

@@ -247,36 +247,38 @@
 
         if (IsOpen && !_isModalActive && modalModule != null && dotNetRef != null)
         {
+            var shouldCleanupPartialActivation = false;
             try
             {
-                _isModalActive = true;
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
+                shouldCleanupPartialActivation = true;
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
                 await firstInputRef.FocusAsync();
+                _isModalActive = true;
             }
             catch (Exception ex) when (IsExpectedJsCancellation(ex))
             {
+                _isModalActive = false;
+                if (shouldCleanupPartialActivation)
+                {
+                    await CleanupModalInteropAsync(logErrors: false);
+                }
             }
             catch (Exception ex)
             {
+                _isModalActive = false;
+                if (shouldCleanupPartialActivation)
+                {
+                    await CleanupModalInteropAsync(logErrors: false);
+                }
+
                 Console.WriteLine($"Modal JS interop error: {ex.Message}");
             }
         }
         else if (!IsOpen && _isModalActive && modalModule != null)
         {
-            try
-            {
-                _isModalActive = false;
-                await modalModule.InvokeVoidAsync("unlockBodyScroll");
-                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
-            }
-            catch (Exception ex) when (IsExpectedJsCancellation(ex))
-            {
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Modal cleanup error: {ex.Message}");
-            }
+            _isModalActive = false;
+            await CleanupModalInteropAsync(logErrors: true);
         }
         else if (!IsOpen)
         {
@@ -608,6 +610,30 @@
 
     private static bool IsExpectedJsCancellation(Exception exception)
         => exception is OperationCanceledException or Microsoft.JSInterop.JSDisconnectedException;
+
+    private async Task CleanupModalInteropAsync(bool logErrors)
+    {
+        if (modalModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await modalModule.InvokeVoidAsync("unlockBodyScroll");
+            await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+        }
+        catch (Exception ex) when (IsExpectedJsCancellation(ex))
+        {
+        }
+        catch (Exception ex)
+        {
+            if (logErrors)
+            {
+                Console.WriteLine($"Modal cleanup error: {ex.Message}");
+            }
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
