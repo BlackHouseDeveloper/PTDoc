@@ -148,6 +148,7 @@
     private bool isAddPatientModalOpen = false;
     private bool isSendIntakeModalOpen = false;
     private string? initialSendIntakePatientId;
+    private PatientResponse? pendingSendIntakePatient;
     private System.Timers.Timer? _autoRefreshTimer;
 
     private bool _isRecentActivityLoading;
@@ -160,6 +161,7 @@
     private CancellationTokenSource? _dashboardCts;
     private bool _isDisposed;
     private bool _isLoadingAvailablePatients;
+    private bool _isPreparingPendingSendIntake;
     private int _patientsToday;
     private int _appointmentsToday;
     private int _notesDue;
@@ -189,6 +191,27 @@
     {
         await RetryDashboardAsync();
         SetupAutoRefresh();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (pendingSendIntakePatient is null || isAddPatientModalOpen || _isPreparingPendingSendIntake)
+        {
+            return;
+        }
+
+        var patient = pendingSendIntakePatient;
+        pendingSendIntakePatient = null;
+        _isPreparingPendingSendIntake = true;
+
+        try
+        {
+            await PrepareSendIntakeForPatientAsync(patient);
+        }
+        finally
+        {
+            _isPreparingPendingSendIntake = false;
+        }
     }
 
     private async Task LoadAvailablePatientsAsync()
@@ -326,7 +349,7 @@
 
             if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
             {
-                await PrepareSendIntakeForPatientAsync(created);
+                pendingSendIntakePatient = created;
             }
 
             return true;

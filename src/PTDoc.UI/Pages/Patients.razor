@@ -116,16 +116,39 @@
     private bool isLoadingAvailablePatients = false;
     private string searchQuery = string.Empty;
     private string? initialSendIntakePatientId;
+    private PatientResponse? pendingSendIntakePatient;
     private string? loadErrorMessage;
     private List<PatientListItemVm> patients = new();
     private List<SendIntakeModal.PatientOption> availablePatients = new();
     private CancellationTokenSource? _searchCts;
     private int _loadSequence;
+    private bool _isPreparingPendingSendIntake;
     private string AriaBusy => isLoading ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
         await LoadPatientsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (pendingSendIntakePatient is null || isAddPatientModalOpen || _isPreparingPendingSendIntake)
+        {
+            return;
+        }
+
+        var patient = pendingSendIntakePatient;
+        pendingSendIntakePatient = null;
+        _isPreparingPendingSendIntake = true;
+
+        try
+        {
+            await PrepareSendIntakeForPatientAsync(patient);
+        }
+        finally
+        {
+            _isPreparingPendingSendIntake = false;
+        }
     }
 
     private async Task LoadPatientsAsync(string? query = null, CancellationToken cancellationToken = default)
@@ -240,7 +263,7 @@
 
             if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
             {
-                await PrepareSendIntakeForPatientAsync(created);
+                pendingSendIntakePatient = created;
             }
 
             return true;

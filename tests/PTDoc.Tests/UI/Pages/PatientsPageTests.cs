@@ -419,6 +419,7 @@ public sealed class PatientsPageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Add New Patient", cut.Markup, StringComparison.Ordinal);
             Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value"));
             Assert.Equal("jamie.intake@example.com", cut.Find("#email").GetAttribute("value"));
             Assert.Equal("555-0111", cut.Find("#phone").GetAttribute("value"));

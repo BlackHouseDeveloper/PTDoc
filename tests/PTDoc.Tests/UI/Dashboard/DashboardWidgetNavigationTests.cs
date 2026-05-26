@@ -310,6 +310,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         root.WaitForAssertion(() =>
         {
             Assert.Contains("Send Intake Form", root.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Add New Patient", root.Markup, StringComparison.Ordinal);
             Assert.Equal(patientId.ToString("D"), root.Find("#patient-select").GetAttribute("value"));
             Assert.Equal("morgan.dashboard@example.com", root.Find("#email").GetAttribute("value"));
             Assert.Equal("555-0199", root.Find("#phone").GetAttribute("value"));
