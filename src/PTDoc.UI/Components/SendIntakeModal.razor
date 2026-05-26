@@ -332,14 +332,14 @@
                 if (ensureResult.Status == IntakeEnsureDraftStatus.Locked)
                 {
                     _patientSelectionBlocked = true;
-                    _errorMessage = ensureResult.ErrorMessage ?? "This patient already has a locked intake and cannot receive a new invite.";
+                    _errorMessage = "This patient already has a locked intake and cannot receive a new invite.";
                     return;
                 }
 
                 if (ensureResult.Status == IntakeEnsureDraftStatus.PatientNotFound)
                 {
                     _patientSelectionBlocked = true;
-                    _errorMessage = ensureResult.ErrorMessage ?? "The selected patient could not be found.";
+                    _errorMessage = "The selected patient could not be found.";
                     return;
                 }
 
@@ -462,7 +462,7 @@
 
                 if (!emailResult.Success)
                 {
-                    throw new InvalidOperationException(emailResult.ErrorMessage ?? "Unable to send the intake email.");
+                    throw new SafeWorkflowException("Unable to send the intake email.");
                 }
 
                 sentChannels.Add("email");
@@ -479,7 +479,7 @@
 
                 if (!smsResult.Success)
                 {
-                    throw new InvalidOperationException(smsResult.ErrorMessage ?? "Unable to send the intake text message.");
+                    throw new SafeWorkflowException("Unable to send the intake text message.");
                 }
 
                 sentChannels.Add("SMS");
@@ -511,7 +511,7 @@
     {
         if (!Guid.TryParse(SelectedPatientId, out var patientId))
         {
-            throw new InvalidOperationException("Select a patient before generating or sending an intake invite.");
+            throw new SafeWorkflowException("Select a patient before generating or sending an intake invite.");
         }
 
         if (_intakeId.HasValue)
@@ -531,17 +531,17 @@
 
         if (ensuredDraft.Status == IntakeEnsureDraftStatus.Locked)
         {
-            throw new InvalidOperationException(ensuredDraft.ErrorMessage ?? "This patient already has a locked intake and cannot receive a new invite.");
+            throw new SafeWorkflowException("This patient already has a locked intake and cannot receive a new invite.");
         }
 
         if (ensuredDraft.Status == IntakeEnsureDraftStatus.PatientNotFound)
         {
-            throw new InvalidOperationException(ensuredDraft.ErrorMessage ?? "The selected patient could not be found.");
+            throw new SafeWorkflowException("The selected patient could not be found.");
         }
 
         if (ensuredDraft.Draft?.IntakeId is not Guid createdIntakeId)
         {
-            throw new InvalidOperationException("Intake draft creation succeeded but no intake record was returned.");
+            throw new SafeWorkflowException("Intake draft creation succeeded but no intake record was returned.");
         }
 
         _intakeId = createdIntakeId;
@@ -597,7 +597,7 @@
 
     private static string GetSafeWorkflowError(Exception exception, string fallback)
     {
-        if (exception is InvalidOperationException
+        if (exception is SafeWorkflowException
             && !string.IsNullOrWhiteSpace(exception.Message)
             && !exception.Message.Contains('\n', StringComparison.Ordinal)
             && !exception.Message.Contains('\r', StringComparison.Ordinal))
@@ -606,6 +606,14 @@
         }
 
         return fallback;
+    }
+
+    private sealed class SafeWorkflowException : Exception
+    {
+        public SafeWorkflowException(string message)
+            : base(message)
+        {
+        }
     }
 
     private static bool IsExpectedJsCancellation(Exception exception)

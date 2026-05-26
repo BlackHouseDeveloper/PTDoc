@@ -185,7 +185,7 @@ public sealed class SendIntakeModalTests : TestContext
     }
 
     [Fact]
-    public void SendInviteFailure_ShowsSafeBackendErrorAndKeepsModalOpen()
+    public void SendInviteFailure_ShowsSafeComponentErrorAndKeepsModalOpen()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         var patientId = Guid.NewGuid();
@@ -240,8 +240,51 @@ public sealed class SendIntakeModalTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Email delivery is not configured.", cut.Find("[data-testid='send-intake-error']").TextContent, StringComparison.Ordinal);
+            Assert.Contains("Unable to send the intake email.", cut.Find("[data-testid='send-intake-error']").TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("Email delivery is not configured.", cut.Find("[data-testid='send-intake-error']").TextContent, StringComparison.Ordinal);
             Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void GenerateLink_WhenDependencyThrowsInvalidOperation_ShowsFallbackError()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var intakeService = CreateIntakeServiceForDraft(patientId, intakeId);
+        var deliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        deliveryService
+            .Setup(service => service.GetDeliveryStatusAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeDeliveryStatusResponse
+            {
+                IntakeId = intakeId,
+                PatientId = patientId,
+                InviteActive = true
+            });
+        deliveryService
+            .Setup(service => service.GetDeliveryBundleAsync(intakeId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Internal patient Jane Smith delivery failure"));
+        RegisterServices(intakeService.Object, deliveryService.Object);
+
+        var cut = RenderComponent<SendIntakeModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.InitialPatientId, patientId.ToString("D"))
+            .Add(component => component.AvailablePatients, new List<SendIntakeModal.PatientOption>
+            {
+                CreatePatientOption(patientId, email: "alex.patient@example.com")
+            }));
+
+        cut.WaitForAssertion(() => Assert.Equal(patientId.ToString("D"), cut.Find("#patient-select").GetAttribute("value")));
+        cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Generate Link", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var errorText = cut.Find("[data-testid='send-intake-error']").TextContent;
+            Assert.Contains("Unable to generate an intake link. Please try again.", errorText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Jane Smith", errorText, StringComparison.Ordinal);
         });
     }
 
