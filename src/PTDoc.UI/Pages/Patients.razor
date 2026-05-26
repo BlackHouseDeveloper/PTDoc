@@ -317,7 +317,9 @@
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to load eligible patients for intake invite workflow.");
+            Logger.LogWarning(
+                "Failed to load eligible patients for intake invite workflow. ErrorType={ErrorType}",
+                ex.GetType().Name);
             ToastService.ShowError("Unable to load eligible patients for intake invites.");
         }
         finally

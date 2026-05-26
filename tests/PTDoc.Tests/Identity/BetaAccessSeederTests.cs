@@ -144,6 +144,46 @@ public sealed class BetaAccessSeederTests
     }
 
     [Fact]
+    public async Task SeedBetaAccessDataAsync_MatchesFixtureMrnsCaseInsensitively()
+    {
+        await using var context = CreateInMemoryContext();
+        var existingPatientId = Guid.NewGuid();
+        context.Clinics.Add(new Clinic
+        {
+            Id = DatabaseSeeder.BetaClinicId,
+            Name = "Physically Fit Physical Therapy",
+            Slug = "pfpt-beta",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.Patients.Add(new Patient
+        {
+            Id = existingPatientId,
+            FirstName = "Existing",
+            LastName = "Lowercase",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            Email = "existing.lowercase@example.test",
+            MedicalRecordNumber = "beta-pt-001",
+            ClinicId = DatabaseSeeder.BetaClinicId
+        });
+        await context.SaveChangesAsync();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var patients = await context.Patients
+            .Where(patient => patient.ClinicId == DatabaseSeeder.BetaClinicId
+                && patient.MedicalRecordNumber != null
+                && patient.MedicalRecordNumber!.ToUpper() == "BETA-PT-001")
+            .ToListAsync();
+
+        var patient = Assert.Single(patients);
+        Assert.Equal(existingPatientId, patient.Id);
+        Assert.Equal("BETA-PT-001", patient.MedicalRecordNumber);
+        Assert.Equal("Avery", patient.FirstName);
+        Assert.Equal("avery.adams.beta@physicallyfitpt.test", patient.Email);
+    }
+
+    [Fact]
     public async Task SeedBetaAccessDataAsync_DoesNotRewriteStablePinOrFutureLicenseExpiration()
     {
         await using var context = CreateInMemoryContext();

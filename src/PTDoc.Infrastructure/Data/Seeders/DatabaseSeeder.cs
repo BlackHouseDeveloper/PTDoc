@@ -254,10 +254,11 @@ public static class DatabaseSeeder
     {
         var fixtureMrns = BetaPatientFixtures
             .Select(fixture => fixture.MedicalRecordNumber)
+            .Select(mrn => mrn.ToUpperInvariant())
             .ToList();
         var matchingPatients = await context.Patients
             .Where(patient => patient.MedicalRecordNumber != null
-                && fixtureMrns.Contains(patient.MedicalRecordNumber!))
+                && fixtureMrns.Contains(patient.MedicalRecordNumber!.ToUpper()))
             .ToListAsync();
         var existingByMrn = matchingPatients
             .Where(patient => patient.ClinicId == clinicId)
