@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake validation follow-ups
+
+- **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`src/PTDoc.Application/Services/IntakeDraftPersistence.cs`**, **`src/PTDoc.Api/Intake/*`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/**/*Intake*`** — Removed the remaining legacy multi-measure recommendation display from Pain Details, renamed the Pain Details continue action to target the dedicated Outcome Measures step, and normalized embedded submitted/locked metadata in persisted intake JSON for authenticated, standalone, and service submit paths. Reason: localhost validation found stale multi-measure UI, misleading transition copy, and inconsistent embedded JSON flags after submit.
+
+### Added - Clinical data carry-forward requirements
+
+- **`docs/PTDocs+_Master_FSD.md`** — Added implementation-ready workflow, persistence, UI, source-traceability, offline sync, addendum, and AI acceptance requirements for carrying clinical data across Intake, Evaluation SOAP, Daily SOAP, Progress/Re-Eval SOAP, and Discharge SOAP. Reason: clinicians must not manually re-enter patient and clinical context that already exists in the system, and QA needs explicit lifecycle acceptance criteria.
+
+### Fixed - Intake outcome measure review display
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Removed the legacy multi-measure recommendation list from standard intake review while keeping the one-primary-measure-per-body-part assignment list and prior-score review context visible. Reason: beta intake should not show patients multiple system-selected outcome measures for the same body part during the standard intake flow.
+
+### Changed - Beta seeding compliance hardening
+
+- **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`tests/PTDoc.Tests/Identity/BetaAccessSeederTests.cs`**, **`tests/PTDoc.Tests/Integration/BetaDeploymentConfigurationTests.cs`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Made Beta startup seeding explicitly opt-in for the Beta environment, added SQL Server application-lock protection around seed writes, preserved configuration-driven seed PIN handling, and documented the verified single-instance operating model and migration/readiness/login validation order. Reason: Beta seed data remains a controlled lower-environment startup fixture while reducing runtime seeding race risk and keeping secrets out of committed configuration.
+
+### Added - Intake end-to-end beta workflow
+
+- **`src/PTDoc.UI/Components/Intake/*`**, **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.Api/Intake/*`**, **`src/PTDoc.Infrastructure/Services/*Intake*`**, **`src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`**, **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`tests/PTDoc.Tests/Intake/*`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceV2ServiceTests.cs`** — Expanded the standalone intake workflow with gender, address, insurance review, care-team fields, functional limitations, visible submit-area confirmation, locked read-only review behavior, submitted-intake patient-field mapping, and clinician workspace seeding for functional limitations while preserving the existing invite/OTP, lock, `IntakeResponse`, body-part, and outcome-measure paths. Reason: beta patients need to complete and submit intake from a link, and clinicians need the submitted demographic, payer, limitation, and outcome context available for review without a new database migration.
+- **`src/PTDoc.Application/Data/OutcomeMeasureReferenceData.json`**, **`src/PTDoc.Application/Outcomes/IOutcomeMeasureRegistry.cs`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeDraftCanonicalizer.cs`**, **`src/PTDoc.UI/Components/Intake/Steps/OutcomeMeasuresStep.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`docs/PTDocs+_Master_FSD.md`**, **`tests/PTDoc.Tests/Outcomes/OutcomeMeasureRegistryTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeDraftCanonicalizerTests.cs`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Added a dedicated Outcome Measures intake step, explicit runtime primary outcome-measure mapping, one patient-facing assigned measure per selected body part, optional patient-entered prior score capture, and review visibility while preserving the broader clinician outcome recommendation set. Reason: patients should not see multiple outcome questionnaires for the same body part during standard intake, but clinicians still need full downstream outcome-measure flexibility.
+
 ### Changed - Agent workflow doc sync
 
 - **`AGENTS.md`** — Documented the current browser-based responsive QA workflow, the explicit local Web host URL, the `PUBLIC_WEB_BASE_URL` tunnel/device-testing override for generated patient links, and the Playwright UI QA environment variables and artifact paths. Reason: keep agent-facing workflow notes aligned with the current launcher, communications, and responsive QA tooling without widening unrelated guidance.
