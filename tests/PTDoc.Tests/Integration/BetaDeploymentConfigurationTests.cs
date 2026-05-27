@@ -51,6 +51,38 @@ public sealed class BetaDeploymentConfigurationTests : IClassFixture<PtDocApiFac
     }
 
     [Fact]
+    public void ApiBetaConfiguration_AllowsStartupSeedWithoutCommittingSecrets()
+    {
+        var repoRoot = ConfigurationValidationTests.FindRepoRoot();
+        var betaConfigPath = Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.Beta.json");
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.json"))
+            .AddJsonFile(betaConfigPath)
+            .Build();
+        var betaConfig = File.ReadAllText(betaConfigPath);
+
+        Assert.True(configuration.GetValue<bool>("BetaAccess:AllowStartupSeed"));
+        Assert.False(configuration.GetValue<bool>("Database:AutoMigrate"));
+        Assert.True(string.IsNullOrWhiteSpace(configuration["BetaAccess:SeedPin"]));
+        Assert.DoesNotContain("8642", betaConfig, StringComparison.Ordinal);
+        Assert.True(string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")));
+    }
+
+    [Fact]
+    public void ApiProductionConfiguration_DoesNotEnableBetaStartupSeed()
+    {
+        var repoRoot = ConfigurationValidationTests.FindRepoRoot();
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.json"))
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.Production.json"))
+            .Build();
+
+        Assert.False(configuration.GetValue<bool?>("BetaAccess:AllowStartupSeed") ?? false);
+        Assert.False(configuration.GetValue<bool>("Database:AutoMigrate"));
+        Assert.True(string.IsNullOrWhiteSpace(configuration["BetaAccess:SeedPin"]));
+    }
+
+    [Fact]
     public void BetaConfiguration_DoesNotReferenceLocalTunnelOrTemporaryAzureHosts()
     {
         var repoRoot = ConfigurationValidationTests.FindRepoRoot();
