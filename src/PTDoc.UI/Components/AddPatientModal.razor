@@ -200,13 +200,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (modalModule is null || dotNetRef is null)
         {
-            // Load the JS module once
             try
             {
-                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
-                dotNetRef = DotNetObjectReference.Create(this);
+                modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef ??= DotNetObjectReference.Create(this);
             }
             catch (Exception ex) when (IsExpectedJsCancellation(ex))
             {

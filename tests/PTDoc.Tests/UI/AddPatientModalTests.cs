@@ -1,4 +1,6 @@
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using PTDoc.UI.Components;
 
 namespace PTDoc.Tests.UI;
@@ -244,10 +246,79 @@ public sealed class AddPatientModalTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal(focusCount, CountFocusInvocations()));
     }
 
+    [Fact]
+    public void ModalJsImport_WhenFirstAttemptIsCanceled_RetriesOnNextRender()
+    {
+        var jsRuntime = new RetryableModalJsRuntime();
+        Services.AddSingleton<IJSRuntime>(jsRuntime);
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, _ => Task.FromResult(true)));
+
+        cut.WaitForAssertion(() => Assert.Equal(1, jsRuntime.ImportAttempts));
+
+        cut.Render();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(2, jsRuntime.ImportAttempts);
+            Assert.Contains("lockBodyScroll", jsRuntime.ModuleInvocations);
+            Assert.Contains("registerEscapeHandler", jsRuntime.ModuleInvocations);
+        });
+    }
+
     private int CountFocusInvocations()
         => JSInterop.Invocations.Count(invocation =>
             invocation.Identifier.Contains("focus", StringComparison.OrdinalIgnoreCase));
 
     private void SetupModalJsModule()
         => JSInterop.SetupModule("./_content/PTDoc.UI/js/modal.js");
+
+    private sealed class RetryableModalJsRuntime : IJSRuntime
+    {
+        private readonly RecordingJsObjectReference module;
+
+        public RetryableModalJsRuntime()
+        {
+            module = new RecordingJsObjectReference(ModuleInvocations);
+        }
+
+        public int ImportAttempts { get; private set; }
+
+        public List<string> ModuleInvocations { get; } = [];
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+            => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            if (identifier == "import")
+            {
+                ImportAttempts++;
+                if (ImportAttempts == 1)
+                {
+                    throw new OperationCanceledException();
+                }
+
+                return ValueTask.FromResult((TValue)(object)module);
+            }
+
+            return ValueTask.FromResult(default(TValue)!);
+        }
+    }
+
+    private sealed class RecordingJsObjectReference(List<string> invocations) : IJSObjectReference
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+            => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            invocations.Add(identifier);
+            return ValueTask.FromResult(default(TValue)!);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }
