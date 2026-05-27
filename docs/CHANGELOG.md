@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/*`** — Preserved existing patient payer JSON when a submitted intake draft does not include payer fields, while still updating payer details when insurance data is supplied. Reason: submitted invite or existing-patient intakes without insurance fields should not erase previously stored payer information.
 
+### Added - Azure database setup guide
+
+- **`docs/Azure-database-guide.md`** — Added a repository guide for Azure database setup and usage. Reason: document the new Azure database workflow in the changelog so unreleased documentation changes are fully reflected for this branch.
+
 ### Fixed - Intake validation follow-ups
 
 - **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`src/PTDoc.Application/Services/IntakeDraftPersistence.cs`**, **`src/PTDoc.Api/Intake/*`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/**/*Intake*`** — Removed the remaining legacy multi-measure recommendation display from Pain Details, renamed the Pain Details continue action to target the dedicated Outcome Measures step, and normalized embedded submitted/locked metadata in persisted intake JSON for authenticated, standalone, and service submit paths. Reason: localhost validation found stale multi-measure UI, misleading transition copy, and inconsistent embedded JSON flags after submit.
