@@ -256,13 +256,11 @@ public static class DatabaseSeeder
             .Select(fixture => fixture.MedicalRecordNumber)
             .Select(mrn => mrn.ToUpperInvariant())
             .ToList();
-        var patientsWithMrns = await context.Patients
+        var matchingPatients = await context.Patients
             .Where(patient => patient.MedicalRecordNumber != null
-                && patient.MedicalRecordNumber != string.Empty)
+                && patient.MedicalRecordNumber != string.Empty
+                && fixtureMrns.Contains(patient.MedicalRecordNumber!.ToUpper()))
             .ToListAsync();
-        var matchingPatients = patientsWithMrns
-            .Where(patient => fixtureMrns.Contains(patient.MedicalRecordNumber!.ToUpperInvariant()))
-            .ToList();
         var existingByMrn = matchingPatients
             .Where(patient => patient.ClinicId == clinicId)
             .GroupBy(patient => patient.MedicalRecordNumber!, StringComparer.OrdinalIgnoreCase)
