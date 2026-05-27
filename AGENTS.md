@@ -61,10 +61,18 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 ## Manual Run Commands
 
 - API: `dotnet run --project src/PTDoc.Api --urls http://localhost:5170`
-- Web: `dotnet run --project src/PTDoc.Web`
+- Web: `dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
 - Mac Catalyst: `dotnet build -t:Run -f net8.0-maccatalyst src/PTDoc.Maui/PTDoc.csproj`
 - iOS simulator: `dotnet build -t:Run -f net8.0-ios src/PTDoc.Maui/PTDoc.csproj`
 - Android emulator: `dotnet build -t:Run -f net8.0-android src/PTDoc.Maui/PTDoc.csproj`
+
+## Browser QA Commands
+
+- Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
+- Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive`
+- Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
+- Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>`
+- Browser QA artifacts are written under `tests/PTDoc.Web.UiQa/test-results/` and `tests/PTDoc.Web.UiQa/playwright-report/`; do not commit them.
 
 ## Repo-Specific Environment Variables
 
@@ -76,8 +84,14 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PTDOC_SERIAL_BUILD=1`: makes `cleanbuild-ptdoc.sh` use serialized builds (`-m:1` and `BuildInParallel=false`).
 - `PTDOC_DEVELOPER_MODE=true`: enables developer diagnostics surfaces; `run-ptdoc.sh` inherits it for MAUI launches and inline MAUI runs can set it directly.
 - `PTDoc_API_BASE_URL`: overrides the MAUI client base URL.
+- `PUBLIC_WEB_BASE_URL`: when set for `run-ptdoc.sh`, applies the public browser-reachable Web origin to both `IntakeInvite:PublicWebBaseUrl` and `Communication:PublicBaseUrl` for generated patient links during tunnel/device testing.
 - `DB_PROVIDER`: selects the database-provider smoke-test target (`sqlite`, `sqlserver`, or `postgres`) in `tests/PTDoc.Tests`.
 - `CI_DB_MIGRATIONS_ALREADY_APPLIED=true`: tells the provider smoke tests not to apply runtime migrations again after the SQL Server or PostgreSQL CI-style EF CLI migration step.
+- `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
+- `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
+- `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
+- `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`: optional seeded note-workspace route included in the responsive browser QA matrix.
+- `PTDOC_UI_QA_CHROME_CHANNEL`: optional Chrome channel override for the browser QA Playwright project.
 
 ## Platform Notes
 

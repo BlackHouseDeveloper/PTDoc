@@ -1,4 +1,5 @@
 @using System.ComponentModel.DataAnnotations
+@using System.Globalization
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -21,7 +22,7 @@
             </div>
 
             <!-- Modal Body -->
-            <form class="modal-body" novalidate @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+            <form class="modal-body" novalidate @onsubmit="() => HandleSubmit(PatientSubmitIntent.AddPatient)" @onsubmit:preventDefault="true">
                 @if (ValidationErrors.Count > 0)
                 {
                     <div id="@ValidationSummaryId" class="form-error form-validation-summary" role="alert" aria-live="assertive">
@@ -111,7 +112,10 @@
                         id="dob" 
                         type="date" 
                         class="form-input" 
-                        @bind="DateOfBirth"
+                        value="@DateOfBirthInput"
+                        autocomplete="bday"
+                        @oninput="OnDateOfBirthChanged"
+                        @onchange="OnDateOfBirthChanged"
                         required
                         aria-required="true"
                         aria-invalid="@AriaInvalid(nameof(DateOfBirth))"
@@ -129,7 +133,7 @@
 
                 <!-- Info Box -->
                 <div class="info-box" role="note">
-                    <p><strong>Note:</strong> After adding the patient, you can send them an intake form via email.</p>
+                    <p><strong>Note:</strong> Use Add Patient + Send Intake to open the intake invite workflow after creating the patient.</p>
                 </div>
 
                 <!-- Modal Footer (Buttons) -->
@@ -137,12 +141,19 @@
                     <button type="button" class="btn-cancel" @onclick="Close" disabled="@IsSubmitting">
                         Cancel
                     </button>
-                    <button type="submit" class="btn-primary" disabled="@IsSubmitting" aria-busy="@IsSubmitting">
+                    <button type="submit" class="btn-secondary" disabled="@IsSubmitting" aria-busy="@IsSubmitting">
+                        @(IsSubmitting && ActiveSubmitIntent == PatientSubmitIntent.AddPatient ? "Adding..." : "Add Patient")
+                    </button>
+                    <button type="button"
+                            class="btn-primary"
+                            disabled="@IsSubmitting"
+                            aria-busy="@IsSubmitting"
+                            @onclick="() => HandleSubmit(PatientSubmitIntent.AddPatientAndSendIntake)">
                         <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                             <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
                         </svg>
-                        @(IsSubmitting ? "Adding..." : "Add Patient")
+                        @(IsSubmitting && ActiveSubmitIntent == PatientSubmitIntent.AddPatientAndSendIntake ? "Adding..." : "Add Patient + Send Intake")
                     </button>
                 </div>
             </form>
@@ -173,65 +184,82 @@
     private DotNetObjectReference<AddPatientModal>? dotNetRef;
     private string modalId = $"modal-{Guid.NewGuid():N}";
     private string ValidationSummaryId => $"{modalId}-validation-summary";
+    private bool _isModalActive;
 
     private string FirstName { get; set; } = string.Empty;
     private string LastName { get; set; } = string.Empty;
     private string Email { get; set; } = string.Empty;
     private string PhoneNumber { get; set; } = string.Empty;
+    private string DateOfBirthInput { get; set; } = string.Empty;
     private DateTime? DateOfBirth { get; set; }
     private string? SubmitError { get; set; }
     private bool IsSubmitting { get; set; }
+    private PatientSubmitIntent? ActiveSubmitIntent { get; set; }
     private Dictionary<string, string> ValidationErrors { get; } = new(StringComparer.Ordinal);
     private static readonly EmailAddressAttribute EmailValidator = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (modalModule is null || dotNetRef is null)
         {
-            // Load the JS module once
             try
             {
-                modalModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
-                dotNetRef = DotNetObjectReference.Create(this);
+                modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+                dotNetRef ??= DotNetObjectReference.Create(this);
+            }
+            catch (Exception ex) when (IsExpectedJsCancellation(ex))
+            {
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load modal.js: {ex.Message}");
+                LogSafeException("LoadModalModule", ex);
             }
         }
 
-        if (IsOpen && modalModule != null && dotNetRef != null)
+        if (IsOpen && !_isModalActive && modalModule != null && dotNetRef != null)
         {
+            var shouldCleanupPartialActivation = false;
             try
             {
                 // Lock body scroll
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
+                shouldCleanupPartialActivation = true;
                 
                 // Register ESC key handler
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
                 
                 // Focus first input
                 await firstInputRef.FocusAsync();
+
+                _isModalActive = true;
+            }
+            catch (Exception ex) when (IsExpectedJsCancellation(ex))
+            {
+                _isModalActive = false;
+                if (shouldCleanupPartialActivation)
+                {
+                    await CleanupModalInteropAsync(logErrors: false);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Modal JS interop error: {ex.Message}");
+                _isModalActive = false;
+                if (shouldCleanupPartialActivation)
+                {
+                    await CleanupModalInteropAsync(logErrors: false);
+                }
+
+                LogSafeException("ModalInterop", ex);
             }
         }
-        else if (!IsOpen && modalModule != null)
+        else if (!IsOpen && _isModalActive && modalModule != null)
         {
-            try
-            {
-                // Unlock body scroll
-                await modalModule.InvokeVoidAsync("unlockBodyScroll");
-                
-                // Unregister ESC handler
-                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Modal cleanup error: {ex.Message}");
-            }
+            _isModalActive = false;
+            await CleanupModalInteropAsync(logErrors: true);
+        }
+        else if (!IsOpen)
+        {
+            _isModalActive = false;
         }
     }
 
@@ -256,6 +284,7 @@
         LastName = string.Empty;
         Email = string.Empty;
         PhoneNumber = string.Empty;
+        DateOfBirthInput = string.Empty;
         DateOfBirth = null;
         SubmitError = null;
         ValidationErrors.Clear();
@@ -267,10 +296,11 @@
         _ = Close();
     }
 
-    private async Task HandleSubmit()
+    private async Task HandleSubmit(PatientSubmitIntent submitIntent)
     {
         SubmitError = null;
         ValidationErrors.Clear();
+        DateOfBirth = ParseDateOfBirthInput(DateOfBirthInput);
 
         ValidateRequiredFields();
         if (ValidationErrors.Count > 0)
@@ -290,10 +320,12 @@
             LastName = LastName.Trim(),
             Email = Email.Trim(),
             PhoneNumber = PhoneNumber.Trim(),
-            DateOfBirth = DateOfBirth
+            DateOfBirth = DateOfBirth,
+            SubmitIntent = submitIntent
         };
 
         IsSubmitting = true;
+        ActiveSubmitIntent = submitIntent;
         try
         {
             var succeeded = await OnSubmit.Invoke(formData);
@@ -308,13 +340,24 @@
         }
         catch (Exception ex)
         {
-            SubmitError = string.IsNullOrWhiteSpace(ex.Message)
-                ? "The patient was not created. Review the details and try again."
-                : ex.Message;
+            SubmitError = "The patient was not created. Review the details and try again.";
+            LogSafeException("Submit", ex);
         }
         finally
         {
             IsSubmitting = false;
+            ActiveSubmitIntent = null;
+        }
+    }
+
+    private void OnDateOfBirthChanged(ChangeEventArgs args)
+    {
+        DateOfBirthInput = args.Value?.ToString() ?? string.Empty;
+        DateOfBirth = ParseDateOfBirthInput(DateOfBirthInput);
+
+        if (DateOfBirth.HasValue)
+        {
+            ValidationErrors.Remove(nameof(DateOfBirth));
         }
     }
 
@@ -339,10 +382,29 @@
             ValidationErrors[nameof(Email)] = "Enter a valid email address.";
         }
 
-        if (!DateOfBirth.HasValue)
+        if (string.IsNullOrWhiteSpace(DateOfBirthInput))
         {
             ValidationErrors[nameof(DateOfBirth)] = "Date of birth is required.";
         }
+        else if (!DateOfBirth.HasValue)
+        {
+            ValidationErrors[nameof(DateOfBirth)] = "Enter a valid date of birth.";
+        }
+    }
+
+    private static DateTime? ParseDateOfBirthInput(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParseExact(rawValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exactDate))
+        {
+            return exactDate.Date;
+        }
+
+        return null;
     }
 
     private bool TryGetFieldError(string fieldName, out string error)
@@ -364,6 +426,39 @@
         return $"{ValidationSummaryId} {GetFieldErrorId(fieldName)}";
     }
 
+    private static bool IsExpectedJsCancellation(Exception exception)
+        => exception is OperationCanceledException or Microsoft.JSInterop.JSDisconnectedException;
+
+    private async Task CleanupModalInteropAsync(bool logErrors)
+    {
+        if (modalModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Unlock body scroll
+            await modalModule.InvokeVoidAsync("unlockBodyScroll");
+
+            // Unregister ESC handler
+            await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+        }
+        catch (Exception ex) when (IsExpectedJsCancellation(ex))
+        {
+        }
+        catch (Exception ex)
+        {
+            if (logErrors)
+            {
+                LogSafeException("ModalCleanup", ex);
+            }
+        }
+    }
+
+    private static void LogSafeException(string operation, Exception exception)
+        => Console.WriteLine($"[AddPatientModal] {operation} error type: {exception.GetType().Name}");
+
     public async ValueTask DisposeAsync()
     {
         // Clean up JS interop
@@ -381,6 +476,12 @@
         dotNetRef?.Dispose();
     }
 
+    public enum PatientSubmitIntent
+    {
+        AddPatient,
+        AddPatientAndSendIntake
+    }
+
     public class PatientFormData
     {
         public string FirstName { get; set; } = string.Empty;
@@ -388,5 +489,6 @@
         public string Email { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
         public DateTime? DateOfBirth { get; set; }
+        public PatientSubmitIntent SubmitIntent { get; set; } = PatientSubmitIntent.AddPatient;
     }
 }

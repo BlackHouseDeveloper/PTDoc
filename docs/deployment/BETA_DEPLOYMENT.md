@@ -87,6 +87,8 @@ The shared Beta seed PIN is not committed; configure it through the API App Serv
 
 The seeded clinic is `Physically Fit Physical Therapy` with slug `pfpt-beta`. The Beta seeder is authoritative for these test accounts so access remains predictable after redeploys.
 
+The same Beta startup seed also creates a small idempotent PFPT patient directory fixture under the seeded clinic. These records use non-real `.test` email addresses and deterministic MRNs `BETA-PT-001` through `BETA-PT-004` so Beta users can validate Patients search by name, MRN, and email, open patient profiles, and start the existing intake invite workflow without creating live patient data first.
+
 ## GitHub Actions Deployment
 
 Use the manual `Deploy Beta` workflow. It builds, tests, publishes, and deploys the Web and API artifacts separately.

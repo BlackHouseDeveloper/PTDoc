@@ -24,10 +24,17 @@
         </section>
     }
 
-    <div class="patient-clinical-info-tabs">
+    <div class="patient-clinical-info-tabs"
+         role="tablist"
+         aria-label="Patient profile sections"
+         data-testid="patient-profile-tabs">
         <button type="button" 
                 class="patient-clinical-info-tab @(selectedTab == "timeline" ? "active" : "")"
-                aria-pressed="@(selectedTab == "timeline" ? "true" : "false")"
+                id="patient-profile-tab-timeline"
+                role="tab"
+                aria-selected="@IsSelectedTab("timeline")"
+                aria-controls="patient-profile-panel-current"
+                data-testid="patient-profile-tab-timeline"
                 @onclick="@(() => SelectTab("timeline"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
@@ -37,7 +44,11 @@
         </button>
         <button type="button" 
                 class="patient-clinical-info-tab @(selectedTab == "notes" ? "active" : "")"
-                aria-pressed="@(selectedTab == "notes" ? "true" : "false")"
+                id="patient-profile-tab-notes"
+                role="tab"
+                aria-selected="@IsSelectedTab("notes")"
+                aria-controls="patient-profile-panel-current"
+                data-testid="patient-profile-tab-notes"
                 @onclick="@(() => SelectTab("notes"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M10 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6L10 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -47,7 +58,11 @@
         </button>
     </div>
 
-    <div class="patient-clinical-info-content">
+    <div class="patient-clinical-info-content"
+         id="patient-profile-panel-current"
+         role="tabpanel"
+         aria-labelledby="@SelectedTabId"
+         data-testid="@SelectedPanelTestId">
         @if (selectedTab == "timeline")
         {
             @if (!string.IsNullOrWhiteSpace(TimelineErrorMessage))
@@ -62,8 +77,7 @@
                     }
                 </div>
             }
-
-            @if (IsLoading)
+            else if (IsLoading)
             {
                 <div class="patient-clinical-info-empty" role="status" aria-label="Loading timeline">
                     <LoadingSkeleton Variant="SkeletonVariant.Rectangle" Size="SkeletonSize.Large" />
@@ -161,6 +175,13 @@
     {
         selectedTab = tab;
     }
+
+    private string IsSelectedTab(string tab)
+        => string.Equals(selectedTab, tab, StringComparison.Ordinal) ? "true" : "false";
+
+    private string SelectedTabId => $"patient-profile-tab-{selectedTab}";
+
+    private string SelectedPanelTestId => $"patient-profile-panel-{selectedTab}";
 
     private string GetTimelineIconClass(string type)
     {

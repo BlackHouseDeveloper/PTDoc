@@ -37,6 +37,8 @@
     box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: var(--modal-max-width);
+    max-height: calc(100vh - (var(--spacing-4) * 2));
+    overflow-y: auto;
     padding: var(--modal-padding);
     animation: slideUp var(--transition-normal);
     z-index: var(--z-modal);
@@ -226,6 +228,20 @@
     border-radius: var(--radius-lg);
     padding: var(--spacing-3);
     margin-top: var(--spacing-2);
+}
+
+.success-box--warning {
+    background: color-mix(in srgb, var(--warning) 10%, var(--card));
+    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+}
+
+.success-box--warning strong {
+    color: var(--foreground);
+}
+
+.success-box--warning p {
+    color: var(--muted-foreground);
+    margin: var(--spacing-2) 0 0;
 }
 
 .success-box-header {

@@ -37,6 +37,8 @@
     box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: var(--modal-max-width);
+    max-height: calc(100vh - (var(--spacing-4) * 2));
+    overflow-y: auto;
     padding: var(--modal-padding);
     animation: slideUp var(--transition-normal);
     z-index: var(--z-modal);
@@ -245,12 +247,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: var(--spacing-2) var(--spacing-4);
-    height: 44px;
+    min-height: var(--touch-target-mobile);
     cursor: pointer;
     transition: all var(--transition-fast);
     display: flex;
     align-items: center;
     justify-content: center;
+    text-align: center;
 }
 
 .btn-cancel:hover {
@@ -259,6 +262,7 @@
 }
 
 .btn-cancel:disabled,
+.btn-secondary:disabled,
 .btn-primary:disabled,
 .modal-close:disabled {
     cursor: not-allowed;
@@ -267,9 +271,35 @@
     box-shadow: none;
 }
 
-.btn-cancel:focus-visible {
+.btn-cancel:focus-visible,
+.btn-secondary:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+}
+
+/* Secondary Button */
+.btn-secondary {
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
+    color: var(--foreground);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2) var(--spacing-4);
+    min-height: var(--touch-target-mobile);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.btn-secondary:hover {
+    background: var(--muted);
+    border-color: var(--ring);
 }
 
 /* Primary Button */
@@ -283,13 +313,14 @@
     border: none;
     border-radius: var(--radius-md);
     padding: var(--spacing-2) var(--spacing-4);
-    height: 44px;
+    min-height: var(--touch-target-mobile);
     cursor: pointer;
     transition: all var(--transition-fast);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: var(--spacing-2);
+    text-align: center;
 }
 
 .btn-primary:hover {
@@ -371,6 +402,7 @@
     }
 
     .btn-cancel,
+    .btn-secondary,
     .btn-primary {
         width: 100%;
     }
@@ -382,6 +414,7 @@
     .modal-container,
     .form-input,
     .btn-cancel,
+    .btn-secondary,
     .btn-primary,
     .modal-close {
         animation: none;

@@ -77,6 +77,14 @@ public static class DatabaseSeeder
         new("patient.beta", "Patient", "Beta", "patient.beta@physicallyfitpt.test", Roles.Patient, null, null)
     ];
 
+    private static readonly IReadOnlyList<BetaPatientSeedSpec> BetaPatientFixtures =
+    [
+        new("BETA-PT-001", "Avery", "Adams", new DateTime(1982, 4, 12), "avery.adams.beta@physicallyfitpt.test", "555-0301", "M25.511", "Pain in right shoulder"),
+        new("BETA-PT-002", "Jordan", "Lee", new DateTime(1978, 9, 6), "jordan.lee.beta@physicallyfitpt.test", "555-0302", "M54.50", "Low back pain, unspecified"),
+        new("BETA-PT-003", "Morgan", "Patel", new DateTime(1991, 1, 23), "morgan.patel.beta@physicallyfitpt.test", "555-0303", "M25.561", "Pain in right knee"),
+        new("BETA-PT-004", "Riley", "Chen", new DateTime(1988, 11, 17), "riley.chen.beta@physicallyfitpt.test", "555-0304", "M54.2", "Cervicalgia")
+    ];
+
     private static readonly PatientSeedCondition[] PatientConditions =
     [
         new("M54.2", "Cervicalgia", BodyPart.Cervical, OutcomeMeasureType.NeckDisabilityIndex, "Limited cervical rotation", "Right", "degrees", "45", 24, "difficulty turning the head while driving", "cervical mobility and postural control"),
@@ -222,12 +230,107 @@ public static class DatabaseSeeder
 
         await context.SaveChangesAsync();
 
+        var seedActorId = await context.Users
+            .Where(user => user.ClinicId == clinic.Id && user.Role == Roles.PT)
+            .Select(user => (Guid?)user.Id)
+            .FirstOrDefaultAsync()
+            ?? IIdentityContextAccessor.SystemUserId;
+        var patientFixtureResult = await EnsureBetaPatientFixturesAsync(context, clinic.Id, seedActorId, now);
+
         logger.LogInformation(
-            "Beta access seed complete for clinic {ClinicId}. Created={CreatedCount}, Updated={UpdatedCount}, Users={UserCount}.",
+            "Beta access seed complete for clinic {ClinicId}. Created={CreatedCount}, Updated={UpdatedCount}, Users={UserCount}, PatientFixtures={PatientFixtureCount}.",
             clinic.Id,
             createdCount,
             updatedCount,
-            BetaAccessUsers.Count);
+            BetaAccessUsers.Count,
+            patientFixtureResult.Total);
+    }
+
+    private static async Task<BetaPatientFixtureSeedResult> EnsureBetaPatientFixturesAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid seedActorId,
+        DateTime now)
+    {
+        var fixtureMrns = BetaPatientFixtures
+            .Select(fixture => fixture.MedicalRecordNumber)
+            .Select(mrn => mrn.ToUpperInvariant())
+            .ToList();
+        var matchingPatients = await context.Patients
+            .Where(patient => patient.MedicalRecordNumber != null
+                && patient.MedicalRecordNumber != string.Empty
+                && fixtureMrns.Contains(patient.MedicalRecordNumber!.ToUpper()))
+            .ToListAsync();
+        var existingByMrn = matchingPatients
+            .Where(patient => patient.ClinicId == clinicId)
+            .GroupBy(patient => patient.MedicalRecordNumber!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var reservedFixtureMrns = matchingPatients
+            .Where(patient => patient.ClinicId != clinicId)
+            .Select(patient => patient.MedicalRecordNumber!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var createdCount = 0;
+        var updatedCount = 0;
+        var skippedCount = 0;
+
+        foreach (var fixture in BetaPatientFixtures)
+        {
+            if (!existingByMrn.TryGetValue(fixture.MedicalRecordNumber, out var patient))
+            {
+                if (reservedFixtureMrns.Contains(fixture.MedicalRecordNumber))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                patient = new Patient
+                {
+                    Id = Guid.NewGuid()
+                };
+                context.Patients.Add(patient);
+                createdCount++;
+            }
+            else
+            {
+                updatedCount++;
+            }
+
+            patient.FirstName = fixture.FirstName;
+            patient.LastName = fixture.LastName;
+            patient.DateOfBirth = fixture.DateOfBirth;
+            patient.Email = fixture.Email;
+            patient.Phone = fixture.Phone;
+            patient.AddressLine1 = "100 Beta Validation Way";
+            patient.City = "San Diego";
+            patient.State = "CA";
+            patient.ZipCode = "92101";
+            patient.MedicalRecordNumber = fixture.MedicalRecordNumber;
+            patient.ReferringPhysician = "Dr. Beta Fixture";
+            patient.PhysicianNpi = "1400000200";
+            patient.DateOfOnset = now.Date.AddDays(-30);
+            patient.ConsentSigned = true;
+            patient.ConsentSignedDate = now.Date.AddDays(-7);
+            patient.DiagnosisCodesJson = SerializeJson(new[]
+            {
+                new
+                {
+                    IcdCode = fixture.DiagnosisCode,
+                    Description = fixture.DiagnosisDescription,
+                    IsPrimary = true
+                }
+            });
+            patient.PayerInfoJson = SerializeJson(new
+            {
+                PayerType = "Commercial",
+                PlanName = "PFPT Beta PPO",
+                MemberId = fixture.MedicalRecordNumber.Replace("-", string.Empty, StringComparison.Ordinal)
+            });
+            patient.IsArchived = false;
+            EnsurePatientFixtureVisibility(patient, clinicId, seedActorId, now);
+        }
+
+        await context.SaveChangesAsync();
+        return new BetaPatientFixtureSeedResult(createdCount, updatedCount, skippedCount, BetaPatientFixtures.Count - skippedCount);
     }
 
     private static async Task EnsureOutcomeMeasureQaFixturesAsync(
@@ -1718,6 +1821,22 @@ public static class DatabaseSeeder
         string Role,
         string? LicenseNumber,
         string? LicenseState);
+
+    private sealed record BetaPatientSeedSpec(
+        string MedicalRecordNumber,
+        string FirstName,
+        string LastName,
+        DateTime DateOfBirth,
+        string Email,
+        string Phone,
+        string DiagnosisCode,
+        string DiagnosisDescription);
+
+    private sealed record BetaPatientFixtureSeedResult(
+        int Created,
+        int Updated,
+        int Skipped,
+        int Total);
 
     private sealed record PatientSeedCondition(
         string DiagnosisCode,

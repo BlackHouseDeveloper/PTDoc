@@ -139,13 +139,16 @@
 
 <!-- Send Intake Modal -->
 <SendIntakeModal IsOpen="@isSendIntakeModalOpen"
-                 IsOpenChanged="@((value) => isSendIntakeModalOpen = value)"
+                 IsOpenChanged="@HandleSendIntakeOpenChanged"
                  AvailablePatients="@availablePatients"
+                 InitialPatientId="@initialSendIntakePatientId"
                  OnSubmit="@HandleIntakeSubmit" />
 
 @code {
     private bool isAddPatientModalOpen = false;
     private bool isSendIntakeModalOpen = false;
+    private string? initialSendIntakePatientId;
+    private PatientResponse? pendingSendIntakePatient;
     private System.Timers.Timer? _autoRefreshTimer;
 
     private bool _isRecentActivityLoading;
@@ -158,6 +161,7 @@
     private CancellationTokenSource? _dashboardCts;
     private bool _isDisposed;
     private bool _isLoadingAvailablePatients;
+    private bool _isPreparingPendingSendIntake;
     private int _patientsToday;
     private int _appointmentsToday;
     private int _notesDue;
@@ -187,6 +191,27 @@
     {
         await RetryDashboardAsync();
         SetupAutoRefresh();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (pendingSendIntakePatient is null || isAddPatientModalOpen || _isPreparingPendingSendIntake)
+        {
+            return;
+        }
+
+        var patient = pendingSendIntakePatient;
+        pendingSendIntakePatient = null;
+        _isPreparingPendingSendIntake = true;
+
+        try
+        {
+            await PrepareSendIntakeForPatientAsync(patient);
+        }
+        finally
+        {
+            _isPreparingPendingSendIntake = false;
+        }
     }
 
     private async Task LoadAvailablePatientsAsync()
@@ -291,6 +316,7 @@
 
     private async Task HandleSendIntakeAsync()
     {
+        initialSendIntakePatientId = null;
         if (availablePatients.Count == 0)
         {
             await LoadAvailablePatientsAsync();
@@ -320,6 +346,12 @@
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
             await RetryDashboardAsync();
+
+            if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
+            {
+                pendingSendIntakePatient = created;
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -334,6 +366,7 @@
     {
         try
         {
+            initialSendIntakePatientId = null;
             await RetryDashboardAsync();
         }
         catch (Exception ex)
@@ -341,6 +374,40 @@
             Logger.LogWarning(ex, "[Dashboard] Error refreshing intake state");
         }
     }
+
+    private async Task PrepareSendIntakeForPatientAsync(PatientResponse patient)
+    {
+        initialSendIntakePatientId = patient.Id.ToString("D");
+        await LoadAvailablePatientsAsync();
+        UpsertAvailablePatient(ToPatientOption(patient));
+        isSendIntakeModalOpen = true;
+        await InvokeStateHasChangedAsync();
+    }
+
+    private Task HandleSendIntakeOpenChanged(bool value)
+    {
+        isSendIntakeModalOpen = value;
+        if (!value)
+        {
+            initialSendIntakePatientId = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void UpsertAvailablePatient(SendIntakeModal.PatientOption patient)
+    {
+        availablePatients.RemoveAll(existing => string.Equals(existing.Id, patient.Id, StringComparison.Ordinal));
+        availablePatients.Insert(0, patient);
+    }
+
+    private static SendIntakeModal.PatientOption ToPatientOption(PatientResponse patient) => new()
+    {
+        Id = patient.Id.ToString("D"),
+        Name = $"{patient.FirstName} {patient.LastName}".Trim(),
+        Email = patient.Email,
+        PhoneNumber = patient.Phone
+    };
 
     private void ApplySnapshot(DashboardSnapshotResponse snapshot)
     {
