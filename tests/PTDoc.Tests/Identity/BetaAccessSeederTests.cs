@@ -170,11 +170,12 @@ public sealed class BetaAccessSeederTests
 
         await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
 
-        var patients = await context.Patients
+        var patients = (await context.Patients
             .Where(patient => patient.ClinicId == DatabaseSeeder.BetaClinicId
-                && patient.MedicalRecordNumber != null
-                && patient.MedicalRecordNumber!.ToUpper() == "BETA-PT-001")
-            .ToListAsync();
+                && patient.MedicalRecordNumber != null)
+            .ToListAsync())
+            .Where(patient => patient.MedicalRecordNumber!.ToUpperInvariant() == "BETA-PT-001")
+            .ToList();
 
         var patient = Assert.Single(patients);
         Assert.Equal(existingPatientId, patient.Id);
