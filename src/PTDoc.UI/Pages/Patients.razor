@@ -259,7 +259,6 @@
             searchQuery = string.Empty;
             await LoadPatientsAsync();
             EnsureCreatedPatientVisible(created);
-            StateHasChanged();
 
             if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
             {
