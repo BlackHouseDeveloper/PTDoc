@@ -37,6 +37,12 @@ public sealed class IntakeResponseDraft
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
 
+    public string? PrimaryDoctorName { get; set; }
+    public string? PrimaryDoctorPhone { get; set; }
+    public string? ReferringDoctorName { get; set; }
+    public string? ReferringDoctorNpi { get; set; }
+    public string? ReferringDoctorPhone { get; set; }
+
     public string? InsuranceCompanyName { get; set; }
     public string? MemberOrPolicyNumber { get; set; }
     public string? GroupNumber { get; set; }
@@ -48,6 +54,7 @@ public sealed class IntakeResponseDraft
     public bool UsesAssistiveDevices { get; set; }
     public bool HasPreviousSurgeriesOrInjuries { get; set; }
     public string? MedicalHistoryNotes { get; set; }
+    public string? FunctionalLimitations { get; set; }
 
     public string? SelectedBodyRegion { get; set; }
     public int? PainSeverityScore { get; set; }
@@ -58,6 +65,8 @@ public sealed class IntakeResponseDraft
     public HashSet<string> SelectedLivingSituations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> SelectedHouseLayoutOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> RecommendedOutcomeMeasures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<AssignedOutcomeMeasureDraft> AssignedOutcomeMeasures { get; set; } = new();
+    public List<InitialOutcomeMeasureReportDraft> InitialOutcomeMeasureReports { get; set; } = new();
 
     public bool PainSeverityProvided { get; set; }
     public bool IsSubmitted { get; set; }
@@ -66,4 +75,27 @@ public sealed class IntakeResponseDraft
     public DateTime? ReviewedAtUtc { get; set; }
     public Guid? ReviewedByUserId { get; set; }
     public DateTime? LastModifiedUtc { get; set; }
+}
+
+public sealed class AssignedOutcomeMeasureDraft
+{
+    public string? BodyPartId { get; set; }
+    public string? BodyPartLabel { get; set; }
+    public string? CanonicalBodyPart { get; set; }
+    public string? Laterality { get; set; }
+    public string? MeasureAbbreviation { get; set; }
+    public string? MeasureFullName { get; set; }
+    public string? ReferenceVersion { get; set; }
+    public bool IsPrimary { get; set; } = true;
+    public bool RequiresClinicalConfirmation { get; set; }
+}
+
+public sealed class InitialOutcomeMeasureReportDraft
+{
+    public string? AssignedMeasureAbbreviation { get; set; }
+    public string? PatientEnteredMeasureName { get; set; }
+    public string? ScoreText { get; set; }
+    public DateTime? CompletedDate { get; set; }
+    public string? Notes { get; set; }
+    public bool Skipped { get; set; }
 }

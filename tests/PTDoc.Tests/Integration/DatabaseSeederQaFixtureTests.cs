@@ -155,7 +155,7 @@ public sealed class DatabaseSeederQaFixtureTests : IDisposable
         var registry = new OutcomeMeasureRegistry();
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper);
+        var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper, intakeReferenceData);
         var catalogs = new WorkspaceReferenceCatalogService(registry);
         var auditService = new AuditService(_context);
         var rulesEngine = new RulesEngine(_context, auditService);

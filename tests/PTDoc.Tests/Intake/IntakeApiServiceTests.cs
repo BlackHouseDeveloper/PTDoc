@@ -372,6 +372,101 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_RoundTripsBetaDemographicsCareTeamInsuranceAndLimitations()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        string? requestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+                {
+                    Id = intakeId,
+                    PatientId = patientId,
+                    PainMapData = "{}",
+                    Consents = "{}",
+                    ResponseJson = "{}",
+                    Locked = false,
+                    TemplateVersion = "1.0",
+                    LastModifiedUtc = DateTime.UtcNow
+                }, JsonOptions));
+            }
+
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                PainMapData = "{}",
+                Consents = "{}",
+                ResponseJson = "{}",
+                Locked = false,
+                TemplateVersion = "1.0",
+                LastModifiedUtc = DateTime.UtcNow
+            }, JsonOptions));
+        });
+
+        await CreateService(handler).SaveDraftAsync(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            SexAtBirth = "Female",
+            AddressLine1 = "100 Beta Validation Way",
+            City = "San Diego",
+            StateOrProvince = "CA",
+            PostalCode = "92101",
+            PrimaryDoctorName = "Dr. Primary",
+            PrimaryDoctorPhone = "555-0101",
+            ReferringDoctorName = "Dr. Referral",
+            ReferringDoctorNpi = "1234567890",
+            ReferringDoctorPhone = "555-0102",
+            InsuranceCompanyName = "PFPT Beta PPO",
+            MemberOrPolicyNumber = "BETA001",
+            PayerType = "Commercial",
+            InsuranceCoverageType = "Primary",
+            FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
+            AssignedOutcomeMeasures =
+            [
+                new AssignedOutcomeMeasureDraft
+                {
+                    BodyPartId = "knee",
+                    BodyPartLabel = "Knee",
+                    CanonicalBodyPart = "Knee",
+                    MeasureAbbreviation = "LEFS",
+                    MeasureFullName = "Lower Extremity Functional Scale",
+                    IsPrimary = true
+                }
+            ],
+            InitialOutcomeMeasureReports =
+            [
+                new InitialOutcomeMeasureReportDraft
+                {
+                    AssignedMeasureAbbreviation = "LEFS",
+                    PatientEnteredMeasureName = "LEFS",
+                    ScoreText = "42/80",
+                    CompletedDate = new DateTime(2026, 5, 1),
+                    Notes = "Completed before intake."
+                }
+            ]
+        });
+
+        Assert.NotNull(requestBody);
+        using var requestDocument = JsonDocument.Parse(requestBody!);
+        using var responseJson = JsonDocument.Parse(requestDocument.RootElement.GetProperty("responseJson").GetString() ?? "{}");
+        Assert.Equal("Female", responseJson.RootElement.GetProperty("sexAtBirth").GetString());
+        Assert.Equal("100 Beta Validation Way", responseJson.RootElement.GetProperty("addressLine1").GetString());
+        Assert.Equal("Dr. Primary", responseJson.RootElement.GetProperty("primaryDoctorName").GetString());
+        Assert.Equal("Dr. Referral", responseJson.RootElement.GetProperty("referringDoctorName").GetString());
+        Assert.Equal("1234567890", responseJson.RootElement.GetProperty("referringDoctorNpi").GetString());
+        Assert.Equal("PFPT Beta PPO", responseJson.RootElement.GetProperty("insuranceCompanyName").GetString());
+        Assert.Equal("Difficulty walking longer than 10 minutes.", responseJson.RootElement.GetProperty("functionalLimitations").GetString());
+        Assert.Equal("LEFS", responseJson.RootElement.GetProperty("assignedOutcomeMeasures")[0].GetProperty("measureAbbreviation").GetString());
+        Assert.Equal("42/80", responseJson.RootElement.GetProperty("initialOutcomeMeasureReports")[0].GetProperty("scoreText").GetString());
+    }
+
+    [Fact]
     public async Task GetDraftByPatientIdAsync_HydratesStructuredDataFromResponse()
     {
         var patientId = Guid.NewGuid();
@@ -428,7 +523,9 @@ public sealed class IntakeApiServiceTests
                 PatientId = patientId,
                 PainMapData = "{}",
                 Consents = "{}",
-                ResponseJson = """{"fullName":"Latest Locked","painSeverityProvided":true,"painSeverityScore":0}""",
+                ResponseJson = """
+                               {"fullName":"Latest Locked","sexAtBirth":"Female","primaryDoctorName":"Dr. Primary","referringDoctorName":"Dr. Referral","functionalLimitations":"Difficulty with stairs.","painSeverityProvided":true,"painSeverityScore":0}
+                               """,
                 Locked = true,
                 SubmittedAt = submittedAt,
                 ReviewedAtUtc = reviewedAt,
@@ -448,6 +545,10 @@ public sealed class IntakeApiServiceTests
         Assert.True(draft.IsSubmitted);
         Assert.True(draft.PainSeverityProvided);
         Assert.Equal(0, draft.PainSeverityScore);
+        Assert.Equal("Female", draft.SexAtBirth);
+        Assert.Equal("Dr. Primary", draft.PrimaryDoctorName);
+        Assert.Equal("Dr. Referral", draft.ReferringDoctorName);
+        Assert.Equal("Difficulty with stairs.", draft.FunctionalLimitations);
         Assert.Equal(submittedAt, draft.SubmittedAt);
         Assert.Equal(reviewedAt, draft.ReviewedAtUtc);
         Assert.Equal(reviewerId, draft.ReviewedByUserId);
@@ -622,7 +723,7 @@ public sealed class IntakeApiServiceTests
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var outcomeRegistry = new OutcomeMeasureRegistry();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
+        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper, intakeReferenceData);
 
         return new IntakeApiService(
             new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },

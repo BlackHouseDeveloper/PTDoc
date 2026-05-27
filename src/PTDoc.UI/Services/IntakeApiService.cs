@@ -156,7 +156,11 @@ public sealed class IntakeApiService(
             City = state.City,
             State = state.StateOrProvince,
             ZipCode = state.PostalCode,
-            PayerInfoJson = "{}"
+            PayerInfoJson = BuildPayerInfoJson(state),
+            ReferringPhysician = state.ReferringDoctorName,
+            PhysicianNpi = ToSupportedNpi(state.ReferringDoctorNpi),
+            EmergencyContactName = state.EmergencyContactName,
+            EmergencyContactPhone = state.EmergencyContactPhone
         };
 
         var patientResponse = await httpClient.PostAsJsonAsync("/api/v1/patients/", createPatientRequest, cancellationToken);
@@ -480,6 +484,24 @@ public sealed class IntakeApiService(
         return state is null
             ? "{}"
             : IntakeConsentJson.Serialize(BuildConsentPacket(state));
+    }
+
+    private static string BuildPayerInfoJson(IntakeResponseDraft state)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            PayerType = state.PayerType,
+            InsuranceCompanyName = state.InsuranceCompanyName,
+            MemberOrPolicyNumber = state.MemberOrPolicyNumber,
+            GroupNumber = state.GroupNumber,
+            CoverageType = state.InsuranceCoverageType
+        }, SerializerOptions);
+    }
+
+    private static string? ToSupportedNpi(string? value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        return trimmed is { Length: <= 10 } ? trimmed : null;
     }
 
     private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft? state)

@@ -2,6 +2,7 @@
 @using PTDoc.Application.Intake
 @using PTDoc.Application.Outcomes
 @using PTDoc.Application.ReferenceData
+@using PTDoc.Application.Services
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Intake.Models
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
@@ -204,35 +205,9 @@
         </div>
     </section>
 
-    @if (ShowOutcomeMeasureRecommendations)
-    {
-        <section class="intake-step-shell__panel intake-step-shell__panel--accent">
-            <div class="intake-step-shell__panel-header">
-                <div>
-                    <h3>Auto-Selected Outcome Measures</h3>
-                    <p>These measures are recommended from the selected body parts and the functional-outcome document.</p>
-                </div>
-            </div>
-
-            <div class="intake-step-shell__chip-list">
-                @if (State.RecommendedOutcomeMeasures.Count == 0)
-                {
-                    <span class="intake-step-shell__summary-chip">Select a structured body part to generate recommendations</span>
-                }
-                else
-                {
-                    @foreach (var measure in State.RecommendedOutcomeMeasures)
-                    {
-                        <span class="intake-step-shell__summary-chip intake-step-shell__summary-chip--accent">@measure</span>
-                    }
-                }
-            </div>
-        </section>
-    }
-
     <IntakeFooterActions
         ShowBack="true"
-        PrimaryText="Continue to Review"
+        PrimaryText="Continue to Outcome Measures"
         PrimaryDisabled="@(!CanContinue)"
         PrimaryTestId="continue-button"
         OnBack="OnBack"
@@ -262,7 +237,8 @@
             }
         }
 
-        if (StructuredData.BodyPartSelections.Count > 0 && State.RecommendedOutcomeMeasures.Count == 0)
+        if (StructuredData.BodyPartSelections.Count > 0
+            && (State.RecommendedOutcomeMeasures.Count == 0 || State.AssignedOutcomeMeasures.Count == 0))
         {
             RecalculateOutcomeMeasures();
         }
@@ -406,6 +382,50 @@
             .SelectMany(OutcomeMeasureRegistry.GetRecommendedMeasureAbbreviationsForBodyPart)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        State.AssignedOutcomeMeasures = StructuredData.BodyPartSelections
+            .Where(selection => !string.IsNullOrWhiteSpace(selection.BodyPartId))
+            .GroupBy(selection => selection.BodyPartId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildAssignedOutcomeMeasure(group.First()))
+            .ToList();
+    }
+
+    private AssignedOutcomeMeasureDraft BuildAssignedOutcomeMeasure(IntakeBodyPartSelectionDto selection)
+    {
+        var canonicalBodyPart = IntakeBodyPartMapper.MapBodyPartId(selection.BodyPartId);
+        var bodyPart = IntakeReferenceData.GetBodyPart(selection.BodyPartId);
+        var assignment = new AssignedOutcomeMeasureDraft
+        {
+            BodyPartId = selection.BodyPartId,
+            BodyPartLabel = bodyPart?.Label ?? selection.BodyPartId,
+            CanonicalBodyPart = canonicalBodyPart.ToString(),
+            Laterality = FormatLaterality(selection.Lateralities),
+            ReferenceVersion = StructuredData.SchemaVersion,
+            IsPrimary = true
+        };
+
+        if (OutcomeMeasureRegistry.TryGetPrimaryRecommendedMeasureForBodyPart(canonicalBodyPart, out var definition))
+        {
+            assignment.MeasureAbbreviation = definition.Abbreviation;
+            assignment.MeasureFullName = definition.FullName;
+        }
+        else
+        {
+            assignment.RequiresClinicalConfirmation = true;
+        }
+
+        return assignment;
+    }
+
+    private static string? FormatLaterality(IEnumerable<string>? lateralities)
+    {
+        var values = lateralities?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return values is { Count: > 0 } ? string.Join(", ", values) : null;
     }
 
     private async Task NotifyStateChangedAsync()

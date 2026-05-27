@@ -21,6 +21,7 @@
         IntakeStep.Demographics,
         IntakeStep.PainAssessment,
         IntakeStep.PainDetails,
+        IntakeStep.OutcomeMeasures,
         IntakeStep.Review
     };
 
@@ -29,6 +30,7 @@
         "Demographics",
         "Pain Assessment",
         "Pain Details",
+        "Outcome Measures",
         "Review"
     };
 
@@ -36,7 +38,9 @@
 
     private string GetProgressStyle()
     {
-        var progress = ((int)CurrentStep + 1) / 4.0 * 100.0;
+        var stepIndex = Array.IndexOf(Steps, CurrentStep);
+        var normalizedIndex = stepIndex >= 0 ? stepIndex : 0;
+        var progress = (normalizedIndex + 1) / (double)Steps.Length * 100.0;
         return $"width: {progress.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)}%;";
     }
 }

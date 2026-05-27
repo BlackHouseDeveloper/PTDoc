@@ -1,0 +1,40 @@
+<section class="intake-card">
+    <h2>Care Team</h2>
+    <p class="intake-card__subtext">List the doctors involved in your care, if known.</p>
+
+    <div class="intake-card__form-grid">
+        <label for="intake-primary-doctor-name">Primary Doctor
+            <input id="intake-primary-doctor-name" class="form-control" value="@PrimaryDoctorName" @oninput="(args) => PrimaryDoctorNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Primary doctor name" />
+        </label>
+
+        <label for="intake-primary-doctor-phone">Primary Doctor Phone
+            <input id="intake-primary-doctor-phone" class="form-control" type="tel" value="@PrimaryDoctorPhone" @oninput="(args) => PrimaryDoctorPhoneChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
+        </label>
+
+        <label for="intake-referring-doctor-name">Referring Doctor
+            <input id="intake-referring-doctor-name" class="form-control" value="@ReferringDoctorName" @oninput="(args) => ReferringDoctorNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Referring doctor name" />
+        </label>
+
+        <label for="intake-referring-doctor-npi">Referring Doctor NPI
+            <input id="intake-referring-doctor-npi" class="form-control" value="@ReferringDoctorNpi" @oninput="(args) => ReferringDoctorNpiChanged.InvokeAsync(args.Value?.ToString())" placeholder="10-digit NPI" />
+        </label>
+
+        <label for="intake-referring-doctor-phone">Referring Doctor Phone
+            <input id="intake-referring-doctor-phone" class="form-control" type="tel" value="@ReferringDoctorPhone" @oninput="(args) => ReferringDoctorPhoneChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
+        </label>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? PrimaryDoctorName { get; set; }
+    [Parameter] public string? PrimaryDoctorPhone { get; set; }
+    [Parameter] public string? ReferringDoctorName { get; set; }
+    [Parameter] public string? ReferringDoctorNpi { get; set; }
+    [Parameter] public string? ReferringDoctorPhone { get; set; }
+
+    [Parameter] public EventCallback<string?> PrimaryDoctorNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> PrimaryDoctorPhoneChanged { get; set; }
+    [Parameter] public EventCallback<string?> ReferringDoctorNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> ReferringDoctorNpiChanged { get; set; }
+    [Parameter] public EventCallback<string?> ReferringDoctorPhoneChanged { get; set; }
+}

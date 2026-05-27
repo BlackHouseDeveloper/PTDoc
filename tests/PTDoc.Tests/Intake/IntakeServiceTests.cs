@@ -36,7 +36,7 @@ public sealed class IntakeServiceTests : IDisposable
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var outcomeRegistry = new OutcomeMeasureRegistry();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
+        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper, intakeReferenceData);
         _service = new IntakeService(
             _context,
             _tenantContext.Object,
@@ -515,6 +515,20 @@ public sealed class IntakeServiceTests : IDisposable
         {
             PatientId = patient.Id,
             FullName = "Sam Submit",
+            SexAtBirth = "Male",
+            AddressLine1 = "400 Beta Street",
+            City = "San Diego",
+            StateOrProvince = "CA",
+            PostalCode = "92101",
+            EmergencyContactName = "Emergency Contact",
+            EmergencyContactPhone = "555-0110",
+            ReferringDoctorName = "Dr. Referral",
+            ReferringDoctorNpi = "1234567890",
+            InsuranceCompanyName = "PFPT Beta PPO",
+            MemberOrPolicyNumber = "BETA001",
+            PayerType = "Commercial",
+            InsuranceCoverageType = "Primary",
+            FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             PainSeverityProvided = false
         });
 
@@ -522,6 +536,23 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.True(storedDraft.IsLocked);
         Assert.NotNull(storedDraft.SubmittedAt);
         Assert.True(storedDraft.LastModifiedUtc >= storedDraft.SubmittedAt.Value);
+
+        using var responseJson = JsonDocument.Parse(storedDraft.ResponseJson);
+        Assert.Equal(intakeId, responseJson.RootElement.GetProperty("intakeId").GetGuid());
+        Assert.Equal(patient.Id, responseJson.RootElement.GetProperty("patientId").GetGuid());
+        Assert.True(responseJson.RootElement.GetProperty("isLocked").GetBoolean());
+        Assert.True(responseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
+        Assert.Equal(storedDraft.SubmittedAt.Value, responseJson.RootElement.GetProperty("submittedAt").GetDateTime());
+        Assert.True(responseJson.RootElement.TryGetProperty("lastModifiedUtc", out var lastModifiedUtc));
+        Assert.Equal(JsonValueKind.String, lastModifiedUtc.ValueKind);
+        Assert.Equal("Male", responseJson.RootElement.GetProperty("sexAtBirth").GetString());
+        Assert.Equal("Difficulty walking longer than 10 minutes.", responseJson.RootElement.GetProperty("functionalLimitations").GetString());
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal("400 Beta Street", submittedPatient.AddressLine1);
+        Assert.Equal("Dr. Referral", submittedPatient.ReferringPhysician);
+        Assert.Equal("1234567890", submittedPatient.PhysicianNpi);
+        Assert.Contains("PFPT Beta PPO", submittedPatient.PayerInfoJson, StringComparison.Ordinal);
     }
 
     [Fact]

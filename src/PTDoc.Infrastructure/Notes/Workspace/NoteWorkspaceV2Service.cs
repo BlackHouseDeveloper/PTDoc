@@ -427,6 +427,10 @@ public sealed class NoteWorkspaceV2Service(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var functionalLimitations = string.IsNullOrWhiteSpace(draft.FunctionalLimitations)
+            ? null
+            : draft.FunctionalLimitations.Trim();
+        var initialOutcomeMeasureSummary = BuildInitialOutcomeMeasureSummary(draft.InitialOutcomeMeasureReports);
 
         var payload = new NoteWorkspaceV2Payload
         {
@@ -459,6 +463,7 @@ public sealed class NoteWorkspaceV2Service(
                 },
                 TakingMedications = medicationEntries.Count > 0 ? true : null,
                 Medications = medicationEntries,
+                AdditionalFunctionalLimitations = functionalLimitations,
                 NarrativeContext = new SubjectNarrativeContextV2
                 {
                     ChiefComplaint = bodyPartLabels.Count == 0
@@ -475,11 +480,55 @@ public sealed class NoteWorkspaceV2Service(
             Objective = new WorkspaceObjectiveV2
             {
                 PrimaryBodyPart = ResolvePrimaryBodyPart(draft, structuredData),
-                RecommendedOutcomeMeasures = recommendedOutcomeMeasures
+                RecommendedOutcomeMeasures = recommendedOutcomeMeasures,
+                ClinicalObservationNotes = initialOutcomeMeasureSummary
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                FunctionalLimitationsSummary = functionalLimitations ?? string.Empty
             }
         };
 
         return payload;
+    }
+
+    private static string? BuildInitialOutcomeMeasureSummary(IEnumerable<InitialOutcomeMeasureReportDraft>? reports)
+    {
+        var values = reports?
+            .Where(report => !report.Skipped)
+            .Select(FormatInitialOutcomeMeasureReport)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return values is { Count: > 0 }
+            ? $"Patient-reported prior functional score: {string.Join("; ", values)}"
+            : null;
+    }
+
+    private static string? FormatInitialOutcomeMeasureReport(InitialOutcomeMeasureReportDraft report)
+    {
+        var parts = new List<string>();
+        AddIfPresent(parts, report.AssignedMeasureAbbreviation);
+        AddIfPresent(parts, report.PatientEnteredMeasureName);
+        AddIfPresent(parts, report.ScoreText, "score");
+        if (report.CompletedDate.HasValue)
+        {
+            parts.Add($"completed {report.CompletedDate.Value:yyyy-MM-dd}");
+        }
+
+        AddIfPresent(parts, report.Notes);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    private static void AddIfPresent(List<string> values, string? value, string? label = null)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        values.Add(label is null ? value.Trim() : $"{label}: {value.Trim()}");
     }
 
     private static IntakeResponseDraft DeserializeIntakeDraft(IntakeForm intake)

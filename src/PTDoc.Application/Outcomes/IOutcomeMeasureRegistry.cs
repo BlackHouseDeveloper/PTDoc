@@ -49,6 +49,12 @@ public interface IOutcomeMeasureRegistry
     IReadOnlyList<string> GetRecommendedMeasureAbbreviationsForBodyPart(BodyPart bodyPart);
 
     /// <summary>
+    /// Returns the configured primary patient-facing recommendation for a body region.
+    /// Primary recommendations are intentionally narrower than the clinician recommendation set.
+    /// </summary>
+    bool TryGetPrimaryRecommendedMeasureForBodyPart(BodyPart bodyPart, out OutcomeMeasureDefinition definition);
+
+    /// <summary>
     /// Resolves a recorded or manually-entered supported measure name into a typed instrument.
     /// Recommendation-only aliases must not change the underlying typed measure.
     /// </summary>
@@ -122,6 +128,9 @@ public sealed record OutcomeMeasureDefinition
 
     /// <summary>Body parts for which this measure is selectable for new entry.</summary>
     public required IReadOnlyList<BodyPart> RecommendedForBodyParts { get; init; }
+
+    /// <summary>Body parts for which this measure is the primary patient-facing intake recommendation.</summary>
+    public required IReadOnlyList<BodyPart> PrimaryForBodyParts { get; init; }
 
     /// <summary>Indicates whether this measure can be selected for new entry.</summary>
     public required bool IsSelectableForNewEntry { get; init; }

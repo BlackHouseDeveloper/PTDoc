@@ -24,6 +24,12 @@ namespace PTDoc.Api.Intake;
 /// </summary>
 public static class IntakeEndpoints
 {
+    private static readonly JsonSerializerOptions DraftSerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
     public static void MapIntakeEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/intake")
@@ -447,6 +453,7 @@ public static class IntakeEndpoints
         CancellationToken cancellationToken)
     {
         var intake = await db.IntakeForms
+            .Include(f => f.Patient)
             .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
 
         if (intake is null)
@@ -474,6 +481,13 @@ public static class IntakeEndpoints
         intake.LastModifiedUtc = nowUtc;
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
+        intake.ResponseJson = IntakeDraftPersistence.NormalizeSubmittedPersistenceJson(
+            intake.ResponseJson,
+            intake.Id,
+            intake.PatientId,
+            intake.SubmittedAt.Value,
+            intake.LastModifiedUtc);
+        ApplySubmittedIntakePatientFields(intake);
 
         await db.SaveChangesAsync(cancellationToken);
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
@@ -836,6 +850,70 @@ public static class IntakeEndpoints
         LastModifiedUtc = f.LastModifiedUtc
     };
 
+    internal static void ApplySubmittedIntakePatientFields(IntakeForm intake)
+    {
+        if (intake.Patient is null)
+        {
+            return;
+        }
+
+        var draft = DeserializeResponseDraft(intake.ResponseJson);
+        var patient = intake.Patient;
+
+        var name = TrimOrNull(draft.FullName);
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var spaceIndex = name.IndexOf(' ');
+            patient.FirstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
+            patient.LastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
+        }
+
+        if (draft.DateOfBirth.HasValue)
+        {
+            patient.DateOfBirth = draft.DateOfBirth.Value;
+        }
+
+        patient.Email = TrimOrFallback(draft.EmailAddress, patient.Email);
+        patient.Phone = TrimOrFallback(draft.PhoneNumber, patient.Phone);
+        patient.AddressLine1 = TrimOrFallback(draft.AddressLine1, patient.AddressLine1);
+        patient.AddressLine2 = TrimOrFallback(draft.AddressLine2, patient.AddressLine2);
+        patient.City = TrimOrFallback(draft.City, patient.City);
+        patient.State = TrimOrFallback(draft.StateOrProvince, patient.State);
+        patient.ZipCode = TrimOrFallback(draft.PostalCode, patient.ZipCode);
+        patient.EmergencyContactName = TrimOrFallback(draft.EmergencyContactName, patient.EmergencyContactName);
+        patient.EmergencyContactPhone = TrimOrFallback(draft.EmergencyContactPhone, patient.EmergencyContactPhone);
+        patient.ReferringPhysician = TrimOrFallback(draft.ReferringDoctorName, patient.ReferringPhysician);
+
+        var npi = TrimOrNull(draft.ReferringDoctorNpi);
+        if (npi is { Length: <= 10 })
+        {
+            patient.PhysicianNpi = npi;
+        }
+
+        patient.PayerInfoJson = BuildPayerInfoJson(draft);
+        patient.LastModifiedUtc = DateTime.UtcNow;
+        patient.ModifiedByUserId = intake.ModifiedByUserId;
+        patient.SyncState = SyncState.Pending;
+    }
+
+    private static IntakeResponseDraft DeserializeResponseDraft(string? responseJson)
+    {
+        if (string.IsNullOrWhiteSpace(responseJson))
+        {
+            return new IntakeResponseDraft();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<IntakeResponseDraft>(responseJson, DraftSerializerOptions)
+                   ?? new IntakeResponseDraft();
+        }
+        catch (JsonException)
+        {
+            return new IntakeResponseDraft();
+        }
+    }
+
     private static IntakeResponseDraft ToSeedDraft(EnsureIntakeDraftRequest? request, Guid patientId)
     {
         if (request is null)
@@ -854,11 +932,7 @@ public static class IntakeEndpoints
             {
                 draft = JsonSerializer.Deserialize<IntakeResponseDraft>(
                     request.ResponseJson,
-                    new JsonSerializerOptions
-                    {
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                        PropertyNameCaseInsensitive = true
-                    }) ?? new IntakeResponseDraft();
+                    DraftSerializerOptions) ?? new IntakeResponseDraft();
             }
             catch (JsonException)
             {
@@ -868,6 +942,28 @@ public static class IntakeEndpoints
 
         draft.PatientId = patientId;
         return draft;
+    }
+
+    private static string BuildPayerInfoJson(IntakeResponseDraft draft)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            PayerType = draft.PayerType,
+            InsuranceCompanyName = draft.InsuranceCompanyName,
+            MemberOrPolicyNumber = draft.MemberOrPolicyNumber,
+            GroupNumber = draft.GroupNumber,
+            CoverageType = draft.InsuranceCoverageType
+        }, DraftSerializerOptions);
+    }
+
+    private static string? TrimOrFallback(string? value, string? fallback)
+    {
+        return TrimOrNull(value) ?? fallback;
+    }
+
+    private static string? TrimOrNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     /// <summary>

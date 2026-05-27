@@ -1,0 +1,17 @@
+<section class="intake-card">
+    <h2>Functional Limitations</h2>
+    <p class="intake-card__subtext">Describe activities that are limited by your current condition.</p>
+
+    <label class="intake-card__notes" for="intake-functional-limitations">Functional limitations
+        <textarea id="intake-functional-limitations"
+                  class="form-control"
+                  value="@FunctionalLimitations"
+                  @oninput="(args) => FunctionalLimitationsChanged.InvokeAsync(args.Value?.ToString())"
+                  placeholder="Examples: walking, stairs, sitting, lifting, dressing, work duties, exercise"></textarea>
+    </label>
+</section>
+
+@code {
+    [Parameter] public string? FunctionalLimitations { get; set; }
+    [Parameter] public EventCallback<string?> FunctionalLimitationsChanged { get; set; }
+}

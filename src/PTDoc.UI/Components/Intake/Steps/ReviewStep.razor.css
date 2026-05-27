@@ -6,6 +6,7 @@
 .review-step__banner,
 .review-step__card,
 .review-step__message,
+.review-step__submit-status,
 .review-step__footer-note,
 .review-step__modal,
 .review-step__row--panel {
@@ -15,6 +16,7 @@
 .review-step__banner,
 .review-step__card,
 .review-step__message,
+.review-step__submit-status,
 .review-step__footer-note {
     border: 1px solid var(--border);
     background: var(--card);
@@ -151,6 +153,11 @@
 
 .review-step__message {
     padding: var(--spacing-3) var(--spacing-4);
+}
+
+.review-step__submit-status:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
 }
 
 .review-step__message--warning {
@@ -422,6 +429,7 @@
     .review-step__banner,
     .review-step__card,
     .review-step__message,
+    .review-step__submit-status,
     .review-step__footer-note {
         padding-left: var(--spacing-4);
         padding-right: var(--spacing-4);

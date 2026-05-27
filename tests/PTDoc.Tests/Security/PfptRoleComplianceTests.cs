@@ -316,13 +316,29 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
         // Assert: returned 200 OK
-        Assert.IsType<Ok<IntakeResponse>>(result);
+        var ok = Assert.IsType<Ok<IntakeResponse>>(result);
+        Assert.NotNull(ok.Value);
+        Assert.True(ok.Value.Locked);
+        using (var returnedResponseJson = JsonDocument.Parse(ok.Value.ResponseJson))
+        {
+            Assert.Equal(intake.Id, returnedResponseJson.RootElement.GetProperty("intakeId").GetGuid());
+            Assert.Equal(patient.Id, returnedResponseJson.RootElement.GetProperty("patientId").GetGuid());
+            Assert.True(returnedResponseJson.RootElement.GetProperty("isLocked").GetBoolean());
+            Assert.True(returnedResponseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
+            Assert.True(returnedResponseJson.RootElement.TryGetProperty("submittedAt", out var returnedSubmittedAt));
+            Assert.Equal(JsonValueKind.String, returnedSubmittedAt.ValueKind);
+        }
 
         // Assert: intake is persisted as locked with SubmittedAt stamped
         var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
         Assert.True(updated.IsLocked);
         Assert.NotNull(updated.SubmittedAt);
         Assert.Equal(submittingUserId, updated.ModifiedByUserId);
+        using var storedResponseJson = JsonDocument.Parse(updated.ResponseJson);
+        Assert.True(storedResponseJson.RootElement.GetProperty("isLocked").GetBoolean());
+        Assert.True(storedResponseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
+        Assert.True(storedResponseJson.RootElement.TryGetProperty("lastModifiedUtc", out var lastModifiedUtc));
+        Assert.Equal(JsonValueKind.String, lastModifiedUtc.ValueKind);
     }
 
     [Fact]
@@ -571,7 +587,11 @@ public class PfptRoleComplianceTests : IAsyncDisposable
 
         var result = await IntakeEndpoints.SubmitIntake(intake.Id, _db, identityMock.Object, auditMock.Object, patientContextMock.Object, Mock.Of<ISyncEngine>(), CancellationToken.None);
 
-        Assert.IsType<Ok<IntakeResponse>>(result);
+        var ok = Assert.IsType<Ok<IntakeResponse>>(result);
+        Assert.NotNull(ok.Value);
+        using var responseJson = JsonDocument.Parse(ok.Value.ResponseJson);
+        Assert.True(responseJson.RootElement.GetProperty("isLocked").GetBoolean());
+        Assert.True(responseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
         var updated = await _db.IntakeForms.AsNoTracking().FirstAsync(f => f.Id == intake.Id);
         Assert.True(updated.IsLocked);
         Assert.NotNull(updated.SubmittedAt);

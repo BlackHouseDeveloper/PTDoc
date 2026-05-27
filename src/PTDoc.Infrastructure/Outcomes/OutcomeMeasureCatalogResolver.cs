@@ -55,6 +55,15 @@ internal static class OutcomeMeasureCatalogResolver
             .AsReadOnly();
     }
 
+    internal static bool TryGetPrimaryRecommendedMeasureForBodyPart(
+        BodyPart bodyPart,
+        out OutcomeMeasureDefinition definition)
+    {
+        definition = SelectableDefinitions.Value
+            .SingleOrDefault(item => item.PrimaryForBodyParts.Contains(bodyPart))!;
+        return definition is not null;
+    }
+
     internal static bool TryResolveSupportedMeasureType(string? rawValue, out OutcomeMeasureType measureType)
     {
         measureType = default;
@@ -161,6 +170,10 @@ internal static class OutcomeMeasureCatalogResolver
             IsSelectableForNewEntry = asset.IsSelectableForNewEntry,
             RecommendedForBodyParts = asset.RecommendedForBodyParts
                 .Select(value => ParseEnum<BodyPart>(value, nameof(asset.RecommendedForBodyParts)))
+                .ToList()
+                .AsReadOnly(),
+            PrimaryForBodyParts = asset.PrimaryForBodyParts
+                .Select(value => ParseEnum<BodyPart>(value, nameof(asset.PrimaryForBodyParts)))
                 .ToList()
                 .AsReadOnly(),
             ScoringBands = asset.ScoringBands

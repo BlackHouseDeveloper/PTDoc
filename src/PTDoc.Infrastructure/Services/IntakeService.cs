@@ -326,17 +326,24 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return;
 
+        var nowUtc = DateTime.UtcNow;
+        var submittedAtUtc = intake.SubmittedAt ?? nowUtc;
+
         // Update intake with final submitted state
         var submittedState = new IntakeResponseDraft();
         CopyDraftProperties(canonicalState, submittedState);
-        submittedState.IsSubmitted = true;
-        intake.ResponseJson = SerializeDraft(submittedState);
+        intake.ResponseJson = IntakeDraftPersistence.SerializeSubmittedPersistenceJson(
+            submittedState,
+            intake.Id,
+            patientId,
+            submittedAtUtc,
+            nowUtc);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
         intake.Consents = BuildConsentsJson(canonicalState);
-        intake.SubmittedAt = DateTime.UtcNow;
+        intake.SubmittedAt = submittedAtUtc;
         intake.IsLocked = true;
-        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.LastModifiedUtc = nowUtc;
         intake.ModifiedByUserId = userId;
         intake.SyncState = SyncState.Pending;
 
@@ -366,6 +373,12 @@ public sealed class IntakeService : IIntakeService
             patient.ZipCode = canonicalState.PostalCode?.Trim() ?? patient.ZipCode;
             patient.EmergencyContactName = canonicalState.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
             patient.EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
+            patient.ReferringPhysician = canonicalState.ReferringDoctorName?.Trim() ?? patient.ReferringPhysician;
+            if (!string.IsNullOrWhiteSpace(canonicalState.ReferringDoctorNpi) && canonicalState.ReferringDoctorNpi.Trim().Length <= 10)
+            {
+                patient.PhysicianNpi = canonicalState.ReferringDoctorNpi.Trim();
+            }
+
             patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
             var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
             patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
@@ -438,6 +451,11 @@ public sealed class IntakeService : IIntakeService
         target.PostalCode = source.PostalCode;
         target.EmergencyContactName = source.EmergencyContactName;
         target.EmergencyContactPhone = source.EmergencyContactPhone;
+        target.PrimaryDoctorName = source.PrimaryDoctorName;
+        target.PrimaryDoctorPhone = source.PrimaryDoctorPhone;
+        target.ReferringDoctorName = source.ReferringDoctorName;
+        target.ReferringDoctorNpi = source.ReferringDoctorNpi;
+        target.ReferringDoctorPhone = source.ReferringDoctorPhone;
         target.InsuranceCompanyName = source.InsuranceCompanyName;
         target.MemberOrPolicyNumber = source.MemberOrPolicyNumber;
         target.GroupNumber = source.GroupNumber;
@@ -448,6 +466,7 @@ public sealed class IntakeService : IIntakeService
         target.UsesAssistiveDevices = source.UsesAssistiveDevices;
         target.HasPreviousSurgeriesOrInjuries = source.HasPreviousSurgeriesOrInjuries;
         target.MedicalHistoryNotes = source.MedicalHistoryNotes;
+        target.FunctionalLimitations = source.FunctionalLimitations;
         target.SelectedBodyRegion = source.SelectedBodyRegion;
         target.PainSeverityScore = source.PainSeverityScore;
         target.PainDetailDrafts = source.PainDetailDrafts
@@ -458,6 +477,8 @@ public sealed class IntakeService : IIntakeService
         target.SelectedLivingSituations = source.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.SelectedHouseLayoutOptions = source.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.RecommendedOutcomeMeasures = source.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.AssignedOutcomeMeasures = source.AssignedOutcomeMeasures.Select(CloneAssignedOutcomeMeasure).ToList();
+        target.InitialOutcomeMeasureReports = source.InitialOutcomeMeasureReports.Select(CloneInitialOutcomeMeasureReport).ToList();
         target.PainSeverityProvided = source.PainSeverityProvided;
         target.IsSubmitted = source.IsSubmitted;
         target.IsLocked = source.IsLocked;
@@ -550,6 +571,35 @@ public sealed class IntakeService : IIntakeService
         return IntakeStructuredDataJson.TryParse(json, out var clone, out _)
             ? clone
             : new IntakeStructuredDataDto();
+    }
+
+    private static AssignedOutcomeMeasureDraft CloneAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft source)
+    {
+        return new AssignedOutcomeMeasureDraft
+        {
+            BodyPartId = source.BodyPartId,
+            BodyPartLabel = source.BodyPartLabel,
+            CanonicalBodyPart = source.CanonicalBodyPart,
+            Laterality = source.Laterality,
+            MeasureAbbreviation = source.MeasureAbbreviation,
+            MeasureFullName = source.MeasureFullName,
+            ReferenceVersion = source.ReferenceVersion,
+            IsPrimary = source.IsPrimary,
+            RequiresClinicalConfirmation = source.RequiresClinicalConfirmation
+        };
+    }
+
+    private static InitialOutcomeMeasureReportDraft CloneInitialOutcomeMeasureReport(InitialOutcomeMeasureReportDraft source)
+    {
+        return new InitialOutcomeMeasureReportDraft
+        {
+            AssignedMeasureAbbreviation = source.AssignedMeasureAbbreviation,
+            PatientEnteredMeasureName = source.PatientEnteredMeasureName,
+            ScoreText = source.ScoreText,
+            CompletedDate = source.CompletedDate,
+            Notes = source.Notes,
+            Skipped = source.Skipped
+        };
     }
 
     private static string BuildPayerInfoJson(IntakeResponseDraft state)

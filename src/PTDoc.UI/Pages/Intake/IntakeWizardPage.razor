@@ -102,6 +102,12 @@
                                                  OnStateChanged="HandleStateChangedAsync"
                                                  ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                                 break;
+                            case IntakeStep.OutcomeMeasures:
+                                <OutcomeMeasuresStep State="@State"
+                                                     OnBack="HandleBackAsync"
+                                                     OnContinue="HandleOutcomeMeasuresContinueAsync"
+                                                     OnStateChanged="HandleStateChangedAsync" />
+                                break;
                             case IntakeStep.Review:
                                 <ReviewStep State="@State"
                                             ValidationMessage="@_validationMessage"
@@ -451,6 +457,19 @@
             return;
         }
 
+        State.CurrentStep = IntakeStep.OutcomeMeasures;
+
+        await SaveDraftIfPossibleAsync();
+    }
+
+    private async Task HandleOutcomeMeasuresContinueAsync()
+    {
+        if (!CanEditDraft)
+        {
+            _validationMessage = GetReadOnlyDraftMessage();
+            return;
+        }
+
         State.CurrentStep = IntakeStep.Review;
 
         await SaveDraftIfPossibleAsync();
@@ -740,6 +759,11 @@
             PostalCode = state.PostalCode,
             EmergencyContactName = state.EmergencyContactName,
             EmergencyContactPhone = state.EmergencyContactPhone,
+            PrimaryDoctorName = state.PrimaryDoctorName,
+            PrimaryDoctorPhone = state.PrimaryDoctorPhone,
+            ReferringDoctorName = state.ReferringDoctorName,
+            ReferringDoctorNpi = state.ReferringDoctorNpi,
+            ReferringDoctorPhone = state.ReferringDoctorPhone,
             InsuranceCompanyName = state.InsuranceCompanyName,
             MemberOrPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
@@ -750,6 +774,7 @@
             UsesAssistiveDevices = state.UsesAssistiveDevices,
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
+            FunctionalLimitations = state.FunctionalLimitations,
             SelectedBodyRegion = SerializeSelectedRegions(state),
             PainSeverityScore = state.PainSeverityScore,
             PainSeverityProvided = state.PainSeverityProvided,
@@ -760,6 +785,8 @@
             SelectedLivingSituations = state.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            AssignedOutcomeMeasures = state.AssignedOutcomeMeasures.Select(CloneAssignedOutcomeMeasure).ToList(),
+            InitialOutcomeMeasureReports = state.InitialOutcomeMeasureReports.Select(CloneInitialOutcomeMeasureReport).ToList(),
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked,
             ReviewedAtUtc = state.ReviewedAtUtc,
@@ -776,6 +803,35 @@
     {
         IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
         return ToDraft(State);
+    }
+
+    private static AssignedOutcomeMeasureDraft CloneAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft source)
+    {
+        return new AssignedOutcomeMeasureDraft
+        {
+            BodyPartId = source.BodyPartId,
+            BodyPartLabel = source.BodyPartLabel,
+            CanonicalBodyPart = source.CanonicalBodyPart,
+            Laterality = source.Laterality,
+            MeasureAbbreviation = source.MeasureAbbreviation,
+            MeasureFullName = source.MeasureFullName,
+            ReferenceVersion = source.ReferenceVersion,
+            IsPrimary = source.IsPrimary,
+            RequiresClinicalConfirmation = source.RequiresClinicalConfirmation
+        };
+    }
+
+    private static InitialOutcomeMeasureReportDraft CloneInitialOutcomeMeasureReport(InitialOutcomeMeasureReportDraft source)
+    {
+        return new InitialOutcomeMeasureReportDraft
+        {
+            AssignedMeasureAbbreviation = source.AssignedMeasureAbbreviation,
+            PatientEnteredMeasureName = source.PatientEnteredMeasureName,
+            ScoreText = source.ScoreText,
+            CompletedDate = source.CompletedDate,
+            Notes = source.Notes,
+            Skipped = source.Skipped
+        };
     }
 
     private static IntakeWizardState FromDraft(IntakeResponseDraft draft)
@@ -812,6 +868,7 @@
             TermsOfServiceAccepted = hydratedDraft.TermsOfServiceAccepted,
             FullName = hydratedDraft.FullName,
             DateOfBirth = hydratedDraft.DateOfBirth,
+            SexAtBirth = hydratedDraft.SexAtBirth,
             EmailAddress = hydratedDraft.EmailAddress,
             PhoneNumber = hydratedDraft.PhoneNumber,
             AddressLine1 = hydratedDraft.AddressLine1,
@@ -821,6 +878,11 @@
             PostalCode = hydratedDraft.PostalCode,
             EmergencyContactName = hydratedDraft.EmergencyContactName,
             EmergencyContactPhone = hydratedDraft.EmergencyContactPhone,
+            PrimaryDoctorName = hydratedDraft.PrimaryDoctorName,
+            PrimaryDoctorPhone = hydratedDraft.PrimaryDoctorPhone,
+            ReferringDoctorName = hydratedDraft.ReferringDoctorName,
+            ReferringDoctorNpi = hydratedDraft.ReferringDoctorNpi,
+            ReferringDoctorPhone = hydratedDraft.ReferringDoctorPhone,
             InsuranceCompanyName = hydratedDraft.InsuranceCompanyName,
             MemberOrPolicyNumber = hydratedDraft.MemberOrPolicyNumber,
             GroupNumber = hydratedDraft.GroupNumber,
@@ -831,6 +893,7 @@
             UsesAssistiveDevices = hydratedDraft.UsesAssistiveDevices,
             HasPreviousSurgeriesOrInjuries = hydratedDraft.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = hydratedDraft.MedicalHistoryNotes,
+            FunctionalLimitations = hydratedDraft.FunctionalLimitations,
             SelectedBodyRegion = hydratedDraft.SelectedBodyRegion,
             SelectedBodyRegions = DeserializeSelectedRegions(hydratedDraft.SelectedBodyRegion),
             PainSeverityScore = hydratedDraft.PainSeverityScore ?? legacyPainSeverity,
@@ -842,6 +905,8 @@
             SelectedLivingSituations = hydratedDraft.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedHouseLayoutOptions = hydratedDraft.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = hydratedDraft.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            AssignedOutcomeMeasures = hydratedDraft.AssignedOutcomeMeasures.Select(CloneAssignedOutcomeMeasure).ToList(),
+            InitialOutcomeMeasureReports = hydratedDraft.InitialOutcomeMeasureReports.Select(CloneInitialOutcomeMeasureReport).ToList(),
             IsSubmitted = hydratedDraft.IsSubmitted,
             IsLocked = hydratedDraft.IsLocked,
             ReviewedAtUtc = hydratedDraft.ReviewedAtUtc,
@@ -854,7 +919,7 @@
     {
         Route = "/intake",
         Title = State.CurrentStep == IntakeStep.Review ? "Patient Intake Review" : "Patient Intake",
-        Subtitle = $"Step {(int)State.CurrentStep + 1} of 4 • {GetStepTitle(State.CurrentStep)}",
+        Subtitle = $"Step {GetStepNumber(State.CurrentStep)} of 5 • {GetStepTitle(State.CurrentStep)}",
         ShowSyncControls = false,
         ShowStatusBadge = false
     };
@@ -881,7 +946,21 @@
             IntakeStep.Demographics => "Demographics",
             IntakeStep.PainAssessment => "Medical History / Pain Assessment",
             IntakeStep.PainDetails => "Pain Details",
+            IntakeStep.OutcomeMeasures => "Outcome Measures",
             _ => "Review"
+        };
+    }
+
+    private static int GetStepNumber(IntakeStep step)
+    {
+        return step switch
+        {
+            IntakeStep.Demographics => 1,
+            IntakeStep.PainAssessment => 2,
+            IntakeStep.PainDetails => 3,
+            IntakeStep.OutcomeMeasures => 4,
+            IntakeStep.Review => 5,
+            _ => 1
         };
     }
 

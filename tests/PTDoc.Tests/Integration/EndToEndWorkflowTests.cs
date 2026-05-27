@@ -441,6 +441,13 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.True(storedIntake.IsLocked);
         Assert.NotNull(storedIntake.SubmittedAt);
         Assert.Contains("lumbar", storedIntake.PainMapData, StringComparison.OrdinalIgnoreCase);
+        using var submittedResponseJson = JsonDocument.Parse(storedIntake.ResponseJson);
+        Assert.Equal(intakeId, submittedResponseJson.RootElement.GetProperty("intakeId").GetGuid());
+        Assert.Equal(patientId, submittedResponseJson.RootElement.GetProperty("patientId").GetGuid());
+        Assert.True(submittedResponseJson.RootElement.GetProperty("isLocked").GetBoolean());
+        Assert.True(submittedResponseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
+        Assert.True(submittedResponseJson.RootElement.TryGetProperty("submittedAt", out var submittedAt));
+        Assert.Equal(JsonValueKind.String, submittedAt.ValueKind);
     }
 
     // ── Note authoring → compliance workflow ─────────────────────────────────
