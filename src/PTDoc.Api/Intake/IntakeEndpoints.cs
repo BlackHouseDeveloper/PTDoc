@@ -890,7 +890,10 @@ public static class IntakeEndpoints
             patient.PhysicianNpi = npi;
         }
 
-        patient.PayerInfoJson = BuildPayerInfoJson(draft);
+        if (HasSubmittedPayerInfo(draft))
+        {
+            patient.PayerInfoJson = BuildPayerInfoJson(draft);
+        }
         patient.LastModifiedUtc = DateTime.UtcNow;
         patient.ModifiedByUserId = intake.ModifiedByUserId;
         patient.SyncState = SyncState.Pending;
@@ -955,6 +958,13 @@ public static class IntakeEndpoints
             CoverageType = draft.InsuranceCoverageType
         }, DraftSerializerOptions);
     }
+
+    private static bool HasSubmittedPayerInfo(IntakeResponseDraft draft) =>
+        !string.IsNullOrWhiteSpace(draft.PayerType)
+        || !string.IsNullOrWhiteSpace(draft.InsuranceCompanyName)
+        || !string.IsNullOrWhiteSpace(draft.MemberOrPolicyNumber)
+        || !string.IsNullOrWhiteSpace(draft.GroupNumber)
+        || !string.IsNullOrWhiteSpace(draft.InsuranceCoverageType);
 
     private static string? TrimOrFallback(string? value, string? fallback)
     {

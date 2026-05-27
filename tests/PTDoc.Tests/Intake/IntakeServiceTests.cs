@@ -556,6 +556,51 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SubmitAsync_PreservesExistingPayerInfo_WhenSubmittedDraftHasNoPayerFields()
+    {
+        var existingPayerInfo = JsonSerializer.Serialize(new
+        {
+            PayerType = "Medicare",
+            InsuranceCompanyName = "Existing Plan",
+            MemberOrPolicyNumber = "EXISTING-001"
+        });
+        var patient = CreatePatient("Pat", "Payer");
+        patient.PayerInfoJson = existingPayerInfo;
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Pat Payer"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Pat Payer",
+            EmailAddress = "pat.payer@example.com",
+            PhoneNumber = "555-0113",
+            PainSeverityProvided = false
+        });
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal(existingPayerInfo, submittedPatient.PayerInfoJson);
+        Assert.Equal("pat.payer@example.com", submittedPatient.Email);
+        Assert.Equal("555-0113", submittedPatient.Phone);
+        Assert.Equal(SyncState.Pending, submittedPatient.SyncState);
+    }
+
+    [Fact]
     public async Task MarkReviewedAsync_StampsReviewState_AndIsIdempotent()
     {
         var patient = CreatePatient("Rita", "Review");

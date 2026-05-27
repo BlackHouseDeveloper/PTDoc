@@ -379,7 +379,10 @@ public sealed class IntakeService : IIntakeService
                 patient.PhysicianNpi = canonicalState.ReferringDoctorNpi.Trim();
             }
 
-            patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
+            if (HasSubmittedPayerInfo(canonicalState))
+            {
+                patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
+            }
             var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
             patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
             if (canonicalConsent.HipaaAcknowledged == true && patient.ConsentSignedDate is null)
@@ -614,6 +617,13 @@ public sealed class IntakeService : IIntakeService
         };
         return JsonSerializer.Serialize(payerInfo);
     }
+
+    private static bool HasSubmittedPayerInfo(IntakeResponseDraft state) =>
+        !string.IsNullOrWhiteSpace(state.PayerType)
+        || !string.IsNullOrWhiteSpace(state.InsuranceCompanyName)
+        || !string.IsNullOrWhiteSpace(state.MemberOrPolicyNumber)
+        || !string.IsNullOrWhiteSpace(state.GroupNumber)
+        || !string.IsNullOrWhiteSpace(state.InsuranceCoverageType);
 
     private static string BuildConsentsJson(IntakeResponseDraft state)
     {

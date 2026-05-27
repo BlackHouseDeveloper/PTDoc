@@ -108,4 +108,47 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal(SyncState.Pending, patient.SyncState);
         Assert.True(patient.LastModifiedUtc > DateTime.MinValue);
     }
+
+    [Fact]
+    public void ApplySubmittedIntakePatientFields_PreservesExistingPayerInfo_WhenDraftHasNoPayerFields()
+    {
+        var existingPayerInfo = JsonSerializer.Serialize(new
+        {
+            PayerType = "Medicare",
+            InsuranceCompanyName = "Existing Plan",
+            MemberOrPolicyNumber = "EXISTING-001"
+        }, JsonOptions);
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Existing",
+            LastName = "Payer",
+            PayerInfoJson = existingPayerInfo
+        };
+
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            Patient = patient,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                FullName = "Existing Payer",
+                EmailAddress = "payer@example.com",
+                PhoneNumber = "555-0112"
+            }, JsonOptions),
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            ModifiedByUserId = Guid.NewGuid()
+        };
+
+        IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
+
+        Assert.Equal(existingPayerInfo, patient.PayerInfoJson);
+        Assert.Equal("payer@example.com", patient.Email);
+        Assert.Equal("555-0112", patient.Phone);
+        Assert.Equal(intake.ModifiedByUserId, patient.ModifiedByUserId);
+        Assert.Equal(SyncState.Pending, patient.SyncState);
+    }
 }
