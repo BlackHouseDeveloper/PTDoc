@@ -612,12 +612,15 @@ public sealed class IntakeService : IIntakeService
         var payerInfo = new
         {
             PayerType = state.PayerType,
+            ProviderType = state.PayerType,
             InsuranceCompanyName = state.InsuranceCompanyName,
             MemberOrPolicyNumber = state.MemberOrPolicyNumber,
+            MemberIdPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
-            CoverageType = state.InsuranceCoverageType
+            CoverageType = state.InsuranceCoverageType,
+            InsurancePriority = state.InsuranceCoverageType
         };
-        return JsonSerializer.Serialize(payerInfo);
+        return JsonSerializer.Serialize(payerInfo, SerializerOptions);
     }
 
     private static bool HasSubmittedPayerInfo(IntakeResponseDraft state) =>

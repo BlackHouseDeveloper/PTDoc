@@ -553,6 +553,10 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal("Dr. Referral", submittedPatient.ReferringPhysician);
         Assert.Equal("1234567890", submittedPatient.PhysicianNpi);
         Assert.Contains("PFPT Beta PPO", submittedPatient.PayerInfoJson, StringComparison.Ordinal);
+        using var payerInfoJson = JsonDocument.Parse(submittedPatient.PayerInfoJson);
+        Assert.Equal("Commercial", payerInfoJson.RootElement.GetProperty("providerType").GetString());
+        Assert.Equal("BETA001", payerInfoJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+        Assert.Equal("Primary", payerInfoJson.RootElement.GetProperty("insurancePriority").GetString());
     }
 
     [Fact]
