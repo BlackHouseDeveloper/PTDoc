@@ -144,6 +144,12 @@ public sealed class IntakeApiService(
             throw new ArgumentException("Date of birth is required to create a temporary patient.", nameof(state));
         }
 
+        var physicianNpi = ToSupportedNpi(state.ReferringDoctorNpi);
+        if (!string.IsNullOrWhiteSpace(state.ReferringDoctorNpi) && physicianNpi is null)
+        {
+            throw new ArgumentException("NPI must be exactly 10 digits.", nameof(state));
+        }
+
         var createPatientRequest = new CreatePatientRequest
         {
             FirstName = firstName,
@@ -158,7 +164,7 @@ public sealed class IntakeApiService(
             ZipCode = state.PostalCode,
             PayerInfoJson = BuildPayerInfoJson(state),
             ReferringPhysician = state.ReferringDoctorName,
-            PhysicianNpi = ToSupportedNpi(state.ReferringDoctorNpi),
+            PhysicianNpi = physicianNpi,
             EmergencyContactName = state.EmergencyContactName,
             EmergencyContactPhone = state.EmergencyContactPhone
         };
@@ -501,7 +507,7 @@ public sealed class IntakeApiService(
     private static string? ToSupportedNpi(string? value)
     {
         var trimmed = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        return trimmed is { Length: <= 10 } ? trimmed : null;
+        return trimmed is { Length: 10 } && trimmed.All(char.IsDigit) ? trimmed : null;
     }
 
     private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft? state)

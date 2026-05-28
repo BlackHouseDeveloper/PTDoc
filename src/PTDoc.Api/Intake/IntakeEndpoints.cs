@@ -885,7 +885,7 @@ public static class IntakeEndpoints
         patient.ReferringPhysician = TrimOrFallback(draft.ReferringDoctorName, patient.ReferringPhysician);
 
         var npi = TrimOrNull(draft.ReferringDoctorNpi);
-        if (npi is { Length: <= 10 })
+        if (npi is { Length: 10 } && npi.All(char.IsDigit))
         {
             patient.PhysicianNpi = npi;
         }

@@ -88,20 +88,21 @@ jobs:
       - name: Restore
         run: dotnet restore
 
-      - name: Build
-        run: dotnet build src/YourApp.Server/YourApp.Server.csproj -c Release --no-restore
+      - name: Build API startup project
+        run: dotnet build src/PTDoc.Api/PTDoc.Api.csproj -c Release --no-restore
 
       - name: Restore EF tool
         run: dotnet tool restore
 
-      - name: Publish app and generate idempotent EF script
+      - name: Publish API and generate idempotent EF script
         run: |
           mkdir -p artifacts/sql artifacts/app
-          dotnet publish src/YourApp.Server/YourApp.Server.csproj -c Release --no-build -o artifacts/app
+          dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release --no-build -o artifacts/app
+          # Choose the provider-specific migrations project for the target environment.
           dotnet ef migrations script --idempotent \
-            --project src/YourApp.Data \
-            --startup-project src/YourApp.Server \
-            --context MyDbContext \
+            --project src/PTDoc.Infrastructure.Migrations.SqlServer \
+            --startup-project src/PTDoc.Api \
+            --context ApplicationDbContext \
             --output artifacts/sql/ef-migrations.sql
 
       # Azure SQL Database prerequisites:

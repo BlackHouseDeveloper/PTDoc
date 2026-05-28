@@ -374,9 +374,10 @@ public sealed class IntakeService : IIntakeService
             patient.EmergencyContactName = canonicalState.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
             patient.EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
             patient.ReferringPhysician = canonicalState.ReferringDoctorName?.Trim() ?? patient.ReferringPhysician;
-            if (!string.IsNullOrWhiteSpace(canonicalState.ReferringDoctorNpi) && canonicalState.ReferringDoctorNpi.Trim().Length <= 10)
+            var npi = canonicalState.ReferringDoctorNpi?.Trim();
+            if (!string.IsNullOrWhiteSpace(npi) && npi.Length == 10 && npi.All(char.IsDigit))
             {
-                patient.PhysicianNpi = canonicalState.ReferringDoctorNpi.Trim();
+                patient.PhysicianNpi = npi;
             }
 
             if (HasSubmittedPayerInfo(canonicalState))

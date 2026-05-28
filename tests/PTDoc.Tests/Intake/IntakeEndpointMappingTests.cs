@@ -151,4 +151,36 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal(intake.ModifiedByUserId, patient.ModifiedByUserId);
         Assert.Equal(SyncState.Pending, patient.SyncState);
     }
+
+    [Fact]
+    public void ApplySubmittedIntakePatientFields_DoesNotOverwritePhysicianNpi_WhenReferringDoctorNpiInvalid()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Existing",
+            LastName = "Npi",
+            PhysicianNpi = "1234567890"
+        };
+
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            Patient = patient,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                FullName = "Existing Npi",
+                ReferringDoctorNpi = "abc123"
+            }, JsonOptions),
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            ModifiedByUserId = Guid.NewGuid()
+        };
+
+        IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
+
+        Assert.Equal("1234567890", patient.PhysicianNpi);
+    }
 }

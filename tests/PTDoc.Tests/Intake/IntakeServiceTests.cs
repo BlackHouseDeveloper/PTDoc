@@ -601,6 +601,41 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SubmitAsync_DoesNotOverwriteExistingPhysicianNpi_WhenSubmittedNpiIsInvalid()
+    {
+        var patient = CreatePatient("Pat", "Npi");
+        patient.PhysicianNpi = "1234567890";
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Pat Npi"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Pat Npi",
+            ReferringDoctorNpi = "12ab",
+            PainSeverityProvided = false
+        });
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal("1234567890", submittedPatient.PhysicianNpi);
+    }
+
+    [Fact]
     public async Task MarkReviewedAsync_StampsReviewState_AndIsIdempotent()
     {
         var patient = CreatePatient("Rita", "Review");
