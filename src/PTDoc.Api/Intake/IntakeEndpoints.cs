@@ -952,10 +952,13 @@ public static class IntakeEndpoints
         return JsonSerializer.Serialize(new
         {
             PayerType = draft.PayerType,
+            ProviderType = draft.PayerType,
             InsuranceCompanyName = draft.InsuranceCompanyName,
             MemberOrPolicyNumber = draft.MemberOrPolicyNumber,
+            MemberIdPolicyNumber = draft.MemberOrPolicyNumber,
             GroupNumber = draft.GroupNumber,
-            CoverageType = draft.InsuranceCoverageType
+            CoverageType = draft.InsuranceCoverageType,
+            InsurancePriority = draft.InsuranceCoverageType
         }, DraftSerializerOptions);
     }
 

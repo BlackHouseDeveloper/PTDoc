@@ -307,6 +307,57 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task CreateTemporaryPatientAndDraftIntakeAsync_SerializesPayerInfoWithPatientInfoAliases()
+    {
+        var patientId = Guid.NewGuid();
+        string? createPatientRequestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/patients/")
+            {
+                createPatientRequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new PatientResponse
+                {
+                    Id = patientId,
+                    FirstName = "Beta",
+                    LastName = "Patient",
+                    DateOfBirth = new DateTime(1990, 1, 1),
+                    PayerInfoJson = "{}",
+                    DiagnosisCodesJson = "[]",
+                    LastModifiedUtc = DateTime.UtcNow
+                }, JsonOptions));
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/intake/")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        await service.CreateTemporaryPatientAndDraftIntakeAsync(new IntakeResponseDraft
+        {
+            FullName = "Beta Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            InsuranceCompanyName = "PFPT Beta PPO",
+            MemberOrPolicyNumber = "BETA001",
+            PayerType = "Commercial",
+            InsuranceCoverageType = "Primary"
+        });
+
+        Assert.NotNull(createPatientRequestBody);
+        using var requestJson = JsonDocument.Parse(createPatientRequestBody!);
+        using var payerJson = JsonDocument.Parse(requestJson.RootElement.GetProperty("payerInfoJson").GetString() ?? "{}");
+        Assert.Equal("Commercial", payerJson.RootElement.GetProperty("providerType").GetString());
+        Assert.Equal("BETA001", payerJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+        Assert.Equal("Primary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_ClearsLegacySupplementalSelectionsFromResponseJson_WhenStructuredIdsExist()
     {
         var patientId = Guid.NewGuid();

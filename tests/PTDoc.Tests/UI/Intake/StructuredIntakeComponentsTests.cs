@@ -495,6 +495,35 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void ReviewStep_ShowsEnteredInitialOutcomeReports_WhenSkippedAndEnteredReportsAreMixed()
+    {
+        var state = new IntakeWizardState
+        {
+            InitialOutcomeMeasureReports =
+            [
+                new InitialOutcomeMeasureReportDraft
+                {
+                    Skipped = true
+                },
+                new InitialOutcomeMeasureReportDraft
+                {
+                    PatientEnteredMeasureName = "LEFS",
+                    ScoreText = "42/80"
+                }
+            ]
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        var priorScoreField = cut.FindAll(".review-step__field")
+            .Single(field => field.TextContent.Contains("Previous Outcome Measure or Functional Score", StringComparison.Ordinal));
+
+        Assert.Contains("42/80", priorScoreField.TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Skipped", priorScoreField.TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReviewStep_ReadOnlyReview_ShowsSubmitConfirmationNearSubmit()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

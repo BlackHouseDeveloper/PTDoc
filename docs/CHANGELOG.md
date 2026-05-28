@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake review and payer contract alignment
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Updated review-step outcome-score rendering so mixed payloads (one skipped report plus one entered score report) still display entered score context instead of collapsing to a single `Skipped` value. Reason: clinician review must not lose patient-entered initial score details when skipped rows coexist in canonicalized report lists.
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.UI/Services/IntakeApiService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Aligned intake payer JSON serialization with existing patient payer UI hydration keys by emitting `providerType`, `memberIdPolicyNumber`, and `insurancePriority` aliases alongside existing fields. Reason: insurance values saved from intake and temporary-patient intake creation must rehydrate on the patient payer page without key-shape drift.
+
 ### Fixed - Intake sex-at-birth field semantics
 
 - **`src/PTDoc.UI/Components/Intake/Cards/BasicInfoCard.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Renamed the demographics field label and selector from Gender to Sex at Birth where it binds to `SexAtBirth`, updated the prompt copy, replaced `Non-binary` with `Intersex` in the selectable values, and aligned the intake component test selector/name to the updated contract terminology. Reason: prevent conflating gender identity with the persisted `sexAtBirth` field and resolve the PR Copilot review finding.

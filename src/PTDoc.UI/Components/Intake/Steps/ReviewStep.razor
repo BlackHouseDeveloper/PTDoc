@@ -380,11 +380,12 @@
             {
                 <div class="review-step__field">
                     <span class="review-step__field-label">Previous Outcome Measure or Functional Score</span>
-                    @if (InitialOutcomeScoresSkipped)
+                    @if (InitialOutcomeScoresSkippedOnly)
                     {
                         <span class="review-step__field-value">Skipped</span>
                     }
-                    else
+
+                    @if (VisibleInitialOutcomeReports.Count > 0)
                     {
                         <div class="review-step__note-box">
                             @foreach (var report in VisibleInitialOutcomeReports)
@@ -838,6 +839,7 @@
                 || !string.IsNullOrWhiteSpace(report.Notes)))
         .ToList();
     private bool InitialOutcomeScoresSkipped => State.InitialOutcomeMeasureReports.Any(report => report.Skipped);
+    private bool InitialOutcomeScoresSkippedOnly => InitialOutcomeScoresSkipped && VisibleInitialOutcomeReports.Count == 0;
     private string? FormattedAddress => FormatAddress(State);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

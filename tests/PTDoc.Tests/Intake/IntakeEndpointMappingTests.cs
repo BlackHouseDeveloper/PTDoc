@@ -102,6 +102,10 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal("Dr. Referral", patient.ReferringPhysician);
         Assert.Equal("1234567890", patient.PhysicianNpi);
         Assert.Contains("PFPT Beta PPO", patient.PayerInfoJson, StringComparison.Ordinal);
+        using var payerInfoJson = JsonDocument.Parse(patient.PayerInfoJson);
+        Assert.Equal("Commercial", payerInfoJson.RootElement.GetProperty("providerType").GetString());
+        Assert.Equal("BETA001", payerInfoJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+        Assert.Equal("Primary", payerInfoJson.RootElement.GetProperty("insurancePriority").GetString());
         Assert.DoesNotContain("Dr. Primary", patient.PayerInfoJson, StringComparison.Ordinal);
         Assert.DoesNotContain("Difficulty with stairs.", patient.PayerInfoJson, StringComparison.Ordinal);
         Assert.Equal(intake.ModifiedByUserId, patient.ModifiedByUserId);
