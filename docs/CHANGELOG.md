@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake sex-at-birth field semantics
+
+- **`src/PTDoc.UI/Components/Intake/Cards/BasicInfoCard.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Renamed the demographics field label and selector from Gender to Sex at Birth where it binds to `SexAtBirth`, updated the prompt copy, replaced `Non-binary` with `Intersex` in the selectable values, and aligned the intake component test selector/name to the updated contract terminology. Reason: prevent conflating gender identity with the persisted `sexAtBirth` field and resolve the PR Copilot review finding.
+
 ### Fixed - PR review follow-ups
 
 - **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`docs/Azure-database-guide.md`**, **`tests/PTDoc.Tests/UI/Intake/*`** — Added intake-flow versioning so legacy drafts with `currentStep: 3` still hydrate to Review, recalculated assigned outcome-measure laterality after laterality edits, and replaced unresolved chat citation artifacts in the Azure database guide with standard Markdown links. Reason: PR review found compatibility, stale metadata, and documentation-reference issues.

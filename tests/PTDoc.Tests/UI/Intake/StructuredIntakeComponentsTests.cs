@@ -56,28 +56,28 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
-    public void BasicInfoCard_UpdatesGenderAndAddressFields()
+    public void BasicInfoCard_UpdatesSexAtBirthAndAddressFields()
     {
-        string? gender = null;
+        string? sexAtBirth = null;
         string? addressLine1 = null;
         string? city = null;
         string? stateOrProvince = null;
         string? postalCode = null;
 
         var cut = RenderComponent<BasicInfoCard>(parameters => parameters
-            .Add(component => component.SexAtBirthChanged, EventCallback.Factory.Create<string?>(this, value => gender = value))
+            .Add(component => component.SexAtBirthChanged, EventCallback.Factory.Create<string?>(this, value => sexAtBirth = value))
             .Add(component => component.AddressLine1Changed, EventCallback.Factory.Create<string?>(this, value => addressLine1 = value))
             .Add(component => component.CityChanged, EventCallback.Factory.Create<string?>(this, value => city = value))
             .Add(component => component.StateOrProvinceChanged, EventCallback.Factory.Create<string?>(this, value => stateOrProvince = value))
             .Add(component => component.PostalCodeChanged, EventCallback.Factory.Create<string?>(this, value => postalCode = value)));
 
-        cut.Find("#intake-gender").Change("Female");
+        cut.Find("#intake-sex-at-birth").Change("Female");
         cut.Find("#intake-address-line-1").Input("100 Beta Validation Way");
         cut.Find("#intake-city").Input("San Diego");
         cut.Find("#intake-state-or-province").Input("CA");
         cut.Find("#intake-postal-code").Input("92101");
 
-        Assert.Equal("Female", gender);
+        Assert.Equal("Female", sexAtBirth);
         Assert.Equal("100 Beta Validation Way", addressLine1);
         Assert.Equal("San Diego", city);
         Assert.Equal("CA", stateOrProvince);

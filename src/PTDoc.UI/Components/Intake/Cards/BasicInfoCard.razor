@@ -20,12 +20,12 @@
             <span id="intake-date-of-birth-error" class="intake-card__validation validation-message">@GetError(DateOfBirthField)</span>
         }
 
-        <label for="intake-gender">Gender
-            <select id="intake-gender" class="form-select" value="@SexAtBirth" @onchange="OnSexAtBirthChanged">
-                <option value="">Select gender</option>
+        <label for="intake-sex-at-birth">Sex at Birth
+            <select id="intake-sex-at-birth" class="form-select" value="@SexAtBirth" @onchange="OnSexAtBirthChanged">
+                <option value="">Select sex at birth</option>
                 <option>Female</option>
                 <option>Male</option>
-                <option>Non-binary</option>
+                <option>Intersex</option>
                 <option>Prefer not to say</option>
                 <option>Other</option>
             </select>
