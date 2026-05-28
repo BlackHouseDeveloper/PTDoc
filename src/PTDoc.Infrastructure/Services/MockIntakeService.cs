@@ -131,6 +131,7 @@ public sealed class MockIntakeService : IIntakeService
         {
             IntakeId = state.IntakeId,
             PatientId = state.PatientId,
+            IntakeFlowVersion = state.IntakeFlowVersion,
             CurrentStep = state.CurrentStep,
             ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
             HipaaAcknowledged = state.HipaaAcknowledged,

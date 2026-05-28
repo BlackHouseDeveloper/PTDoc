@@ -9,6 +9,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
+using PTDoc.Core.Models;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
@@ -105,7 +106,84 @@ public sealed class IntakeWizardPageTests : TestContext
             Times.Never);
     }
 
-    private IRenderedFragment RenderPage()
+    [Fact]
+    public void LegacyDraftCurrentStepThree_LoadsReviewStep()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("pt-user");
+        authorization.SetRoles(Roles.PT);
+
+        var intakeService = CreateIntakeServiceMock(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            CurrentStep = 3,
+            FullName = "Legacy Review"
+        });
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='review-step']"));
+            Assert.Empty(cut.FindAll("[data-testid='outcome-measures-step']"));
+        });
+
+        intakeService.Verify(
+            service => service.GetLatestByPatientIdAsync(
+                patientId,
+                It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public void CurrentFlowDraftCurrentStepThree_LoadsOutcomeMeasuresStep()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("pt-user");
+        authorization.SetRoles(Roles.PT);
+
+        CreateIntakeServiceMock(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            IntakeFlowVersion = 2,
+            CurrentStep = (int)IntakeStep.OutcomeMeasures,
+            FullName = "Current Outcome"
+        });
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='outcome-measures-step']"));
+            Assert.Empty(cut.FindAll("[data-testid='review-step']"));
+        });
+    }
+
+    private Mock<IIntakeService> CreateIntakeServiceMock(IntakeResponseDraft latestDraft)
+    {
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(
+                latestDraft.PatientId!.Value,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(latestDraft);
+
+        Services.AddLogging();
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+        Services.AddSingleton<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
+        Services.AddSingleton(intakeService.Object);
+
+        return intakeService;
+    }
+
+    private IRenderedFragment RenderPage(Guid? patientId = null)
     {
         var authStateTask = Services
             .GetRequiredService<AuthenticationStateProvider>()
@@ -118,6 +196,11 @@ public sealed class IntakeWizardPageTests : TestContext
             builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
             {
                 childBuilder.OpenComponent<IntakeWizardPage>(3);
+                if (patientId.HasValue)
+                {
+                    childBuilder.AddAttribute(4, nameof(IntakeWizardPage.PatientId), patientId.Value);
+                }
+
                 childBuilder.CloseComponent();
             }));
             builder.CloseComponent();

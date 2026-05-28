@@ -150,6 +150,7 @@
     private string _draftUnavailableMessage = "We could not load an intake draft for this patient.";
     private string? _draftUnavailableDetail;
     private IDisposable? _navGuard;
+    private const int CurrentIntakeFlowVersion = 2;
     private IReadOnlyDictionary<string, string> _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private string ClinicianSelectorRoles => $"{Roles.PT},{Roles.PTA},{Roles.Admin},{Roles.Owner},{Roles.FrontDesk}";
     private bool ShowClinicianPatientSelector => _canSelectPatient && !State.IsPatientMode && !PatientId.HasValue;
@@ -730,6 +731,7 @@
         {
             IntakeId = state.IntakeId,
             PatientId = state.PatientId,
+            IntakeFlowVersion = CurrentIntakeFlowVersion,
             CurrentStep = (int)state.CurrentStep,
             ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
             HipaaAcknowledged = state.HipaaAcknowledged,
@@ -847,9 +849,7 @@
         {
             IntakeId = hydratedDraft.IntakeId,
             PatientId = hydratedDraft.PatientId,
-            CurrentStep = Enum.IsDefined(typeof(IntakeStep), hydratedDraft.CurrentStep)
-                ? (IntakeStep)hydratedDraft.CurrentStep
-                : IntakeStep.Demographics,
+            CurrentStep = ResolveDraftCurrentStep(hydratedDraft),
             ConsentPacket = hydratedDraft.ConsentPacket,
             HipaaAcknowledged = hydratedDraft.HipaaAcknowledged,
             ConsentToTreatAcknowledged = hydratedDraft.ConsentToTreatAcknowledged,
@@ -914,6 +914,27 @@
             LastModifiedUtc = hydratedDraft.LastModifiedUtc
         };
     }
+
+    private static IntakeStep ResolveDraftCurrentStep(IntakeResponseDraft draft)
+    {
+        if (!Enum.IsDefined(typeof(IntakeStep), draft.CurrentStep))
+        {
+            return IntakeStep.Demographics;
+        }
+
+        if (draft.CurrentStep == (int)IntakeStep.OutcomeMeasures
+            && draft.IntakeFlowVersion < CurrentIntakeFlowVersion
+            && !HasOutcomeMeasureStepData(draft))
+        {
+            return IntakeStep.Review;
+        }
+
+        return (IntakeStep)draft.CurrentStep;
+    }
+
+    private static bool HasOutcomeMeasureStepData(IntakeResponseDraft draft) =>
+        draft.AssignedOutcomeMeasures.Count > 0
+        || draft.InitialOutcomeMeasureReports.Count > 0;
 
     private HeaderConfiguration HeaderConfiguration => new()
     {

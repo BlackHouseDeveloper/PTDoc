@@ -332,6 +332,7 @@
             selection.Lateralities.Add(laterality);
         }
 
+        RecalculateOutcomeMeasures();
         await NotifyStateChangedAsync();
     }
 

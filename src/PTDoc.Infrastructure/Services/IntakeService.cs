@@ -425,6 +425,7 @@ public sealed class IntakeService : IIntakeService
     private static void CopyDraftProperties(IntakeResponseDraft source, IntakeResponseDraft target)
     {
         target.PatientId = source.PatientId;
+        target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;

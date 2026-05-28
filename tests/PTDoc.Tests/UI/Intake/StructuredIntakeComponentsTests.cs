@@ -216,6 +216,36 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void PainDetailsStep_RecalculatesAssignedMeasureLaterality_WhenLateralityChanges()
+    {
+        var state = new IntakeWizardState
+        {
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "shoulder"
+                    }
+                ]
+            }
+        };
+
+        var cut = RenderComponent<PainDetailsStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.Null(Assert.Single(state.AssignedOutcomeMeasures).Laterality);
+
+        cut.FindAll("button")
+            .Single(button => string.Equals(button.TextContent.Trim(), "Left", StringComparison.Ordinal))
+            .Click();
+
+        Assert.Equal("left", Assert.Single(state.AssignedOutcomeMeasures).Laterality);
+    }
+
+    [Fact]
     public void OutcomeMeasuresStep_AllowsPatientEnteredInitialScoreAndSkip()
     {
         var state = new IntakeWizardState

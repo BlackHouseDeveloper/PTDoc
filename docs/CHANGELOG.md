@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-ups
+
+- **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`docs/Azure-database-guide.md`**, **`tests/PTDoc.Tests/UI/Intake/*`** — Added intake-flow versioning so legacy drafts with `currentStep: 3` still hydrate to Review, recalculated assigned outcome-measure laterality after laterality edits, and replaced unresolved chat citation artifacts in the Azure database guide with standard Markdown links. Reason: PR review found compatibility, stale metadata, and documentation-reference issues.
+
 ### Fixed - Intake payer preservation
 
 - **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/*`** — Preserved existing patient payer JSON when a submitted intake draft does not include payer fields, while still updating payer details when insurance data is supplied. Reason: submitted invite or existing-patient intakes without insurance fields should not erase previously stored payer information.

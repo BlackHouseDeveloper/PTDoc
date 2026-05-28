@@ -6,6 +6,7 @@ public sealed class IntakeResponseDraft
 {
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
+    public int IntakeFlowVersion { get; set; }
     public int CurrentStep { get; set; }
     public IntakeConsentPacket? ConsentPacket { get; set; }
     public bool HipaaAcknowledged { get; set; }
