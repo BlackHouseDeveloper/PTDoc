@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake legacy draft step hydration
+
+- **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs`** — Treated legacy flow (`intakeFlowVersion < 2`) drafts with `currentStep = 3` as Review unconditionally, even when canonicalized structured body-part data derives assigned outcome measures; added a regression covering legacy step 3 with assigned outcomes. Reason: prevent pre-Outcome-Measures flow drafts from being misrouted to the new Outcome Measures step during hydration.
+
 ### Fixed - Intake review and payer contract alignment
 
 - **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Updated review-step outcome-score rendering so mixed payloads (one skipped report plus one entered score report) still display entered score context instead of collapsing to a single `Skipped` value. Reason: clinician review must not lose patient-entered initial score details when skipped rows coexist in canonicalized report lists.

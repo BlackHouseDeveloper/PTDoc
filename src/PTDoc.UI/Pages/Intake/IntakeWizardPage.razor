@@ -923,18 +923,13 @@
         }
 
         if (draft.CurrentStep == (int)IntakeStep.OutcomeMeasures
-            && draft.IntakeFlowVersion < CurrentIntakeFlowVersion
-            && !HasOutcomeMeasureStepData(draft))
+            && draft.IntakeFlowVersion < CurrentIntakeFlowVersion)
         {
             return IntakeStep.Review;
         }
 
         return (IntakeStep)draft.CurrentStep;
     }
-
-    private static bool HasOutcomeMeasureStepData(IntakeResponseDraft draft) =>
-        draft.AssignedOutcomeMeasures.Count > 0
-        || draft.InitialOutcomeMeasureReports.Count > 0;
 
     private HeaderConfiguration HeaderConfiguration => new()
     {

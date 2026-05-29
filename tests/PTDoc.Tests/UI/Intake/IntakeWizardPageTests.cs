@@ -118,6 +118,14 @@ public sealed class IntakeWizardPageTests : TestContext
         {
             PatientId = patientId,
             CurrentStep = 3,
+            AssignedOutcomeMeasures =
+            [
+                new AssignedOutcomeMeasureDraft
+                {
+                    BodyPartId = "knee",
+                    MeasureAbbreviation = "LEFS"
+                }
+            ],
             FullName = "Legacy Review"
         });
 
