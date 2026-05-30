@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake submitted payer partial merge behavior
+
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Changed submitted-intake patient payer updates to merge non-blank submitted payer fields into existing `Patient.PayerInfoJson` instead of replacing the full blob when any payer field is present. Added endpoint and service regressions proving partial payer submissions (for example, payer type only) preserve existing insurance company/member/group/coverage values while updating aliases consistently. Reason: partial intake insurance data should not erase existing payer details.
+
 ### Fixed - Intake optional NPI draft creation guardrail
 
 - **`src/PTDoc.UI/Services/IntakeApiService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Removed the temporary-patient draft creation throw for unsupported optional referring-doctor NPI values and aligned behavior to omit non-10-digit NPIs from the create-patient payload instead. Added a regression proving invalid optional NPI values no longer fault the client path and serialize as `null`. Reason: demographics continue/create-draft UI catches API request failures, so optional NPI format mismatches should not surface as unhandled component exceptions.

@@ -382,7 +382,7 @@ public sealed class IntakeService : IIntakeService
 
             if (HasSubmittedPayerInfo(canonicalState))
             {
-                patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
+                patient.PayerInfoJson = BuildMergedPayerInfoJson(patient.PayerInfoJson, canonicalState);
             }
             var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
             patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
@@ -623,12 +623,58 @@ public sealed class IntakeService : IIntakeService
         return JsonSerializer.Serialize(payerInfo, SerializerOptions);
     }
 
+    private static string BuildMergedPayerInfoJson(string? existingPayerInfoJson, IntakeResponseDraft state)
+    {
+        var existing = ParsePayerInfo(existingPayerInfoJson);
+        var payerType = TrimOrNull(state.PayerType) ?? TrimOrNull(existing.PayerType) ?? TrimOrNull(existing.ProviderType);
+        var insuranceCompanyName = TrimOrNull(state.InsuranceCompanyName) ?? TrimOrNull(existing.InsuranceCompanyName);
+        var memberOrPolicyNumber = TrimOrNull(state.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberIdPolicyNumber);
+        var groupNumber = TrimOrNull(state.GroupNumber) ?? TrimOrNull(existing.GroupNumber);
+        var coverageType = TrimOrNull(state.InsuranceCoverageType) ?? TrimOrNull(existing.CoverageType) ?? TrimOrNull(existing.InsurancePriority);
+
+        var payerInfo = new
+        {
+            PayerType = payerType,
+            ProviderType = payerType,
+            InsuranceCompanyName = insuranceCompanyName,
+            MemberOrPolicyNumber = memberOrPolicyNumber,
+            MemberIdPolicyNumber = memberOrPolicyNumber,
+            GroupNumber = groupNumber,
+            CoverageType = coverageType,
+            InsurancePriority = coverageType
+        };
+
+        return JsonSerializer.Serialize(payerInfo, SerializerOptions);
+    }
+
+    private static PayerInfoPayload ParsePayerInfo(string? payerInfoJson)
+    {
+        if (string.IsNullOrWhiteSpace(payerInfoJson))
+        {
+            return new PayerInfoPayload();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<PayerInfoPayload>(payerInfoJson, SerializerOptions) ?? new PayerInfoPayload();
+        }
+        catch (JsonException)
+        {
+            return new PayerInfoPayload();
+        }
+    }
+
     private static bool HasSubmittedPayerInfo(IntakeResponseDraft state) =>
         !string.IsNullOrWhiteSpace(state.PayerType)
         || !string.IsNullOrWhiteSpace(state.InsuranceCompanyName)
         || !string.IsNullOrWhiteSpace(state.MemberOrPolicyNumber)
         || !string.IsNullOrWhiteSpace(state.GroupNumber)
         || !string.IsNullOrWhiteSpace(state.InsuranceCoverageType);
+
+    private static string? TrimOrNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
 
     private static string BuildConsentsJson(IntakeResponseDraft state)
     {
@@ -646,5 +692,17 @@ public sealed class IntakeService : IIntakeService
         var secret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(secret));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private sealed class PayerInfoPayload
+    {
+        public string? PayerType { get; init; }
+        public string? ProviderType { get; init; }
+        public string? InsuranceCompanyName { get; init; }
+        public string? MemberOrPolicyNumber { get; init; }
+        public string? MemberIdPolicyNumber { get; init; }
+        public string? GroupNumber { get; init; }
+        public string? CoverageType { get; init; }
+        public string? InsurancePriority { get; init; }
     }
 }

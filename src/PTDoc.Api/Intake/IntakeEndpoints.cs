@@ -892,7 +892,7 @@ public static class IntakeEndpoints
 
         if (HasSubmittedPayerInfo(draft))
         {
-            patient.PayerInfoJson = BuildPayerInfoJson(draft);
+            patient.PayerInfoJson = BuildMergedPayerInfoJson(patient.PayerInfoJson, draft);
         }
         patient.LastModifiedUtc = DateTime.UtcNow;
         patient.ModifiedByUserId = intake.ModifiedByUserId;
@@ -962,6 +962,45 @@ public static class IntakeEndpoints
         }, DraftSerializerOptions);
     }
 
+    private static string BuildMergedPayerInfoJson(string? existingPayerInfoJson, IntakeResponseDraft draft)
+    {
+        var existing = ParsePayerInfo(existingPayerInfoJson);
+        var payerType = TrimOrNull(draft.PayerType) ?? TrimOrNull(existing.PayerType) ?? TrimOrNull(existing.ProviderType);
+        var insuranceCompanyName = TrimOrNull(draft.InsuranceCompanyName) ?? TrimOrNull(existing.InsuranceCompanyName);
+        var memberOrPolicyNumber = TrimOrNull(draft.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberIdPolicyNumber);
+        var groupNumber = TrimOrNull(draft.GroupNumber) ?? TrimOrNull(existing.GroupNumber);
+        var coverageType = TrimOrNull(draft.InsuranceCoverageType) ?? TrimOrNull(existing.CoverageType) ?? TrimOrNull(existing.InsurancePriority);
+
+        return JsonSerializer.Serialize(new
+        {
+            PayerType = payerType,
+            ProviderType = payerType,
+            InsuranceCompanyName = insuranceCompanyName,
+            MemberOrPolicyNumber = memberOrPolicyNumber,
+            MemberIdPolicyNumber = memberOrPolicyNumber,
+            GroupNumber = groupNumber,
+            CoverageType = coverageType,
+            InsurancePriority = coverageType
+        }, DraftSerializerOptions);
+    }
+
+    private static PayerInfoPayload ParsePayerInfo(string? payerInfoJson)
+    {
+        if (string.IsNullOrWhiteSpace(payerInfoJson))
+        {
+            return new PayerInfoPayload();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<PayerInfoPayload>(payerInfoJson, DraftSerializerOptions) ?? new PayerInfoPayload();
+        }
+        catch (JsonException)
+        {
+            return new PayerInfoPayload();
+        }
+    }
+
     private static bool HasSubmittedPayerInfo(IntakeResponseDraft draft) =>
         !string.IsNullOrWhiteSpace(draft.PayerType)
         || !string.IsNullOrWhiteSpace(draft.InsuranceCompanyName)
@@ -977,6 +1016,18 @@ public static class IntakeEndpoints
     private static string? TrimOrNull(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private sealed class PayerInfoPayload
+    {
+        public string? PayerType { get; init; }
+        public string? ProviderType { get; init; }
+        public string? InsuranceCompanyName { get; init; }
+        public string? MemberOrPolicyNumber { get; init; }
+        public string? MemberIdPolicyNumber { get; init; }
+        public string? GroupNumber { get; init; }
+        public string? CoverageType { get; init; }
+        public string? InsurancePriority { get; init; }
     }
 
     /// <summary>

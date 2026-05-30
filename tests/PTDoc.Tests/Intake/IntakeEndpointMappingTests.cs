@@ -157,6 +157,54 @@ public sealed class IntakeEndpointMappingTests
     }
 
     [Fact]
+    public void ApplySubmittedIntakePatientFields_MergesSubmittedPayerInfo_WhenDraftHasPartialPayerFields()
+    {
+        var existingPayerInfo = JsonSerializer.Serialize(new
+        {
+            PayerType = "Medicare",
+            InsuranceCompanyName = "Existing Plan",
+            MemberOrPolicyNumber = "EXISTING-001",
+            GroupNumber = "GROUP-42",
+            CoverageType = "Secondary"
+        }, JsonOptions);
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Existing",
+            LastName = "Merge",
+            PayerInfoJson = existingPayerInfo
+        };
+
+        var intake = new IntakeForm
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            Patient = patient,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                FullName = "Existing Merge",
+                PayerType = "Commercial"
+            }, JsonOptions),
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            ModifiedByUserId = Guid.NewGuid()
+        };
+
+        IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
+
+        using var payerJson = JsonDocument.Parse(patient.PayerInfoJson);
+        Assert.Equal("Commercial", payerJson.RootElement.GetProperty("payerType").GetString());
+        Assert.Equal("Commercial", payerJson.RootElement.GetProperty("providerType").GetString());
+        Assert.Equal("Existing Plan", payerJson.RootElement.GetProperty("insuranceCompanyName").GetString());
+        Assert.Equal("EXISTING-001", payerJson.RootElement.GetProperty("memberOrPolicyNumber").GetString());
+        Assert.Equal("EXISTING-001", payerJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+        Assert.Equal("GROUP-42", payerJson.RootElement.GetProperty("groupNumber").GetString());
+        Assert.Equal("Secondary", payerJson.RootElement.GetProperty("coverageType").GetString());
+        Assert.Equal("Secondary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+    }
+
+    [Fact]
     public void ApplySubmittedIntakePatientFields_DoesNotOverwritePhysicianNpi_WhenReferringDoctorNpiInvalid()
     {
         var patient = new Patient
