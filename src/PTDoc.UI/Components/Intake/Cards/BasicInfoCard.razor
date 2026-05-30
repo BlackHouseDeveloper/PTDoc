@@ -20,6 +20,17 @@
             <span id="intake-date-of-birth-error" class="intake-card__validation validation-message">@GetError(DateOfBirthField)</span>
         }
 
+        <label for="intake-sex-at-birth">Sex at Birth
+            <select id="intake-sex-at-birth" class="form-select" value="@SexAtBirth" @onchange="OnSexAtBirthChanged">
+                <option value="">Select sex at birth</option>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Intersex</option>
+                <option>Prefer not to say</option>
+                <option>Other</option>
+            </select>
+        </label>
+
         <label for="intake-email-address">Email Address *
             <input id="intake-email-address" type="email" class="@GetInputCss(EmailAddressField)" value="@EmailAddress" @oninput="OnEmailChanged" placeholder="your.email@example.com" aria-invalid="@HasError(EmailAddressField)" aria-describedby="@GetDescribedBy(EmailAddressField)" />
         </label>
@@ -36,6 +47,32 @@
         {
             <span id="intake-phone-number-error" class="intake-card__validation validation-message">@GetError(PhoneNumberField)</span>
         }
+    </div>
+
+    <div class="intake-card__divider"></div>
+
+    <h3>Address</h3>
+
+    <div class="intake-card__form-grid">
+        <label for="intake-address-line-1">Street Address
+            <input id="intake-address-line-1" class="form-control" value="@AddressLine1" @oninput="OnAddressLine1Changed" placeholder="Street address" />
+        </label>
+
+        <label for="intake-address-line-2">Apartment, Suite, Unit
+            <input id="intake-address-line-2" class="form-control" value="@AddressLine2" @oninput="OnAddressLine2Changed" placeholder="Optional" />
+        </label>
+
+        <label for="intake-city">City
+            <input id="intake-city" class="form-control" value="@City" @oninput="OnCityChanged" placeholder="City" />
+        </label>
+
+        <label for="intake-state-or-province">State
+            <input id="intake-state-or-province" class="form-control" value="@StateOrProvince" @oninput="OnStateOrProvinceChanged" placeholder="State" />
+        </label>
+
+        <label for="intake-postal-code">ZIP Code
+            <input id="intake-postal-code" class="form-control" value="@PostalCode" @oninput="OnPostalCodeChanged" placeholder="ZIP code" />
+        </label>
     </div>
 
     <div class="intake-card__divider"></div>
@@ -73,16 +110,28 @@
 
     [Parameter] public string? FullName { get; set; }
     [Parameter] public DateTime? DateOfBirth { get; set; }
+    [Parameter] public string? SexAtBirth { get; set; }
     [Parameter] public string? EmailAddress { get; set; }
     [Parameter] public string? PhoneNumber { get; set; }
     [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }
+    [Parameter] public string? AddressLine1 { get; set; }
+    [Parameter] public string? AddressLine2 { get; set; }
+    [Parameter] public string? City { get; set; }
+    [Parameter] public string? StateOrProvince { get; set; }
+    [Parameter] public string? PostalCode { get; set; }
     [Parameter] public string? EmergencyContactName { get; set; }
     [Parameter] public string? EmergencyContactPhone { get; set; }
 
     [Parameter] public EventCallback<string?> FullNameChanged { get; set; }
     [Parameter] public EventCallback<DateTime?> DateOfBirthChanged { get; set; }
+    [Parameter] public EventCallback<string?> SexAtBirthChanged { get; set; }
     [Parameter] public EventCallback<string?> EmailAddressChanged { get; set; }
     [Parameter] public EventCallback<string?> PhoneNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> AddressLine1Changed { get; set; }
+    [Parameter] public EventCallback<string?> AddressLine2Changed { get; set; }
+    [Parameter] public EventCallback<string?> CityChanged { get; set; }
+    [Parameter] public EventCallback<string?> StateOrProvinceChanged { get; set; }
+    [Parameter] public EventCallback<string?> PostalCodeChanged { get; set; }
     [Parameter] public EventCallback<string?> EmergencyContactNameChanged { get; set; }
     [Parameter] public EventCallback<string?> EmergencyContactPhoneChanged { get; set; }
 
@@ -100,10 +149,46 @@
         return EmailAddressChanged.InvokeAsync(value);
     }
 
+    private Task OnSexAtBirthChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return SexAtBirthChanged.InvokeAsync(value);
+    }
+
     private Task OnPhoneChanged(ChangeEventArgs args)
     {
         var value = args.Value?.ToString();
         return PhoneNumberChanged.InvokeAsync(value);
+    }
+
+    private Task OnAddressLine1Changed(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return AddressLine1Changed.InvokeAsync(value);
+    }
+
+    private Task OnAddressLine2Changed(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return AddressLine2Changed.InvokeAsync(value);
+    }
+
+    private Task OnCityChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return CityChanged.InvokeAsync(value);
+    }
+
+    private Task OnStateOrProvinceChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return StateOrProvinceChanged.InvokeAsync(value);
+    }
+
+    private Task OnPostalCodeChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        return PostalCodeChanged.InvokeAsync(value);
     }
 
     private Task OnEmergencyContactNameChanged(ChangeEventArgs args)

@@ -1,0 +1,211 @@
+@using PTDoc.Application.Services
+@using PTDoc.UI.Components.Intake.Models
+
+<section class="intake-step-shell" data-testid="outcome-measures-step">
+    <div class="intake-step-shell__hero">
+        <div>
+            <h2>Outcome Measures</h2>
+            <p>Your provider may use a functional questionnaire for the body areas you selected.</p>
+        </div>
+    </div>
+
+    <section class="intake-step-shell__panel">
+        <div class="intake-step-shell__panel-header">
+            <div>
+                <h3>Recommended Functional Questionnaires</h3>
+                <p>These are selected from your affected body areas. Your clinician can adjust them later.</p>
+            </div>
+        </div>
+
+        @if (State.AssignedOutcomeMeasures.Count == 0)
+        {
+            <div class="intake-step-shell__helper">No functional questionnaire has been assigned yet.</div>
+        }
+        else
+        {
+            <div class="intake-step-shell__group-stack">
+                @foreach (var assignment in State.AssignedOutcomeMeasures)
+                {
+                    <div class="intake-step-shell__group">
+                        <h4>@Display(assignment.BodyPartLabel)</h4>
+                        @if (assignment.RequiresClinicalConfirmation)
+                        {
+                            <p>This body area needs your clinician to confirm the best questionnaire.</p>
+                        }
+                        else
+                        {
+                            <p>Your provider may use @DisplayMeasure(assignment) for your @Display(assignment.BodyPartLabel). </p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="intake-step-shell__panel">
+        <div class="intake-step-shell__panel-header">
+            <div>
+                <h3>Previous Outcome Measure or Functional Score</h3>
+                <p>If you have already completed a functional questionnaire or were given a score related to this condition, you may enter it here. If not, you can skip this section.</p>
+            </div>
+        </div>
+
+        <label class="intake-card__toggle">
+            <input type="checkbox"
+                   class="form-check-input"
+                   checked="@IsSkipped"
+                   @onchange="OnSkippedChangedAsync" />
+            <span>I do not have a score to enter.</span>
+        </label>
+
+        @if (!IsSkipped)
+        {
+            <div class="intake-step-shell__group-stack">
+                @for (var index = 0; index < State.InitialOutcomeMeasureReports.Count; index++)
+                {
+                    var reportIndex = index;
+                    var report = State.InitialOutcomeMeasureReports[reportIndex];
+                    <div class="intake-step-shell__group">
+                        <h4>Score @(reportIndex + 1)</h4>
+                        <div class="intake-card__form-grid">
+                            <label>Related questionnaire
+                                <select class="form-select"
+                                        value="@report.AssignedMeasureAbbreviation"
+                                        @onchange="args => UpdateAssignedMeasureAsync(reportIndex, args)">
+                                    <option value="">Not sure / other</option>
+                                    @foreach (var assignment in State.AssignedOutcomeMeasures.Where(item => !string.IsNullOrWhiteSpace(item.MeasureAbbreviation)))
+                                    {
+                                        <option value="@assignment.MeasureAbbreviation">@assignment.MeasureAbbreviation</option>
+                                    }
+                                </select>
+                            </label>
+
+                            <label>Questionnaire or score name
+                                <input class="form-control"
+                                       value="@report.PatientEnteredMeasureName"
+                                       @oninput="args => UpdateMeasureNameAsync(reportIndex, args)"
+                                       placeholder="Example: LEFS, DASH, ODI, knee score" />
+                            </label>
+
+                            <label>Score or percentage
+                                <input class="form-control"
+                                       value="@report.ScoreText"
+                                       @oninput="args => UpdateScoreTextAsync(reportIndex, args)"
+                                       placeholder="Example: 42/80, 35%, 18 points" />
+                            </label>
+
+                            <label>Date completed
+                                <input class="form-control"
+                                       type="date"
+                                       value="@FormatDateValue(report.CompletedDate)"
+                                       @onchange="args => UpdateCompletedDateAsync(reportIndex, args)" />
+                            </label>
+                        </div>
+
+                        <label class="intake-card__notes">Notes or context
+                            <textarea class="form-control"
+                                      value="@report.Notes"
+                                      @oninput="args => UpdateNotesAsync(reportIndex, args)"
+                                      placeholder="Anything you remember about where or when this score was completed"></textarea>
+                        </label>
+                    </div>
+                }
+            </div>
+
+            <button type="button" class="btn btn-secondary" @onclick="AddReportAsync">Add another score</button>
+        }
+    </section>
+
+    <IntakeFooterActions
+        ShowBack="true"
+        PrimaryText="Continue to Review"
+        PrimaryTestId="continue-button"
+        OnBack="OnBack"
+        OnPrimary="OnContinue" />
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private bool IsSkipped => State.InitialOutcomeMeasureReports.Count == 1
+        && State.InitialOutcomeMeasureReports[0].Skipped;
+
+    protected override void OnParametersSet()
+    {
+        if (State.InitialOutcomeMeasureReports.Count == 0)
+        {
+            State.InitialOutcomeMeasureReports.Add(new InitialOutcomeMeasureReportDraft());
+        }
+    }
+
+    private async Task OnSkippedChangedAsync(ChangeEventArgs args)
+    {
+        var skipped = args.Value is bool value && value;
+        State.InitialOutcomeMeasureReports.Clear();
+        State.InitialOutcomeMeasureReports.Add(new InitialOutcomeMeasureReportDraft { Skipped = skipped });
+        await NotifyChangedAsync();
+    }
+
+    private async Task AddReportAsync()
+    {
+        State.InitialOutcomeMeasureReports.Add(new InitialOutcomeMeasureReportDraft());
+        await NotifyChangedAsync();
+    }
+
+    private Task UpdateAssignedMeasureAsync(int index, ChangeEventArgs args) =>
+        UpdateReportAsync(index, item => item.AssignedMeasureAbbreviation = args.Value?.ToString());
+
+    private Task UpdateMeasureNameAsync(int index, ChangeEventArgs args) =>
+        UpdateReportAsync(index, item => item.PatientEnteredMeasureName = args.Value?.ToString());
+
+    private Task UpdateScoreTextAsync(int index, ChangeEventArgs args) =>
+        UpdateReportAsync(index, item => item.ScoreText = args.Value?.ToString());
+
+    private Task UpdateCompletedDateAsync(int index, ChangeEventArgs args) =>
+        UpdateReportAsync(index, item => item.CompletedDate = ParseDate(args.Value?.ToString()));
+
+    private Task UpdateNotesAsync(int index, ChangeEventArgs args) =>
+        UpdateReportAsync(index, item => item.Notes = args.Value?.ToString());
+
+    private async Task UpdateReportAsync(int index, Action<InitialOutcomeMeasureReportDraft> update)
+    {
+        if (index < 0 || index >= State.InitialOutcomeMeasureReports.Count)
+        {
+            return;
+        }
+
+        State.InitialOutcomeMeasureReports[index].Skipped = false;
+        update(State.InitialOutcomeMeasureReports[index]);
+        await NotifyChangedAsync();
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        State.IsDirty = true;
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
+
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "this area" : value;
+
+    private static string DisplayMeasure(AssignedOutcomeMeasureDraft assignment)
+    {
+        if (string.IsNullOrWhiteSpace(assignment.MeasureFullName))
+        {
+            return Display(assignment.MeasureAbbreviation);
+        }
+
+        return $"{assignment.MeasureAbbreviation} ({assignment.MeasureFullName})";
+    }
+
+    private static string FormatDateValue(DateTime? value)
+        => value?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private static DateTime? ParseDate(string? value)
+        => DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
+}

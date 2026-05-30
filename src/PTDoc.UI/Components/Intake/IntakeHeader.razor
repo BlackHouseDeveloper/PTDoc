@@ -10,7 +10,7 @@
 
         <div class="intake-header__text">
             <h1>Patient Intake</h1>
-            <p>Step @((int)CurrentStep + 1) of 4</p>
+            <p>Step @GetStepNumber(CurrentStep) of 5</p>
         </div>
     </div>
 </header>
@@ -22,5 +22,18 @@
     private Task OnBackClicked()
     {
         return OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
+    }
+
+    private static int GetStepNumber(IntakeStep step)
+    {
+        return step switch
+        {
+            IntakeStep.Demographics => 1,
+            IntakeStep.PainAssessment => 2,
+            IntakeStep.PainDetails => 3,
+            IntakeStep.OutcomeMeasures => 4,
+            IntakeStep.Review => 5,
+            _ => 1
+        };
     }
 }

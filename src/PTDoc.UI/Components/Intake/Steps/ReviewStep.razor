@@ -31,7 +31,7 @@
         </ul>
     </section>
 
-    @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+    @if (!string.IsNullOrWhiteSpace(ValidationMessage) && !HasSubmitStatusMessage)
     {
         <section class="review-step__message @(IsReadOnlyReview ? "review-step__message--success" : "review-step__message--warning")" role="status" aria-live="polite">
             @ValidationMessage
@@ -88,12 +88,28 @@
                 </span>
             </div>
             <div class="review-step__field">
+                <span class="review-step__field-label">Sex at Birth</span>
+                <span class="review-step__field-value">@Display(State.SexAtBirth)</span>
+            </div>
+            <div class="review-step__field">
                 <span class="review-step__field-label">Email</span>
                 <span class="review-step__field-value">@Display(State.EmailAddress)</span>
             </div>
             <div class="review-step__field">
                 <span class="review-step__field-label">Phone</span>
                 <span class="review-step__field-value">@Display(State.PhoneNumber)</span>
+            </div>
+        </div>
+
+        <div class="review-step__divider"></div>
+
+        <div class="review-step__subsection">
+            <h3>Address</h3>
+            <div class="review-step__field-grid">
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Mailing Address</span>
+                    <span class="review-step__field-value">@Display(FormattedAddress)</span>
+                </div>
             </div>
         </div>
 
@@ -110,6 +126,72 @@
                     <span class="review-step__field-label">Phone</span>
                     <span class="review-step__field-value">@Display(State.EmergencyContactPhone)</span>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Care Team</h2>
+                <p>Primary and referring doctor information captured with this intake.</p>
+            </div>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
+        </div>
+
+        <div class="review-step__field-grid">
+            <div class="review-step__field">
+                <span class="review-step__field-label">Primary Doctor</span>
+                <span class="review-step__field-value">@Display(State.PrimaryDoctorName)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Primary Doctor Phone</span>
+                <span class="review-step__field-value">@Display(State.PrimaryDoctorPhone)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Referring Doctor</span>
+                <span class="review-step__field-value">@Display(State.ReferringDoctorName)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Referring Doctor NPI</span>
+                <span class="review-step__field-value">@Display(State.ReferringDoctorNpi)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Referring Doctor Phone</span>
+                <span class="review-step__field-value">@Display(State.ReferringDoctorPhone)</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="review-step__card">
+        <div class="review-step__card-header">
+            <div>
+                <h2>Insurance &amp; Payer</h2>
+                <p>Insurance details captured during demographics.</p>
+            </div>
+            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
+        </div>
+
+        <div class="review-step__field-grid">
+            <div class="review-step__field">
+                <span class="review-step__field-label">Insurance Company</span>
+                <span class="review-step__field-value">@Display(State.InsuranceCompanyName)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Member ID / Policy Number</span>
+                <span class="review-step__field-value">@Display(State.MemberOrPolicyNumber)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Group Number</span>
+                <span class="review-step__field-value">@Display(State.GroupNumber)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Payer Type</span>
+                <span class="review-step__field-value">@Display(State.PayerType)</span>
+            </div>
+            <div class="review-step__field">
+                <span class="review-step__field-label">Coverage Type</span>
+                <span class="review-step__field-value">@Display(State.InsuranceCoverageType)</span>
             </div>
         </div>
     </section>
@@ -207,6 +289,11 @@
             </div>
         }
 
+        <div class="review-step__note-box">
+            <span class="review-step__field-label">Functional Limitations</span>
+            <p>@Display(State.FunctionalLimitations)</p>
+        </div>
+
         @if (!string.IsNullOrWhiteSpace(State.MedicalHistoryNotes))
         {
             <div class="review-step__note-box">
@@ -276,16 +363,37 @@
                 </div>
             }
 
-            @if (ShowOutcomeMeasureRecommendations && State.RecommendedOutcomeMeasures.Count > 0)
+            @if (State.AssignedOutcomeMeasures.Count > 0)
             {
                 <div class="review-step__field">
-                    <span class="review-step__field-label">Auto-Selected Outcome Measures</span>
+                    <span class="review-step__field-label">Outcome Measures</span>
                     <div class="review-step__chip-list">
-                        @foreach (var item in State.RecommendedOutcomeMeasures.OrderBy(value => value))
+                        @foreach (var assignment in State.AssignedOutcomeMeasures)
                         {
-                            <span class="review-step__pill review-step__pill--success">@item</span>
+                            <span class="review-step__pill review-step__pill--success">@FormatAssignedOutcomeMeasure(assignment)</span>
                         }
                     </div>
+                </div>
+            }
+
+            @if (VisibleInitialOutcomeReports.Count > 0 || InitialOutcomeScoresSkipped)
+            {
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Previous Outcome Measure or Functional Score</span>
+                    @if (InitialOutcomeScoresSkippedOnly)
+                    {
+                        <span class="review-step__field-value">Skipped</span>
+                    }
+
+                    @if (VisibleInitialOutcomeReports.Count > 0)
+                    {
+                        <div class="review-step__note-box">
+                            @foreach (var report in VisibleInitialOutcomeReports)
+                            {
+                                <p>@FormatInitialOutcomeReport(report)</p>
+                            }
+                        </div>
+                    }
                 </div>
             }
 
@@ -586,6 +694,19 @@
         </div>
     </section>
 
+    @if (HasSubmitStatusMessage)
+    {
+        <section id="intake-submit-status"
+                 class="review-step__submit-status review-step__message review-step__message--success"
+                 role="status"
+                 aria-live="polite"
+                 tabindex="-1"
+                 @ref="_submitStatusElement"
+                 data-testid="submit-status-message">
+            @ValidationMessage
+        </section>
+    }
+
     <div class="review-step__actions">
         @if (!IsReadOnlyReview)
         {
@@ -624,6 +745,8 @@
 
 @code {
     private bool _isPhiDetailsOpen;
+    private ElementReference _submitStatusElement;
+    private string? _focusedSubmitStatusMessage;
 
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public string? ValidationMessage { get; set; }
@@ -644,6 +767,9 @@
     private bool TreatmentConsentComplete => ConsentPacket.TreatmentConsentAccepted == true && !IsConsentRevoked("treatmentConsentAccepted");
     private bool IsReadOnlyReview => State.IsLocked || State.IsSubmitted;
     private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !IsReadOnlyReview;
+    private bool HasSubmitStatusMessage => IsReadOnlyReview
+        && !string.IsNullOrWhiteSpace(ValidationMessage)
+        && ValidationMessage.StartsWith("Intake submitted successfully", StringComparison.Ordinal);
     private bool CompletionReady => IsReadOnlyReview || SubmitReady;
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
     private bool PhoneCallsAllowed => IntakeConsentJson.IsCallConsentActive(ConsentPacket);
@@ -706,6 +832,36 @@
         IntakeReferenceData.GetHouseLayoutOption);
     private IReadOnlyList<string> SelectedPainDescriptorLabels => GetSelectedPainDescriptorLabels();
     private IReadOnlyList<string> SelectedBodyPartLabels => GetSelectedBodyPartLabels();
+    private IReadOnlyList<InitialOutcomeMeasureReportDraft> VisibleInitialOutcomeReports => State.InitialOutcomeMeasureReports
+        .Where(report => !report.Skipped
+            && (!string.IsNullOrWhiteSpace(report.AssignedMeasureAbbreviation)
+                || !string.IsNullOrWhiteSpace(report.PatientEnteredMeasureName)
+                || !string.IsNullOrWhiteSpace(report.ScoreText)
+                || report.CompletedDate.HasValue
+                || !string.IsNullOrWhiteSpace(report.Notes)))
+        .ToList();
+    private bool InitialOutcomeScoresSkipped => State.InitialOutcomeMeasureReports.Any(report => report.Skipped);
+    private bool InitialOutcomeScoresSkippedOnly => InitialOutcomeScoresSkipped && VisibleInitialOutcomeReports.Count == 0;
+    private string? FormattedAddress => FormatAddress(State);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!HasSubmitStatusMessage
+            || string.Equals(_focusedSubmitStatusMessage, ValidationMessage, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _focusedSubmitStatusMessage = ValidationMessage;
+        try
+        {
+            await _submitStatusElement.FocusAsync(preventScroll: false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JSException)
+        {
+            // Some non-browser renderers used by component tests do not provide focus interop.
+        }
+    }
 
     private Task OnBackClicked() => !IsReadOnlyReview && OnBack.HasDelegate ? OnBack.InvokeAsync() : Task.CompletedTask;
 
@@ -963,6 +1119,68 @@
     private static string DisplayDate(DateTime? value)
     {
         return value?.ToString("MMMM d, yyyy") ?? "Not provided";
+    }
+
+    private static string FormatAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft assignment)
+    {
+        var bodyPart = Display(assignment.BodyPartLabel);
+        if (assignment.RequiresClinicalConfirmation || string.IsNullOrWhiteSpace(assignment.MeasureAbbreviation))
+        {
+            return $"{bodyPart}: needs clinician confirmation";
+        }
+
+        return $"{bodyPart}: {assignment.MeasureAbbreviation}";
+    }
+
+    private static string FormatInitialOutcomeReport(InitialOutcomeMeasureReportDraft report)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(report.AssignedMeasureAbbreviation))
+        {
+            parts.Add(report.AssignedMeasureAbbreviation.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.PatientEnteredMeasureName))
+        {
+            parts.Add(report.PatientEnteredMeasureName.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.ScoreText))
+        {
+            parts.Add($"Score: {report.ScoreText.Trim()}");
+        }
+
+        if (report.CompletedDate.HasValue)
+        {
+            parts.Add($"Completed: {DisplayDate(report.CompletedDate)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.Notes))
+        {
+            parts.Add(report.Notes.Trim());
+        }
+
+        return parts.Count == 0 ? "Not provided" : string.Join(" | ", parts);
+    }
+
+    private static string? FormatAddress(IntakeWizardState state)
+    {
+        var street = new[] { state.AddressLine1, state.AddressLine2 }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToList();
+
+        var cityStatePostal = new[]
+            {
+                state.City,
+                state.StateOrProvince,
+                state.PostalCode
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToList();
+
+        return string.Join(", ", street.Concat(cityStatePostal));
     }
 
     private static string ToLocalDisplay(DateTime value)

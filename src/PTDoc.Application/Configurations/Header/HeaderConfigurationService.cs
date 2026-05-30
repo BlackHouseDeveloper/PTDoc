@@ -222,11 +222,12 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
         {
             return numericStep switch
             {
-                0 => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
-                1 => SetSubtitle("Step 2 of 4: Medical History / Pain Assessment", out subtitle),
-                2 => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
-                3 => SetSubtitle("Step 4 of 4: Review", out subtitle),
-                4 => SetSubtitle("Step 4 of 4: Review", out subtitle),
+                0 => SetSubtitle("Step 1 of 5: Demographics", out subtitle),
+                1 => SetSubtitle("Step 2 of 5: Medical History / Pain Assessment", out subtitle),
+                2 => SetSubtitle("Step 3 of 5: Pain Details", out subtitle),
+                3 => SetSubtitle("Step 4 of 5: Outcome Measures", out subtitle),
+                4 => SetSubtitle("Step 5 of 5: Review", out subtitle),
+                5 => SetSubtitle("Step 5 of 5: Review", out subtitle),
                 _ => false
             };
         }
@@ -235,10 +236,11 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
 
         return normalizedStep switch
         {
-            "demographics" => SetSubtitle("Step 1 of 4: Demographics", out subtitle),
-            "painassessment" => SetSubtitle("Step 2 of 4: Medical History / Pain Assessment", out subtitle),
-            "paindetails" => SetSubtitle("Step 3 of 4: Pain Details", out subtitle),
-            "review" => SetSubtitle("Step 4 of 4: Review", out subtitle),
+            "demographics" => SetSubtitle("Step 1 of 5: Demographics", out subtitle),
+            "painassessment" => SetSubtitle("Step 2 of 5: Medical History / Pain Assessment", out subtitle),
+            "paindetails" => SetSubtitle("Step 3 of 5: Pain Details", out subtitle),
+            "outcomemeasures" => SetSubtitle("Step 4 of 5: Outcome Measures", out subtitle),
+            "review" => SetSubtitle("Step 5 of 5: Review", out subtitle),
             _ => false
         };
     }

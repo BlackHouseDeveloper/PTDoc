@@ -6,17 +6,41 @@
     <BasicInfoCard
         FullName="@State.FullName"
         DateOfBirth="@State.DateOfBirth"
+        SexAtBirth="@State.SexAtBirth"
         EmailAddress="@State.EmailAddress"
         PhoneNumber="@State.PhoneNumber"
         ValidationErrors="@ValidationErrors"
+        AddressLine1="@State.AddressLine1"
+        AddressLine2="@State.AddressLine2"
+        City="@State.City"
+        StateOrProvince="@State.StateOrProvince"
+        PostalCode="@State.PostalCode"
         EmergencyContactName="@State.EmergencyContactName"
         EmergencyContactPhone="@State.EmergencyContactPhone"
         FullNameChanged="OnFullNameChanged"
         DateOfBirthChanged="OnDateOfBirthChanged"
+        SexAtBirthChanged="OnSexAtBirthChanged"
         EmailAddressChanged="OnEmailAddressChanged"
         PhoneNumberChanged="OnPhoneNumberChanged"
+        AddressLine1Changed="OnAddressLine1Changed"
+        AddressLine2Changed="OnAddressLine2Changed"
+        CityChanged="OnCityChanged"
+        StateOrProvinceChanged="OnStateOrProvinceChanged"
+        PostalCodeChanged="OnPostalCodeChanged"
         EmergencyContactNameChanged="OnEmergencyContactNameChanged"
         EmergencyContactPhoneChanged="OnEmergencyContactPhoneChanged" />
+
+    <CareTeamCard
+        PrimaryDoctorName="@State.PrimaryDoctorName"
+        PrimaryDoctorPhone="@State.PrimaryDoctorPhone"
+        ReferringDoctorName="@State.ReferringDoctorName"
+        ReferringDoctorNpi="@State.ReferringDoctorNpi"
+        ReferringDoctorPhone="@State.ReferringDoctorPhone"
+        PrimaryDoctorNameChanged="OnPrimaryDoctorNameChanged"
+        PrimaryDoctorPhoneChanged="OnPrimaryDoctorPhoneChanged"
+        ReferringDoctorNameChanged="OnReferringDoctorNameChanged"
+        ReferringDoctorNpiChanged="OnReferringDoctorNpiChanged"
+        ReferringDoctorPhoneChanged="OnReferringDoctorPhoneChanged" />
 
     <InsurancePayerCard
         InsuranceCompanyName="@State.InsuranceCompanyName"
@@ -45,7 +69,7 @@
         <button type="button" class="btn btn-primary" @onclick="OnContinueClicked" data-testid="continue-button">Continue to Medical History / Pain Assessment</button>
     </div>
 
-    <p class="demographics-step__footer">Step 1 of 4 • 25% Complete</p>
+    <p class="demographics-step__footer">Step 1 of 5 • 20% Complete</p>
 </section>
 
 @code {
@@ -80,6 +104,11 @@
         return UpdateStateAsync(() => State.DateOfBirth = value);
     }
 
+    private Task OnSexAtBirthChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.SexAtBirth = value);
+    }
+
     private Task OnEmailAddressChanged(string? value)
     {
         return UpdateStateAsync(() => State.EmailAddress = value);
@@ -88,6 +117,31 @@
     private Task OnPhoneNumberChanged(string? value)
     {
         return UpdateStateAsync(() => State.PhoneNumber = value);
+    }
+
+    private Task OnAddressLine1Changed(string? value)
+    {
+        return UpdateStateAsync(() => State.AddressLine1 = value);
+    }
+
+    private Task OnAddressLine2Changed(string? value)
+    {
+        return UpdateStateAsync(() => State.AddressLine2 = value);
+    }
+
+    private Task OnCityChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.City = value);
+    }
+
+    private Task OnStateOrProvinceChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.StateOrProvince = value);
+    }
+
+    private Task OnPostalCodeChanged(string? value)
+    {
+        return UpdateStateAsync(() => State.PostalCode = value);
     }
 
     private Task OnEmergencyContactNameChanged(string? value)
@@ -99,6 +153,12 @@
     {
         return UpdateStateAsync(() => State.EmergencyContactPhone = value);
     }
+
+    private Task OnPrimaryDoctorNameChanged(string? value) => UpdateStateAsync(() => State.PrimaryDoctorName = value);
+    private Task OnPrimaryDoctorPhoneChanged(string? value) => UpdateStateAsync(() => State.PrimaryDoctorPhone = value);
+    private Task OnReferringDoctorNameChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorName = value);
+    private Task OnReferringDoctorNpiChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorNpi = value);
+    private Task OnReferringDoctorPhoneChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorPhone = value);
 
     private Task OnInsuranceCompanyNameChanged(string? value) => UpdateStateAsync(() => State.InsuranceCompanyName = value);
     private Task OnMemberOrPolicyNumberChanged(string? value) => UpdateStateAsync(() => State.MemberOrPolicyNumber = value);

@@ -18,6 +18,7 @@
       "minimumClinicallyImportantDifference": 10,
       "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Lumbar", "Thoracic" ],
+      "primaryForBodyParts": [ "Lumbar", "Thoracic" ],
       "scoringBands": [
         { "label": "Minimal disability", "minScore": 0, "maxScore": 20 },
         { "label": "Moderate disability", "minScore": 21, "maxScore": 40 },
@@ -38,6 +39,7 @@
       "minimumClinicallyImportantDifference": 10.2,
       "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Shoulder", "Elbow", "Wrist", "Hand" ],
+      "primaryForBodyParts": [ "Shoulder", "Elbow", "Wrist", "Hand" ],
       "scoringBands": [
         { "label": "Minimal disability", "minScore": 0, "maxScore": 20 },
         { "label": "Mild disability", "minScore": 21, "maxScore": 40 },
@@ -81,6 +83,7 @@
       "minimumClinicallyImportantDifference": 9,
       "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Hip", "Knee", "Ankle", "Foot" ],
+      "primaryForBodyParts": [ "Hip", "Knee", "Ankle", "Foot" ],
       "scoringBands": [
         { "label": "Maximum disability", "minScore": 0, "maxScore": 19 },
         { "label": "Severe disability", "minScore": 20, "maxScore": 39 },
@@ -101,6 +104,7 @@
       "minimumClinicallyImportantDifference": 5,
       "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Cervical" ],
+      "primaryForBodyParts": [ "Cervical" ],
       "scoringBands": [
         { "label": "No disability", "minScore": 0, "maxScore": 4 },
         { "label": "Mild disability", "minScore": 5, "maxScore": 14 },
@@ -121,6 +125,7 @@
       "minimumClinicallyImportantDifference": 2,
       "isSelectableForNewEntry": true,
       "recommendedForBodyParts": [ "Knee", "Shoulder", "Hip", "Ankle", "Elbow", "Wrist", "Cervical", "Lumbar", "Thoracic", "Foot", "Hand", "PelvicFloor", "Other" ],
+      "primaryForBodyParts": [ "PelvicFloor", "Other" ],
       "scoringBands": [
         { "label": "Unable to perform", "minScore": 0, "maxScore": 2 },
         { "label": "Significant limitation", "minScore": 3, "maxScore": 5 },

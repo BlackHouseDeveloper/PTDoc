@@ -144,6 +144,8 @@ public sealed class IntakeApiService(
             throw new ArgumentException("Date of birth is required to create a temporary patient.", nameof(state));
         }
 
+        var physicianNpi = ToSupportedNpi(state.ReferringDoctorNpi);
+
         var createPatientRequest = new CreatePatientRequest
         {
             FirstName = firstName,
@@ -156,7 +158,11 @@ public sealed class IntakeApiService(
             City = state.City,
             State = state.StateOrProvince,
             ZipCode = state.PostalCode,
-            PayerInfoJson = "{}"
+            PayerInfoJson = BuildPayerInfoJson(state),
+            ReferringPhysician = state.ReferringDoctorName,
+            PhysicianNpi = physicianNpi,
+            EmergencyContactName = state.EmergencyContactName,
+            EmergencyContactPhone = state.EmergencyContactPhone
         };
 
         var patientResponse = await httpClient.PostAsJsonAsync("/api/v1/patients/", createPatientRequest, cancellationToken);
@@ -480,6 +486,27 @@ public sealed class IntakeApiService(
         return state is null
             ? "{}"
             : IntakeConsentJson.Serialize(BuildConsentPacket(state));
+    }
+
+    private static string BuildPayerInfoJson(IntakeResponseDraft state)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            PayerType = state.PayerType,
+            ProviderType = state.PayerType,
+            InsuranceCompanyName = state.InsuranceCompanyName,
+            MemberOrPolicyNumber = state.MemberOrPolicyNumber,
+            MemberIdPolicyNumber = state.MemberOrPolicyNumber,
+            GroupNumber = state.GroupNumber,
+            CoverageType = state.InsuranceCoverageType,
+            InsurancePriority = state.InsuranceCoverageType
+        }, SerializerOptions);
+    }
+
+    private static string? ToSupportedNpi(string? value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        return trimmed is { Length: 10 } && trimmed.All(char.IsDigit) ? trimmed : null;
     }
 
     private static IntakeConsentPacket BuildConsentPacket(IntakeResponseDraft? state)

@@ -7,6 +7,8 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.ReferenceData;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -40,6 +42,8 @@ public static class DatabaseSeeder
     private const int SeedScheduleEndHour = 18;
     private const string SeedTemplateVersion = "1.0";
     private const string IntakeStructuredSchemaVersion = "2026-03-30";
+    private const string SqlServerProviderName = "Microsoft.EntityFrameworkCore.SqlServer";
+    private const string BetaSeedLockResource = "PTDoc:BetaAccessSeed";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -165,6 +169,77 @@ public static class DatabaseSeeder
     /// </summary>
     public static async Task SeedBetaAccessDataAsync(ApplicationDbContext context, ILogger logger, string seedPin)
     {
+        await SeedBetaAccessDataAsync(
+            context,
+            logger,
+            seedPin,
+            useSqlServerAppLock: IsSqlServerProvider(context),
+            acquireSqlServerAppLockAsync: AcquireSqlServerBetaSeedLockAsync);
+    }
+
+    internal static async Task SeedBetaAccessDataAsync(
+        ApplicationDbContext context,
+        ILogger logger,
+        string seedPin,
+        bool useSqlServerAppLock,
+        Func<ApplicationDbContext, Task<int>> acquireSqlServerAppLockAsync)
+    {
+        if (!IsValidBetaSeedPin(seedPin))
+        {
+            logger.LogWarning("Skipping Beta access seed because the supplied seed PIN is not configured as a 4-digit PIN.");
+            return;
+        }
+
+        if (!useSqlServerAppLock)
+        {
+            await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
+            return;
+        }
+
+        var executionStrategy = context.Database.CreateExecutionStrategy();
+        await executionStrategy.ExecuteAsync(async () =>
+        {
+            IDbContextTransaction? transaction = null;
+            try
+            {
+                transaction = context.Database.CurrentTransaction is null
+                    ? await context.Database.BeginTransactionAsync()
+                    : null;
+
+                var lockResult = await acquireSqlServerAppLockAsync(context);
+                if (!SqlServerAppLockWasAcquired(lockResult))
+                {
+                    logger.LogWarning(
+                        "Skipping Beta access seed because SQL Server application lock {LockResource} was not acquired. Result={LockResult}.",
+                        BetaSeedLockResource,
+                        lockResult);
+                    if (transaction is not null)
+                    {
+                        await transaction.RollbackAsync();
+                    }
+
+                    return;
+                }
+
+                await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
+
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync();
+                }
+            }
+            finally
+            {
+                if (transaction is not null)
+                {
+                    await transaction.DisposeAsync();
+                }
+            }
+        });
+    }
+
+    private static async Task SeedBetaAccessDataCoreAsync(ApplicationDbContext context, ILogger logger, string seedPin)
+    {
         logger.LogInformation("Checking Beta access seed data...");
 
         var now = DateTime.UtcNow;
@@ -244,6 +319,58 @@ public static class DatabaseSeeder
             updatedCount,
             BetaAccessUsers.Count,
             patientFixtureResult.Total);
+    }
+
+    private static bool IsSqlServerProvider(ApplicationDbContext context) =>
+        string.Equals(context.Database.ProviderName, SqlServerProviderName, StringComparison.Ordinal);
+
+    private static bool IsValidBetaSeedPin(string? seedPin) =>
+        !string.IsNullOrWhiteSpace(seedPin)
+        && seedPin.Length == 4
+        && seedPin.All(char.IsDigit);
+
+    private static bool SqlServerAppLockWasAcquired(int lockResult) => lockResult >= 0;
+
+    private static async Task<int> AcquireSqlServerBetaSeedLockAsync(ApplicationDbContext context)
+    {
+        var connection = context.Database.GetDbConnection();
+        var shouldCloseConnection = connection.State == ConnectionState.Closed;
+        if (shouldCloseConnection)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+            command.CommandType = CommandType.Text;
+            command.CommandText =
+                """
+                DECLARE @LockResult int;
+                EXEC @LockResult = sys.sp_getapplock
+                    @Resource = @SeedLockResource,
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = 0;
+                SELECT @LockResult;
+                """;
+
+            var resourceParameter = command.CreateParameter();
+            resourceParameter.ParameterName = "@SeedLockResource";
+            resourceParameter.Value = BetaSeedLockResource;
+            command.Parameters.Add(resourceParameter);
+
+            var result = await command.ExecuteScalarAsync();
+            return Convert.ToInt32(result);
+        }
+        finally
+        {
+            if (shouldCloseConnection)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 
     private static async Task<BetaPatientFixtureSeedResult> EnsureBetaPatientFixturesAsync(
@@ -1601,6 +1728,11 @@ public static class DatabaseSeeder
             PostalCode = "92122",
             EmergencyContactName = "Fixture Contact",
             EmergencyContactPhone = "555-2103",
+            PrimaryDoctorName = "Dr. Primary Fixture",
+            PrimaryDoctorPhone = "555-2104",
+            ReferringDoctorName = "Dr. Intake",
+            ReferringDoctorNpi = "1400001000",
+            ReferringDoctorPhone = "555-2105",
             InsuranceCompanyName = "QA Fixture PPO",
             MemberOrPolicyNumber = "DEVQASHOULDER001",
             PayerType = "Commercial",
@@ -1609,6 +1741,7 @@ public static class DatabaseSeeder
             UsesAssistiveDevices = false,
             HasOtherMedicalConditions = true,
             MedicalHistoryNotes = "Fixture shoulder intake for live suggestion chip signoff.",
+            FunctionalLimitations = "Difficulty reaching overhead cabinets and dressing.",
             SelectedBodyRegion = "RightShoulderFront",
             PainSeverityScore = 6,
             PainSeverityProvided = true,

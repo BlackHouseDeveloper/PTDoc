@@ -41,17 +41,21 @@
 }
 
 .pain-progress__fill--1 {
-    width: 25%;
+    width: 20%;
 }
 
 .pain-progress__fill--2 {
-    width: 50%;
+    width: 40%;
 }
 
 .pain-progress__fill--3 {
-    width: 75%;
+    width: 60%;
 }
 
 .pain-progress__fill--4 {
+    width: 80%;
+}
+
+.pain-progress__fill--5 {
     width: 100%;
 }

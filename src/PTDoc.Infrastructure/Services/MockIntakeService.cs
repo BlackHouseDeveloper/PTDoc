@@ -13,7 +13,8 @@ public sealed class MockIntakeService : IIntakeService
     private static readonly IIntakeDraftCanonicalizer DefaultDraftCanonicalizer =
         new IntakeDraftCanonicalizer(
             new OutcomeMeasureRegistry(),
-            new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
+            new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()),
+            new IntakeReferenceDataCatalogService());
 
     private readonly ConcurrentDictionary<Guid, IntakeResponseDraft> _drafts = new();
     private readonly IIntakeDraftCanonicalizer _draftCanonicalizer;
@@ -130,6 +131,7 @@ public sealed class MockIntakeService : IIntakeService
         {
             IntakeId = state.IntakeId,
             PatientId = state.PatientId,
+            IntakeFlowVersion = state.IntakeFlowVersion,
             CurrentStep = state.CurrentStep,
             ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(state.ConsentPacket),
             HipaaAcknowledged = state.HipaaAcknowledged,
@@ -159,6 +161,11 @@ public sealed class MockIntakeService : IIntakeService
             PostalCode = state.PostalCode,
             EmergencyContactName = state.EmergencyContactName,
             EmergencyContactPhone = state.EmergencyContactPhone,
+            PrimaryDoctorName = state.PrimaryDoctorName,
+            PrimaryDoctorPhone = state.PrimaryDoctorPhone,
+            ReferringDoctorName = state.ReferringDoctorName,
+            ReferringDoctorNpi = state.ReferringDoctorNpi,
+            ReferringDoctorPhone = state.ReferringDoctorPhone,
             InsuranceCompanyName = state.InsuranceCompanyName,
             MemberOrPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
@@ -169,6 +176,7 @@ public sealed class MockIntakeService : IIntakeService
             UsesAssistiveDevices = state.UsesAssistiveDevices,
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
+            FunctionalLimitations = state.FunctionalLimitations,
             SelectedBodyRegion = state.SelectedBodyRegion,
             PainSeverityScore = state.PainSeverityScore,
             PainDetailDrafts = state.PainDetailDrafts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
@@ -178,6 +186,8 @@ public sealed class MockIntakeService : IIntakeService
             SelectedLivingSituations = state.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase),
             SelectedHouseLayoutOptions = state.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             RecommendedOutcomeMeasures = state.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            AssignedOutcomeMeasures = state.AssignedOutcomeMeasures.Select(CloneAssignedOutcomeMeasure).ToList(),
+            InitialOutcomeMeasureReports = state.InitialOutcomeMeasureReports.Select(CloneInitialOutcomeMeasureReport).ToList(),
             PainSeverityProvided = state.PainSeverityProvided,
             IsSubmitted = state.IsSubmitted,
             IsLocked = state.IsLocked,
@@ -201,5 +211,34 @@ public sealed class MockIntakeService : IIntakeService
         return IntakeStructuredDataJson.TryParse(json, out var clone, out _)
             ? clone
             : new IntakeStructuredDataDto();
+    }
+
+    private static AssignedOutcomeMeasureDraft CloneAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft source)
+    {
+        return new AssignedOutcomeMeasureDraft
+        {
+            BodyPartId = source.BodyPartId,
+            BodyPartLabel = source.BodyPartLabel,
+            CanonicalBodyPart = source.CanonicalBodyPart,
+            Laterality = source.Laterality,
+            MeasureAbbreviation = source.MeasureAbbreviation,
+            MeasureFullName = source.MeasureFullName,
+            ReferenceVersion = source.ReferenceVersion,
+            IsPrimary = source.IsPrimary,
+            RequiresClinicalConfirmation = source.RequiresClinicalConfirmation
+        };
+    }
+
+    private static InitialOutcomeMeasureReportDraft CloneInitialOutcomeMeasureReport(InitialOutcomeMeasureReportDraft source)
+    {
+        return new InitialOutcomeMeasureReportDraft
+        {
+            AssignedMeasureAbbreviation = source.AssignedMeasureAbbreviation,
+            PatientEnteredMeasureName = source.PatientEnteredMeasureName,
+            ScoreText = source.ScoreText,
+            CompletedDate = source.CompletedDate,
+            Notes = source.Notes,
+            Skipped = source.Skipped
+        };
     }
 }

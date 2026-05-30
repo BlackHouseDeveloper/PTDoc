@@ -39,7 +39,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var registry = new OutcomeMeasureRegistry();
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper);
+        var intakeDraftCanonicalizer = new IntakeDraftCanonicalizer(registry, intakeBodyPartMapper, intakeReferenceData);
         var catalogs = new WorkspaceReferenceCatalogService(registry);
         var auditService = new AuditService(context);
         var rulesEngine = new RulesEngine(context, auditService);
@@ -603,11 +603,22 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             PainSeverityProvided = true,
             UsesAssistiveDevices = true,
             MedicalHistoryNotes = "History of recurrent knee pain.",
+            FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
             SelectedAssistiveDevices = ["Cane"],
             SelectedLivingSituations = ["Lives alone"],
             SelectedHouseLayoutOptions = ["Single-Story Home: Bedroom and bathroom on main floor"],
-            RecommendedOutcomeMeasures = ["LEFS", "KOOS"]
+            RecommendedOutcomeMeasures = ["LEFS", "KOOS"],
+            InitialOutcomeMeasureReports =
+            [
+                new InitialOutcomeMeasureReportDraft
+                {
+                    AssignedMeasureAbbreviation = "LEFS",
+                    ScoreText = "42/80",
+                    CompletedDate = new DateTime(2026, 4, 1),
+                    Notes = "Completed at prior clinic."
+                }
+            ]
         };
 
         var newerDraft = new IntakeResponseDraft
@@ -679,9 +690,12 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("Cane", seed.Payload.Subjective.AssistiveDevice.Devices);
         Assert.True(seed.Payload.Subjective.TakingMedications);
         Assert.Equal("Zestril / Lisinopril", Assert.Single(seed.Payload.Subjective.Medications).Name);
+        Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Subjective.AdditionalFunctionalLimitations);
+        Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Assessment.FunctionalLimitationsSummary);
         Assert.Contains("Left leg", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Knee, seed.Payload.Objective.PrimaryBodyPart);
         Assert.Equal(["LEFS", "NPRS", "PSFS"], seed.Payload.Objective.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+        Assert.Contains("42/80", seed.Payload.Objective.ClinicalObservationNotes ?? string.Empty, StringComparison.Ordinal);
         Assert.Empty(seed.Payload.Objective.OutcomeMeasures);
         Assert.Empty(_context.OutcomeMeasureResults);
     }

@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Copilot review follow-up for payer JSON merge preservation
+
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Reworked submitted-intake payer merge behavior to overlay intake-owned alias fields into the existing payer JSON object instead of serializing a narrowed replacement payload, preserving unrelated payer metadata (for example `YearType`, effective dates, authorization number, visit tracking) already stored by the patient payer workflow. Added regressions that assert these non-intake keys survive partial payer submissions in both endpoint and service submit paths. Reason: resolve Copilot PR review data-loss risk where partial intake payer updates could silently erase existing authorization/effective-date metadata.
+
+### Fixed - Intake submitted payer partial merge behavior
+
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Changed submitted-intake patient payer updates to merge non-blank submitted payer fields into existing `Patient.PayerInfoJson` instead of replacing the full blob when any payer field is present. Added endpoint and service regressions proving partial payer submissions (for example, payer type only) preserve existing insurance company/member/group/coverage values while updating aliases consistently. Reason: partial intake insurance data should not erase existing payer details.
+
+### Fixed - Intake optional NPI draft creation guardrail
+
+- **`src/PTDoc.UI/Services/IntakeApiService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Removed the temporary-patient draft creation throw for unsupported optional referring-doctor NPI values and aligned behavior to omit non-10-digit NPIs from the create-patient payload instead. Added a regression proving invalid optional NPI values no longer fault the client path and serialize as `null`. Reason: demographics continue/create-draft UI catches API request failures, so optional NPI format mismatches should not surface as unhandled component exceptions.
+
+### Fixed - PR review follow-up (intake review and header mapping)
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Limited read-only submit-status panel rendering to the explicit intake submit-success message so non-submit review/validation feedback (including clinician review failures) stays in the standard message region. Reason: avoid presenting non-submit validation feedback as submit confirmation near the submit button.
+- **`src/PTDoc.Application/Configurations/Header/HeaderConfigurationService.cs`**, **`tests/PTDoc.Tests/Application/HeaderConfigurationServiceTests.cs`** — Restored the intake header subtitle alias that maps numeric `step=5` to the final Review subtitle in the five-step flow. Reason: preserve backward compatibility for existing callers using 1-based final-step query links.
+
+### Fixed - Intake legacy draft step hydration
+
+- **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs`** — Treated legacy flow (`intakeFlowVersion < 2`) drafts with `currentStep = 3` as Review unconditionally, even when canonicalized structured body-part data derives assigned outcome measures; added a regression covering legacy step 3 with assigned outcomes. Reason: prevent pre-Outcome-Measures flow drafts from being misrouted to the new Outcome Measures step during hydration.
+
+### Fixed - Intake review and payer contract alignment
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Updated review-step outcome-score rendering so mixed payloads (one skipped report plus one entered score report) still display entered score context instead of collapsing to a single `Skipped` value. Reason: clinician review must not lose patient-entered initial score details when skipped rows coexist in canonicalized report lists.
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.UI/Services/IntakeApiService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Aligned intake payer JSON serialization with existing patient payer UI hydration keys by emitting `providerType`, `memberIdPolicyNumber`, and `insurancePriority` aliases alongside existing fields. Reason: insurance values saved from intake and temporary-patient intake creation must rehydrate on the patient payer page without key-shape drift.
+- **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Updated the intake service payer JSON serializer to emit `providerType`, `memberIdPolicyNumber`, and `insurancePriority` aliases alongside existing legacy keys, and added submit-path assertions for those aliases. Reason: service-driven intake submit paths must persist payer JSON in the same compatible shape as endpoint/UI intake paths so patient payer UI hydration remains consistent.
+
+### Fixed - Intake sex-at-birth field semantics
+
+- **`src/PTDoc.UI/Components/Intake/Cards/BasicInfoCard.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Renamed the demographics field label and selector from Gender to Sex at Birth where it binds to `SexAtBirth`, updated the prompt copy, replaced `Non-binary` with `Intersex` in the selectable values, and aligned the intake component test selector/name to the updated contract terminology. Reason: prevent conflating gender identity with the persisted `sexAtBirth` field and resolve the PR Copilot review finding.
+
+### Fixed - PR review follow-ups
+
+- **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`docs/Azure-database-guide.md`**, **`tests/PTDoc.Tests/UI/Intake/*`** — Added intake-flow versioning so legacy drafts with `currentStep: 3` still hydrate to Review, recalculated assigned outcome-measure laterality after laterality edits, and replaced unresolved chat citation artifacts in the Azure database guide with standard Markdown links. Reason: PR review found compatibility, stale metadata, and documentation-reference issues.
+
+### Fixed - Intake payer preservation
+
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/*`** — Preserved existing patient payer JSON when a submitted intake draft does not include payer fields, while still updating payer details when insurance data is supplied. Reason: submitted invite or existing-patient intakes without insurance fields should not erase previously stored payer information.
+
+### Added - Azure database setup guide
+
+- **`docs/Azure-database-guide.md`** — Added a repository guide for Azure database setup and usage. Reason: document the new Azure database workflow in the changelog so unreleased documentation changes are fully reflected for this branch.
+
+### Fixed - Intake validation follow-ups
+
+- **`src/PTDoc.UI/Components/Intake/Steps/PainDetailsStep.razor`**, **`src/PTDoc.Application/Services/IntakeDraftPersistence.cs`**, **`src/PTDoc.Api/Intake/*`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/**/*Intake*`** — Removed the remaining legacy multi-measure recommendation display from Pain Details, renamed the Pain Details continue action to target the dedicated Outcome Measures step, and normalized embedded submitted/locked metadata in persisted intake JSON for authenticated, standalone, and service submit paths. Reason: localhost validation found stale multi-measure UI, misleading transition copy, and inconsistent embedded JSON flags after submit.
+
+### Added - Clinical data carry-forward requirements
+
+- **`docs/PTDocs+_Master_FSD.md`** — Added implementation-ready workflow, persistence, UI, source-traceability, offline sync, addendum, and AI acceptance requirements for carrying clinical data across Intake, Evaluation SOAP, Daily SOAP, Progress/Re-Eval SOAP, and Discharge SOAP. Reason: clinicians must not manually re-enter patient and clinical context that already exists in the system, and QA needs explicit lifecycle acceptance criteria.
+
+### Fixed - Intake outcome measure review display
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Removed the legacy multi-measure recommendation list from standard intake review while keeping the one-primary-measure-per-body-part assignment list and prior-score review context visible. Reason: beta intake should not show patients multiple system-selected outcome measures for the same body part during the standard intake flow.
+
+### Changed - Beta seeding compliance hardening
+
+- **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`tests/PTDoc.Tests/Identity/BetaAccessSeederTests.cs`**, **`tests/PTDoc.Tests/Integration/BetaDeploymentConfigurationTests.cs`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Made Beta startup seeding explicitly opt-in for the Beta environment, added SQL Server application-lock protection around seed writes, preserved configuration-driven seed PIN handling, and documented the verified single-instance operating model and migration/readiness/login validation order. Reason: Beta seed data remains a controlled lower-environment startup fixture while reducing runtime seeding race risk and keeping secrets out of committed configuration.
+
+### Added - Intake end-to-end beta workflow
+
+- **`src/PTDoc.UI/Components/Intake/*`**, **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.Api/Intake/*`**, **`src/PTDoc.Infrastructure/Services/*Intake*`**, **`src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`**, **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`tests/PTDoc.Tests/Intake/*`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceV2ServiceTests.cs`** — Expanded the standalone intake workflow with Sex at Birth, address, insurance review, care-team fields, functional limitations, visible submit-area confirmation, locked read-only review behavior, submitted-intake patient-field mapping, and clinician workspace seeding for functional limitations while preserving the existing invite/OTP, lock, `IntakeResponse`, body-part, and outcome-measure paths. Reason: beta patients need to complete and submit intake from a link, and clinicians need the submitted demographic, payer, limitation, and outcome context available for review without a new database migration.
+- **`src/PTDoc.Application/Data/OutcomeMeasureReferenceData.json`**, **`src/PTDoc.Application/Outcomes/IOutcomeMeasureRegistry.cs`**, **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeDraftCanonicalizer.cs`**, **`src/PTDoc.UI/Components/Intake/Steps/OutcomeMeasuresStep.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`docs/PTDocs+_Master_FSD.md`**, **`tests/PTDoc.Tests/Outcomes/OutcomeMeasureRegistryTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeDraftCanonicalizerTests.cs`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Added a dedicated Outcome Measures intake step, explicit runtime primary outcome-measure mapping, one patient-facing assigned measure per selected body part, optional patient-entered prior score capture, and review visibility while preserving the broader clinician outcome recommendation set. Reason: patients should not see multiple outcome questionnaires for the same body part during standard intake, but clinicians still need full downstream outcome-measure flexibility.
+
 ### Changed - Agent workflow doc sync
 
 - **`AGENTS.md`** — Documented the current browser-based responsive QA workflow, the explicit local Web host URL, the `PUBLIC_WEB_BASE_URL` tunnel/device-testing override for generated patient links, and the Playwright UI QA environment variables and artifact paths. Reason: keep agent-facing workflow notes aligned with the current launcher, communications, and responsive QA tooling without widening unrelated guidance.

@@ -20,6 +20,8 @@
 
     <MedicalHistoryCard State="@State" StateChanged="HandleMedicalHistoryChangedAsync" />
 
+    <FunctionalLimitationsCard FunctionalLimitations="@State.FunctionalLimitations" FunctionalLimitationsChanged="OnFunctionalLimitationsChangedAsync" />
+
     <IntakeFooterActions
         ShowBack="true"
         PrimaryText="@ContinueText"
@@ -86,6 +88,7 @@
             State.StructuredData.BodyPartSelections.Clear();
             State.StructuredData.PainDescriptorIds.Clear();
             State.RecommendedOutcomeMeasures.Clear();
+            State.AssignedOutcomeMeasures.Clear();
         }
 
         State.IsDirty = true;
@@ -103,4 +106,15 @@
 
     private Task HandleMedicalHistoryChangedAsync() =>
         OnStateChanged.HasDelegate ? OnStateChanged.InvokeAsync() : Task.CompletedTask;
+
+    private async Task OnFunctionalLimitationsChangedAsync(string? value)
+    {
+        State.FunctionalLimitations = value;
+        State.IsDirty = true;
+
+        if (OnStateChanged.HasDelegate)
+        {
+            await OnStateChanged.InvokeAsync();
+        }
+    }
 }

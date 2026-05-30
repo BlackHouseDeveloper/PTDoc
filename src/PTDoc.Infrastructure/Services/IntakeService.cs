@@ -9,6 +9,7 @@ using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace PTDoc.Infrastructure.Services;
 
@@ -326,17 +327,24 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return;
 
+        var nowUtc = DateTime.UtcNow;
+        var submittedAtUtc = intake.SubmittedAt ?? nowUtc;
+
         // Update intake with final submitted state
         var submittedState = new IntakeResponseDraft();
         CopyDraftProperties(canonicalState, submittedState);
-        submittedState.IsSubmitted = true;
-        intake.ResponseJson = SerializeDraft(submittedState);
+        intake.ResponseJson = IntakeDraftPersistence.SerializeSubmittedPersistenceJson(
+            submittedState,
+            intake.Id,
+            patientId,
+            submittedAtUtc,
+            nowUtc);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
         intake.Consents = BuildConsentsJson(canonicalState);
-        intake.SubmittedAt = DateTime.UtcNow;
+        intake.SubmittedAt = submittedAtUtc;
         intake.IsLocked = true;
-        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.LastModifiedUtc = nowUtc;
         intake.ModifiedByUserId = userId;
         intake.SyncState = SyncState.Pending;
 
@@ -366,7 +374,17 @@ public sealed class IntakeService : IIntakeService
             patient.ZipCode = canonicalState.PostalCode?.Trim() ?? patient.ZipCode;
             patient.EmergencyContactName = canonicalState.EmergencyContactName?.Trim() ?? patient.EmergencyContactName;
             patient.EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim() ?? patient.EmergencyContactPhone;
-            patient.PayerInfoJson = BuildPayerInfoJson(canonicalState);
+            patient.ReferringPhysician = canonicalState.ReferringDoctorName?.Trim() ?? patient.ReferringPhysician;
+            var npi = canonicalState.ReferringDoctorNpi?.Trim();
+            if (!string.IsNullOrWhiteSpace(npi) && npi.Length == 10 && npi.All(char.IsDigit))
+            {
+                patient.PhysicianNpi = npi;
+            }
+
+            if (HasSubmittedPayerInfo(canonicalState))
+            {
+                patient.PayerInfoJson = BuildMergedPayerInfoJson(patient.PayerInfoJson, canonicalState);
+            }
             var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
             patient.ConsentSigned = canonicalConsent.HipaaAcknowledged == true;
             if (canonicalConsent.HipaaAcknowledged == true && patient.ConsentSignedDate is null)
@@ -409,6 +427,7 @@ public sealed class IntakeService : IIntakeService
     private static void CopyDraftProperties(IntakeResponseDraft source, IntakeResponseDraft target)
     {
         target.PatientId = source.PatientId;
+        target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;
@@ -438,6 +457,11 @@ public sealed class IntakeService : IIntakeService
         target.PostalCode = source.PostalCode;
         target.EmergencyContactName = source.EmergencyContactName;
         target.EmergencyContactPhone = source.EmergencyContactPhone;
+        target.PrimaryDoctorName = source.PrimaryDoctorName;
+        target.PrimaryDoctorPhone = source.PrimaryDoctorPhone;
+        target.ReferringDoctorName = source.ReferringDoctorName;
+        target.ReferringDoctorNpi = source.ReferringDoctorNpi;
+        target.ReferringDoctorPhone = source.ReferringDoctorPhone;
         target.InsuranceCompanyName = source.InsuranceCompanyName;
         target.MemberOrPolicyNumber = source.MemberOrPolicyNumber;
         target.GroupNumber = source.GroupNumber;
@@ -448,6 +472,7 @@ public sealed class IntakeService : IIntakeService
         target.UsesAssistiveDevices = source.UsesAssistiveDevices;
         target.HasPreviousSurgeriesOrInjuries = source.HasPreviousSurgeriesOrInjuries;
         target.MedicalHistoryNotes = source.MedicalHistoryNotes;
+        target.FunctionalLimitations = source.FunctionalLimitations;
         target.SelectedBodyRegion = source.SelectedBodyRegion;
         target.PainSeverityScore = source.PainSeverityScore;
         target.PainDetailDrafts = source.PainDetailDrafts
@@ -458,6 +483,8 @@ public sealed class IntakeService : IIntakeService
         target.SelectedLivingSituations = source.SelectedLivingSituations.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.SelectedHouseLayoutOptions = source.SelectedHouseLayoutOptions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         target.RecommendedOutcomeMeasures = source.RecommendedOutcomeMeasures.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        target.AssignedOutcomeMeasures = source.AssignedOutcomeMeasures.Select(CloneAssignedOutcomeMeasure).ToList();
+        target.InitialOutcomeMeasureReports = source.InitialOutcomeMeasureReports.Select(CloneInitialOutcomeMeasureReport).ToList();
         target.PainSeverityProvided = source.PainSeverityProvided;
         target.IsSubmitted = source.IsSubmitted;
         target.IsLocked = source.IsLocked;
@@ -552,17 +579,148 @@ public sealed class IntakeService : IIntakeService
             : new IntakeStructuredDataDto();
     }
 
+    private static AssignedOutcomeMeasureDraft CloneAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft source)
+    {
+        return new AssignedOutcomeMeasureDraft
+        {
+            BodyPartId = source.BodyPartId,
+            BodyPartLabel = source.BodyPartLabel,
+            CanonicalBodyPart = source.CanonicalBodyPart,
+            Laterality = source.Laterality,
+            MeasureAbbreviation = source.MeasureAbbreviation,
+            MeasureFullName = source.MeasureFullName,
+            ReferenceVersion = source.ReferenceVersion,
+            IsPrimary = source.IsPrimary,
+            RequiresClinicalConfirmation = source.RequiresClinicalConfirmation
+        };
+    }
+
+    private static InitialOutcomeMeasureReportDraft CloneInitialOutcomeMeasureReport(InitialOutcomeMeasureReportDraft source)
+    {
+        return new InitialOutcomeMeasureReportDraft
+        {
+            AssignedMeasureAbbreviation = source.AssignedMeasureAbbreviation,
+            PatientEnteredMeasureName = source.PatientEnteredMeasureName,
+            ScoreText = source.ScoreText,
+            CompletedDate = source.CompletedDate,
+            Notes = source.Notes,
+            Skipped = source.Skipped
+        };
+    }
+
     private static string BuildPayerInfoJson(IntakeResponseDraft state)
     {
         var payerInfo = new
         {
             PayerType = state.PayerType,
+            ProviderType = state.PayerType,
             InsuranceCompanyName = state.InsuranceCompanyName,
             MemberOrPolicyNumber = state.MemberOrPolicyNumber,
+            MemberIdPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
-            CoverageType = state.InsuranceCoverageType
+            CoverageType = state.InsuranceCoverageType,
+            InsurancePriority = state.InsuranceCoverageType
         };
-        return JsonSerializer.Serialize(payerInfo);
+        return JsonSerializer.Serialize(payerInfo, SerializerOptions);
+    }
+
+    private static string BuildMergedPayerInfoJson(string? existingPayerInfoJson, IntakeResponseDraft state)
+    {
+        var merged = ParsePayerInfoObject(existingPayerInfoJson);
+        var payerType = TrimOrNull(state.PayerType) ?? GetPayerInfoValue(merged, "payerType", "providerType");
+        var insuranceCompanyName = TrimOrNull(state.InsuranceCompanyName) ?? GetPayerInfoValue(merged, "insuranceCompanyName");
+        var memberOrPolicyNumber = TrimOrNull(state.MemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "memberOrPolicyNumber", "memberIdPolicyNumber");
+        var groupNumber = TrimOrNull(state.GroupNumber) ?? GetPayerInfoValue(merged, "groupNumber");
+        var coverageType = TrimOrNull(state.InsuranceCoverageType) ?? GetPayerInfoValue(merged, "coverageType", "insurancePriority");
+
+        SetPayerInfoValue(merged, "payerType", payerType);
+        SetPayerInfoValue(merged, "providerType", payerType);
+        SetPayerInfoValue(merged, "insuranceCompanyName", insuranceCompanyName);
+        SetPayerInfoValue(merged, "memberOrPolicyNumber", memberOrPolicyNumber);
+        SetPayerInfoValue(merged, "memberIdPolicyNumber", memberOrPolicyNumber);
+        SetPayerInfoValue(merged, "groupNumber", groupNumber);
+        SetPayerInfoValue(merged, "coverageType", coverageType);
+        SetPayerInfoValue(merged, "insurancePriority", coverageType);
+
+        return merged.ToJsonString(SerializerOptions);
+    }
+
+    private static JsonObject ParsePayerInfoObject(string? payerInfoJson)
+    {
+        if (string.IsNullOrWhiteSpace(payerInfoJson))
+        {
+            return new JsonObject();
+        }
+
+        try
+        {
+            return JsonNode.Parse(payerInfoJson) as JsonObject ?? new JsonObject();
+        }
+        catch (JsonException)
+        {
+            return new JsonObject();
+        }
+    }
+
+    private static string? GetPayerInfoValue(JsonObject payerInfo, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var existingPropertyName = FindPayerInfoPropertyName(payerInfo, propertyName);
+            if (existingPropertyName is null || !payerInfo.TryGetPropertyValue(existingPropertyName, out var node) || node is null)
+            {
+                continue;
+            }
+
+            if (node is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var stringValue))
+            {
+                var normalized = TrimOrNull(stringValue);
+                if (normalized is not null)
+                {
+                    return normalized;
+                }
+                continue;
+            }
+
+            var fallbackValue = TrimOrNull(node.ToString());
+            if (fallbackValue is not null)
+            {
+                return fallbackValue;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetPayerInfoValue(JsonObject payerInfo, string propertyName, string? value)
+    {
+        var existingPropertyName = FindPayerInfoPropertyName(payerInfo, propertyName);
+        var targetPropertyName = existingPropertyName ?? propertyName;
+
+        foreach (var candidatePropertyName in payerInfo.Select(property => property.Key).Where(key => !string.Equals(key, targetPropertyName, StringComparison.Ordinal) && string.Equals(key, propertyName, StringComparison.OrdinalIgnoreCase)).ToArray())
+        {
+            payerInfo.Remove(candidatePropertyName);
+        }
+
+        payerInfo[targetPropertyName] = value is null ? null : JsonValue.Create(value);
+    }
+
+    private static string? FindPayerInfoPropertyName(JsonObject payerInfo, string propertyName)
+    {
+        return payerInfo.Select(property => property.Key)
+            .FirstOrDefault(key => string.Equals(key, propertyName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasSubmittedPayerInfo(IntakeResponseDraft state) =>
+        !string.IsNullOrWhiteSpace(state.PayerType)
+        || !string.IsNullOrWhiteSpace(state.InsuranceCompanyName)
+        || !string.IsNullOrWhiteSpace(state.MemberOrPolicyNumber)
+        || !string.IsNullOrWhiteSpace(state.GroupNumber)
+        || !string.IsNullOrWhiteSpace(state.InsuranceCoverageType);
+
+    private static string? TrimOrNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static string BuildConsentsJson(IntakeResponseDraft state)
@@ -582,4 +740,5 @@ public sealed class IntakeService : IIntakeService
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(secret));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
+
 }

@@ -41,6 +41,10 @@ public sealed class OutcomeMeasureRegistry : IOutcomeMeasureRegistry
         => OutcomeMeasureCatalogResolver.GetRecommendedMeasureAbbreviationsForBodyPart(bodyPart);
 
     /// <inheritdoc />
+    public bool TryGetPrimaryRecommendedMeasureForBodyPart(BodyPart bodyPart, out OutcomeMeasureDefinition definition)
+        => OutcomeMeasureCatalogResolver.TryGetPrimaryRecommendedMeasureForBodyPart(bodyPart, out definition);
+
+    /// <inheritdoc />
     public bool TryResolveSupportedMeasureType(string rawValue, out OutcomeMeasureType measureType)
         => OutcomeMeasureCatalogResolver.TryResolveSupportedMeasureType(rawValue, out measureType);
 

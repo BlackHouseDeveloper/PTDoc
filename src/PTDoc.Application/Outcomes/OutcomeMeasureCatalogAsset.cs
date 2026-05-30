@@ -22,6 +22,7 @@ public sealed class OutcomeMeasureDefinitionAsset
     public double MinimumClinicallyImportantDifference { get; set; }
     public bool IsSelectableForNewEntry { get; set; } = true;
     public List<string> RecommendedForBodyParts { get; set; } = new();
+    public List<string> PrimaryForBodyParts { get; set; } = new();
     public List<OutcomeMeasureScoringBandAsset> ScoringBands { get; set; } = new();
     public ReferenceDataProvenance? Provenance { get; set; }
 }

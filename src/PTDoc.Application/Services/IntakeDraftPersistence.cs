@@ -66,6 +66,34 @@ public static class IntakeDraftPersistence
         return root.ToJsonString(SerializerOptions);
     }
 
+    public static string NormalizeSubmittedPersistenceJson(
+        string? responseJson,
+        Guid intakeId,
+        Guid patientId,
+        DateTime submittedAtUtc,
+        DateTime lastModifiedUtc)
+    {
+        var draft = DeserializeDraft(responseJson);
+        return SerializeSubmittedPersistenceJson(draft, intakeId, patientId, submittedAtUtc, lastModifiedUtc);
+    }
+
+    public static string SerializeSubmittedPersistenceJson(
+        IntakeResponseDraft draft,
+        Guid intakeId,
+        Guid patientId,
+        DateTime submittedAtUtc,
+        DateTime lastModifiedUtc)
+    {
+        var copy = CreatePersistenceCopy(draft);
+        copy.IntakeId = intakeId;
+        copy.PatientId = patientId;
+        copy.IsSubmitted = true;
+        copy.IsLocked = true;
+        copy.SubmittedAt = submittedAtUtc;
+        copy.LastModifiedUtc = lastModifiedUtc;
+        return SerializePersistenceJson(copy);
+    }
+
     public static IntakeConsentPacket? CloneConsentPacket(IntakeConsentPacket? packet)
     {
         if (packet is null)
@@ -207,6 +235,24 @@ public static class IntakeDraftPersistence
         catch (JsonException)
         {
             return false;
+        }
+    }
+
+    private static IntakeResponseDraft DeserializeDraft(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new IntakeResponseDraft();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<IntakeResponseDraft>(json, SerializerOptions)
+                   ?? new IntakeResponseDraft();
+        }
+        catch (JsonException)
+        {
+            return new IntakeResponseDraft();
         }
     }
 

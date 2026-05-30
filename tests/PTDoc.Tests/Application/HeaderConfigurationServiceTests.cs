@@ -8,13 +8,15 @@ public sealed class HeaderConfigurationServiceTests
     private readonly HeaderConfigurationService _service = new();
 
     [Theory]
-    [InlineData("/intake?step=0", "Step 1 of 4: Demographics")]
-    [InlineData("/intake?step=1", "Step 2 of 4: Medical History / Pain Assessment")]
-    [InlineData("/intake?step=2", "Step 3 of 4: Pain Details")]
-    [InlineData("/intake?step=3", "Step 4 of 4: Review")]
-    [InlineData("/intake?step=4", "Step 4 of 4: Review")] // 1-based query values are supported
-    [InlineData("/intake?step=PainAssessment", "Step 2 of 4: Medical History / Pain Assessment")]
-    [InlineData("/intake/123?step=Review", "Step 4 of 4: Review")]
+    [InlineData("/intake?step=0", "Step 1 of 5: Demographics")]
+    [InlineData("/intake?step=1", "Step 2 of 5: Medical History / Pain Assessment")]
+    [InlineData("/intake?step=2", "Step 3 of 5: Pain Details")]
+    [InlineData("/intake?step=3", "Step 4 of 5: Outcome Measures")]
+    [InlineData("/intake?step=4", "Step 5 of 5: Review")]
+    [InlineData("/intake?step=5", "Step 5 of 5: Review")]
+    [InlineData("/intake?step=PainAssessment", "Step 2 of 5: Medical History / Pain Assessment")]
+    [InlineData("/intake?step=OutcomeMeasures", "Step 4 of 5: Outcome Measures")]
+    [InlineData("/intake/123?step=Review", "Step 5 of 5: Review")]
     public void GetConfiguration_ReturnsStepSubtitle_ForIntakeRoutes(string route, string expectedSubtitle)
     {
         var configuration = _service.GetConfiguration(route);

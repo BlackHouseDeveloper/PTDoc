@@ -214,6 +214,22 @@ public class OutcomeMeasureRegistryTests
     }
 
     [Theory]
+    [InlineData(BodyPart.Cervical, "NDI")]
+    [InlineData(BodyPart.Shoulder, "DASH")]
+    [InlineData(BodyPart.Lumbar, "ODI")]
+    [InlineData(BodyPart.Knee, "LEFS")]
+    [InlineData(BodyPart.Foot, "LEFS")]
+    public void TryGetPrimaryRecommendedMeasureForBodyPart_ReturnsConfiguredPatientFacingDefault(
+        BodyPart bodyPart,
+        string expectedAbbreviation)
+    {
+        var resolved = _registry.TryGetPrimaryRecommendedMeasureForBodyPart(bodyPart, out var definition);
+
+        Assert.True(resolved);
+        Assert.Equal(expectedAbbreviation, definition.Abbreviation);
+    }
+
+    [Theory]
     [InlineData(0, "Minimal disability")]
     [InlineData(14.9, "Minimal disability")]
     [InlineData(15, "Moderate disability")]

@@ -16,7 +16,7 @@ public sealed class IntakeDraftCanonicalizerTests
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var outcomeRegistry = new OutcomeMeasureRegistry();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        _canonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
+        _canonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper, intakeReferenceData);
     }
 
     [Fact]
@@ -40,6 +40,13 @@ public sealed class IntakeDraftCanonicalizerTests
         var canonical = _canonicalizer.CreateCanonicalCopy(draft);
 
         Assert.Equal(["LEFS", "NPRS", "PSFS"], canonical.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+        var assignment = Assert.Single(canonical.AssignedOutcomeMeasures);
+        Assert.Equal("knee", assignment.BodyPartId);
+        Assert.Equal("Knee", assignment.BodyPartLabel);
+        Assert.Equal("Knee", assignment.CanonicalBodyPart);
+        Assert.Equal("LEFS", assignment.MeasureAbbreviation);
+        Assert.True(assignment.IsPrimary);
+        Assert.False(assignment.RequiresClinicalConfirmation);
     }
 
     [Fact]
@@ -53,5 +60,30 @@ public sealed class IntakeDraftCanonicalizerTests
         var canonical = _canonicalizer.CreateCanonicalCopy(draft);
 
         Assert.Equal(["NPRS", "QuickDASH"], canonical.RecommendedOutcomeMeasures.OrderBy(value => value).ToArray());
+    }
+
+    [Fact]
+    public void CreateCanonicalCopy_NormalizesPatientEnteredInitialOutcomeReports()
+    {
+        var draft = new IntakeResponseDraft
+        {
+            InitialOutcomeMeasureReports =
+            [
+                new InitialOutcomeMeasureReportDraft
+                {
+                    PatientEnteredMeasureName = " LEFS ",
+                    ScoreText = " 42/80 ",
+                    Notes = " completed at prior clinic "
+                },
+                new InitialOutcomeMeasureReportDraft()
+            ]
+        };
+
+        var canonical = _canonicalizer.CreateCanonicalCopy(draft);
+
+        var report = Assert.Single(canonical.InitialOutcomeMeasureReports);
+        Assert.Equal("LEFS", report.PatientEnteredMeasureName);
+        Assert.Equal("42/80", report.ScoreText);
+        Assert.Equal("completed at prior clinic", report.Notes);
     }
 }

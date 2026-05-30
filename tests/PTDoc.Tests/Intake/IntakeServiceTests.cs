@@ -36,7 +36,7 @@ public sealed class IntakeServiceTests : IDisposable
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
         var outcomeRegistry = new OutcomeMeasureRegistry();
         var intakeBodyPartMapper = new IntakeBodyPartMapper(intakeReferenceData);
-        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper);
+        var draftCanonicalizer = new IntakeDraftCanonicalizer(outcomeRegistry, intakeBodyPartMapper, intakeReferenceData);
         _service = new IntakeService(
             _context,
             _tenantContext.Object,
@@ -515,6 +515,20 @@ public sealed class IntakeServiceTests : IDisposable
         {
             PatientId = patient.Id,
             FullName = "Sam Submit",
+            SexAtBirth = "Male",
+            AddressLine1 = "400 Beta Street",
+            City = "San Diego",
+            StateOrProvince = "CA",
+            PostalCode = "92101",
+            EmergencyContactName = "Emergency Contact",
+            EmergencyContactPhone = "555-0110",
+            ReferringDoctorName = "Dr. Referral",
+            ReferringDoctorNpi = "1234567890",
+            InsuranceCompanyName = "PFPT Beta PPO",
+            MemberOrPolicyNumber = "BETA001",
+            PayerType = "Commercial",
+            InsuranceCoverageType = "Primary",
+            FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             PainSeverityProvided = false
         });
 
@@ -522,6 +536,182 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.True(storedDraft.IsLocked);
         Assert.NotNull(storedDraft.SubmittedAt);
         Assert.True(storedDraft.LastModifiedUtc >= storedDraft.SubmittedAt.Value);
+
+        using var responseJson = JsonDocument.Parse(storedDraft.ResponseJson);
+        Assert.Equal(intakeId, responseJson.RootElement.GetProperty("intakeId").GetGuid());
+        Assert.Equal(patient.Id, responseJson.RootElement.GetProperty("patientId").GetGuid());
+        Assert.True(responseJson.RootElement.GetProperty("isLocked").GetBoolean());
+        Assert.True(responseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
+        Assert.Equal(storedDraft.SubmittedAt.Value, responseJson.RootElement.GetProperty("submittedAt").GetDateTime());
+        Assert.True(responseJson.RootElement.TryGetProperty("lastModifiedUtc", out var lastModifiedUtc));
+        Assert.Equal(JsonValueKind.String, lastModifiedUtc.ValueKind);
+        Assert.Equal("Male", responseJson.RootElement.GetProperty("sexAtBirth").GetString());
+        Assert.Equal("Difficulty walking longer than 10 minutes.", responseJson.RootElement.GetProperty("functionalLimitations").GetString());
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal("400 Beta Street", submittedPatient.AddressLine1);
+        Assert.Equal("Dr. Referral", submittedPatient.ReferringPhysician);
+        Assert.Equal("1234567890", submittedPatient.PhysicianNpi);
+        Assert.Contains("PFPT Beta PPO", submittedPatient.PayerInfoJson, StringComparison.Ordinal);
+        using var payerInfoJson = JsonDocument.Parse(submittedPatient.PayerInfoJson);
+        Assert.Equal("Commercial", payerInfoJson.RootElement.GetProperty("providerType").GetString());
+        Assert.Equal("BETA001", payerInfoJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+        Assert.Equal("Primary", payerInfoJson.RootElement.GetProperty("insurancePriority").GetString());
+    }
+
+    [Fact]
+    public async Task SubmitAsync_PreservesExistingPayerInfo_WhenSubmittedDraftHasNoPayerFields()
+    {
+        var existingPayerInfo = JsonSerializer.Serialize(new
+        {
+            PayerType = "Medicare",
+            InsuranceCompanyName = "Existing Plan",
+            MemberOrPolicyNumber = "EXISTING-001"
+        });
+        var patient = CreatePatient("Pat", "Payer");
+        patient.PayerInfoJson = existingPayerInfo;
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Pat Payer"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Pat Payer",
+            EmailAddress = "pat.payer@example.com",
+            PhoneNumber = "555-0113",
+            PainSeverityProvided = false
+        });
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal(existingPayerInfo, submittedPatient.PayerInfoJson);
+        Assert.Equal("pat.payer@example.com", submittedPatient.Email);
+        Assert.Equal("555-0113", submittedPatient.Phone);
+        Assert.Equal(SyncState.Pending, submittedPatient.SyncState);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_MergesSubmittedPayerInfo_WhenSubmittedDraftHasPartialPayerFields()
+    {
+        var existingPayerInfo = JsonSerializer.Serialize(new
+        {
+            PayerType = "Medicare",
+            InsuranceCompanyName = "Existing Plan",
+            MemberOrPolicyNumber = "EXISTING-001",
+            GroupNumber = "GROUP-42",
+            CoverageType = "Secondary",
+            YearType = "Calendar",
+            EffectiveStartDate = "2026-01-01",
+            AuthorizationNumber = "AUTH-123",
+            VisitsRemaining = "6"
+        });
+        var patient = CreatePatient("Pat", "Merge");
+        patient.PayerInfoJson = existingPayerInfo;
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Pat Merge"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Pat Merge",
+            PayerType = "Commercial",
+            PainSeverityProvided = false
+        });
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        using var payerJson = JsonDocument.Parse(submittedPatient.PayerInfoJson);
+        Assert.Equal("Commercial", GetJsonPropertyString(payerJson.RootElement, "payerType", "PayerType"));
+        Assert.Equal("Commercial", GetJsonPropertyString(payerJson.RootElement, "providerType", "ProviderType"));
+        Assert.Equal("Existing Plan", GetJsonPropertyString(payerJson.RootElement, "insuranceCompanyName", "InsuranceCompanyName"));
+        Assert.Equal("EXISTING-001", GetJsonPropertyString(payerJson.RootElement, "memberOrPolicyNumber", "MemberOrPolicyNumber"));
+        Assert.Equal("EXISTING-001", GetJsonPropertyString(payerJson.RootElement, "memberIdPolicyNumber", "MemberIdPolicyNumber"));
+        Assert.Equal("GROUP-42", GetJsonPropertyString(payerJson.RootElement, "groupNumber", "GroupNumber"));
+        Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "coverageType", "CoverageType"));
+        Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "insurancePriority", "InsurancePriority"));
+        Assert.Equal("Calendar", GetJsonPropertyString(payerJson.RootElement, "YearType"));
+        Assert.Equal("2026-01-01", GetJsonPropertyString(payerJson.RootElement, "EffectiveStartDate"));
+        Assert.Equal("AUTH-123", GetJsonPropertyString(payerJson.RootElement, "AuthorizationNumber"));
+        Assert.Equal("6", GetJsonPropertyString(payerJson.RootElement, "VisitsRemaining"));
+    }
+
+    private static string? GetJsonPropertyString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            foreach (var propertyName in propertyNames)
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    [Fact]
+    public async Task SubmitAsync_DoesNotOverwriteExistingPhysicianNpi_WhenSubmittedNpiIsInvalid()
+    {
+        var patient = CreatePatient("Pat", "Npi");
+        patient.PhysicianNpi = "1234567890";
+        var intakeId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(new IntakeForm
+        {
+            Id = intakeId,
+            PatientId = patient.Id,
+            ResponseJson = """{"fullName":"Pat Npi"}""",
+            PainMapData = "{}",
+            Consents = "{}",
+            TemplateVersion = "1.0",
+            IsLocked = false,
+            AccessToken = "token",
+            LastModifiedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = _userId,
+            ClinicId = _clinicId
+        });
+        await _context.SaveChangesAsync();
+
+        await _service.SubmitAsync(new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            FullName = "Pat Npi",
+            ReferringDoctorNpi = "12ab",
+            PainSeverityProvided = false
+        });
+
+        var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
+        Assert.Equal("1234567890", submittedPatient.PhysicianNpi);
     }
 
     [Fact]

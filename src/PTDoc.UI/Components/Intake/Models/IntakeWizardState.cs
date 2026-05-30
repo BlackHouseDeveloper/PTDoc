@@ -1,4 +1,5 @@
 using PTDoc.Application.Intake;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 
 namespace PTDoc.UI.Components.Intake.Models;
@@ -46,6 +47,12 @@ public sealed class IntakeWizardState
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
 
+    public string? PrimaryDoctorName { get; set; }
+    public string? PrimaryDoctorPhone { get; set; }
+    public string? ReferringDoctorName { get; set; }
+    public string? ReferringDoctorNpi { get; set; }
+    public string? ReferringDoctorPhone { get; set; }
+
     public string? InsuranceCompanyName { get; set; }
     public string? MemberOrPolicyNumber { get; set; }
     public string? GroupNumber { get; set; }
@@ -57,6 +64,7 @@ public sealed class IntakeWizardState
     public bool UsesAssistiveDevices { get; set; }
     public bool HasPreviousSurgeriesOrInjuries { get; set; }
     public string? MedicalHistoryNotes { get; set; }
+    public string? FunctionalLimitations { get; set; }
 
     public string? SelectedBodyRegion { get; set; }
     public int? PainSeverityScore { get; set; }
@@ -69,6 +77,8 @@ public sealed class IntakeWizardState
     public HashSet<string> SelectedLivingSituations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> SelectedHouseLayoutOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> RecommendedOutcomeMeasures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<AssignedOutcomeMeasureDraft> AssignedOutcomeMeasures { get; set; } = new();
+    public List<InitialOutcomeMeasureReportDraft> InitialOutcomeMeasureReports { get; set; } = new();
 
     public IntakeStructuredDataDto EnsureStructuredData(string schemaVersion)
     {

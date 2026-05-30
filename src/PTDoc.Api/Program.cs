@@ -730,39 +730,51 @@ if (autoMigrate)
 if (app.Environment.IsEnvironment("Beta"))
 {
     using var scope = app.Services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var betaAccessSeedPin = app.Configuration["BetaAccess:SeedPin"];
+    var allowBetaStartupSeed = app.Configuration.GetValue<bool?>("BetaAccess:AllowStartupSeed") ?? false;
 
-    try
+    if (!allowBetaStartupSeed)
     {
-        if (!IsValidBetaAccessSeedPin(betaAccessSeedPin))
+        logger.LogWarning("Beta access startup seed is disabled. Set BetaAccess:AllowStartupSeed=true only for controlled single-instance Beta deployments.");
+    }
+    else
+    {
+        logger.LogWarning(
+            "Beta access startup seed is enabled. This path is approved only for controlled single-instance Beta deployments; the SQL Server application lock is a safety net before seed writes.");
+
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var betaAccessSeedPin = app.Configuration["BetaAccess:SeedPin"];
+
+        try
         {
-            logger.LogWarning("Skipping Beta access seed because BetaAccess:SeedPin is not configured as a 4-digit PIN.");
-        }
-        else if (!await context.Database.CanConnectAsync())
-        {
-            logger.LogWarning("Skipping Beta access seed because the database is not reachable.");
-        }
-        else
-        {
-            var pendingMigrations = (await context.Database.GetPendingMigrationsAsync()).ToList();
-            if (pendingMigrations.Count > 0)
+            if (!IsValidBetaAccessSeedPin(betaAccessSeedPin))
             {
-                logger.LogWarning(
-                    "Skipping Beta access seed because {PendingCount} migration(s) are pending: {Migrations}",
-                    pendingMigrations.Count,
-                    string.Join(", ", pendingMigrations));
+                logger.LogWarning("Skipping Beta access seed because BetaAccess:SeedPin is not configured as a 4-digit PIN.");
+            }
+            else if (!await context.Database.CanConnectAsync())
+            {
+                logger.LogWarning("Skipping Beta access seed because the database is not reachable.");
             }
             else
             {
-                await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger, betaAccessSeedPin!);
+                var pendingMigrations = (await context.Database.GetPendingMigrationsAsync()).ToList();
+                if (pendingMigrations.Count > 0)
+                {
+                    logger.LogWarning(
+                        "Skipping Beta access seed because {PendingCount} migration(s) are pending: {Migrations}",
+                        pendingMigrations.Count,
+                        string.Join(", ", pendingMigrations));
+                }
+                else
+                {
+                    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger, betaAccessSeedPin!);
+                }
             }
         }
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Skipping Beta access seed because the database is not ready.");
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Skipping Beta access seed because the database is not ready.");
+        }
     }
 }
 

@@ -49,6 +49,7 @@ Database__AutoMigrate=false
 ConnectionStrings__DefaultConnection=<Azure SQL connection string>
 Jwt__SigningKey=<minimum 32 character secret>
 IntakeInvite__SigningKey=<minimum 32 character secret>
+BetaAccess__AllowStartupSeed=true
 BetaAccess__SeedPin=<4 digit beta access PIN from secret store>
 IntakeInvite__PublicWebBaseUrl=https://ptdoc.bhdevsites.com
 Communication__PublicBaseUrl=https://ptdoc.bhdevsites.com
@@ -76,7 +77,8 @@ Do not commit real connection strings, signing keys, publish profiles, ACS crede
 
 When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, idempotent access fixture for manual beta validation. These accounts are not seeded in Production.
 Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-of-band before starting or redeploying the API. If the database is unreachable or migrations are pending, the API logs a warning and skips Beta access seeding for that startup.
-The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed.
+Startup seeding is enabled only through `BetaAccess__AllowStartupSeed=true`, and is approved only while the Beta API App Service remains a controlled single-instance deployment. The seeder also acquires a SQL Server application lock before writes so an accidental overlapping startup skips seeding instead of racing duplicate inserts. If Beta is scaled beyond one instance, either disable startup seeding or keep the lock-protected path in place and verify the logs after each deployment.
+The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed. The current Beta PIN is managed in Azure settings.
 
 | Username | Email | Role |
 |----------|-------|------|
@@ -88,6 +90,15 @@ The shared Beta seed PIN is not committed; configure it through the API App Serv
 The seeded clinic is `Physically Fit Physical Therapy` with slug `pfpt-beta`. The Beta seeder is authoritative for these test accounts so access remains predictable after redeploys.
 
 The same Beta startup seed also creates a small idempotent PFPT patient directory fixture under the seeded clinic. These records use non-real `.test` email addresses and deterministic MRNs `BETA-PT-001` through `BETA-PT-004` so Beta users can validate Patients search by name, MRN, and email, open patient profiles, and start the existing intake invite workflow without creating live patient data first.
+
+Required Beta database order:
+
+1. Apply EF Core migrations out-of-band to Azure SQL.
+2. Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy.
+3. Start or restart the API App Service with `ASPNETCORE_ENVIRONMENT=Beta`.
+4. Confirm the API logs show the Beta seed completed, or show a deliberate skip because another lock holder was active.
+5. Validate the seeded Admin, PT, PTA, and Patient users can sign in with the configured Beta PIN.
+6. Restart the API again when needed and verify no duplicate seeded users, clinic, or patient fixtures are created.
 
 ## GitHub Actions Deployment
 
@@ -114,6 +125,9 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm `http://ptdoc.bhdevsites.com` redirects to HTTPS.
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
+- Confirm the API App Service is still single-instance before relying on startup seeding.
+- Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, and `BetaAccess__SeedPin` are configured in Azure.
+- Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.
 - Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
 - Confirm a new signup receives the pending administrator approval message instead of a generic login failure.
 - Confirm no beta network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.

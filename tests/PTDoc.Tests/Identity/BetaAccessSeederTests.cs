@@ -71,6 +71,87 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(Roles.PT, result.Role);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("abcd")]
+    [InlineData("12345")]
+    public async Task SeedBetaAccessDataAsync_InvalidSeedPin_SkipsWithoutWriting(string seedPin)
+    {
+        await using var context = CreateInMemoryContext();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, seedPin);
+
+        Assert.False(await context.Clinics.AnyAsync());
+        Assert.False(await context.Users.AnyAsync());
+        Assert.False(await context.Patients.AnyAsync());
+    }
+
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_WhenSqlServerLockIsNotAcquired_SkipsWithoutWriting()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(
+            context,
+            NullLogger.Instance,
+            TestBetaSeedPin,
+            useSqlServerAppLock: true,
+            acquireSqlServerAppLockAsync: _ => Task.FromResult(-1));
+
+        Assert.False(await context.Clinics.AnyAsync());
+        Assert.False(await context.Users.AnyAsync());
+        Assert.False(await context.Patients.AnyAsync());
+    }
+
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_WhenSqlServerLockIsAcquired_RemainsIdempotent()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var lockAttempts = 0;
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(
+            context,
+            NullLogger.Instance,
+            TestBetaSeedPin,
+            useSqlServerAppLock: true,
+            acquireSqlServerAppLockAsync: _ =>
+            {
+                lockAttempts++;
+                return Task.FromResult(0);
+            });
+        await DatabaseSeeder.SeedBetaAccessDataAsync(
+            context,
+            NullLogger.Instance,
+            TestBetaSeedPin,
+            useSqlServerAppLock: true,
+            acquireSqlServerAppLockAsync: _ =>
+            {
+                lockAttempts++;
+                return Task.FromResult(0);
+            });
+
+        Assert.Equal(2, lockAttempts);
+        Assert.Single(await context.Clinics.Where(clinic => clinic.Slug == "pfpt-beta").ToListAsync());
+        Assert.Equal(4, await context.Users.CountAsync(user => user.ClinicId == DatabaseSeeder.BetaClinicId));
+        Assert.Equal(4, await context.Patients.CountAsync(patient => patient.ClinicId == DatabaseSeeder.BetaClinicId));
+    }
+
     [Fact]
     public async Task SeedBetaAccessDataAsync_CreatesIdempotentSearchablePatientFixtures()
     {

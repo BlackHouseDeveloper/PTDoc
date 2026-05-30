@@ -21,6 +21,7 @@
         IntakeStep.Demographics,
         IntakeStep.PainAssessment,
         IntakeStep.PainDetails,
+        IntakeStep.OutcomeMeasures,
         IntakeStep.Review
     };
 
@@ -29,6 +30,7 @@
         "Demographics",
         "Medical History / Pain Assessment",
         "Pain Details",
+        "Outcome Measures",
         "Review"
     };
 
@@ -41,7 +43,8 @@
             IntakeStep.Demographics => "pain-progress__fill pain-progress__fill--1",
             IntakeStep.PainAssessment => "pain-progress__fill pain-progress__fill--2",
             IntakeStep.PainDetails => "pain-progress__fill pain-progress__fill--3",
-            _ => "pain-progress__fill pain-progress__fill--4"
+            IntakeStep.OutcomeMeasures => "pain-progress__fill pain-progress__fill--4",
+            _ => "pain-progress__fill pain-progress__fill--5"
         };
     }
 }

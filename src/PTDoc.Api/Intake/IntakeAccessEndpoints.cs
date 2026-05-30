@@ -12,6 +12,7 @@ using PTDoc.Application.Communication;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
+using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -357,12 +358,20 @@ public static class IntakeAccessEndpoints
             return validationProblem!;
         }
 
+        var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;
-        intake.SubmittedAt = intake.SubmittedAt ?? DateTime.UtcNow;
+        intake.SubmittedAt = intake.SubmittedAt ?? nowUtc;
         intake.IsLocked = true;
-        intake.LastModifiedUtc = DateTime.UtcNow;
+        intake.LastModifiedUtc = nowUtc;
         intake.ModifiedByUserId = Guid.Empty;
         intake.SyncState = SyncState.Pending;
+        intake.ResponseJson = IntakeDraftPersistence.NormalizeSubmittedPersistenceJson(
+            intake.ResponseJson,
+            intake.Id,
+            intake.PatientId,
+            intake.SubmittedAt.Value,
+            intake.LastModifiedUtc);
+        IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 
         await db.SaveChangesAsync(cancellationToken);
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
