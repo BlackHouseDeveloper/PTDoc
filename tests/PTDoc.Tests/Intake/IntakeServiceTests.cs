@@ -613,7 +613,11 @@ public sealed class IntakeServiceTests : IDisposable
             InsuranceCompanyName = "Existing Plan",
             MemberOrPolicyNumber = "EXISTING-001",
             GroupNumber = "GROUP-42",
-            CoverageType = "Secondary"
+            CoverageType = "Secondary",
+            YearType = "Calendar",
+            EffectiveStartDate = "2026-01-01",
+            AuthorizationNumber = "AUTH-123",
+            VisitsRemaining = "6"
         });
         var patient = CreatePatient("Pat", "Merge");
         patient.PayerInfoJson = existingPayerInfo;
@@ -645,14 +649,34 @@ public sealed class IntakeServiceTests : IDisposable
 
         var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);
         using var payerJson = JsonDocument.Parse(submittedPatient.PayerInfoJson);
-        Assert.Equal("Commercial", payerJson.RootElement.GetProperty("payerType").GetString());
-        Assert.Equal("Commercial", payerJson.RootElement.GetProperty("providerType").GetString());
-        Assert.Equal("Existing Plan", payerJson.RootElement.GetProperty("insuranceCompanyName").GetString());
-        Assert.Equal("EXISTING-001", payerJson.RootElement.GetProperty("memberOrPolicyNumber").GetString());
-        Assert.Equal("EXISTING-001", payerJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
-        Assert.Equal("GROUP-42", payerJson.RootElement.GetProperty("groupNumber").GetString());
-        Assert.Equal("Secondary", payerJson.RootElement.GetProperty("coverageType").GetString());
-        Assert.Equal("Secondary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Commercial", GetJsonPropertyString(payerJson.RootElement, "payerType", "PayerType"));
+        Assert.Equal("Commercial", GetJsonPropertyString(payerJson.RootElement, "providerType", "ProviderType"));
+        Assert.Equal("Existing Plan", GetJsonPropertyString(payerJson.RootElement, "insuranceCompanyName", "InsuranceCompanyName"));
+        Assert.Equal("EXISTING-001", GetJsonPropertyString(payerJson.RootElement, "memberOrPolicyNumber", "MemberOrPolicyNumber"));
+        Assert.Equal("EXISTING-001", GetJsonPropertyString(payerJson.RootElement, "memberIdPolicyNumber", "MemberIdPolicyNumber"));
+        Assert.Equal("GROUP-42", GetJsonPropertyString(payerJson.RootElement, "groupNumber", "GroupNumber"));
+        Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "coverageType", "CoverageType"));
+        Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "insurancePriority", "InsurancePriority"));
+        Assert.Equal("Calendar", GetJsonPropertyString(payerJson.RootElement, "YearType"));
+        Assert.Equal("2026-01-01", GetJsonPropertyString(payerJson.RootElement, "EffectiveStartDate"));
+        Assert.Equal("AUTH-123", GetJsonPropertyString(payerJson.RootElement, "AuthorizationNumber"));
+        Assert.Equal("6", GetJsonPropertyString(payerJson.RootElement, "VisitsRemaining"));
+    }
+
+    private static string? GetJsonPropertyString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            foreach (var propertyName in propertyNames)
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property.Value.GetString();
+                }
+            }
+        }
+
+        return null;
     }
 
     [Fact]

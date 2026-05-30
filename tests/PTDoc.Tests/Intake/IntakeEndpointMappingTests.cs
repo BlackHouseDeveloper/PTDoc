@@ -165,7 +165,11 @@ public sealed class IntakeEndpointMappingTests
             InsuranceCompanyName = "Existing Plan",
             MemberOrPolicyNumber = "EXISTING-001",
             GroupNumber = "GROUP-42",
-            CoverageType = "Secondary"
+            CoverageType = "Secondary",
+            YearType = "Calendar",
+            EffectiveStartDate = "2026-01-01",
+            AuthorizationNumber = "AUTH-123",
+            VisitsRemaining = "6"
         }, JsonOptions);
         var patient = new Patient
         {
@@ -202,6 +206,10 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal("GROUP-42", payerJson.RootElement.GetProperty("groupNumber").GetString());
         Assert.Equal("Secondary", payerJson.RootElement.GetProperty("coverageType").GetString());
         Assert.Equal("Secondary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Calendar", payerJson.RootElement.GetProperty("yearType").GetString());
+        Assert.Equal("2026-01-01", payerJson.RootElement.GetProperty("effectiveStartDate").GetString());
+        Assert.Equal("AUTH-123", payerJson.RootElement.GetProperty("authorizationNumber").GetString());
+        Assert.Equal("6", payerJson.RootElement.GetProperty("visitsRemaining").GetString());
     }
 
     [Fact]

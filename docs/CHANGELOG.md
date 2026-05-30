@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Copilot review follow-up for payer JSON merge preservation
+
+- **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Reworked submitted-intake payer merge behavior to overlay intake-owned alias fields into the existing payer JSON object instead of serializing a narrowed replacement payload, preserving unrelated payer metadata (for example `YearType`, effective dates, authorization number, visit tracking) already stored by the patient payer workflow. Added regressions that assert these non-intake keys survive partial payer submissions in both endpoint and service submit paths. Reason: resolve Copilot PR review data-loss risk where partial intake payer updates could silently erase existing authorization/effective-date metadata.
+
 ### Fixed - Intake submitted payer partial merge behavior
 
 - **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Changed submitted-intake patient payer updates to merge non-blank submitted payer fields into existing `Patient.PayerInfoJson` instead of replacing the full blob when any payer field is present. Added endpoint and service regressions proving partial payer submissions (for example, payer type only) preserve existing insurance company/member/group/coverage values while updating aliases consistently. Reason: partial intake insurance data should not erase existing payer details.

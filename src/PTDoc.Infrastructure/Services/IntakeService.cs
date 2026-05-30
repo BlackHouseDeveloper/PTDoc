@@ -9,6 +9,7 @@ using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace PTDoc.Infrastructure.Services;
 
@@ -625,43 +626,89 @@ public sealed class IntakeService : IIntakeService
 
     private static string BuildMergedPayerInfoJson(string? existingPayerInfoJson, IntakeResponseDraft state)
     {
-        var existing = ParsePayerInfo(existingPayerInfoJson);
-        var payerType = TrimOrNull(state.PayerType) ?? TrimOrNull(existing.PayerType) ?? TrimOrNull(existing.ProviderType);
-        var insuranceCompanyName = TrimOrNull(state.InsuranceCompanyName) ?? TrimOrNull(existing.InsuranceCompanyName);
-        var memberOrPolicyNumber = TrimOrNull(state.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberOrPolicyNumber) ?? TrimOrNull(existing.MemberIdPolicyNumber);
-        var groupNumber = TrimOrNull(state.GroupNumber) ?? TrimOrNull(existing.GroupNumber);
-        var coverageType = TrimOrNull(state.InsuranceCoverageType) ?? TrimOrNull(existing.CoverageType) ?? TrimOrNull(existing.InsurancePriority);
+        var merged = ParsePayerInfoObject(existingPayerInfoJson);
+        var payerType = TrimOrNull(state.PayerType) ?? GetPayerInfoValue(merged, "payerType", "providerType");
+        var insuranceCompanyName = TrimOrNull(state.InsuranceCompanyName) ?? GetPayerInfoValue(merged, "insuranceCompanyName");
+        var memberOrPolicyNumber = TrimOrNull(state.MemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "memberOrPolicyNumber", "memberIdPolicyNumber");
+        var groupNumber = TrimOrNull(state.GroupNumber) ?? GetPayerInfoValue(merged, "groupNumber");
+        var coverageType = TrimOrNull(state.InsuranceCoverageType) ?? GetPayerInfoValue(merged, "coverageType", "insurancePriority");
 
-        var payerInfo = new
-        {
-            PayerType = payerType,
-            ProviderType = payerType,
-            InsuranceCompanyName = insuranceCompanyName,
-            MemberOrPolicyNumber = memberOrPolicyNumber,
-            MemberIdPolicyNumber = memberOrPolicyNumber,
-            GroupNumber = groupNumber,
-            CoverageType = coverageType,
-            InsurancePriority = coverageType
-        };
+        SetPayerInfoValue(merged, "payerType", payerType);
+        SetPayerInfoValue(merged, "providerType", payerType);
+        SetPayerInfoValue(merged, "insuranceCompanyName", insuranceCompanyName);
+        SetPayerInfoValue(merged, "memberOrPolicyNumber", memberOrPolicyNumber);
+        SetPayerInfoValue(merged, "memberIdPolicyNumber", memberOrPolicyNumber);
+        SetPayerInfoValue(merged, "groupNumber", groupNumber);
+        SetPayerInfoValue(merged, "coverageType", coverageType);
+        SetPayerInfoValue(merged, "insurancePriority", coverageType);
 
-        return JsonSerializer.Serialize(payerInfo, SerializerOptions);
+        return merged.ToJsonString(SerializerOptions);
     }
 
-    private static PayerInfoPayload ParsePayerInfo(string? payerInfoJson)
+    private static JsonObject ParsePayerInfoObject(string? payerInfoJson)
     {
         if (string.IsNullOrWhiteSpace(payerInfoJson))
         {
-            return new PayerInfoPayload();
+            return new JsonObject();
         }
 
         try
         {
-            return JsonSerializer.Deserialize<PayerInfoPayload>(payerInfoJson, SerializerOptions) ?? new PayerInfoPayload();
+            return JsonNode.Parse(payerInfoJson) as JsonObject ?? new JsonObject();
         }
         catch (JsonException)
         {
-            return new PayerInfoPayload();
+            return new JsonObject();
         }
+    }
+
+    private static string? GetPayerInfoValue(JsonObject payerInfo, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var existingPropertyName = FindPayerInfoPropertyName(payerInfo, propertyName);
+            if (existingPropertyName is null || !payerInfo.TryGetPropertyValue(existingPropertyName, out var node) || node is null)
+            {
+                continue;
+            }
+
+            if (node is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var stringValue))
+            {
+                var normalized = TrimOrNull(stringValue);
+                if (normalized is not null)
+                {
+                    return normalized;
+                }
+                continue;
+            }
+
+            var fallbackValue = TrimOrNull(node.ToString());
+            if (fallbackValue is not null)
+            {
+                return fallbackValue;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetPayerInfoValue(JsonObject payerInfo, string propertyName, string? value)
+    {
+        var existingPropertyName = FindPayerInfoPropertyName(payerInfo, propertyName);
+        var targetPropertyName = existingPropertyName ?? propertyName;
+
+        foreach (var candidatePropertyName in payerInfo.Select(property => property.Key).Where(key => !string.Equals(key, targetPropertyName, StringComparison.Ordinal) && string.Equals(key, propertyName, StringComparison.OrdinalIgnoreCase)).ToArray())
+        {
+            payerInfo.Remove(candidatePropertyName);
+        }
+
+        payerInfo[targetPropertyName] = value is null ? null : JsonValue.Create(value);
+    }
+
+    private static string? FindPayerInfoPropertyName(JsonObject payerInfo, string propertyName)
+    {
+        return payerInfo.Select(property => property.Key)
+            .FirstOrDefault(key => string.Equals(key, propertyName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasSubmittedPayerInfo(IntakeResponseDraft state) =>
@@ -694,15 +741,4 @@ public sealed class IntakeService : IIntakeService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    private sealed class PayerInfoPayload
-    {
-        public string? PayerType { get; init; }
-        public string? ProviderType { get; init; }
-        public string? InsuranceCompanyName { get; init; }
-        public string? MemberOrPolicyNumber { get; init; }
-        public string? MemberIdPolicyNumber { get; init; }
-        public string? GroupNumber { get; init; }
-        public string? CoverageType { get; init; }
-        public string? InsurancePriority { get; init; }
-    }
 }
