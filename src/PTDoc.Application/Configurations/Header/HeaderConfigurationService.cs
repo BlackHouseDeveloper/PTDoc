@@ -227,6 +227,7 @@ public sealed class HeaderConfigurationService : IHeaderConfigurationService
                 2 => SetSubtitle("Step 3 of 5: Pain Details", out subtitle),
                 3 => SetSubtitle("Step 4 of 5: Outcome Measures", out subtitle),
                 4 => SetSubtitle("Step 5 of 5: Review", out subtitle),
+                5 => SetSubtitle("Step 5 of 5: Review", out subtitle),
                 _ => false
             };
         }

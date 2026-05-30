@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up (intake review and header mapping)
+
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Limited read-only submit-status panel rendering to the explicit intake submit-success message so non-submit review/validation feedback (including clinician review failures) stays in the standard message region. Reason: avoid presenting non-submit validation feedback as submit confirmation near the submit button.
+- **`src/PTDoc.Application/Configurations/Header/HeaderConfigurationService.cs`**, **`tests/PTDoc.Tests/Application/HeaderConfigurationServiceTests.cs`** — Restored the intake header subtitle alias that maps numeric `step=5` to the final Review subtitle in the five-step flow. Reason: preserve backward compatibility for existing callers using 1-based final-step query links.
+
 ### Fixed - Intake legacy draft step hydration
 
 - **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs`** — Treated legacy flow (`intakeFlowVersion < 2`) drafts with `currentStep = 3` as Review unconditionally, even when canonicalized structured body-part data derives assigned outcome measures; added a regression covering legacy step 3 with assigned outcomes. Reason: prevent pre-Outcome-Measures flow drafts from being misrouted to the new Outcome Measures step during hydration.

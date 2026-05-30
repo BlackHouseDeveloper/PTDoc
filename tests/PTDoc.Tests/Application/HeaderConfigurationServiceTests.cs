@@ -13,6 +13,7 @@ public sealed class HeaderConfigurationServiceTests
     [InlineData("/intake?step=2", "Step 3 of 5: Pain Details")]
     [InlineData("/intake?step=3", "Step 4 of 5: Outcome Measures")]
     [InlineData("/intake?step=4", "Step 5 of 5: Review")]
+    [InlineData("/intake?step=5", "Step 5 of 5: Review")]
     [InlineData("/intake?step=PainAssessment", "Step 2 of 5: Medical History / Pain Assessment")]
     [InlineData("/intake?step=OutcomeMeasures", "Step 4 of 5: Outcome Measures")]
     [InlineData("/intake/123?step=Review", "Step 5 of 5: Review")]

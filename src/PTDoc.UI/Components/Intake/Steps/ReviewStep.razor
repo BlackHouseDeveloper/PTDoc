@@ -767,7 +767,9 @@
     private bool TreatmentConsentComplete => ConsentPacket.TreatmentConsentAccepted == true && !IsConsentRevoked("treatmentConsentAccepted");
     private bool IsReadOnlyReview => State.IsLocked || State.IsSubmitted;
     private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !IsReadOnlyReview;
-    private bool HasSubmitStatusMessage => IsReadOnlyReview && !string.IsNullOrWhiteSpace(ValidationMessage);
+    private bool HasSubmitStatusMessage => IsReadOnlyReview
+        && !string.IsNullOrWhiteSpace(ValidationMessage)
+        && ValidationMessage.StartsWith("Intake submitted successfully", StringComparison.Ordinal);
     private bool CompletionReady => IsReadOnlyReview || SubmitReady;
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
     private bool PhoneCallsAllowed => IntakeConsentJson.IsCallConsentActive(ConsentPacket);

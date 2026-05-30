@@ -551,6 +551,32 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void ReviewStep_ReadOnlyReview_NonSubmitMessagesStayInGeneralMessageRegion()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var state = new IntakeWizardState
+        {
+            IsLocked = true,
+            IsSubmitted = true,
+            TermsOfServiceAccepted = true,
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.ValidationMessage, "Intake record is unavailable for review."));
+
+        Assert.Empty(cut.FindAll("[data-testid='submit-status-message']"));
+        Assert.Contains("Intake record is unavailable for review.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReviewStep_UsesCanonicalConsentPacketForCompletionAndSupplementalSelections()
     {
         var state = new IntakeWizardState
