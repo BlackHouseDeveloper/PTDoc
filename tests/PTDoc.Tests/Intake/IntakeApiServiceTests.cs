@@ -358,6 +358,52 @@ public sealed class IntakeApiServiceTests
     }
 
     [Fact]
+    public async Task CreateTemporaryPatientAndDraftIntakeAsync_IgnoresUnsupportedReferringDoctorNpi()
+    {
+        var patientId = Guid.NewGuid();
+        string? createPatientRequestBody = null;
+
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/patients/")
+            {
+                createPatientRequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new PatientResponse
+                {
+                    Id = patientId,
+                    FirstName = "Beta",
+                    LastName = "Patient",
+                    DateOfBirth = new DateTime(1990, 1, 1),
+                    PayerInfoJson = "{}",
+                    DiagnosisCodesJson = "[]",
+                    LastModifiedUtc = DateTime.UtcNow
+                }, JsonOptions));
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/intake/")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        await service.CreateTemporaryPatientAndDraftIntakeAsync(new IntakeResponseDraft
+        {
+            FullName = "Beta Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ReferringDoctorName = "Dr. Referral",
+            ReferringDoctorNpi = "123"
+        });
+
+        Assert.NotNull(createPatientRequestBody);
+        using var requestJson = JsonDocument.Parse(createPatientRequestBody!);
+        Assert.Equal(JsonValueKind.Null, requestJson.RootElement.GetProperty("physicianNpi").ValueKind);
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_ClearsLegacySupplementalSelectionsFromResponseJson_WhenStructuredIdsExist()
     {
         var patientId = Guid.NewGuid();

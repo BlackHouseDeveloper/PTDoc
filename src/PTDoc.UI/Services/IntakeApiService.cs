@@ -145,10 +145,6 @@ public sealed class IntakeApiService(
         }
 
         var physicianNpi = ToSupportedNpi(state.ReferringDoctorNpi);
-        if (!string.IsNullOrWhiteSpace(state.ReferringDoctorNpi) && physicianNpi is null)
-        {
-            throw new ArgumentException("NPI must be exactly 10 digits.", nameof(state));
-        }
 
         var createPatientRequest = new CreatePatientRequest
         {

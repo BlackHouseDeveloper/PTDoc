@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Intake optional NPI draft creation guardrail
+
+- **`src/PTDoc.UI/Services/IntakeApiService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`** — Removed the temporary-patient draft creation throw for unsupported optional referring-doctor NPI values and aligned behavior to omit non-10-digit NPIs from the create-patient payload instead. Added a regression proving invalid optional NPI values no longer fault the client path and serialize as `null`. Reason: demographics continue/create-draft UI catches API request failures, so optional NPI format mismatches should not surface as unhandled component exceptions.
+
 ### Fixed - PR review follow-up (intake review and header mapping)
 
 - **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Limited read-only submit-status panel rendering to the explicit intake submit-success message so non-submit review/validation feedback (including clinician review failures) stays in the standard message region. Reason: avoid presenting non-submit validation feedback as submit confirmation near the submit button.
