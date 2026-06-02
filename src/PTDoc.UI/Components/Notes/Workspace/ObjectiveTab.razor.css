@@ -122,6 +122,194 @@
     margin: 0;
 }
 
+.objective-tab__helper {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+    line-height: var(--line-height-normal);
+}
+
+.objective-tab__helper--error {
+    color: var(--destructive);
+}
+
+.objective-tab__field,
+.objective-tab__editor-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.objective-tab__field > span,
+.objective-tab__editor-grid label > span {
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--muted-foreground);
+}
+
+.objective-tab__select,
+.objective-tab__text-input,
+.objective-tab__textarea {
+    width: 100%;
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: var(--input-background);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    font-family: inherit;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
+}
+
+.objective-tab__select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%), linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+    background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: calc(var(--spacing-6) + var(--spacing-4));
+}
+
+.objective-tab__select:focus,
+.objective-tab__text-input:focus,
+.objective-tab__textarea:focus {
+    outline: calc(var(--spacing-1) / 2) solid var(--ring);
+    outline-offset: calc(var(--spacing-1) / 2);
+    border-color: color-mix(in srgb, var(--ring) 60%, var(--border));
+}
+
+.objective-tab__select::placeholder,
+.objective-tab__text-input::placeholder,
+.objective-tab__textarea::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+}
+
+.objective-tab__select:disabled,
+.objective-tab__text-input:disabled,
+.objective-tab__textarea:disabled {
+    background: var(--muted);
+    color: var(--muted-foreground);
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+.objective-tab__option-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.objective-tab__chip,
+.objective-tab__secondary-btn,
+.objective-tab__remove-btn {
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.objective-tab__chip {
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    background: color-mix(in srgb, var(--muted) 82%, transparent);
+    color: var(--foreground);
+    cursor: pointer;
+    text-align: left;
+}
+
+.objective-tab__chip:hover:not(:disabled),
+.objective-tab__secondary-btn:hover:not(:disabled),
+.objective-tab__remove-btn:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+    transform: translateY(-1px);
+}
+
+.objective-tab__chip--active {
+    background: color-mix(in srgb, var(--accent) 82%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+    color: var(--foreground);
+}
+
+.objective-tab__chip:disabled,
+.objective-tab__secondary-btn:disabled,
+.objective-tab__remove-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+    transform: none;
+}
+
+.objective-tab__secondary-btn,
+.objective-tab__remove-btn {
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    cursor: pointer;
+}
+
+.objective-tab__remove-btn {
+    align-self: start;
+    font-size: var(--text-xs);
+}
+
+.objective-tab__editor-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.objective-tab__editor-row {
+    padding: var(--spacing-4);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--card) 88%, var(--muted));
+}
+
+.objective-tab__editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-3);
+    flex-wrap: wrap;
+}
+
+.objective-tab__editor-header strong {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.objective-tab__editor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--spacing-3);
+    align-items: start;
+}
+
+.objective-tab__checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.objective-tab__checkbox-item input[type="checkbox"],
+.objective-tab__radio-item input[type="radio"] {
+    accent-color: var(--primary);
+}
+
 /* Gait radio list */
 .objective-tab__radio-list {
     display: flex;
@@ -228,20 +416,7 @@
 
 /* Textarea */
 .objective-tab__textarea {
-    width: 100%;
-    background: var(--input-background);
-    border: calc(var(--spacing-1) / 4) solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-3);
-    font-size: var(--text-sm);
-    color: var(--foreground);
     resize: vertical;
-    font-family: inherit;
-}
-
-.objective-tab__textarea:focus {
-    outline: calc(var(--spacing-1) / 2) solid var(--ring);
-    outline-offset: calc(var(--spacing-1) / 2);
 }
 
 /* Empty hint */
@@ -263,4 +438,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-1);
+}
+
+@media (max-width: 767px) {
+    .objective-tab__editor-grid {
+        grid-template-columns: 1fr;
+    }
 }
