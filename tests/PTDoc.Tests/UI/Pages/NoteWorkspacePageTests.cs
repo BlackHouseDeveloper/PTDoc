@@ -467,11 +467,301 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal("Daily Treatment Note", noteTypeSelect.GetAttribute("value"));
             Assert.Contains("Started a new Daily Treatment Note with carry-forward from the latest signed Progress Note.", cut.Markup, StringComparison.Ordinal);
             Assert.Equal("3", cut.Find("#current-pain").GetAttribute("value"));
+            Assert.False(cut.Find("#current-pain").HasAttribute("disabled"));
             Assert.Contains("Signed Progress Note", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
         });
 
         noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void ExistingDailyNote_LoadsPersistedDailyTreatmentFields()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Riley",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Daily Treatment Note",
+                DateOfService = new DateTime(2026, 4, 9),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Daily Treatment Note",
+                    DailyTreatment = new DailyTreatmentVm
+                    {
+                        ResponseToTreatment = "Tolerated gait training without symptom flare."
+                    },
+                    Plan = new PlanVm
+                    {
+                        TreatmentFrequency = "2x/week",
+                        TreatmentDuration = "6 weeks",
+                        HomeExerciseProgramNotes = "Continue HEP."
+                    }
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString())
+            .Add(component => component.RequestedSection, "plan"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            var responseField = cut.Find("#daily-response-to-treatment");
+            Assert.True(
+                string.Equals("Tolerated gait training without symptom flare.", responseField.GetAttribute("value"), StringComparison.Ordinal) ||
+                string.Equals("Tolerated gait training without symptom flare.", responseField.TextContent, StringComparison.Ordinal),
+                "Expected persisted response-to-treatment text to render in the Daily Treatment plan field.");
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void AppointmentDailyFallback_WithSignedCarryForward_KeepsDailyTreatmentNote()
+    {
+        var patientId = Guid.NewGuid();
+        var appointmentId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Jordan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = true,
+                SourceNoteType = "Progress Note",
+                SourceNoteDateOfService = new DateTime(2026, 4, 2),
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Daily Treatment Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily,
+                        SeedContext = new WorkspaceSeedContextV2
+                        {
+                            Kind = WorkspaceSeedKind.SignedCarryForward,
+                            SourceNoteId = Guid.NewGuid(),
+                            SourceNoteType = NoteType.ProgressNote,
+                            SourceReferenceDateUtc = new DateTime(2026, 4, 2)
+                        }
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        CurrentPainScore = 2
+                    }
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Daily Treatment Note")
+            .Add(component => component.RequestedAppointmentId, appointmentId.ToString("D"))
+            .Add(component => component.RequestedAllowEvaluationFallback, true));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            Assert.Contains("Started a new Daily Treatment Note with carry-forward from the latest signed Progress Note.", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void AppointmentDailyFallback_WithoutCarryForward_UsesEvaluationSeedAndPreservesAppointmentContext()
+    {
+        var patientId = Guid.NewGuid();
+        var appointmentId = Guid.NewGuid();
+        var savedNoteId = Guid.NewGuid();
+        var dateOfService = new DateTime(2026, 4, 9);
+        var savedDrafts = new List<NoteWorkspaceDraft>();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Casey",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = true,
+                FromLockedSubmittedIntake = true,
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Evaluation Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation,
+                        SeedContext = new WorkspaceSeedContextV2
+                        {
+                            Kind = WorkspaceSeedKind.IntakePrefill,
+                            SourceIntakeId = Guid.NewGuid(),
+                            FromLockedSubmittedIntake = true,
+                            SourceReferenceDateUtc = new DateTime(2026, 4, 8, 12, 0, 0, DateTimeKind.Utc)
+                        }
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        CurrentPainScore = 6,
+                        CurrentLevelOfFunction = "Limited walking tolerance."
+                    }
+                }
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteWorkspaceDraft draft, CancellationToken _) =>
+            {
+                savedDrafts.Add(draft);
+                return new NoteWorkspaceSaveResult
+                {
+                    Success = true,
+                    NoteId = savedNoteId,
+                    Status = NoteStatus.Draft
+                };
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Daily Treatment Note")
+            .Add(component => component.RequestedAppointmentId, appointmentId.ToString("D"))
+            .Add(component => component.RequestedDateOfService, dateOfService.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))
+            .Add(component => component.RequestedAllowEvaluationFallback, true));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            Assert.Contains("Started a new Evaluation note from this appointment with the latest submitted intake prefill.", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.Find("[data-testid='footer-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var savedDraft = Assert.Single(savedDrafts);
+            Assert.Equal("Evaluation Note", savedDraft.WorkspaceNoteType);
+            Assert.Equal(appointmentId, savedDraft.AppointmentId);
+            Assert.Equal(dateOfService, savedDraft.DateOfService.Date);
+        });
+    }
+
+    [Fact]
+    public void ExplicitDailyNoteWithoutAppointmentFallback_DoesNotUseEvaluationSeed()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Parker",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Daily Treatment Note"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+        });
+
+        noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -74,6 +74,19 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         };
         _context.Patients.Add(patient);
 
+        var appointment = new Appointment
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = new DateTime(2026, 3, 30, 17, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 3, 30, 17, 45, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.CheckedIn
+        };
+        _context.Appointments.Add(appointment);
+
         var priorNote = new ClinicalNote
         {
             Id = Guid.NewGuid(),
@@ -97,6 +110,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var saveRequest = new NoteWorkspaceV2SaveRequest
         {
             PatientId = patient.Id,
+            AppointmentId = appointment.Id,
             DateOfService = new DateTime(2026, 3, 30),
             NoteType = NoteType.Evaluation,
             IsReEvaluation = true,
@@ -211,6 +225,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Single(_context.PatientGoals.Where(goal => goal.PatientId == patient.Id));
 
         var persistedNote = await _context.ClinicalNotes.FirstAsync(note => note.Id == workspace.NoteId);
+        Assert.Equal(appointment.Id, persistedNote.AppointmentId);
         Assert.Contains("97110", persistedNote.CptCodesJson);
         Assert.Contains("\"GP\"", persistedNote.CptCodesJson);
         Assert.Contains("\"schemaVersion\":2", persistedNote.ContentJson);
@@ -1040,8 +1055,24 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                     TreatmentFrequencyDaysPerWeek = [2],
                     TreatmentDurationWeeks = [6],
                     TreatmentFocuses = ["Strength"],
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntryV2
+                        {
+                            Name = "Gait training",
+                            Category = "Therapeutic activity",
+                            Notes = "Prior cues"
+                        }
+                    ],
+                    HomeExerciseProgramNotes = "Continue bridges and heel raises.",
                     SelectedCptCodes = [new PlannedCptCodeV2 { Code = "97110", Units = 2 }],
                     ClinicalSummary = "Prior plan summary"
+                },
+                DailyTreatment = new WorkspaceDailyTreatmentV2
+                {
+                    ChangesSinceLastVisit = "Prior visit update",
+                    ResponseToTreatment = "Prior treatment response",
+                    BarriersToProgress = "Prior barrier"
                 }
             })
         };
@@ -1093,6 +1124,13 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Null(seed.Payload.Objective.ClinicalObservationNotes);
         Assert.Empty(seed.Payload.Plan.SelectedCptCodes);
         Assert.Null(seed.Payload.Plan.ClinicalSummary);
+        var intervention = Assert.Single(seed.Payload.Plan.GeneralInterventions);
+        Assert.Equal("Gait training", intervention.Name);
+        Assert.Equal("Prior cues", intervention.Notes);
+        Assert.Equal("Continue bridges and heel raises.", seed.Payload.Plan.HomeExerciseProgramNotes);
+        Assert.Equal(string.Empty, seed.Payload.DailyTreatment.ChangesSinceLastVisit);
+        Assert.Equal(string.Empty, seed.Payload.DailyTreatment.ResponseToTreatment);
+        Assert.Equal(string.Empty, seed.Payload.DailyTreatment.BarriersToProgress);
         Assert.Single(seed.Payload.Assessment.DiagnosisCodes);
         Assert.Single(seed.Payload.Assessment.Goals);
         Assert.Equal(string.Empty, seed.Payload.Assessment.AssessmentNarrative);

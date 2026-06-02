@@ -28,6 +28,7 @@ public sealed class NoteWorkspaceApiServiceTests
     public async Task SaveDraftAsync_ProgressNote_UsesV2WorkspaceEndpoint()
     {
         var patientId = Guid.NewGuid();
+        var appointmentId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
         string? requestBody = null;
 
@@ -61,6 +62,7 @@ public sealed class NoteWorkspaceApiServiceTests
         var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
         {
             PatientId = patientId,
+            AppointmentId = appointmentId,
             WorkspaceNoteType = "Progress Note",
             DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
             Payload = new NoteWorkspacePayload
@@ -89,6 +91,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         using var document = JsonDocument.Parse(requestBody!);
         Assert.Equal(patientId, document.RootElement.GetProperty("patientId").GetGuid());
+        Assert.Equal(appointmentId, document.RootElement.GetProperty("appointmentId").GetGuid());
         Assert.Equal("Clinician assessment", document.RootElement.GetProperty("payload")
             .GetProperty("assessment")
             .GetProperty("assessmentNarrative")

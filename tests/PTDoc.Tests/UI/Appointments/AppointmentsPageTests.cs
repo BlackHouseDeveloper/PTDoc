@@ -58,7 +58,64 @@ public sealed class AppointmentsPageTests : TestContext
         });
     }
 
-    private void RegisterServices()
+    [Theory]
+    [InlineData("Follow Up", "Daily%20Treatment%20Note", true)]
+    [InlineData("Initial Evaluation", "Evaluation%20Note", false)]
+    [InlineData("Discharge", "Discharge%20Note", false)]
+    public void AppointmentsPage_StartVisit_NavigatesToWorkspaceWithAppointmentContext(string appointmentType, string expectedEncodedNoteType, bool expectEvaluationFallback)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var appointmentId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var appointmentDate = DateTime.Today;
+        var localStart = DateTime.SpecifyKind(appointmentDate.AddHours(10), DateTimeKind.Local);
+        var appointment = new AppointmentListItemResponse
+        {
+            Id = appointmentId,
+            PatientRecordId = patientId,
+            PatientName = "Alex Patient",
+            ClinicianId = clinicianId,
+            ClinicianName = "Taylor PT",
+            StartTimeUtc = localStart.ToUniversalTime(),
+            EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+            AppointmentType = appointmentType,
+            AppointmentStatus = "Checked In",
+            IntakeStatus = "Complete"
+        };
+
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments = [appointment],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+
+        cut.Find(".appointment-block").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Appointment Details", cut.Markup, StringComparison.Ordinal));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Start Visit", StringComparison.Ordinal))
+            .Click();
+
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var fallbackQuery = expectEvaluationFallback ? "&allowEvaluationFallback=true" : string.Empty;
+        Assert.EndsWith(
+            $"/patient/{patientId:D}/new-note?noteType={expectedEncodedNoteType}&appointmentId={appointmentId:D}&dateOfService={appointmentDate:yyyy-MM-dd}{fallbackQuery}",
+            navigation.Uri,
+            StringComparison.Ordinal);
+    }
+
+    private void RegisterServices(AppointmentsOverviewResponse? overview = null)
     {
         Services.AddLogging();
 
@@ -84,7 +141,7 @@ public sealed class AppointmentsPageTests : TestContext
                 It.IsAny<DateTime>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AppointmentsOverviewResponse());
+            .ReturnsAsync(overview ?? new AppointmentsOverviewResponse());
 
         var toastService = new Mock<IToastService>(MockBehavior.Loose);
 

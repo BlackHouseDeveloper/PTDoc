@@ -97,6 +97,23 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal(expectedNoteType, AppointmentVisitNoteTypeResolver.Resolve(appointmentType));
     }
 
+    [Theory]
+    [InlineData("Initial Evaluation", "Evaluation Note", false)]
+    [InlineData("Re-Evaluation", "Progress Note", false)]
+    [InlineData("Discharge", "Discharge Note", false)]
+    [InlineData("Follow Up", "Daily Treatment Note", true)]
+    [InlineData("Wellness Visit", "Daily Treatment Note", true)]
+    public void AppointmentsPage_ResolvesVisitNoteIntentFromAppointmentType(
+        string appointmentType,
+        string expectedNoteType,
+        bool expectedEvaluationFallback)
+    {
+        var result = AppointmentVisitNoteTypeResolver.ResolveIntent(appointmentType);
+
+        Assert.Equal(expectedNoteType, result.WorkspaceNoteType);
+        Assert.Equal(expectedEvaluationFallback, result.AllowEvaluationFallback);
+    }
+
     [Fact]
     public void NewAppointmentModal_EmptySubmit_ShowsInlineValidationAndDoesNotCallSubmit()
     {
