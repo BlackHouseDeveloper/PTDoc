@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - DOC_OBJECTIVE no longer passes on blank objective metric rows
+
+- **`src/PTDoc.Infrastructure/Compliance/ClinicalRulesEngine.cs`**, **`tests/PTDoc.Tests/Compliance/ClinicalRulesEngineTests.cs`** — Hardened objective completeness evaluation so objective metrics only count when they contain a recorded value or an explicit WNL flag, instead of treating any metric row count as sufficient. Added regressions for both structured payload metrics and relational objective metric rows that are present but blank. Reason: prevent empty in-progress objective rows from bypassing the `DOC_OBJECTIVE` “No objective measures recorded” rule.
+
 ### Fixed - Note workspace first-save route preserves active SOAP section
 
 - **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Updated `/new-note` canonicalization after first successful save to include the currently active SOAP section in the target URL (`section=<active-tab>`), and added a regression that saves from Objective and verifies the canonical route keeps `section=objective`. Reason: prevent post-save navigation from resetting users back to Subjective when they are actively charting in another tab.
