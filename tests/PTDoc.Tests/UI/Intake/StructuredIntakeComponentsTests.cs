@@ -132,7 +132,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
-    public void PainAssessmentStep2_UpdatesFunctionalLimitations()
+    public void PainAssessmentStep2_UpdatesCurrentAndPriorFunctionalStatusFields()
     {
         var state = new IntakeWizardState
         {
@@ -142,8 +142,10 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         var cut = RenderComponent<PainAssessmentStep2>(parameters => parameters
             .Add(component => component.State, state));
 
+        cut.Find("#intake-current-level-of-function").Input("Needs handrail for stairs and takes seated breaks every 10 minutes.");
         cut.Find("#intake-functional-limitations").Input("Difficulty reaching overhead cabinets.");
 
+        Assert.Equal("Needs handrail for stairs and takes seated breaks every 10 minutes.", state.CurrentLevelOfFunction);
         Assert.Equal("Difficulty reaching overhead cabinets.", state.FunctionalLimitations);
         Assert.True(state.IsDirty);
     }

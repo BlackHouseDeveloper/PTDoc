@@ -472,6 +472,7 @@ public sealed class IntakeService : IIntakeService
         target.UsesAssistiveDevices = source.UsesAssistiveDevices;
         target.HasPreviousSurgeriesOrInjuries = source.HasPreviousSurgeriesOrInjuries;
         target.MedicalHistoryNotes = source.MedicalHistoryNotes;
+        target.CurrentLevelOfFunction = source.CurrentLevelOfFunction;
         target.FunctionalLimitations = source.FunctionalLimitations;
         target.SelectedBodyRegion = source.SelectedBodyRegion;
         target.PainSeverityScore = source.PainSeverityScore;

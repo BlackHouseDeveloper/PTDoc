@@ -1,6 +1,14 @@
 <section class="intake-card">
     <h2>Functional Limitations</h2>
-    <p class="intake-card__subtext">Describe activities that are limited by your current condition.</p>
+    <p class="intake-card__subtext">Capture current function and the activities limited by the current condition.</p>
+
+    <label class="intake-card__notes" for="intake-current-level-of-function">Current Level of Function
+        <textarea id="intake-current-level-of-function"
+                  class="form-control"
+                  value="@CurrentLevelOfFunction"
+                  @oninput="(args) => CurrentLevelOfFunctionChanged.InvokeAsync(args.Value?.ToString())"
+                  placeholder="Examples: independent with household ADLs, needs frequent rest breaks, uses rail for stairs"></textarea>
+    </label>
 
     <label class="intake-card__notes" for="intake-functional-limitations">Functional limitations
         <textarea id="intake-functional-limitations"
@@ -12,6 +20,8 @@
 </section>
 
 @code {
+    [Parameter] public string? CurrentLevelOfFunction { get; set; }
+    [Parameter] public EventCallback<string?> CurrentLevelOfFunctionChanged { get; set; }
     [Parameter] public string? FunctionalLimitations { get; set; }
     [Parameter] public EventCallback<string?> FunctionalLimitationsChanged { get; set; }
 }

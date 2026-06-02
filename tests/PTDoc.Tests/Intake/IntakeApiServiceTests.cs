@@ -523,6 +523,7 @@ public sealed class IntakeApiServiceTests
             MemberOrPolicyNumber = "BETA001",
             PayerType = "Commercial",
             InsuranceCoverageType = "Primary",
+            CurrentLevelOfFunction = "Independent with household ADLs but needs seated rest breaks for community ambulation.",
             FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             AssignedOutcomeMeasures =
             [
@@ -558,6 +559,9 @@ public sealed class IntakeApiServiceTests
         Assert.Equal("Dr. Referral", responseJson.RootElement.GetProperty("referringDoctorName").GetString());
         Assert.Equal("1234567890", responseJson.RootElement.GetProperty("referringDoctorNpi").GetString());
         Assert.Equal("PFPT Beta PPO", responseJson.RootElement.GetProperty("insuranceCompanyName").GetString());
+        Assert.Equal(
+            "Independent with household ADLs but needs seated rest breaks for community ambulation.",
+            responseJson.RootElement.GetProperty("currentLevelOfFunction").GetString());
         Assert.Equal("Difficulty walking longer than 10 minutes.", responseJson.RootElement.GetProperty("functionalLimitations").GetString());
         Assert.Equal("LEFS", responseJson.RootElement.GetProperty("assignedOutcomeMeasures")[0].GetProperty("measureAbbreviation").GetString());
         Assert.Equal("42/80", responseJson.RootElement.GetProperty("initialOutcomeMeasureReports")[0].GetProperty("scoreText").GetString());
@@ -621,7 +625,7 @@ public sealed class IntakeApiServiceTests
                 PainMapData = "{}",
                 Consents = "{}",
                 ResponseJson = """
-                               {"fullName":"Latest Locked","sexAtBirth":"Female","primaryDoctorName":"Dr. Primary","referringDoctorName":"Dr. Referral","functionalLimitations":"Difficulty with stairs.","painSeverityProvided":true,"painSeverityScore":0}
+                               {"fullName":"Latest Locked","sexAtBirth":"Female","primaryDoctorName":"Dr. Primary","referringDoctorName":"Dr. Referral","currentLevelOfFunction":"Needs standby assist for stairs.","functionalLimitations":"Difficulty with stairs.","painSeverityProvided":true,"painSeverityScore":0}
                                """,
                 Locked = true,
                 SubmittedAt = submittedAt,
@@ -645,6 +649,7 @@ public sealed class IntakeApiServiceTests
         Assert.Equal("Female", draft.SexAtBirth);
         Assert.Equal("Dr. Primary", draft.PrimaryDoctorName);
         Assert.Equal("Dr. Referral", draft.ReferringDoctorName);
+        Assert.Equal("Needs standby assist for stairs.", draft.CurrentLevelOfFunction);
         Assert.Equal("Difficulty with stairs.", draft.FunctionalLimitations);
         Assert.Equal(submittedAt, draft.SubmittedAt);
         Assert.Equal(reviewedAt, draft.ReviewedAtUtc);
