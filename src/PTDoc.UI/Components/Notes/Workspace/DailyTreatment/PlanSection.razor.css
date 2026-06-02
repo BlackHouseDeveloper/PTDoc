@@ -31,3 +31,54 @@
 ::deep .daily-plan__message--error {
     color: var(--destructive);
 }
+
+::deep .daily-plan__intervention-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+::deep .daily-plan__intervention-row {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 2fr) auto;
+    gap: var(--spacing-3);
+    align-items: end;
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+::deep .daily-plan__intervention-row label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+::deep .daily-plan__intervention-row input,
+::deep .daily-plan__intervention-row textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    font: inherit;
+}
+
+::deep .daily-plan__intervention-row button {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+@media (max-width: 767px) {
+    ::deep .daily-plan__intervention-row {
+        grid-template-columns: 1fr;
+    }
+}

@@ -86,7 +86,7 @@
         <div class="daily-col-12">
             <FormSection Title="Associated Symptoms">
                 <CheckboxGrid Options="_associatedSymptomOptions"
-                              Selected="_associatedSymptoms"
+                              Selected="_dailyTreatment.AssociatedSymptoms"
                               SelectedChanged="UpdateAssociatedSymptoms"
                               IsReadOnly="IsReadOnly"
                               Columns="2" />
@@ -105,8 +105,8 @@
 
         <div class="daily-col-12">
             <FormSection Title="Previous Treatment">
-                <EditableTextArea Value="@_previousTreatment"
-                                  ValueChanged="v => _previousTreatment = v"
+                <EditableTextArea Value="@_dailyTreatment.PreviousTreatment"
+                                  ValueChanged="UpdatePreviousTreatment"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Prior therapy, medications, surgeries, etc..."
                                   Rows="3" />
@@ -116,53 +116,67 @@
         <div class="daily-col-12">
             <FormSection Title="Progress Since Last Visit">
                 <EditableTextArea Label="Changes Since Last Visit *"
-                                  Value="@_changesSinceLastVisit"
-                                  ValueChanged="v => _changesSinceLastVisit = v"
+                                  Value="@_dailyTreatment.ChangesSinceLastVisit"
+                                  ValueChanged="UpdateChangesSinceLastVisit"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="What has changed? Better, worse, or same?"
                                   Rows="3"
                                   IsRequired="true"
-                                  ShowValidation="@string.IsNullOrWhiteSpace(_changesSinceLastVisit)" />
+                                  ShowValidation="@string.IsNullOrWhiteSpace(_dailyTreatment.ChangesSinceLastVisit)" />
 
                 <EditableTextArea Label="Pain Level Changes"
-                                  Value="@_painLevelChanges"
-                                  ValueChanged="v => _painLevelChanges = v"
+                                  Value="@_dailyTreatment.PainLevelChanges"
+                                  ValueChanged="UpdatePainLevelChanges"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Compare current pain to baseline and previous visit."
                                   Rows="3" />
 
+                <EditableTextArea Label="Subjective Update"
+                                  Value="@_dailyTreatment.SubjectiveUpdate"
+                                  ValueChanged="UpdateSubjectiveUpdate"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Patient-reported status, tolerance, soreness, or concerns since the last visit."
+                                  Rows="3" />
+
                 <div class="daily-subjective__field">
                     <label for="hep-adherence">Home Exercise Program Adherence *</label>
-                    <select id="hep-adherence" disabled="@IsReadOnly" @bind="_homeExerciseAdherence">
+                    <select id="hep-adherence" disabled="@IsReadOnly" value="@_dailyTreatment.HepAdherence" @onchange="HandleHepAdherenceChanged">
                         <option value="">Select adherence level</option>
                         <option>Excellent (&gt;90%)</option>
                         <option>Good (70-90%)</option>
                         <option>Fair (50-69%)</option>
                         <option>Poor (&lt;50%)</option>
                     </select>
-                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_homeExerciseAdherence))
+                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_dailyTreatment.HepAdherence))
                     {
                         <p class="daily-subjective__validation">Adherence level is required.</p>
                     }
                 </div>
 
+                <EditableTextArea Label="HEP Update"
+                                  Value="@_dailyTreatment.HepUpdateNotes"
+                                  ValueChanged="UpdateHepUpdateNotes"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document HEP changes, patient questions, or adherence context."
+                                  Rows="3" />
+
                 <EditableTextArea Label="Functional Improvements"
-                                  Value="@_functionalImprovements"
-                                  ValueChanged="v => _functionalImprovements = v"
+                                  Value="@_dailyTreatment.FunctionalImprovements"
+                                  ValueChanged="UpdateFunctionalImprovements"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="What activities can patient now do that they couldn't before?"
                                   Rows="3" />
 
                 <EditableTextArea Label="New or Changed Symptoms"
-                                  Value="@_newSymptoms"
-                                  ValueChanged="v => _newSymptoms = v"
+                                  Value="@_dailyTreatment.NewOrChangedSymptoms"
+                                  ValueChanged="UpdateNewOrChangedSymptoms"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Any new pain areas, increased/decreased symptoms..."
                                   Rows="3" />
 
                 <EditableTextArea Label="Barriers to Progress"
-                                  Value="@_barriersToProgress"
-                                  ValueChanged="v => _barriersToProgress = v"
+                                  Value="@_dailyTreatment.BarriersToProgress"
+                                  ValueChanged="UpdateBarriersToProgress"
                                   IsReadOnly="IsReadOnly"
                                   Placeholder="Work schedule conflicts, equipment access, pain flare-ups..."
                                   Rows="3" />
@@ -173,16 +187,9 @@
 
 @code {
     private SubjectiveVm _vm = new();
+    private DailyTreatmentVm _dailyTreatment = new();
     private int _baselinePainLevel = 0;
     private string _painLocation = string.Empty;
-    private string _previousTreatment = string.Empty;
-    private string _changesSinceLastVisit = string.Empty;
-    private string _painLevelChanges = string.Empty;
-    private string _homeExerciseAdherence = string.Empty;
-    private string _functionalImprovements = string.Empty;
-    private string _newSymptoms = string.Empty;
-    private string _barriersToProgress = string.Empty;
-    private HashSet<string> _associatedSymptoms = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly string[] _bodyParts =
     [
@@ -196,13 +203,16 @@
     ];
 
     [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
+    [Parameter] public DailyTreatmentVm DailyTreatment { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
 
     protected override void OnParametersSet()
     {
         _vm = Vm;
+        _dailyTreatment = DailyTreatment;
         if (_vm.BestPainScore > 0)
         {
             _baselinePainLevel = _vm.BestPainScore;
@@ -217,9 +227,8 @@
 
     private Task UpdateAssociatedSymptoms(HashSet<string> value)
     {
-        _associatedSymptoms = value;
-        // Stored locally until SubjectiveVm adds a dedicated associated-symptoms field.
-        return VmChanged.InvokeAsync(_vm);
+        _dailyTreatment.AssociatedSymptoms = value;
+        return NotifyDailyChangedAsync();
     }
 
     private Task UpdateOtherProblem(string value)
@@ -239,4 +248,60 @@
         _vm.AdditionalFunctionalLimitations = value;
         return VmChanged.InvokeAsync(_vm);
     }
+
+    private Task UpdatePreviousTreatment(string value)
+    {
+        _dailyTreatment.PreviousTreatment = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateChangesSinceLastVisit(string value)
+    {
+        _dailyTreatment.ChangesSinceLastVisit = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdatePainLevelChanges(string value)
+    {
+        _dailyTreatment.PainLevelChanges = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateSubjectiveUpdate(string value)
+    {
+        _dailyTreatment.SubjectiveUpdate = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task HandleHepAdherenceChanged(ChangeEventArgs args)
+    {
+        _dailyTreatment.HepAdherence = args.Value?.ToString() ?? string.Empty;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateHepUpdateNotes(string value)
+    {
+        _dailyTreatment.HepUpdateNotes = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateFunctionalImprovements(string value)
+    {
+        _dailyTreatment.FunctionalImprovements = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateNewOrChangedSymptoms(string value)
+    {
+        _dailyTreatment.NewOrChangedSymptoms = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task UpdateBarriersToProgress(string value)
+    {
+        _dailyTreatment.BarriersToProgress = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task NotifyDailyChangedAsync() => DailyTreatmentChanged.InvokeAsync(_dailyTreatment);
 }

@@ -22,6 +22,64 @@
         </div>
 
         <div class="daily-col-12">
+            <FormSection Title="Treatment / Intervention Entries" Subtitle="Document skilled interventions performed today">
+                <div class="daily-plan__summary-header">
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" @onclick="AddIntervention">Add Intervention</button>
+                    }
+                </div>
+
+                @if (_vm.GeneralInterventions.Count == 0)
+                {
+                    <p class="daily-plan__message" role="note">No interventions documented yet.</p>
+                }
+                else
+                {
+                    <div class="daily-plan__intervention-list" data-testid="daily-plan-interventions">
+                        @for (var i = 0; i < _vm.GeneralInterventions.Count; i++)
+                        {
+                            var index = i;
+                            var intervention = _vm.GeneralInterventions[index];
+                            <div class="daily-plan__intervention-row">
+                                <label>
+                                    <span>Intervention</span>
+                                    <input type="text"
+                                           value="@intervention.Name"
+                                           disabled="@IsReadOnly"
+                                           @oninput="e => UpdateInterventionName(index, e.Value?.ToString())" />
+                                </label>
+                                <label>
+                                    <span>Notes</span>
+                                    <textarea rows="2"
+                                              value="@intervention.Notes"
+                                              disabled="@IsReadOnly"
+                                              @oninput="e => UpdateInterventionNotes(index, e.Value?.ToString())"></textarea>
+                                </label>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" @onclick="() => RemoveIntervention(index)">Remove</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Response to Treatment">
+                <EditableTextArea Label="Response to Treatment"
+                                  Id="daily-response-to-treatment"
+                                  Value="@_dailyTreatment.ResponseToTreatment"
+                                  ValueChanged="UpdateResponseToTreatment"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document tolerance, symptom response, performance quality, and safety response."
+                                  Rows="4" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
             <FormSection Title="Follow-Up &amp; Next Appointments">
                 <EditableTextArea Label="Next Visit Schedule"
                                   Value="@(_vm.FollowUpInstructions ?? string.Empty)"
@@ -66,12 +124,15 @@
 
 @code {
     private PlanVm _vm = new();
+    private DailyTreatmentVm _dailyTreatment = new();
     private bool _isGeneratingSummary;
     private string? _summaryErrorMessage;
     private EditableNarrativeBox? _clinicalSummaryBox;
 
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter] public DailyTreatmentVm DailyTreatment { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
     [Parameter] public Guid NoteId { get; set; }
@@ -80,9 +141,14 @@
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
 
-    protected override void OnParametersSet() => _vm = Vm;
+    protected override void OnParametersSet()
+    {
+        _vm = Vm;
+        _dailyTreatment = DailyTreatment;
+    }
 
     private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
+    private Task NotifyDailyChangedAsync() => DailyTreatmentChanged.InvokeAsync(_dailyTreatment);
 
     private Task UpdateTreatmentPlan(string value)
     {
@@ -100,6 +166,54 @@
     {
         _vm.ClinicalSummary = value;
         return NotifyChangedAsync();
+    }
+
+    private Task AddIntervention()
+    {
+        _vm.GeneralInterventions.Add(new GeneralInterventionEntry
+        {
+            Name = "Skilled intervention"
+        });
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionName(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Name = value ?? string.Empty;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionNotes(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Notes = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task RemoveIntervention(int index)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions.RemoveAt(index);
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateResponseToTreatment(string value)
+    {
+        _dailyTreatment.ResponseToTreatment = value;
+        return NotifyDailyChangedAsync();
     }
 
     private async Task GenerateSummaryAsync()
