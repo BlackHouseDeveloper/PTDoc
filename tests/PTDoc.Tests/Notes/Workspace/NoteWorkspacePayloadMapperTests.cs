@@ -253,6 +253,47 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToV2Payload_BlankMmtRow_PreservesStructuredMetricEntry()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Progress Note",
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    PrimaryBodyPart = BodyPart.Knee
+                }
+            },
+            Subjective = new SubjectiveVm(),
+            Objective = new ObjectiveVm
+            {
+                SelectedBodyPart = BodyPart.Knee.ToString(),
+                Metrics =
+                [
+                    new ObjectiveMetricRowEntry
+                    {
+                        MetricType = MetricType.MMT,
+                        Name = string.Empty,
+                        Value = string.Empty
+                    }
+                ]
+            },
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.ProgressNote);
+
+        var metric = Assert.Single(result.Objective.Metrics);
+        Assert.Equal(MetricType.MMT, metric.MetricType);
+        Assert.Equal("MMT", metric.Name);
+        Assert.Equal(string.Empty, metric.Value);
+        Assert.Equal(BodyPart.Knee, metric.BodyPart);
+    }
+
+    [Fact]
     public void MapToUiPayload_WhenPrimaryBodyPartIsOther_UsesSubjectiveStructuredBodyPartForBothTabs()
     {
         var payload = new NoteWorkspaceV2Payload

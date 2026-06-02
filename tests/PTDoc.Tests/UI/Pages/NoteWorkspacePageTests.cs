@@ -70,6 +70,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                             Problems = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pain" },
                             Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left knee" },
                             CurrentPainScore = 7,
+                            CurrentLevelOfFunction = "Independent in home with rest breaks for prolonged walking.",
                             AssistiveDevice = new AssistiveDeviceDetailsV2
                             {
                                 UsesAssistiveDevice = true,
@@ -90,7 +91,8 @@ public sealed class NoteWorkspacePageTests : TestContext
                     {
                         Problems = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Pain" },
                         Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Left knee" },
-                        CurrentPainScore = 7
+                        CurrentPainScore = 7,
+                        CurrentLevelOfFunction = "Independent in home with rest breaks for prolonged walking."
                     },
                     Objective = new ObjectiveVm
                     {
@@ -124,6 +126,9 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Contains("Comorbidity: Hypertension (High Blood Pressure)", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Medication: Zestril / Lisinopril", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Outcome measure: LEFS", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(
+                "Independent in home with rest breaks for prolonged walking.",
+                cut.Find("#current-level-of-function").GetAttribute("value"));
         });
 
         noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()), Times.Once);
@@ -655,6 +660,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.True(savedDrafts[1].IsReEvaluation);
         });
     }
+
 
     [Fact]
     public void ExistingProgressNote_LoadSyncsSelectedBodyPartSoObjectiveCatalogLoads()

@@ -109,6 +109,7 @@ public sealed class WorkspaceSubjectiveV2
     public bool CauseUnknown { get; set; }
     public string? KnownCause { get; set; }
     public HashSet<string> PriorFunctionalLevel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? CurrentLevelOfFunction { get; set; }
     public List<FunctionalLimitationEntryV2> FunctionalLimitations { get; set; } = new();
     public string? AdditionalFunctionalLimitations { get; set; }
     public ImagingDetailsV2 Imaging { get; set; } = new();
