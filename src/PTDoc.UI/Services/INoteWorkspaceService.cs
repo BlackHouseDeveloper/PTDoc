@@ -32,6 +32,7 @@ public sealed class NoteWorkspaceDraft
     public Guid? NoteId { get; init; }
     public int? LocalDraftId { get; init; }
     public Guid PatientId { get; init; }
+    public Guid? AppointmentId { get; init; }
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
     public bool IsReEvaluation { get; init; }

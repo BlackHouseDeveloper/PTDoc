@@ -14,5 +14,6 @@ public class NoteWorkspacePayload
     public ObjectiveVm Objective { get; set; } = new();
     public AssessmentWorkspaceVm Assessment { get; set; } = new();
     public PlanVm Plan { get; set; } = new();
+    public DailyTreatmentVm DailyTreatment { get; set; } = new();
     public DryNeedlingVm DryNeedling { get; set; } = new();
 }

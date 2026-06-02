@@ -171,6 +171,20 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
 
+        if (request.AppointmentId.HasValue)
+        {
+            var appointmentBelongsToPatient = await db.Appointments
+                .AnyAsync(appointment =>
+                    appointment.Id == request.AppointmentId.Value &&
+                    appointment.PatientId == request.PatientId,
+                    cancellationToken);
+
+            if (!appointmentBelongsToPatient)
+            {
+                throw new InvalidOperationException("The requested appointment does not belong to the supplied patient.");
+            }
+        }
+
         var currentUserId = identityContext.GetCurrentUserId();
         var clinicId = tenantContext.GetCurrentClinicId() ?? patient.ClinicId;
         var noteId = note?.Id ?? request.NoteId ?? Guid.NewGuid();
@@ -178,6 +192,7 @@ public sealed class NoteWorkspaceV2Service(
         payload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
         payload.NoteType = request.NoteType;
         payload.Plan ??= new WorkspacePlanV2();
+        payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         var scheduledVisits = await db.Appointments
@@ -329,6 +344,10 @@ public sealed class NoteWorkspaceV2Service(
         };
 
         note.PatientId = request.PatientId;
+        if (request.AppointmentId.HasValue || note.AppointmentId is null)
+        {
+            note.AppointmentId = request.AppointmentId;
+        }
         note.NoteType = request.NoteType;
         note.IsReEvaluation = request.IsReEvaluation;
         note.DateOfService = request.DateOfService.Date;
@@ -939,6 +958,7 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.SelectedCptCodes = [];
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
+        payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
 
         return payload;
     }
@@ -949,6 +969,7 @@ public sealed class NoteWorkspaceV2Service(
     {
         var deserialization = await DeserializePayloadAsync(note, cancellationToken);
         var payload = deserialization.Payload;
+        payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
         // Keep workspace-authored metric rows (including in-progress rows that may not have a value yet)

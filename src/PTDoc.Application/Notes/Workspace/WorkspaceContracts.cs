@@ -58,11 +58,27 @@ public sealed class NoteWorkspaceV2Payload
     public NoteType NoteType { get; set; }
     public WorkspaceSeedContextV2 SeedContext { get; set; } = new();
     public WorkspaceDryNeedlingV2? DryNeedling { get; set; }
+    public WorkspaceDailyTreatmentV2 DailyTreatment { get; set; } = new();
     public WorkspaceSubjectiveV2 Subjective { get; set; } = new();
     public WorkspaceObjectiveV2 Objective { get; set; } = new();
     public WorkspaceAssessmentV2 Assessment { get; set; } = new();
     public WorkspacePlanV2 Plan { get; set; } = new();
     public WorkspaceProgressNoteQuestionnaireV2 ProgressQuestionnaire { get; set; } = new();
+}
+
+public sealed class WorkspaceDailyTreatmentV2
+{
+    public string ChangesSinceLastVisit { get; set; } = string.Empty;
+    public string PainLevelChanges { get; set; } = string.Empty;
+    public string SubjectiveUpdate { get; set; } = string.Empty;
+    public string HepAdherence { get; set; } = string.Empty;
+    public string HepUpdateNotes { get; set; } = string.Empty;
+    public string FunctionalImprovements { get; set; } = string.Empty;
+    public string NewOrChangedSymptoms { get; set; } = string.Empty;
+    public string BarriersToProgress { get; set; } = string.Empty;
+    public string PreviousTreatment { get; set; } = string.Empty;
+    public HashSet<string> AssociatedSymptoms { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string ResponseToTreatment { get; set; } = string.Empty;
 }
 
 public sealed class WorkspaceDryNeedlingV2
@@ -373,6 +389,7 @@ public sealed class NoteWorkspaceV2SaveRequest
 {
     public Guid? NoteId { get; set; }
     public Guid PatientId { get; set; }
+    public Guid? AppointmentId { get; set; }
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
