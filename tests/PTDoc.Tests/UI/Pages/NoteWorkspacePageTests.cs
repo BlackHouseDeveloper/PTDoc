@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -102,6 +103,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
         Services.AddSingleton(patientService.Object);
         Services.AddSingleton(noteWorkspaceService.Object);
@@ -305,6 +307,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
         Services.AddSingleton(patientService.Object);
         Services.AddSingleton(noteWorkspaceService.Object);
@@ -658,6 +661,79 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal(noteId, savedDrafts[1].NoteId);
             Assert.True(savedDrafts[1].IsExistingNote);
             Assert.True(savedDrafts[1].IsReEvaluation);
+        });
+    }
+
+    [Fact]
+    public void NewNoteFirstSave_CanonicalRoutePreservesActiveSection()
+    {
+        var patientId = Guid.NewGuid();
+        var savedNoteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Jordan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult
+            {
+                Success = true,
+                NoteId = savedNoteId,
+                Status = NoteStatus.Draft
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/new-note");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-next']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-objective']").GetAttribute("class") ?? string.Empty, StringComparison.Ordinal));
+
+        cut.Find("[data-testid='footer-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.EndsWith(
+                $"/patient/{patientId}/note/{savedNoteId:D}?section=objective",
+                Services.GetRequiredService<NavigationManager>().Uri,
+                StringComparison.Ordinal);
         });
     }
 

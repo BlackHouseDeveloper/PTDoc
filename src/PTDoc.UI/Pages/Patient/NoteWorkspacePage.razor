@@ -1341,7 +1341,8 @@ else
             return;
         }
 
-        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}", replace: true);
+        var activeSection = _note.ActiveSection.ToString().ToLowerInvariant();
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}", replace: true);
     }
 
     private async Task HandleSubmitAsync()

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Note workspace first-save route preserves active SOAP section
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Updated `/new-note` canonicalization after first successful save to include the currently active SOAP section in the target URL (`section=<active-tab>`), and added a regression that saves from Objective and verifies the canonical route keeps `section=objective`. Reason: prevent post-save navigation from resetting users back to Subjective when they are actively charting in another tab.
+
 ### Fixed - Subjective current-function field accessibility naming
 
 - **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added an explicit `aria-label` to the "Current level of function" textarea so assistive technologies always announce a stable control name in the Subjective section. Reason: resolve PR review accessibility feedback for the new current-function field without changing existing layout structure.
