@@ -31,6 +31,7 @@ public sealed class NoteWorkspacePayloadMapper
 
     public NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
     {
+        var dailyTreatment = payload.DailyTreatment ?? new WorkspaceDailyTreatmentV2();
         var assistiveDeviceSelections = _subjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(payload.Subjective.AssistiveDevice);
         var houseLayoutSelections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(payload.Subjective.OtherLivingSituation);
         var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
@@ -246,6 +247,20 @@ public sealed class NoteWorkspacePayloadMapper
                 DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
                 FollowUpInstructions = payload.Plan.FollowUpInstructions,
                 ClinicalSummary = payload.Plan.ClinicalSummary
+            },
+            DailyTreatment = new DailyTreatmentVm
+            {
+                ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit,
+                PainLevelChanges = dailyTreatment.PainLevelChanges,
+                SubjectiveUpdate = dailyTreatment.SubjectiveUpdate,
+                HepAdherence = dailyTreatment.HepAdherence,
+                HepUpdateNotes = dailyTreatment.HepUpdateNotes,
+                FunctionalImprovements = dailyTreatment.FunctionalImprovements,
+                NewOrChangedSymptoms = dailyTreatment.NewOrChangedSymptoms,
+                BarriersToProgress = dailyTreatment.BarriersToProgress,
+                PreviousTreatment = dailyTreatment.PreviousTreatment,
+                AssociatedSymptoms = CloneSet(dailyTreatment.AssociatedSymptoms),
+                ResponseToTreatment = dailyTreatment.ResponseToTreatment
             }
         };
     }
@@ -259,6 +274,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective ??= new WorkspaceObjectiveV2();
         preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
         preservedPayload.Plan ??= new WorkspacePlanV2();
+        preservedPayload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
         NormalizePlannedCptCodeSources(preservedPayload.Plan.SelectedCptCodes);
 
@@ -392,6 +408,19 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
         preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+
+        var dailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
+        preservedPayload.DailyTreatment.ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.PainLevelChanges = dailyTreatment.PainLevelChanges?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.SubjectiveUpdate = dailyTreatment.SubjectiveUpdate?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.HepAdherence = dailyTreatment.HepAdherence?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.HepUpdateNotes = dailyTreatment.HepUpdateNotes?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.FunctionalImprovements = dailyTreatment.FunctionalImprovements?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.NewOrChangedSymptoms = dailyTreatment.NewOrChangedSymptoms?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.BarriersToProgress = dailyTreatment.BarriersToProgress?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.PreviousTreatment = dailyTreatment.PreviousTreatment?.Trim() ?? string.Empty;
+        preservedPayload.DailyTreatment.AssociatedSymptoms = CloneSet(dailyTreatment.AssociatedSymptoms);
+        preservedPayload.DailyTreatment.ResponseToTreatment = dailyTreatment.ResponseToTreatment?.Trim() ?? string.Empty;
 
         preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
         preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;

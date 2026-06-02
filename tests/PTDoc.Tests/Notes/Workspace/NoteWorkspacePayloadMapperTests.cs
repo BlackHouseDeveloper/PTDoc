@@ -468,6 +468,20 @@ public sealed class NoteWorkspacePayloadMapperTests
                         Units = 1
                     }
                 ]
+            },
+            DailyTreatment = new DailyTreatmentVm
+            {
+                ChangesSinceLastVisit = "Reports easier stair negotiation.",
+                PainLevelChanges = "Pain decreased from 6/10 to 3/10.",
+                SubjectiveUpdate = "Mild soreness after last visit resolved within a day.",
+                HepAdherence = "Good (70-90%)",
+                HepUpdateNotes = "Added heel raises.",
+                FunctionalImprovements = "Walking longer distances.",
+                NewOrChangedSymptoms = "No new symptoms.",
+                BarriersToProgress = "Limited home equipment.",
+                PreviousTreatment = "Prior visit focused on mobility.",
+                AssociatedSymptoms = ["Stiffness"],
+                ResponseToTreatment = "Tolerated strengthening without symptom flare."
             }
         };
 
@@ -490,6 +504,17 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Joint mobilization", result.Plan.GeneralInterventions[0].Name);
         Assert.Single(result.Plan.SelectedCptCodes);
         Assert.Equal("97110", result.Plan.SelectedCptCodes[0].Code);
+        Assert.Equal("Reports easier stair negotiation.", result.DailyTreatment.ChangesSinceLastVisit);
+        Assert.Equal("Pain decreased from 6/10 to 3/10.", result.DailyTreatment.PainLevelChanges);
+        Assert.Equal("Mild soreness after last visit resolved within a day.", result.DailyTreatment.SubjectiveUpdate);
+        Assert.Equal("Good (70-90%)", result.DailyTreatment.HepAdherence);
+        Assert.Equal("Added heel raises.", result.DailyTreatment.HepUpdateNotes);
+        Assert.Equal("Walking longer distances.", result.DailyTreatment.FunctionalImprovements);
+        Assert.Equal("No new symptoms.", result.DailyTreatment.NewOrChangedSymptoms);
+        Assert.Equal("Limited home equipment.", result.DailyTreatment.BarriersToProgress);
+        Assert.Equal("Prior visit focused on mobility.", result.DailyTreatment.PreviousTreatment);
+        Assert.Contains("Stiffness", result.DailyTreatment.AssociatedSymptoms);
+        Assert.Equal("Tolerated strengthening without symptom flare.", result.DailyTreatment.ResponseToTreatment);
     }
 
     [Fact]
@@ -547,5 +572,42 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal(3, result.DryNeedling.PainAfter);
         Assert.Equal("Reduced pain after treatment", result.DryNeedling.ResponseDescription);
         Assert.Equal("No adverse response", result.DryNeedling.AdditionalNotes);
+    }
+
+    [Fact]
+    public void MapToUiPayload_DailyTreatmentWorkspace_PopulatesDailyTreatmentVm()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new WorkspaceDailyTreatmentV2
+            {
+                ChangesSinceLastVisit = "Patient reports better transfers.",
+                PainLevelChanges = "Pain improved by two points.",
+                SubjectiveUpdate = "No adverse soreness after prior visit.",
+                HepAdherence = "Excellent (>90%)",
+                HepUpdateNotes = "Progressed bridge dosage.",
+                FunctionalImprovements = "Improved sit to stand.",
+                NewOrChangedSymptoms = "No new symptoms.",
+                BarriersToProgress = "Work schedule limited HEP time.",
+                PreviousTreatment = "Prior visit included gait training.",
+                AssociatedSymptoms = ["Stiffness"],
+                ResponseToTreatment = "Responded well to manual therapy."
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal("Patient reports better transfers.", result.DailyTreatment.ChangesSinceLastVisit);
+        Assert.Equal("Pain improved by two points.", result.DailyTreatment.PainLevelChanges);
+        Assert.Equal("No adverse soreness after prior visit.", result.DailyTreatment.SubjectiveUpdate);
+        Assert.Equal("Excellent (>90%)", result.DailyTreatment.HepAdherence);
+        Assert.Equal("Progressed bridge dosage.", result.DailyTreatment.HepUpdateNotes);
+        Assert.Equal("Improved sit to stand.", result.DailyTreatment.FunctionalImprovements);
+        Assert.Equal("No new symptoms.", result.DailyTreatment.NewOrChangedSymptoms);
+        Assert.Equal("Work schedule limited HEP time.", result.DailyTreatment.BarriersToProgress);
+        Assert.Equal("Prior visit included gait training.", result.DailyTreatment.PreviousTreatment);
+        Assert.Contains("Stiffness", result.DailyTreatment.AssociatedSymptoms);
+        Assert.Equal("Responded well to manual therapy.", result.DailyTreatment.ResponseToTreatment);
     }
 }

@@ -1207,6 +1207,8 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             }
 
             AddIfPresent(dailyValues, daily.ChangesSinceLastSession, "Changes");
+            AddIfPresent(dailyValues, daily.ResponseToPriorTreatment, "Response to treatment");
+            AddIfPresent(dailyValues, daily.BarriersToProgress, "Barriers");
             AddIfPresent(dailyValues, daily.PatientAdditionalComments, "Additional comments");
             return string.Join("; ", dailyValues);
         }

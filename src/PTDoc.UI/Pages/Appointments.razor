@@ -3,6 +3,7 @@
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
+@using System.Globalization
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
@@ -472,11 +473,15 @@
             return;
         }
 
-        var noteType = AppointmentVisitNoteTypeResolver.Resolve(selectedAppointmentDetail.AppointmentType);
-        var encodedNoteType = Uri.EscapeDataString(noteType);
+        var patientRecordId = selectedAppointmentDetail.PatientRecordId;
+        var noteIntent = AppointmentVisitNoteTypeResolver.ResolveIntent(selectedAppointmentDetail.AppointmentType);
+        var encodedNoteType = Uri.EscapeDataString(noteIntent.WorkspaceNoteType);
+        var encodedAppointmentId = Uri.EscapeDataString(selectedAppointmentDetail.AppointmentId.ToString("D"));
+        var encodedDateOfService = Uri.EscapeDataString(selectedAppointmentDetail.AppointmentDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        var fallbackQuery = noteIntent.AllowEvaluationFallback ? "&allowEvaluationFallback=true" : string.Empty;
 
         await HandleAppointmentDetailModalChanged(false);
-        NavigationManager.NavigateTo($"/patient/{selectedAppointmentDetail.PatientRecordId}/new-note?noteType={encodedNoteType}");
+        NavigationManager.NavigateTo($"/patient/{patientRecordId}/new-note?noteType={encodedNoteType}&appointmentId={encodedAppointmentId}&dateOfService={encodedDateOfService}{fallbackQuery}");
     }
 
     private async Task HandleSendReminderAsync()

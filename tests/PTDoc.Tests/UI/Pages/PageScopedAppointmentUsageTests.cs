@@ -135,6 +135,65 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     }
 
     [Fact]
+    public void PatientProfile_StartNoteChooser_DailyTreatmentSelectionNavigatesToDailyWorkspace()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        var toastService = new Mock<IToastService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Alex",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteService
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
+            .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
+
+        appointmentService
+            .Setup(service => service.GetByPatientAsync(
+                patientId,
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
+
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeResponseDraft?)null);
+
+        RegisterCommonServices();
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(intakeService.Object);
+        Services.AddSingleton(toastService.Object);
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
+        cut.WaitForElement("[data-testid='patient-primary-action']");
+
+        cut.Find("[data-testid='patient-primary-action']").Click();
+        cut.WaitForElement("[data-testid='patient-note-type-chooser']");
+        cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Daily Treatment Note", StringComparison.Ordinal))
+            .Click();
+
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith(
+            $"/patient/{patientId:D}/new-note?noteType=Daily%20Treatment%20Note",
+            navigation.Uri,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ExportCenter_UsesClinicianDirectoryInsteadOfOverviewForProviders()
     {
         var today = DateTime.UtcNow.Date;

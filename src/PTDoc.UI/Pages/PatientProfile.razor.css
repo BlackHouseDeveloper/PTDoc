@@ -55,6 +55,38 @@
     gap: var(--spacing-3);
 }
 
+.patient-profile-note-chooser {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+}
+
+.patient-profile-note-chooser h2,
+.patient-profile-note-chooser p {
+    margin: 0;
+}
+
+.patient-profile-note-chooser h2 {
+    color: var(--foreground);
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+}
+
+.patient-profile-note-chooser p {
+    color: var(--muted-foreground);
+}
+
+.patient-profile-note-chooser__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+}
+
 @media (max-width: 767px) {
     .patient-profile-page-body {
         padding: var(--spacing-4);
@@ -65,6 +97,11 @@
     }
 
     .patient-profile-state-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .patient-profile-note-chooser__actions {
         flex-direction: column;
         align-items: stretch;
     }

@@ -45,6 +45,28 @@
                     Label="Start New Note"
                     OnClick="@HandleStartNote" />
 
+                @if (isNoteTypeChooserOpen)
+                {
+                    <section class="patient-profile-note-chooser"
+                             aria-label="Choose note type"
+                             data-testid="patient-note-type-chooser">
+                        <div>
+                            <h2>Choose Note Type</h2>
+                            <p>Select the documentation workflow for this patient.</p>
+                        </div>
+                        <div class="patient-profile-note-chooser__actions">
+                            @foreach (var noteType in noteTypeOptions)
+                            {
+                                <button type="button"
+                                        class="btn btn--secondary"
+                                        @onclick="() => HandleCreateNoteType(noteType)">
+                                    @noteType
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
+
                 <PatientClinicalInfoCardEditable
                     Patient="@patient"
                     TimelineEntries="@timelineEntries"
@@ -75,7 +97,16 @@
     private string? intakeStateMessage;
     private string intakeStatusVariant = "default";
     private Guid currentPatientId;
+    private bool isNoteTypeChooserOpen;
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
+    private static readonly string[] noteTypeOptions =
+    [
+        "Daily Treatment Note",
+        "Evaluation Note",
+        "Progress Note",
+        "Discharge Note",
+        "Dry Needling Note"
+    ];
 
     protected override async Task OnInitializedAsync()
     {
@@ -381,12 +412,18 @@
 
     private void HandleStartNote()
     {
+        isNoteTypeChooserOpen = true;
+    }
+
+    private void HandleCreateNoteType(string noteType)
+    {
         if (string.IsNullOrWhiteSpace(Id))
         {
             return;
         }
 
-        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note");
+        var encodedNoteType = Uri.EscapeDataString(noteType);
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(Id)}/new-note?noteType={encodedNoteType}");
     }
 
     private void HandleReviewIntake()

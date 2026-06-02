@@ -814,6 +814,7 @@ public class DailyNoteService : IDailyNoteService
         var clinicalObservations = FirstNonEmpty(
             payload.Objective.ClinicalObservationNotes,
             payload.DryNeedling?.AdditionalNotes);
+        var dailyTreatment = payload.DailyTreatment ?? new WorkspaceDailyTreatmentV2();
 
         return new DailyNoteContentDto
         {
@@ -833,6 +834,12 @@ public class DailyNoteService : IDailyNoteService
             FunctionalLimitations = FirstNonEmpty(
                 payload.Assessment.FunctionalLimitationsSummary,
                 payload.Subjective.AdditionalFunctionalLimitations),
+            ChangesSinceLastSession = FirstNonEmpty(
+                dailyTreatment.ChangesSinceLastVisit,
+                dailyTreatment.SubjectiveUpdate),
+            PatientAdditionalComments = dailyTreatment.SubjectiveUpdate,
+            ResponseToPriorTreatment = dailyTreatment.ResponseToTreatment,
+            BarriersToProgress = dailyTreatment.BarriersToProgress,
             BodyParts = payload.Objective.PrimaryBodyPart == BodyPart.Other
                 ? []
                 : [payload.Objective.PrimaryBodyPart.ToString()],
@@ -877,6 +884,7 @@ public class DailyNoteService : IDailyNoteService
                 .Where(item => !string.IsNullOrWhiteSpace(item.ExerciseName))
                 .ToList(),
             HepUpdates = payload.Plan.HomeExerciseProgramNotes,
+            ProgressionReasoning = dailyTreatment.PainLevelChanges,
             NextSessionPlan = payload.Plan.FollowUpInstructions
         };
     }
@@ -955,6 +963,15 @@ public class DailyNoteService : IDailyNoteService
                 HomeExerciseProgramNotes = content.HepUpdates,
                 FollowUpInstructions = content.NextSessionPlan,
                 ClinicalSummary = content.ClinicalInterpretation
+            },
+            DailyTreatment = new WorkspaceDailyTreatmentV2
+            {
+                ChangesSinceLastVisit = content.ChangesSinceLastSession ?? string.Empty,
+                PainLevelChanges = content.ProgressionReasoning ?? string.Empty,
+                SubjectiveUpdate = content.PatientAdditionalComments ?? string.Empty,
+                HepUpdateNotes = content.HepUpdates ?? string.Empty,
+                BarriersToProgress = content.BarriersToProgress ?? string.Empty,
+                ResponseToTreatment = content.ResponseToPriorTreatment ?? string.Empty
             }
         };
 

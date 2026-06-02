@@ -173,6 +173,7 @@ public sealed class NoteWorkspaceApiService(
         {
             NoteId = draft.IsExistingNote ? draft.NoteId : null,
             PatientId = draft.PatientId,
+            AppointmentId = draft.AppointmentId,
             DateOfService = draft.DateOfService,
             NoteType = noteType,
             IsReEvaluation = draft.IsReEvaluation,
