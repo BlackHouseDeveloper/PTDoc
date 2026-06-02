@@ -528,6 +528,7 @@ public sealed class IntakeServiceTests : IDisposable
             MemberOrPolicyNumber = "BETA001",
             PayerType = "Commercial",
             InsuranceCoverageType = "Primary",
+            CurrentLevelOfFunction = "Independent in home, limited in community walking endurance.",
             FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             PainSeverityProvided = false
         });
@@ -546,6 +547,9 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.True(responseJson.RootElement.TryGetProperty("lastModifiedUtc", out var lastModifiedUtc));
         Assert.Equal(JsonValueKind.String, lastModifiedUtc.ValueKind);
         Assert.Equal("Male", responseJson.RootElement.GetProperty("sexAtBirth").GetString());
+        Assert.Equal(
+            "Independent in home, limited in community walking endurance.",
+            responseJson.RootElement.GetProperty("currentLevelOfFunction").GetString());
         Assert.Equal("Difficulty walking longer than 10 minutes.", responseJson.RootElement.GetProperty("functionalLimitations").GetString());
 
         var submittedPatient = await _context.Patients.SingleAsync(record => record.Id == patient.Id);

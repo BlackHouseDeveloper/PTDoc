@@ -35,6 +35,7 @@ public class SubjectiveVm
 
     // Prior functional level (before current condition)
     public HashSet<string> PriorFunctionalLevel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? CurrentLevelOfFunction { get; set; }
 
     // Q6: Functional limitations
     public HashSet<string> FunctionalLimitations { get; set; } = new(StringComparer.OrdinalIgnoreCase);

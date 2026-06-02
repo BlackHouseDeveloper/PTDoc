@@ -17,6 +17,7 @@ Tokens are applied via CSS custom properties and are consumed by global styles a
 ## Naming Conventions
 The system uses existing semantic (role-based) token names from the prototype:
 - Color roles: `--background`, `--foreground`, `--primary`, `--secondary`, `--muted`, `--border`, `--success`, `--warning`, `--destructive`, `--info`, etc.
+- Semantic surface/text aliases also exist for complex note UIs when they improve reuse across themes: `--surface-card`, `--surface-input`, `--surface-disabled`, `--border-subtle`, `--border-input`, `--text-secondary`, `--text-muted`.
 - Typography: `--font-family-base`, `--text-sm`, `--text-base`, `--text-2xl`, `--font-weight-medium`, `--line-height-normal`
 - Spacing: `--spacing-1`…`--spacing-16`
 - Radii: `--radius-sm`, `--radius-md`, `--radius-lg`, `--radius-xl`
@@ -32,6 +33,14 @@ The system uses existing semantic (role-based) token names from the prototype:
 1. Add the token to [src/PTDoc.UI/wwwroot/css/tokens.css](../src/PTDoc.UI/wwwroot/css/tokens.css) for both `:root` and `.dark` (if theme-specific).
 2. Prefer semantic role names (e.g., `--success`, `--muted-foreground`), not raw colors or hue-based names.
 3. Update this doc with the new token and its usage.
+
+Current note-workspace aliases:
+- `--surface-card`: card-like nested controls inside already-carded layouts.
+- `--surface-input`: input rows or search surfaces distinct from page background.
+- `--surface-disabled`: disabled editor surface.
+- `--border-subtle`: low-emphasis dividers and chip borders.
+- `--border-input`: input-specific border tone when different from generic borders.
+- `--text-secondary` / `--text-muted`: secondary and low-emphasis text aliases for shared note components.
 
 ## Do / Don’t
 **Do**

@@ -66,7 +66,10 @@ public sealed class NoteWorkspaceApiServiceTests
             Payload = new NoteWorkspacePayload
             {
                 WorkspaceNoteType = "Progress Note",
-                Subjective = new SubjectiveVm(),
+                Subjective = new SubjectiveVm
+                {
+                    CurrentLevelOfFunction = "Independent with basic ADLs; requires rest breaks for prolonged ambulation."
+                },
                 Objective = new ObjectiveVm(),
                 Assessment = new AssessmentWorkspaceVm
                 {
@@ -90,6 +93,11 @@ public sealed class NoteWorkspaceApiServiceTests
             .GetProperty("assessment")
             .GetProperty("assessmentNarrative")
             .GetString());
+        Assert.Equal("Independent with basic ADLs; requires rest breaks for prolonged ambulation.",
+            document.RootElement.GetProperty("payload")
+                .GetProperty("subjective")
+                .GetProperty("currentLevelOfFunction")
+                .GetString());
         var frequencyDays = document.RootElement.GetProperty("payload")
             .GetProperty("plan")
             .GetProperty("treatmentFrequencyDaysPerWeek")
@@ -923,7 +931,10 @@ public sealed class NoteWorkspaceApiServiceTests
             Payload = new NoteWorkspacePayload
             {
                 WorkspaceNoteType = "Progress Note",
-                Subjective = new SubjectiveVm(),
+                Subjective = new SubjectiveVm
+                {
+                    CurrentLevelOfFunction = "Independent with basic ADLs; requires rest breaks for prolonged ambulation."
+                },
                 Objective = new ObjectiveVm(),
                 Assessment = new AssessmentWorkspaceVm(),
                 Plan = new PlanVm()

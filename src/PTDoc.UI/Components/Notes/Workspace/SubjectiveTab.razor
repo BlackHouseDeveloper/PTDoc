@@ -182,6 +182,17 @@
                 @level
             </label>
         }
+
+        <p class="subjective-tab__field-label">Current level of function:</p>
+        <textarea id="current-level-of-function"
+                  aria-label="Current level of function"
+                  name="current-level-of-function"
+                  class="subjective-tab__textarea"
+                  rows="2"
+                  placeholder="Describe current function for daily tasks and mobility..."
+                  disabled="@IsReadOnly"
+                  value="@_vm.CurrentLevelOfFunction"
+                  @onchange="e => SetAndNotify(v => v.CurrentLevelOfFunction = e.Value?.ToString())"></textarea>
     </div>
 
     <div class="subjective-tab__question">

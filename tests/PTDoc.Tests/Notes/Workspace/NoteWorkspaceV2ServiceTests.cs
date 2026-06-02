@@ -139,7 +139,26 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                             Score = 22,
                             RecordedAtUtc = new DateTime(2026, 3, 30, 12, 0, 0, DateTimeKind.Utc)
                         }
-                    ]
+                    ],
+                    SpecialTests =
+                    [
+                        new SpecialTestResultV2
+                        {
+                            Name = "Spurling",
+                            Side = "Right",
+                            Result = "Positive",
+                            Notes = "Reproduces right-sided neck pain"
+                        }
+                    ],
+                    PostureObservation = new PostureObservationV2
+                    {
+                        Findings = ["Forward head posture"],
+                        Other = "Rounded shoulders"
+                    },
+                    PalpationObservation = new PalpationObservationV2
+                    {
+                        TenderMuscles = ["Upper trapezius"]
+                    }
                 },
                 Assessment = new WorkspaceAssessmentV2
                 {
@@ -207,6 +226,14 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var outcomeMeasure = Assert.Single(reloaded.Payload.Objective.OutcomeMeasures);
         Assert.Equal(OutcomeMeasureType.NeckDisabilityIndex, outcomeMeasure.MeasureType);
         Assert.Equal(5d, outcomeMeasure.MinimumDetectableChange);
+        var specialTest = Assert.Single(reloaded.Payload.Objective.SpecialTests);
+        Assert.Equal("Spurling", specialTest.Name);
+        Assert.Equal("Right", specialTest.Side);
+        Assert.Equal("Positive", specialTest.Result);
+        Assert.Equal("Reproduces right-sided neck pain", specialTest.Notes);
+        Assert.Contains("Forward head posture", reloaded.Payload.Objective.PostureObservation.Findings);
+        Assert.Equal("Rounded shoulders", reloaded.Payload.Objective.PostureObservation.Other);
+        Assert.Contains("Upper trapezius", reloaded.Payload.Objective.PalpationObservation.TenderMuscles);
         var cptEntry = Assert.Single(reloaded.Payload.Plan.SelectedCptCodes);
         Assert.Equal(["GP"], cptEntry.Modifiers);
         Assert.Equal(["CQ", "GP", "KX"], cptEntry.ModifierOptions.OrderBy(value => value).ToArray());
@@ -295,6 +322,91 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.True(result.IsValid);
         var metric = Assert.Single(await context.ObjectiveMetrics.Where(item => item.NoteId == note.Id).ToListAsync());
         Assert.Equal("96 degrees", metric.Value);
+    }
+
+    [Fact]
+    public async Task SaveAsync_BlankObjectiveMetricRows_RemainInWorkspacePayloadAfterSaveAndReload()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        var service = CreateService(context);
+        var clinicId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Seed",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinicId
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 5, 19),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { NoteType = NoteType.Evaluation }),
+            LastModifiedUtc = DateTime.UtcNow,
+            NoteStatus = NoteStatus.Draft
+        };
+
+        context.Clinics.Add(new Clinic
+        {
+            Id = clinicId,
+            Name = "Metric Clinic",
+            Slug = "metric-clinic",
+            IsActive = true
+        });
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
+        var result = await service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    PrimaryBodyPart = BodyPart.Knee,
+                    Metrics =
+                    [
+                        new ObjectiveMetricInputV2
+                        {
+                            Name = "Knee Flexion: 0-135 degrees",
+                            BodyPart = BodyPart.Knee,
+                            MetricType = MetricType.ROM,
+                            Value = string.Empty
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        Assert.NotNull(result.Workspace);
+        var savedWorkspace = result.Workspace!;
+        var savedMetric = Assert.Single(savedWorkspace.Payload.Objective.Metrics);
+        Assert.Equal("Knee Flexion: 0-135 degrees", savedMetric.Name);
+        Assert.Equal(string.Empty, savedMetric.Value);
+
+        var reloaded = await service.LoadAsync(patient.Id, note.Id);
+        var reloadedMetric = Assert.Single(reloaded!.Payload.Objective.Metrics);
+        Assert.Equal("Knee Flexion: 0-135 degrees", reloadedMetric.Name);
+        Assert.Equal(string.Empty, reloadedMetric.Value);
     }
 
     [Fact]
@@ -603,6 +715,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             PainSeverityProvided = true,
             UsesAssistiveDevices = true,
             MedicalHistoryNotes = "History of recurrent knee pain.",
+            CurrentLevelOfFunction = "Can perform household tasks with pacing; requires seated breaks for community walking.",
             FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             SelectedComorbidities = ["Hypertension (High Blood Pressure)"],
             SelectedAssistiveDevices = ["Cane"],
@@ -690,6 +803,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("Cane", seed.Payload.Subjective.AssistiveDevice.Devices);
         Assert.True(seed.Payload.Subjective.TakingMedications);
         Assert.Equal("Zestril / Lisinopril", Assert.Single(seed.Payload.Subjective.Medications).Name);
+        Assert.Equal(
+            "Can perform household tasks with pacing; requires seated breaks for community walking.",
+            seed.Payload.Subjective.CurrentLevelOfFunction);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Subjective.AdditionalFunctionalLimitations);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Assessment.FunctionalLimitationsSummary);
         Assert.Contains("Left leg", seed.Payload.Subjective.Locations);

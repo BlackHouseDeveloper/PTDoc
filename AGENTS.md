@@ -7,6 +7,7 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 - Restate the task briefly and identify only the docs needed for that task.
 - Reuse existing patterns; do not refactor unrelated code.
 - Check file placement against [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before adding files.
+- When asked to write, rewrite, or summarize a pull request, always read and use [`.github/pull_request_template.md`](.github/pull_request_template.md) as the required structure and context; do not invent an alternate PR-summary format.
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
 - Never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.
 - Update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) at the end of every repository-changing session before handing off. If no entry is needed, state that explicitly.
@@ -66,12 +67,26 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - iOS simulator: `dotnet build -t:Run -f net8.0-ios src/PTDoc.Maui/PTDoc.csproj`
 - Android emulator: `dotnet build -t:Run -f net8.0-android src/PTDoc.Maui/PTDoc.csproj`
 
+## Optional AI Draft Setup
+
+- Enable local Azure OpenAI draft generation on `src/PTDoc.Api` with:
+  - `FeatureFlags__EnableAiGeneration=true`
+  - `AzureOpenAIEndpoint=https://<your-resource>.cognitiveservices.azure.com`
+  - `AzureOpenAIKey=<your-azure-openai-resource-key>`
+  - `AzureOpenAIDeployment=ptdoc-gpt-4o-mini`
+  - `AzureOpenAIApiVersion=2025-01-01-preview`
+  - `Ai__MaxOutputTokens=400`
+- Use the base Azure resource endpoint only; do not pass the full chat-completions URL.
+- After startup, verify AI config through authenticated `GET /diagnostics/runtime`, then run one authenticated saved-note AI action. Health endpoints alone do not confirm Azure generation works end to end.
+
 ## Browser QA Commands
 
 - Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
 - Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive`
+- Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
 - Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
 - Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>`
+- Optional viewport overlay toggle without the env var: add `?ptdocViewportDiagnostics=1` to enable it and `?ptdocViewportDiagnostics=0` to disable it on a fresh page load.
 - Browser QA artifacts are written under `tests/PTDoc.Web.UiQa/test-results/` and `tests/PTDoc.Web.UiQa/playwright-report/`; do not commit them.
 
 ## Repo-Specific Environment Variables
@@ -92,6 +107,12 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
 - `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`: optional seeded note-workspace route included in the responsive browser QA matrix.
 - `PTDOC_UI_QA_CHROME_CHANNEL`: optional Chrome channel override for the browser QA Playwright project.
+- `FeatureFlags__EnableAiGeneration`: enables API-side AI draft generation.
+- `AzureOpenAIEndpoint`: base Azure OpenAI resource endpoint consumed by `src/PTDoc.Api`.
+- `AzureOpenAIKey`: Azure OpenAI resource key for `src/PTDoc.Api`.
+- `AzureOpenAIDeployment`: Azure OpenAI deployment name used for draft generation.
+- `AzureOpenAIApiVersion`: Azure OpenAI API version used by the API provider.
+- `Ai__MaxOutputTokens`: caps AI draft-generation output tokens.
 
 ## Platform Notes
 

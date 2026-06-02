@@ -64,6 +64,7 @@ public sealed class IntakeWizardState
     public bool UsesAssistiveDevices { get; set; }
     public bool HasPreviousSurgeriesOrInjuries { get; set; }
     public string? MedicalHistoryNotes { get; set; }
+    public string? CurrentLevelOfFunction { get; set; }
     public string? FunctionalLimitations { get; set; }
 
     public string? SelectedBodyRegion { get; set; }

@@ -1258,6 +1258,8 @@ else
                 _note.MarkSaved();
             }
 
+            EnsureSavedNoteRoute(saveResult.NoteId);
+
             ApplyWorkspaceNotice();
 
             if (saveResult.Warnings.Count > 0)
@@ -1318,6 +1320,29 @@ else
         }
 
         return true;
+    }
+
+    private void EnsureSavedNoteRoute(Guid noteId)
+    {
+        if (noteId == Guid.Empty)
+        {
+            return;
+        }
+
+        var routeNoteId = ResolveRouteNoteId(NoteId);
+        if (routeNoteId.HasValue && routeNoteId.Value == noteId)
+        {
+            return;
+        }
+
+        var currentPath = new Uri(NavigationManager.Uri).AbsolutePath;
+        if (!currentPath.EndsWith("/new-note", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var activeSection = Uri.EscapeDataString(_note.ActiveSection.ToString().ToLowerInvariant());
+        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}", replace: true);
     }
 
     private async Task HandleSubmitAsync()

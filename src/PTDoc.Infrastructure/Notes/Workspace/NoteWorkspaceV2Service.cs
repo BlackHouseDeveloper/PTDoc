@@ -430,6 +430,9 @@ public sealed class NoteWorkspaceV2Service(
         var functionalLimitations = string.IsNullOrWhiteSpace(draft.FunctionalLimitations)
             ? null
             : draft.FunctionalLimitations.Trim();
+        var currentLevelOfFunction = string.IsNullOrWhiteSpace(draft.CurrentLevelOfFunction)
+            ? null
+            : draft.CurrentLevelOfFunction.Trim();
         var initialOutcomeMeasureSummary = BuildInitialOutcomeMeasureSummary(draft.InitialOutcomeMeasureReports);
 
         var payload = new NoteWorkspaceV2Payload
@@ -463,6 +466,7 @@ public sealed class NoteWorkspaceV2Service(
                 },
                 TakingMedications = medicationEntries.Count > 0 ? true : null,
                 Medications = medicationEntries,
+                CurrentLevelOfFunction = currentLevelOfFunction,
                 AdditionalFunctionalLimitations = functionalLimitations,
                 NarrativeContext = new SubjectNarrativeContextV2
                 {
@@ -472,6 +476,7 @@ public sealed class NoteWorkspaceV2Service(
                     HistoryOfPresentIllness = painDescriptorLabels.Count == 0
                         ? null
                         : $"Intake pain descriptors: {string.Join(", ", painDescriptorLabels)}",
+                    DifficultyExperienced = currentLevelOfFunction,
                     PatientHistorySummary = string.IsNullOrWhiteSpace(draft.MedicalHistoryNotes)
                         ? null
                         : draft.MedicalHistoryNotes.Trim()
@@ -946,18 +951,40 @@ public sealed class NoteWorkspaceV2Service(
         var payload = deserialization.Payload;
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
-        payload.Objective.Metrics = note.ObjectiveMetrics
-            .Select(metric => new ObjectiveMetricInputV2
-            {
-                BodyPart = metric.BodyPart,
-                MetricType = metric.MetricType,
-                Value = metric.Value,
-                IsWithinNormalLimits = metric.IsWNL,
-                PreviousValue = previousMetrics.TryGetValue((metric.BodyPart, metric.MetricType), out var previousValue)
-                    ? previousValue
-                    : null
-            })
-            .ToList();
+        // Keep workspace-authored metric rows (including in-progress rows that may not have a value yet)
+        // and enrich them with previous-value context from relational history.
+        if (payload.Objective.Metrics.Count > 0)
+        {
+            payload.Objective.Metrics = payload.Objective.Metrics
+                .Select(metric => new ObjectiveMetricInputV2
+                {
+                    Name = metric.Name,
+                    BodyPart = metric.BodyPart,
+                    MetricType = metric.MetricType,
+                    Value = metric.Value,
+                    IsWithinNormalLimits = metric.IsWithinNormalLimits,
+                    NormValue = metric.NormValue,
+                    PreviousValue = previousMetrics.TryGetValue((metric.BodyPart, metric.MetricType), out var previousValue)
+                        ? previousValue
+                        : metric.PreviousValue
+                })
+                .ToList();
+        }
+        else
+        {
+            payload.Objective.Metrics = note.ObjectiveMetrics
+                .Select(metric => new ObjectiveMetricInputV2
+                {
+                    BodyPart = metric.BodyPart,
+                    MetricType = metric.MetricType,
+                    Value = metric.Value,
+                    IsWithinNormalLimits = metric.IsWNL,
+                    PreviousValue = previousMetrics.TryGetValue((metric.BodyPart, metric.MetricType), out var previousValue)
+                        ? previousValue
+                        : null
+                })
+                .ToList();
+        }
 
         var persistedOutcomeResults = await db.OutcomeMeasureResults
             .Where(result => result.NoteId == note.Id)

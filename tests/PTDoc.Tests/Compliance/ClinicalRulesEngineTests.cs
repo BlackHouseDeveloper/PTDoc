@@ -156,6 +156,61 @@ public class ClinicalRulesEngineTests : IDisposable
         Assert.True(rule.Blocking);
     }
 
+    [Fact]
+    public async Task RunClinicalValidation_EvalWithStructuredBlankObjectiveMetricRows_StillRequiresObjectiveRule()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Left shoulder flexion",
+                        BodyPart = BodyPart.Shoulder,
+                        MetricType = MetricType.ROM,
+                        Value = string.Empty,
+                        IsWithinNormalLimits = false
+                    }
+                ]
+            }
+        };
+
+        var note = AddNote(
+            NoteType.Evaluation,
+            JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        var result = await _engine.RunClinicalValidationAsync(note.Id);
+
+        var rule = result.FirstOrDefault(r => r.RuleId == "DOC_OBJECTIVE");
+        Assert.NotNull(rule);
+        Assert.True(rule.Blocking);
+    }
+
+    [Fact]
+    public async Task RunClinicalValidation_EvalWithRelationalBlankObjectiveMetricRows_StillRequiresObjectiveRule()
+    {
+        var note = AddNote(NoteType.Evaluation, "{}");
+        _context.ObjectiveMetrics.Add(new ObjectiveMetric
+        {
+            Id = Guid.NewGuid(),
+            NoteId = note.Id,
+            BodyPart = BodyPart.Shoulder,
+            MetricType = MetricType.ROM,
+            Value = string.Empty,
+            IsWNL = false
+        });
+        await _context.SaveChangesAsync();
+
+        var result = await _engine.RunClinicalValidationAsync(note.Id);
+
+        var rule = result.FirstOrDefault(r => r.RuleId == "DOC_OBJECTIVE");
+        Assert.NotNull(rule);
+        Assert.True(rule.Blocking);
+    }
+
     // ─── Documentation completeness: goals ────────────────────────────────────
 
     [Fact]

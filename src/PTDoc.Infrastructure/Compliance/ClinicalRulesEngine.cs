@@ -136,7 +136,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
         int outcomeMeasureCount,
         List<RuleEvaluationResult> results)
     {
-        if (note.ObjectiveMetrics.Any() || outcomeMeasureCount > 0 || snapshot?.HasObjectiveFindings == true)
+        if (note.ObjectiveMetrics.Any(HasRecordedObjectiveMetric) || outcomeMeasureCount > 0 || snapshot?.HasObjectiveFindings == true)
         {
             return;
         }
@@ -510,7 +510,7 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
                                 !string.IsNullOrWhiteSpace(payload.ProgressQuestionnaire.PainFrequency);
 
             var hasGoals = payload.Assessment.Goals.Count > 0 || goalCount > 0;
-            var hasObjectiveFindings = payload.Objective.Metrics.Count > 0 ||
+            var hasObjectiveFindings = payload.Objective.Metrics.Any(HasRecordedObjectiveMetric) ||
                                        payload.Objective.OutcomeMeasures.Count > 0 ||
                                        payload.Objective.SpecialTests.Count > 0 ||
                                        HasGaitObservation(payload.Objective.GaitObservation) ||
@@ -567,6 +567,12 @@ public class ClinicalRulesEngine : IClinicalRulesEngine
 
         return false;
     }
+
+    private static bool HasRecordedObjectiveMetric(ObjectiveMetric metric) =>
+        !string.IsNullOrWhiteSpace(metric.Value) || metric.IsWNL;
+
+    private static bool HasRecordedObjectiveMetric(ObjectiveMetricInputV2 metric) =>
+        !string.IsNullOrWhiteSpace(metric.Value) || metric.IsWithinNormalLimits;
 
     private static bool HasGaitObservation(GaitObservationV2 gaitObservation) =>
         !string.IsNullOrWhiteSpace(gaitObservation.PrimaryPattern) ||

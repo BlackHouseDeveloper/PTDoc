@@ -176,6 +176,7 @@ public sealed class MockIntakeService : IIntakeService
             UsesAssistiveDevices = state.UsesAssistiveDevices,
             HasPreviousSurgeriesOrInjuries = state.HasPreviousSurgeriesOrInjuries,
             MedicalHistoryNotes = state.MedicalHistoryNotes,
+            CurrentLevelOfFunction = state.CurrentLevelOfFunction,
             FunctionalLimitations = state.FunctionalLimitations,
             SelectedBodyRegion = state.SelectedBodyRegion,
             PainSeverityScore = state.PainSeverityScore,

@@ -71,6 +71,7 @@ public sealed class NoteWorkspacePayloadMapper
                 CauseUnknown = payload.Subjective.CauseUnknown,
                 KnownCause = payload.Subjective.KnownCause,
                 PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel),
+                CurrentLevelOfFunction = payload.Subjective.CurrentLevelOfFunction,
                 StructuredFunctionalLimitations = payload.Subjective.FunctionalLimitations
                     .Select(entry => new FunctionalLimitationEditorEntry
                     {
@@ -280,6 +281,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Subjective.CauseUnknown = payload.Subjective.CauseUnknown;
         preservedPayload.Subjective.KnownCause = payload.Subjective.KnownCause;
         preservedPayload.Subjective.PriorFunctionalLevel = CloneSet(payload.Subjective.PriorFunctionalLevel);
+        preservedPayload.Subjective.CurrentLevelOfFunction = payload.Subjective.CurrentLevelOfFunction;
         preservedPayload.Subjective.FunctionalLimitations = payload.Subjective.StructuredFunctionalLimitations.Count > 0
             ? MergeStructuredFunctionalLimitations(
                 preservedPayload.Subjective.FunctionalLimitations,
@@ -690,6 +692,12 @@ public sealed class NoteWorkspacePayloadMapper
             var name = string.IsNullOrWhiteSpace(row.Name)
                 ? ResolveMetricName(existing, row.MetricType)
                 : row.Name.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = ResolveMetricFallbackName(row.MetricType);
+            }
+
             var value = string.IsNullOrWhiteSpace(row.Value)
                 ? existing?.Value ?? string.Empty
                 : row.Value.Trim();
@@ -718,6 +726,17 @@ public sealed class NoteWorkspacePayloadMapper
         return merged.Count > 0
             ? merged
             : preserved;
+    }
+
+    private static string ResolveMetricFallbackName(MetricType metricType)
+    {
+        return metricType switch
+        {
+            MetricType.MMT => "MMT",
+            MetricType.ROM => "ROM",
+            MetricType.Other => string.Empty,
+            _ => metricType.ToString()
+        };
     }
 
     private static List<SpecialTestResultV2> MergeSpecialTests(

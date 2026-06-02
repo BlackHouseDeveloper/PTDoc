@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Note workspace route section query encoding
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`** — Encoded the first-save canonical route `section` query value with `Uri.EscapeDataString(...)` before navigation to keep query construction consistent and resilient to future section-name changes. Reason: PR review flagged direct interpolation of the section query parameter.
+
+### Fixed - Objective tab placeholder selector accuracy
+
+- **`src/PTDoc.UI/Components/Notes/Workspace/ObjectiveTab.razor.css`** — Removed the no-op `.objective-tab__select::placeholder` selector and kept placeholder styling scoped to text inputs and textareas only. Reason: `::placeholder` does not apply to `<select>`, so leaving the selector could mislead future Objective styling updates.
+
+### Fixed - DOC_OBJECTIVE no longer passes on blank objective metric rows
+
+- **`src/PTDoc.Infrastructure/Compliance/ClinicalRulesEngine.cs`**, **`tests/PTDoc.Tests/Compliance/ClinicalRulesEngineTests.cs`** — Hardened objective completeness evaluation so objective metrics only count when they contain a recorded value or an explicit WNL flag, instead of treating any metric row count as sufficient. Added regressions for both structured payload metrics and relational objective metric rows that are present but blank. Reason: prevent empty in-progress objective rows from bypassing the `DOC_OBJECTIVE` “No objective measures recorded” rule.
+
+### Fixed - Note workspace first-save route preserves active SOAP section
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Updated `/new-note` canonicalization after first successful save to include the currently active SOAP section in the target URL (`section=<active-tab>`), and added a regression that saves from Objective and verifies the canonical route keeps `section=objective`. Reason: prevent post-save navigation from resetting users back to Subjective when they are actively charting in another tab.
+
+### Fixed - Subjective current-function field accessibility naming
+
+- **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added an explicit `aria-label` to the "Current level of function" textarea so assistive technologies always announce a stable control name in the Subjective section. Reason: resolve PR review accessibility feedback for the new current-function field without changing existing layout structure.
+
+### Changed - PR summary template enforcement for agent outputs
+
+- **`AGENTS.md`**, **`.github/copilot-instructions.md`** — Added explicit guidance that any generated or revised pull request summary must first use `.github/pull_request_template.md` as required context and structure. Reason: keep PR summaries consistent with repository review expectations and prevent ad-hoc summary formats.
+
+### Changed - Agent guidance captures viewport diagnostics QA workflow
+
+- **`AGENTS.md`** — Added the documented local viewport-diagnostics launch command for `src/PTDoc.Web` plus the `?ptdocViewportDiagnostics=1` and `?ptdocViewportDiagnostics=0` query-string toggle workflow used during responsive QA. Reason: repo guidance should capture the existing responsive-debug workflow from `docs/RESPONSIVE_QA.md` so agents do not need to rediscover it.
+
+### Changed - Agent guidance captures local Azure OpenAI draft setup
+
+- **`AGENTS.md`** — Added the documented optional local Azure OpenAI draft-generation workflow, including the required `src/PTDoc.Api` environment variables and the verification path through authenticated runtime diagnostics plus an end-to-end saved-note AI action. Reason: repo guidance now needs to capture the existing AI setup workflow without requiring agents to rediscover it from `README.md`.
+
+### Changed - PR 7 evaluation-note beta workflow (current-function intake + objective durability slice)
+
+- **`src/PTDoc.Application/Services/IntakeResponseDraft.cs`**, **`src/PTDoc.UI/Components/Intake/Models/IntakeWizardState.cs`**, **`src/PTDoc.UI/Components/Intake/Cards/FunctionalLimitationsCard.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/PainAssessmentStep2.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`src/PTDoc.Infrastructure/Services/InMemoryIntakeService.cs`**, **`src/PTDoc.Infrastructure/Services/MockIntakeService.cs`** — Added an explicit intake `CurrentLevelOfFunction` field, wired capture and review display in the intake wizard, and ensured draft round-trip persistence across API-backed, in-memory, and mock intake service paths. Reason: PR 7 now requires an explicit source for current functional status instead of inferring from limitations text.
+- **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`**, **`src/PTDoc.UI/Components/Notes/Models/SubjectiveVm.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`**, **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Extended evaluation workspace subjective contracts to include `CurrentLevelOfFunction`, mapped the new field through payload translation, seeded it from intake into new evaluation drafts, and exposed it as an editable subjective field in the note workspace. Reason: clinicians must see and edit the intake-provided current functional baseline directly inside the evaluation note.
+- **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeApiServiceTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceApiServiceTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceV2ServiceTests.cs`**, **`tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs`** — Added and expanded regressions for current-function capture/serialization/hydration, evaluation-seed prefill visibility, and objective save/reload durability for special tests, posture, and palpation data. Reason: PR 7 acceptance requires editable intake prefill plus objective fields that survive draft save/reload.
+
+### Fixed - Objective metric draft persistence for ROM/MMT in-progress rows
+
+- **`src/PTDoc.Infrastructure/Notes/Workspace/NoteWorkspaceV2Service.cs`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspaceV2ServiceTests.cs`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`** — Preserved payload-authored objective metrics during workspace reloads, enriched prior values without replacing payload rows from relational projections, and added mapper-side fallback metric naming for typed blank rows (MMT/ROM) so in-progress objective entries are retained across save/reload cycles. Added regressions for blank named objective rows and blank MMT rows. Reason: Objective tab ROM/MMT additions with incomplete values could be dropped during save/reload, causing rows to disappear during note drafting.
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`** — Replaced the `/new-note` route with `/patient/{patientId}/note/{noteId}` immediately after the first successful draft save so hard reload rehydrates the saved workspace instead of re-running new-note seed initialization. Reason: Objective draft rows and selected body part appeared to disappear after reload because the browser remained on `/new-note` and loaded a fresh seeded draft instead of the saved note.
+- **`src/PTDoc.UI/Components/Notes/Workspace/ObjectiveTab.razor.css`** — Added the missing token-based styles for Objective body-region selects, ROM/MMT chips, editor rows, helper text, buttons, inputs, placeholders, and disabled states so dark mode no longer falls back to browser-default white controls while preserving the existing light-mode visual language. Reason: the Objective section markup rendered several classes without matching scoped styles, which made Body Region, ROM, and MMT controls hard to read in dark mode.
+- **`src/PTDoc.UI/wwwroot/css/tokens.css`**, **`docs/style-system.md`** — Added missing semantic token aliases used by NoteWorkspace Plan and Assessment styles (`--surface-card`, `--surface-input`, `--surface-disabled`, `--border-subtle`, `--border-input`, `--text-secondary`, `--text-muted`) so adjacent Notes surfaces resolve consistently in both themes without component-level hardcoding. Reason: the Objective audit surfaced shared note-theme token gaps that could cause inconsistent dark-mode rendering outside the immediate Objective section.
+
 ### Fixed - Copilot review follow-up for payer JSON merge preservation
 
 - **`src/PTDoc.Api/Intake/IntakeEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/IntakeService.cs`**, **`tests/PTDoc.Tests/Intake/IntakeEndpointMappingTests.cs`**, **`tests/PTDoc.Tests/Intake/IntakeServiceTests.cs`** — Reworked submitted-intake payer merge behavior to overlay intake-owned alias fields into the existing payer JSON object instead of serializing a narrowed replacement payload, preserving unrelated payer metadata (for example `YearType`, effective dates, authorization number, visit tracking) already stored by the patient payer workflow. Added regressions that assert these non-intake keys survive partial payer submissions in both endpoint and service submit paths. Reason: resolve Copilot PR review data-loss risk where partial intake payer updates could silently erase existing authorization/effective-date metadata.

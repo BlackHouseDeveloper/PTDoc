@@ -11,6 +11,7 @@
 6. **File placement first** - consult `docs/ARCHITECTURE.md` for file placement and architectural boundaries, then use the File Organization Quick Reference in this document.
 7. **Update the changelog** - if the session changes repository contents, update `docs/CHANGELOG.md` before handing off. If no entry is appropriate, say so explicitly.
 8. **Commit only after verification** - never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.
+9. **PR summaries must use the template** - when creating or revising a pull request summary/description, read `.github/pull_request_template.md` first and structure the output according to that template's headings and intent.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
