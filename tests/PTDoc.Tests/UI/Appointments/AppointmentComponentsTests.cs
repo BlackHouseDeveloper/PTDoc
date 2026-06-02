@@ -103,6 +103,7 @@ public sealed class AppointmentComponentsTests : TestContext
     [InlineData("Discharge", "Discharge Note", false)]
     [InlineData("Follow Up", "Daily Treatment Note", true)]
     [InlineData("Wellness Visit", "Daily Treatment Note", true)]
+    [InlineData("Unexpected Consult", "Daily Treatment Note", false)]
     public void AppointmentsPage_ResolvesVisitNoteIntentFromAppointmentType(
         string appointmentType,
         string expectedNoteType,

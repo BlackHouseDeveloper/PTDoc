@@ -344,8 +344,13 @@ public sealed class NoteWorkspaceV2Service(
         };
 
         note.PatientId = request.PatientId;
-        if (request.AppointmentId.HasValue || note.AppointmentId is null)
+        if (request.AppointmentId.HasValue)
         {
+            if (note.AppointmentId is not null && note.AppointmentId != request.AppointmentId)
+            {
+                throw new InvalidOperationException("Appointment association cannot be changed once set.");
+            }
+
             note.AppointmentId = request.AppointmentId;
         }
         note.NoteType = request.NoteType;

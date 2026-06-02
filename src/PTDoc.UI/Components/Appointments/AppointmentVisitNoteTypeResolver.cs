@@ -14,7 +14,8 @@ public static class AppointmentVisitNoteTypeResolver
             "initialevaluation" => new AppointmentVisitNoteIntent("Evaluation Note", AllowEvaluationFallback: false),
             "reevaluation" => new AppointmentVisitNoteIntent("Progress Note", AllowEvaluationFallback: false),
             "discharge" => new AppointmentVisitNoteIntent("Discharge Note", AllowEvaluationFallback: false),
-            _ => new AppointmentVisitNoteIntent("Daily Treatment Note", AllowEvaluationFallback: true)
+            "followup" or "wellnessvisit" => new AppointmentVisitNoteIntent("Daily Treatment Note", AllowEvaluationFallback: true),
+            _ => new AppointmentVisitNoteIntent("Daily Treatment Note", AllowEvaluationFallback: false)
         };
     }
 

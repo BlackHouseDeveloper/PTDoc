@@ -45,9 +45,8 @@
     [Parameter] public string Value { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
-    private async Task HandleInputChangedAsync(ChangeEventArgs args)
+    private Task HandleInputChangedAsync(ChangeEventArgs args)
     {
-        Value = args.Value?.ToString() ?? string.Empty;
-        await ValueChanged.InvokeAsync(Value);
+        return ValueChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
     }
 }

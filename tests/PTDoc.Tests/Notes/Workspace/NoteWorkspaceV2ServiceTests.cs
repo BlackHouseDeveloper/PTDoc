@@ -257,6 +257,79 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_ExistingAppointmentAssociationCannotBeChanged()
+    {
+        var clinicId = Guid.NewGuid();
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Linked",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinicId
+        };
+        var originalAppointment = new Appointment
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = new DateTime(2026, 6, 2, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 6, 2, 16, 45, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.CheckedIn
+        };
+        var otherAppointment = new Appointment
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = new DateTime(2026, 6, 3, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 6, 3, 16, 45, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.CheckedIn
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            AppointmentId = originalAppointment.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 6, 2),
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { NoteType = NoteType.Daily }),
+            LastModifiedUtc = DateTime.UtcNow,
+            NoteStatus = NoteStatus.Draft
+        };
+
+        _context.Clinics.Add(new Clinic
+        {
+            Id = clinicId,
+            Name = "Appointment Guard Clinic",
+            Slug = "appointment-guard-clinic",
+            IsActive = true
+        });
+        _context.Patients.Add(patient);
+        _context.Appointments.AddRange(originalAppointment, otherAppointment);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            AppointmentId = otherAppointment.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Daily,
+            Payload = new NoteWorkspaceV2Payload { NoteType = NoteType.Daily }
+        }));
+
+        Assert.Equal("Appointment association cannot be changed once set.", ex.Message);
+        Assert.Equal(originalAppointment.Id, (await _context.ClinicalNotes.FindAsync(note.Id))!.AppointmentId);
+    }
+
+    [Fact]
     public async Task SaveAsync_ExistingNoteWithObjectiveMetrics_ReplacesMetricsOnRelationalProvider()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

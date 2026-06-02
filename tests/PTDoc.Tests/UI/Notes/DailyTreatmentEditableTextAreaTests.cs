@@ -24,8 +24,5 @@ public sealed class DailyTreatmentEditableTextAreaTests : TestContext
 
         Assert.Single(updatedValues);
         Assert.Equal("Tolerated exercise progression without symptom flare.", updatedValues[0]);
-        Assert.Equal(
-            "Tolerated exercise progression without symptom flare.",
-            cut.Find("#daily-response-to-treatment").GetAttribute("value"));
     }
 }
