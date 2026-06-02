@@ -180,7 +180,6 @@
     border-color: color-mix(in srgb, var(--ring) 60%, var(--border));
 }
 
-.objective-tab__select::placeholder,
 .objective-tab__text-input::placeholder,
 .objective-tab__textarea::placeholder {
     color: var(--muted-foreground);

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Objective tab placeholder selector accuracy
+
+- **`src/PTDoc.UI/Components/Notes/Workspace/ObjectiveTab.razor.css`** — Removed the no-op `.objective-tab__select::placeholder` selector and kept placeholder styling scoped to text inputs and textareas only. Reason: `::placeholder` does not apply to `<select>`, so leaving the selector could mislead future Objective styling updates.
+
 ### Fixed - DOC_OBJECTIVE no longer passes on blank objective metric rows
 
 - **`src/PTDoc.Infrastructure/Compliance/ClinicalRulesEngine.cs`**, **`tests/PTDoc.Tests/Compliance/ClinicalRulesEngineTests.cs`** — Hardened objective completeness evaluation so objective metrics only count when they contain a recorded value or an explicit WNL flag, instead of treating any metric row count as sufficient. Added regressions for both structured payload metrics and relational objective metric rows that are present but blank. Reason: prevent empty in-progress objective rows from bypassing the `DOC_OBJECTIVE` “No objective measures recorded” rule.
