@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Note workspace route section query encoding
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`** — Encoded the first-save canonical route `section` query value with `Uri.EscapeDataString(...)` before navigation to keep query construction consistent and resilient to future section-name changes. Reason: PR review flagged direct interpolation of the section query parameter.
+
 ### Fixed - Objective tab placeholder selector accuracy
 
 - **`src/PTDoc.UI/Components/Notes/Workspace/ObjectiveTab.razor.css`** — Removed the no-op `.objective-tab__select::placeholder` selector and kept placeholder styling scoped to text inputs and textareas only. Reason: `::placeholder` does not apply to `<select>`, so leaving the selector could mislead future Objective styling updates.

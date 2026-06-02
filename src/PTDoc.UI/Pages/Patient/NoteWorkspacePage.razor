@@ -1341,7 +1341,7 @@ else
             return;
         }
 
-        var activeSection = _note.ActiveSection.ToString().ToLowerInvariant();
+        var activeSection = Uri.EscapeDataString(_note.ActiveSection.ToString().ToLowerInvariant());
         NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}", replace: true);
     }
 
