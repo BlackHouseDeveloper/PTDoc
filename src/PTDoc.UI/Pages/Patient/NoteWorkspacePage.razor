@@ -276,7 +276,9 @@ else
                         else if (IsDailyTreatment || IsDischargeNote)
                         {
                             <SubjectiveSection Vm="@_note.Subjective"
+                                               DailyTreatment="@_note.DailyTreatment"
                                                VmChanged="HandleSubjectiveChanged"
+                                               DailyTreatmentChanged="HandleDailyTreatmentChanged"
                                                IsReadOnly="@IsWorkspaceReadOnly"
                                                IsDarkMode="@_isDarkMode" />
                         }
@@ -343,7 +345,9 @@ else
                         if (IsDailyTreatment)
                         {
                             <PlanSection Vm="@_note.Plan"
+                                         DailyTreatment="@_note.DailyTreatment"
                                          VmChanged="HandlePlanChanged"
+                                         DailyTreatmentChanged="HandleDailyTreatmentChanged"
                                          IsReadOnly="@IsWorkspaceReadOnly"
                                          IsDarkMode="@_isDarkMode"
                                          NoteId="@(_note.NoteId ?? Guid.Empty)"
@@ -452,8 +456,11 @@ else
 }
 
 @code {
-    [SupplyParameterFromQuery(Name = "section")] public string? RequestedSection { get; set; }
-    [SupplyParameterFromQuery(Name = "noteType")] public string? RequestedNoteType { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "section")] public string? RequestedSection { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "noteType")] public string? RequestedNoteType { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "appointmentId")] public string? RequestedAppointmentId { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "dateOfService")] public string? RequestedDateOfService { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "allowEvaluationFallback")] public bool RequestedAllowEvaluationFallback { get; set; }
 
     [Parameter, EditorRequired] public string PatientId { get; set; } = string.Empty;
     [Parameter] public string? NoteId { get; set; }
@@ -475,6 +482,7 @@ else
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
     private Guid _currentNoteId;
     private Guid? _patientGuid;
+    private Guid? _sourceAppointmentId;
     private string? _initialLoadError;
     private string? _workspaceNotice;
     private string? _statusMessage;
@@ -597,6 +605,14 @@ else
             ? "Save the note before generating an AI plan summary."
             : null;
 
+    private enum SeedApplicationResult
+    {
+        Skipped,
+        Applied,
+        Missing,
+        Failed
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChangingAsync);
@@ -649,7 +665,11 @@ else
                     }
                     else
                     {
-                        await TryApplyCarryForwardSeedAsync(_note.NoteType, showMissingNotice: false);
+                        var carryForwardResult = await TryApplyCarryForwardSeedCoreAsync(_note.NoteType, showMissingNotice: false);
+                        if (carryForwardResult == SeedApplicationResult.Missing && ShouldApplyAppointmentDailyEvaluationFallback())
+                        {
+                            await TryStartSeededEvaluationNoteFromAppointmentDailyAsync();
+                        }
                     }
                 }
             }
@@ -690,7 +710,8 @@ else
         };
 
         _dryNeedling = new DryNeedlingVm();
-        _dateOfService = DateTime.UtcNow;
+        _sourceAppointmentId = ResolveRequestedAppointmentId();
+        _dateOfService = ResolveRequestedDateOfService() ?? DateTime.UtcNow;
         _isDarkMode = false;
         _lastEditableSection = SoapSection.Plan;
         _pendingClinicalSummary = null;
@@ -740,6 +761,7 @@ else
         SyncSelectedBodyPart(GetSelectedBodyPart());
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload?.Plan ?? new PlanVm();
+        _note.DailyTreatment = payload?.DailyTreatment ?? new DailyTreatmentVm();
         _note.StructuredWorkspacePayload = payload?.StructuredPayload;
         _dryNeedling = payload?.DryNeedling ?? new DryNeedlingVm();
         _note.Status = status;
@@ -795,6 +817,29 @@ else
         "review" => SoapSection.Review,
         _ => null
     };
+
+    private Guid? ResolveRequestedAppointmentId()
+    {
+        return !string.IsNullOrWhiteSpace(RequestedAppointmentId) && Guid.TryParse(RequestedAppointmentId, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private DateTime? ResolveRequestedDateOfService()
+    {
+        if (string.IsNullOrWhiteSpace(RequestedDateOfService))
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(
+            RequestedDateOfService,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeLocal,
+            out var parsed)
+            ? parsed.Date
+            : null;
+    }
 
     private async Task HandleSectionChanged(SoapSection next)
     {
@@ -898,6 +943,13 @@ else
     private Task HandlePlanChanged(PlanVm vm)
     {
         _note.Plan = vm;
+        MarkUnsaved();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDailyTreatmentChanged(DailyTreatmentVm vm)
+    {
+        _note.DailyTreatment = vm;
         MarkUnsaved();
         return Task.CompletedTask;
     }
@@ -1464,6 +1516,7 @@ else
             Objective = _note.Objective,
             Assessment = _note.Assessment,
             Plan = _note.Plan,
+            DailyTreatment = _note.DailyTreatment,
             DryNeedling = _dryNeedling
         };
 
@@ -1471,6 +1524,7 @@ else
         {
             NoteId = _note.NoteId,
             PatientId = patientId,
+            AppointmentId = _sourceAppointmentId,
             WorkspaceNoteType = _note.NoteType,
             DateOfService = ResolveDateOfService(),
             IsReEvaluation = _note.IsReEvaluation,
@@ -1581,7 +1635,52 @@ else
         return true;
     }
 
+    private async Task<bool> TryStartSeededEvaluationNoteFromAppointmentDailyAsync()
+    {
+        if (!_patientGuid.HasValue
+            || _hasAppliedEvaluationSeed
+            || _hasAttemptedEvaluationSeed
+            || _note.Mode != NoteMode.New
+            || _note.NoteId.HasValue
+            || _note.IsDirty
+            || IsPtaUser
+            || !ShouldApplyAppointmentDailyEvaluationFallback())
+        {
+            return false;
+        }
+
+        var seedResult = await NoteWorkspaceService.GetEvaluationSeedAsync(_patientGuid.Value);
+        _hasAttemptedEvaluationSeed = true;
+
+        if (!seedResult.Success)
+        {
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error");
+            return false;
+        }
+
+        if (!seedResult.HasSeed)
+        {
+            return false;
+        }
+
+        _note.NoteType = "Evaluation Note";
+        ApplyEvaluationSeed(seedResult.Payload);
+        _hasAppliedEvaluationSeed = true;
+        SetStatusMessage(
+            seedResult.FromLockedSubmittedIntake
+                ? "Started a new Evaluation note from this appointment with the latest submitted intake prefill."
+                : "Started a new Evaluation note from this appointment with the latest intake draft prefill.",
+            "success");
+        return true;
+    }
+
     private async Task<bool> TryApplyCarryForwardSeedAsync(string noteType, bool showMissingNotice)
+    {
+        var result = await TryApplyCarryForwardSeedCoreAsync(noteType, showMissingNotice);
+        return result == SeedApplicationResult.Applied;
+    }
+
+    private async Task<SeedApplicationResult> TryApplyCarryForwardSeedCoreAsync(string noteType, bool showMissingNotice)
     {
         if (!_patientGuid.HasValue
             || _note.Mode != NoteMode.New
@@ -1591,14 +1690,14 @@ else
             || !CanApplyCarryForwardSeed(noteType)
             || _attemptedCarryForwardSeedNoteTypes.Contains(noteType))
         {
-            return false;
+            return SeedApplicationResult.Skipped;
         }
 
         var seedResult = await NoteWorkspaceService.GetCarryForwardSeedAsync(_patientGuid.Value, noteType);
         if (!seedResult.Success)
         {
             SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load signed note carry-forward data right now.", "error");
-            return false;
+            return SeedApplicationResult.Failed;
         }
 
         _attemptedCarryForwardSeedNoteTypes.Add(noteType);
@@ -1610,15 +1709,21 @@ else
                 SetStatusMessage($"No signed note carry-forward is available for this {noteType} yet.", "info");
             }
 
-            return false;
+            return SeedApplicationResult.Missing;
         }
 
         ApplyEvaluationSeed(seedResult.Payload);
         SetStatusMessage(
             $"Started a new {noteType} with carry-forward from the latest signed {seedResult.SourceNoteType}.",
             "success");
-        return true;
+        return SeedApplicationResult.Applied;
     }
+
+    private bool ShouldApplyAppointmentDailyEvaluationFallback()
+        => RequestedAllowEvaluationFallback
+           && _sourceAppointmentId.HasValue
+           && IsDailyTreatment
+           && !IsPtaUser;
 
     private void ApplyEvaluationSeed(NoteWorkspacePayload payload)
     {
