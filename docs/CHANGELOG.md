@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Subjective current-function field accessibility naming
+
+- **`src/PTDoc.UI/Components/Notes/Workspace/SubjectiveTab.razor`** — Added an explicit `aria-label` to the "Current level of function" textarea so assistive technologies always announce a stable control name in the Subjective section. Reason: resolve PR review accessibility feedback for the new current-function field without changing existing layout structure.
+
 ### Changed - PR summary template enforcement for agent outputs
 
 - **`AGENTS.md`**, **`.github/copilot-instructions.md`** — Added explicit guidance that any generated or revised pull request summary must first use `.github/pull_request_template.md` as required context and structure. Reason: keep PR summaries consistent with repository review expectations and prevent ad-hoc summary formats.
