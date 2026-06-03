@@ -44,7 +44,7 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
             _isSyncing = true;
             OnSyncStateChanged?.Invoke();
 
-            var response = await httpClient.PostAsync("/api/v1/sync/run", content: null);
+            using var response = await httpClient.PostAsync("/api/v1/sync/run", content: null);
             if (!response.IsSuccessStatusCode)
             {
                 LastErrorMessage = await ApiErrorReader.ReadMessageAsync(response)

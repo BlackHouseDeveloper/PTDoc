@@ -414,33 +414,6 @@
         State.CurrentStep = IntakeStep.PainAssessment;
         State.IsDirty = true;
 
-        if (!State.PatientId.HasValue)
-        {
-            try
-            {
-                _isSavingDraft = true;
-                var patientId = await IntakeService.CreateTemporaryPatientAndDraftIntakeAsync(ToPersistenceDraft());
-                State.PatientId = patientId;
-                _loadedPatientId = patientId;
-
-                await IntakeService.SaveDraftAsync(ToPersistenceDraft());
-
-                NavigationManager.NavigateTo($"/intake/{patientId}{GetModeQuery()}");
-            }
-            catch (HttpRequestException ex)
-            {
-                var message = ToUserFacingApiError(ex);
-                _validationMessage = message;
-                ToastService.ShowError(message, "Draft save failed");
-            }
-            finally
-            {
-                _isSavingDraft = false;
-            }
-
-            return;
-        }
-
         try
         {
             _isSavingDraft = true;
@@ -717,11 +690,6 @@
 
         NavigationManager.NavigateTo($"/intake/{selectedPatientId.Value}");
         return Task.CompletedTask;
-    }
-
-    private string GetModeQuery()
-    {
-        return State.IsPatientMode ? "?mode=patient" : string.Empty;
     }
 
     private void InitializeBlankState(Guid patientId)
