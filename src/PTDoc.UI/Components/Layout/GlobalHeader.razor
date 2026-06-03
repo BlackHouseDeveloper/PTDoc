@@ -38,7 +38,7 @@
                 aria-busy="@IsSyncing.ToString().ToLower()"
                 @onclick="HandleSyncNow">
                 <span class="sync-icon @(IsSyncing ? "syncing" : "")" aria-hidden="true"></span>
-                <span class="sync-button-text">@(IsSyncing ? "Syncing..." : "Sync Now")</span>
+                <span class="sync-button-text" data-sync-now-text>@(IsSyncing ? "Syncing..." : IsOnline ? "Sync Now" : "Sync Offline")</span>
             </button>
 
             <!-- Online/Offline Status Badge -->

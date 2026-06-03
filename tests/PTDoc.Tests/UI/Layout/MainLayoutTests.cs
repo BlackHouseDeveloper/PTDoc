@@ -230,6 +230,7 @@ public sealed class MainLayoutTests : TestContext
         Assert.False(syncButton.HasAttribute("aria-disabled"));
         Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
         Assert.Equal("Syncing clinical data", syncButton.GetAttribute("aria-label"));
+        Assert.Equal("Syncing...", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
     }
 
     [Fact]
@@ -245,6 +246,7 @@ public sealed class MainLayoutTests : TestContext
         Assert.False(syncButton.HasAttribute("aria-disabled"));
         Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
         Assert.Equal("Sync unavailable while offline", syncButton.GetAttribute("aria-label"));
+        Assert.Equal("Sync Offline", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
 
         syncButton.Click();
 
@@ -269,6 +271,7 @@ public sealed class MainLayoutTests : TestContext
         Assert.False(syncButton.HasAttribute("disabled"));
         Assert.False(syncButton.HasAttribute("aria-disabled"));
         Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
+        Assert.Equal("Syncing...", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
 
         syncButton.Click();
 
@@ -291,6 +294,7 @@ public sealed class MainLayoutTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
+            Assert.Equal("Sync Now", cut.Find("[data-sync-now-text]").TextContent);
             var toast = Assert.Single(_toastService.Messages);
             Assert.Equal(ToastLevel.Success, toast.Level);
             Assert.Equal("Sync completed.", toast.Message);

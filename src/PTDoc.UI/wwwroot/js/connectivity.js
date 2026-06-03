@@ -41,6 +41,11 @@ function applyConnectivityState(isOnline) {
         } else if (!syncing) {
             element.setAttribute("aria-label", "Sync now");
         }
+
+        const textElement = element.querySelector("[data-sync-now-text]");
+        if (textElement) {
+            textElement.textContent = !isOnline ? "Sync Offline" : syncing ? "Syncing..." : "Sync Now";
+        }
     });
 }
 
