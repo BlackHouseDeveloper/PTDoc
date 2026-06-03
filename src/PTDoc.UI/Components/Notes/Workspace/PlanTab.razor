@@ -478,6 +478,7 @@
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
+    [Parameter] public IReadOnlyList<AiStructuredInput> StructuredInputs { get; set; } = Array.Empty<AiStructuredInput>();
 
     internal bool TreatAiReviewBoxAsUnavailable { get; set; }
 
@@ -498,7 +499,7 @@
     private EditableNarrativeBox? _followUpBox;
     private EditableNarrativeBox? _clinicalSummaryBox;
 
-    private bool IsPlanGenerationDisabled => IsNoteSigned || IsReadOnly || NoteId == Guid.Empty;
+    private bool IsPlanGenerationDisabled => IsNoteSigned || IsReadOnly || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart);
 
     private string? PlanGenerationDisabledReason =>
         IsNoteSigned
@@ -507,7 +508,9 @@
                 ? "AI generation is only available for editable draft notes."
             : NoteId == Guid.Empty
                 ? "Save the note before generating AI plan content."
-                : null;
+                : !HasConcreteBodyPart(SelectedBodyPart)
+                    ? "Select a body part before generating AI plan content."
+                    : null;
 
     // ── Static: product-default CPT quick picks ────────────────────
 
@@ -871,6 +874,12 @@
             ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
+        if (!HasConcreteBodyPart(SelectedBodyPart))
+        {
+            _errorMessage = "Select a body part before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
+            return;
+        }
         _isGeneratingDischarge = true;
         _errorMessage = null;
         StateHasChanged();
@@ -916,6 +925,12 @@
             ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
+        if (!HasConcreteBodyPart(SelectedBodyPart))
+        {
+            _errorMessage = "Select a body part before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
+            return;
+        }
         _isGeneratingFollowUp = true;
         _errorMessage = null;
         StateHasChanged();
@@ -958,6 +973,12 @@
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
+            return;
+        }
+        if (!HasConcreteBodyPart(SelectedBodyPart))
+        {
+            _errorMessage = "Select a body part before generating AI plan content.";
             ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
@@ -1096,12 +1117,66 @@
             Diagnosis = string.IsNullOrWhiteSpace(DiagnosisSummary)
                 ? "Physical therapy plan of care"
                 : DiagnosisSummary!,
+            SelectedBodyPart = SelectedBodyPart,
             AssessmentSummary = AssessmentSummary,
             Goals = GoalsSummary,
             Precautions = PrecautionsSummary,
+            StructuredInputs = BuildStructuredInputs(),
             IsNoteSigned = IsNoteSigned
         };
     }
+
+    private IReadOnlyList<AiStructuredInput> BuildStructuredInputs()
+    {
+        var inputs = new List<AiStructuredInput>();
+        inputs.AddRange(StructuredInputs);
+
+        AddInput(inputs, "Treatment frequency", Vm.TreatmentFrequency, SelectedBodyPart);
+        AddInput(inputs, "Treatment duration", Vm.TreatmentDuration, SelectedBodyPart);
+        AddInput(inputs, "Treatment focuses", JoinValues(Vm.TreatmentFocuses), SelectedBodyPart);
+        AddInput(inputs, "General interventions", JoinValues(Vm.GeneralInterventions.Select(FormatIntervention)), SelectedBodyPart);
+        AddInput(inputs, "Home exercise program", Vm.HomeExerciseProgramNotes, SelectedBodyPart);
+        AddInput(inputs, "Selected CPT codes", JoinValues(Vm.SelectedCptCodes.Select(code => $"{code.Code} {code.Description}".Trim())), SelectedBodyPart);
+
+        return inputs;
+    }
+
+    private static string FormatIntervention(GeneralInterventionEntry intervention)
+    {
+        var parts = new[]
+        {
+            intervention.Name,
+            intervention.Category,
+            intervention.Notes
+        }.Where(value => !string.IsNullOrWhiteSpace(value));
+
+        return string.Join(" - ", parts);
+    }
+
+    private static void AddInput(List<AiStructuredInput> inputs, string label, string? value, string? bodyPart = null)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        inputs.Add(new AiStructuredInput
+        {
+            Label = label,
+            Value = value.Trim(),
+            BodyPart = bodyPart
+        });
+    }
+
+    private static string? JoinValues(IEnumerable<string?> values)
+    {
+        var joined = string.Join("; ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 
     public void Dispose()
     {

@@ -317,6 +317,9 @@ else
                                                IsDarkMode="@_isDarkMode"
                                                NoteId="@(_note.NoteId ?? Guid.Empty)"
                                                ChiefComplaint="@GetChiefComplaintText()"
+                                               SelectedBodyPart="@GetSelectedBodyPart()"
+                                               SubjectiveInputs="@GetAssessmentSubjectiveAiInputs()"
+                                               ObjectiveInputs="@GetAssessmentObjectiveAiInputs()"
                                                ExaminationFindings="@GetExaminationFindingsText()" />
                         }
                         else if (IsDischargeNote)
@@ -329,6 +332,9 @@ else
                                                         IsReadOnly="@IsWorkspaceReadOnly"
                                                         ShowSmartGoals="false"
                                                         ChiefComplaint="@GetChiefComplaintText()"
+                                                        SelectedBodyPart="@GetSelectedBodyPart()"
+                                                        SubjectiveInputs="@GetAssessmentSubjectiveAiInputs()"
+                                                        ObjectiveInputs="@GetAssessmentObjectiveAiInputs()"
                                                         ExaminationFindings="@GetExaminationFindingsText()" />
                         }
                         else
@@ -338,6 +344,9 @@ else
                                                         VmChanged="HandleAssessmentChanged"
                                                         IsReadOnly="@IsWorkspaceReadOnly"
                                                         ChiefComplaint="@GetChiefComplaintText()"
+                                                        SelectedBodyPart="@GetSelectedBodyPart()"
+                                                        SubjectiveInputs="@GetAssessmentSubjectiveAiInputs()"
+                                                        ObjectiveInputs="@GetAssessmentObjectiveAiInputs()"
                                                         ExaminationFindings="@GetExaminationFindingsText()" />
                         }
                         break;
@@ -355,7 +364,9 @@ else
                                          DiagnosisSummary="@GetDiagnosisSummary()"
                                          AssessmentSummary="@GetAssessmentSummary()"
                                          GoalsSummary="@GetGoalsSummary()"
-                                         PrecautionsSummary="@GetPrecautionsSummary()" />
+                                         PrecautionsSummary="@GetPrecautionsSummary()"
+                                         SelectedBodyPart="@GetSelectedBodyPart()"
+                                         StructuredInputs="@GetPlanAiInputs()" />
                         }
                         else if (IsDischargeNote)
                         {
@@ -374,7 +385,8 @@ else
                                      DiagnosisSummary="@GetDiagnosisSummary()"
                                      AssessmentSummary="@GetAssessmentSummary()"
                                      GoalsSummary="@GetGoalsSummary()"
-                                     PrecautionsSummary="@GetPrecautionsSummary()" />
+                                     PrecautionsSummary="@GetPrecautionsSummary()"
+                                     StructuredInputs="@GetPlanAiInputs()" />
                         }
                         break;
 
@@ -603,10 +615,12 @@ else
     private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
     private bool HasPendingClinicalSummary => !string.IsNullOrWhiteSpace(_pendingClinicalSummary);
-    private bool CanRegenerateReviewSummary => !IsWorkspaceReadOnly && _note.NoteId.HasValue;
+    private bool CanRegenerateReviewSummary => !IsWorkspaceReadOnly && _note.NoteId.HasValue && HasConcreteBodyPart(GetSelectedBodyPart());
     private string? ReviewSummaryDisabledReason =>
-        !CanRegenerateReviewSummary && !IsWorkspaceReadOnly
+        !CanRegenerateReviewSummary && !IsWorkspaceReadOnly && !_note.NoteId.HasValue
             ? "Save the note before generating an AI plan summary."
+            : !CanRegenerateReviewSummary && !IsWorkspaceReadOnly && !HasConcreteBodyPart(GetSelectedBodyPart())
+                ? "Select a body part before generating an AI plan summary."
             : null;
 
     private enum SeedApplicationResult
@@ -1057,6 +1071,12 @@ else
             return;
         }
 
+        if (!HasConcreteBodyPart(GetSelectedBodyPart()))
+        {
+            SetStatusMessage("Select a body part before generating an AI plan summary.", "error", showToast: true, toastTitle: "AI generation unavailable");
+            return;
+        }
+
         _isRegeneratingSummary = true;
         ClearStatusMessage();
         StateHasChanged();
@@ -1067,9 +1087,11 @@ else
             {
                 NoteId = _note.NoteId ?? Guid.Empty,
                 Diagnosis = GetDiagnosisSummary(),
+                SelectedBodyPart = GetSelectedBodyPart(),
                 AssessmentSummary = GetAssessmentSummary(),
                 Goals = GetGoalsSummary(),
                 Precautions = GetPrecautionsSummary(),
+                StructuredInputs = GetPlanAiInputs(),
                 IsNoteSigned = _note.Status != NoteStatus.Draft
             });
 
@@ -2070,12 +2092,259 @@ else
 
     private string GetChiefComplaintText()
     {
+        if (IsDailyTreatment)
+        {
+            return GetDailyTreatmentChiefComplaintText();
+        }
+
+        return GetSharedChiefComplaintText();
+    }
+
+    private string GetSharedChiefComplaintText()
+    {
         if (_note.Subjective.Problems.Count == 0)
         {
             return _note.Subjective.OtherProblem ?? string.Empty;
         }
 
         return string.Join(", ", _note.Subjective.Problems.OrderBy(v => v));
+    }
+
+    private string GetDailyTreatmentChiefComplaintText()
+    {
+        var values = new List<string>();
+
+        values.AddRange(_note.Subjective.Locations.OrderBy(value => value));
+        AddPart(values, _note.Subjective.OtherLocation);
+        AddPart(values, _note.Subjective.OtherProblem);
+        AddPart(values, _note.DailyTreatment.SubjectiveUpdate);
+        AddPart(values, _note.DailyTreatment.ChangesSinceLastVisit);
+        AddPart(values, _note.DailyTreatment.NewOrChangedSymptoms);
+
+        return string.Join("; ", values
+            .Select(value => value.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private IReadOnlyList<AiStructuredInput> GetAssessmentSubjectiveAiInputs()
+    {
+        var selectedBodyPart = GetSelectedBodyPart();
+        var inputs = new List<AiStructuredInput>();
+
+        AddAiInput(inputs, "Problems", JoinValues(_note.Subjective.Problems), selectedBodyPart);
+        AddAiInput(inputs, "Other problem", _note.Subjective.OtherProblem, selectedBodyPart);
+        AddAiInput(inputs, "Locations", JoinValues(_note.Subjective.Locations), selectedBodyPart);
+        AddAiInput(inputs, "Other location", _note.Subjective.OtherLocation, selectedBodyPart);
+
+        if (_note.Subjective.IsPainScoreDocumented)
+        {
+            AddAiInput(inputs, "Pain scores", $"current {_note.Subjective.CurrentPainScore}/10, best {_note.Subjective.BestPainScore}/10, worst {_note.Subjective.WorstPainScore}/10", selectedBodyPart);
+        }
+
+        AddAiInput(inputs, "Pain frequency", _note.Subjective.PainFrequency, selectedBodyPart);
+        AddAiInput(inputs, "Known cause", _note.Subjective.KnownCause, selectedBodyPart);
+        AddAiInput(inputs, "Prior functional level", JoinValues(_note.Subjective.PriorFunctionalLevel), selectedBodyPart);
+        AddAiInput(inputs, "Current level of function", _note.Subjective.CurrentLevelOfFunction, selectedBodyPart);
+        AddAiInput(inputs, "Functional limitations", JoinValues(_note.Subjective.FunctionalLimitations), selectedBodyPart);
+        AddAiInput(inputs, "Additional functional limitations", _note.Subjective.AdditionalFunctionalLimitations, selectedBodyPart);
+
+        foreach (var limitation in _note.Subjective.StructuredFunctionalLimitations)
+        {
+            var bodyPart = string.IsNullOrWhiteSpace(limitation.BodyPart)
+                ? selectedBodyPart
+                : limitation.BodyPart;
+
+            if (!ShouldIncludeAiInputForSelectedBodyPart(bodyPart, selectedBodyPart))
+            {
+                continue;
+            }
+
+            AddAiInput(
+                inputs,
+                string.IsNullOrWhiteSpace(limitation.Category) ? "Functional limitation" : $"Functional limitation - {limitation.Category}",
+                FormatStructuredFunctionalLimitation(limitation),
+                bodyPart);
+        }
+
+        return inputs;
+    }
+
+    private IReadOnlyList<AiStructuredInput> GetAssessmentObjectiveAiInputs()
+    {
+        var selectedBodyPart = GetSelectedBodyPart();
+        var inputs = new List<AiStructuredInput>();
+
+        foreach (var metric in _note.Objective.Metrics)
+        {
+            AddAiInput(inputs, $"Objective metric - {metric.MetricType}", FormatObjectiveMetric(metric), selectedBodyPart);
+        }
+
+        foreach (var metric in _note.StructuredWorkspacePayload?.Objective.Metrics ?? Enumerable.Empty<ObjectiveMetricInputV2>())
+        {
+            var bodyPart = metric.BodyPart == BodyPart.Other ? selectedBodyPart : GetBodyPartDisplayLabel(metric.BodyPart);
+            if (!ShouldIncludeAiInputForSelectedBodyPart(bodyPart, selectedBodyPart))
+            {
+                continue;
+            }
+
+            AddAiInput(inputs, $"Objective metric - {metric.MetricType}", FormatObjectiveMetric(metric), bodyPart);
+        }
+
+        AddAiInput(inputs, "Special tests", JoinValues(_note.Objective.SpecialTests.Select(FormatSpecialTest)), selectedBodyPart);
+        AddAiInput(inputs, "Outcome measures", JoinValues(_note.Objective.OutcomeMeasures.Select(FormatOutcomeMeasure)), selectedBodyPart);
+        AddAiInput(inputs, "Tender muscles", JoinValues(_note.Objective.TenderMuscles), selectedBodyPart);
+        AddAiInput(inputs, "Primary gait pattern", _note.Objective.PrimaryGaitPattern, selectedBodyPart);
+        AddAiInput(inputs, "Gait deviations", JoinValues(_note.Objective.GaitDeviations), selectedBodyPart);
+        AddAiInput(inputs, "Gait observations", _note.Objective.AdditionalGaitObservations, selectedBodyPart);
+        AddAiInput(inputs, "Posture findings", JoinValues(_note.Objective.PostureFindings), selectedBodyPart);
+        AddAiInput(inputs, "Other posture finding", _note.Objective.OtherPostureFinding, selectedBodyPart);
+        AddAiInput(inputs, "Clinical observation notes", _note.Objective.ClinicalObservationNotes, selectedBodyPart);
+
+        return DeduplicateAiInputs(inputs);
+    }
+
+    private IReadOnlyList<AiStructuredInput> GetPlanAiInputs()
+    {
+        var selectedBodyPart = GetSelectedBodyPart();
+        var inputs = new List<AiStructuredInput>();
+
+        AddAiInput(inputs, "Selected body part", selectedBodyPart, selectedBodyPart);
+        AddAiInput(inputs, "Diagnosis codes", JoinValues(_note.Assessment.DiagnosisCodes.Select(code => $"{code.Code} {code.Description}".Trim())), selectedBodyPart);
+        AddAiInput(inputs, "Assessment narrative", _note.Assessment.AssessmentNarrative, selectedBodyPart);
+        AddAiInput(inputs, "Functional limitations", GetFunctionalLimitationsSummary(), selectedBodyPart);
+        AddAiInput(inputs, "Deficits summary", _note.Assessment.DeficitsSummary, selectedBodyPart);
+        AddAiInput(inputs, "Deficit categories", JoinValues(_note.Assessment.DeficitCategories), selectedBodyPart);
+        AddAiInput(inputs, "Goals", JoinValues(_note.Assessment.Goals.Select(goal => goal.Description)), selectedBodyPart);
+        AddAiInput(inputs, "Patient personal goals", _note.Assessment.PatientPersonalGoals, selectedBodyPart);
+        AddAiInput(inputs, "Recovery barriers", JoinValues(_note.Assessment.BarriersToRecovery), selectedBodyPart);
+        AddAiInput(inputs, "Overall prognosis", _note.Assessment.OverallPrognosis, selectedBodyPart);
+        AddAiInput(inputs, "Treatment frequency", _note.Plan.TreatmentFrequency, selectedBodyPart);
+        AddAiInput(inputs, "Treatment duration", _note.Plan.TreatmentDuration, selectedBodyPart);
+        AddAiInput(inputs, "Treatment focuses", JoinValues(_note.Plan.TreatmentFocuses), selectedBodyPart);
+        AddAiInput(inputs, "General interventions", JoinValues(_note.Plan.GeneralInterventions.Select(FormatIntervention)), selectedBodyPart);
+        AddAiInput(inputs, "Home exercise program", _note.Plan.HomeExerciseProgramNotes, selectedBodyPart);
+        AddAiInput(inputs, "Selected CPT codes", JoinValues(_note.Plan.SelectedCptCodes.Select(code => $"{code.Code} {code.Description}".Trim())), selectedBodyPart);
+        AddAiInput(inputs, "Discharge planning", _note.Plan.DischargePlanningNotes, selectedBodyPart);
+        AddAiInput(inputs, "Follow-up instructions", _note.Plan.FollowUpInstructions, selectedBodyPart);
+
+        return inputs;
+    }
+
+    private static void AddAiInput(List<AiStructuredInput> inputs, string label, string? value, string? bodyPart)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        inputs.Add(new AiStructuredInput
+        {
+            Label = label,
+            Value = value.Trim(),
+            BodyPart = bodyPart
+        });
+    }
+
+    private static IReadOnlyList<AiStructuredInput> DeduplicateAiInputs(IEnumerable<AiStructuredInput> inputs) =>
+        inputs
+            .GroupBy(input => $"{input.Label}\u001f{input.Value}\u001f{input.BodyPart}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+    private static bool ShouldIncludeAiInputForSelectedBodyPart(string? inputBodyPart, string? selectedBodyPart) =>
+        string.IsNullOrWhiteSpace(inputBodyPart)
+        || string.IsNullOrWhiteSpace(selectedBodyPart)
+        || string.Equals(inputBodyPart.Trim(), selectedBodyPart.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
+
+    private static string? JoinValues(IEnumerable<string?> values)
+    {
+        var joined = string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private static string FormatStructuredFunctionalLimitation(FunctionalLimitationEditorEntry limitation)
+    {
+        var parts = new List<string>();
+        AddPart(parts, limitation.Description);
+        AddPart(parts, limitation.MeasurePrompt);
+        if (limitation.QuantifiedValue.HasValue)
+        {
+            AddPart(parts, $"{limitation.QuantifiedValue.Value} {limitation.QuantifiedUnit}".Trim());
+        }
+
+        AddPart(parts, limitation.Notes);
+        return string.Join("; ", parts);
+    }
+
+    private static string FormatObjectiveMetric(ObjectiveMetricRowEntry metric)
+    {
+        var parts = new List<string>();
+        AddPart(parts, metric.Name);
+        AddPart(parts, metric.Value);
+        if (metric.IsWithinNormalLimits)
+        {
+            AddPart(parts, "within normal limits");
+        }
+
+        AddPart(parts, metric.PreviousValue is null ? null : $"previous {metric.PreviousValue}");
+        AddPart(parts, metric.NormValue is null ? null : $"norm {metric.NormValue}");
+        return string.Join("; ", parts);
+    }
+
+    private static string FormatObjectiveMetric(ObjectiveMetricInputV2 metric)
+    {
+        var parts = new List<string>();
+        AddPart(parts, metric.Name);
+        AddPart(parts, metric.Value);
+        if (metric.IsWithinNormalLimits)
+        {
+            AddPart(parts, "within normal limits");
+        }
+
+        AddPart(parts, metric.PreviousValue is null ? null : $"previous {metric.PreviousValue}");
+        AddPart(parts, metric.NormValue is null ? null : $"norm {metric.NormValue}");
+        return string.Join("; ", parts);
+    }
+
+    private static string FormatSpecialTest(SpecialTestEntry test)
+    {
+        var parts = new List<string>();
+        AddPart(parts, test.Name);
+        AddPart(parts, test.Side);
+        AddPart(parts, test.Result);
+        AddPart(parts, test.Notes);
+        return string.Join(" - ", parts);
+    }
+
+    private static string FormatOutcomeMeasure(OutcomeMeasureEntry outcome)
+    {
+        var parts = new List<string>();
+        AddPart(parts, outcome.Name);
+        AddPart(parts, outcome.Score);
+        AddPart(parts, outcome.Date?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture));
+        return string.Join(" - ", parts);
+    }
+
+    private static string FormatIntervention(GeneralInterventionEntry intervention)
+    {
+        var parts = new List<string>();
+        AddPart(parts, intervention.Name);
+        AddPart(parts, intervention.Category);
+        AddPart(parts, intervention.Notes);
+        return string.Join(" - ", parts);
+    }
+
+    private static void AddPart(List<string> parts, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            parts.Add(value.Trim());
+        }
     }
 
     private string GetExaminationFindingsText()

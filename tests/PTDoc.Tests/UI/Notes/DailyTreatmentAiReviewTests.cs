@@ -39,7 +39,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new AssessmentGenerationRequest
                 {
                     NoteId = noteId,
-                    ChiefComplaint = "Knee pain"
+                    ChiefComplaint = "Knee pain",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -53,6 +54,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")
@@ -96,7 +98,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new AssessmentGenerationRequest
                 {
                     NoteId = noteId,
-                    ChiefComplaint = "Knee pain"
+                    ChiefComplaint = "Knee pain",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -110,6 +113,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsReadOnly, false));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = true;
@@ -150,7 +154,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -164,6 +169,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")
@@ -207,7 +213,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -221,6 +228,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = true;
@@ -261,7 +269,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -284,6 +293,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")

@@ -493,6 +493,7 @@ public class DailyNoteService : IDailyNoteService
                 // now require saved notes; this path remains a temporary exception.
                 NoteId = Guid.Empty,
                 ChiefComplaint = chiefComplaint,
+                SelectedBodyPart = ResolveAiSelectedBodyPart(content),
                 CurrentSymptoms = content.ChangesSinceLastSession,
                 FunctionalLimitations = string.IsNullOrWhiteSpace(functionalLimitations) ? null : functionalLimitations,
                 ExaminationFindings = content.ClinicalObservations,
@@ -516,6 +517,14 @@ public class DailyNoteService : IDailyNoteService
 
     public Task<string> GenerateAssessmentNarrativeAsync(JsonElement content, CancellationToken ct = default)
         => GenerateAssessmentNarrativeAsync(DeserializeRequestDailyContent(content, DateTime.UtcNow.Date), ct);
+
+    private static string? ResolveAiSelectedBodyPart(DailyNoteContentDto content)
+    {
+        return content.BodyParts?
+            .FirstOrDefault(bodyPart =>
+                !string.IsNullOrWhiteSpace(bodyPart)
+                && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase));
+    }
 
     private static string BuildAssessmentNarrativeFromTemplate(DailyNoteContentDto content)
     {

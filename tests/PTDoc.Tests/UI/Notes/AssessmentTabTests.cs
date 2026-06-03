@@ -61,6 +61,7 @@ public sealed class AssessmentTabTests : TestContext
             .Add(component => component.FunctionalLimitations, functionalLimitations)
             .Add(component => component.FunctionalLimitationsChanged, EventCallback.Factory.Create<string>(this, value => functionalLimitations = value))
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsNoteSigned, false));
 
         cut.Find("[data-testid='assessment-generate-btn']").Click();
@@ -139,6 +140,7 @@ public sealed class AssessmentTabTests : TestContext
             .Add(component => component.FunctionalLimitations, functionalLimitations)
             .Add(component => component.FunctionalLimitationsChanged, EventCallback.Factory.Create<string>(this, value => functionalLimitations = value))
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsNoteSigned, false));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = true;
@@ -156,5 +158,33 @@ public sealed class AssessmentTabTests : TestContext
 
         aiService.VerifyAll();
         workspaceService.VerifyAll();
+    }
+
+    [Fact]
+    public void AssessmentTab_WhenBodyPartMissing_DisablesGenerateAndShowsReason()
+    {
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+
+        Services.AddLogging();
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<AssessmentTab>(parameters => parameters
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.AssessmentText, string.Empty)
+            .Add(component => component.AssessmentTextChanged, EventCallback.Factory.Create<string>(this, _ => { }))
+            .Add(component => component.FunctionalLimitations, string.Empty)
+            .Add(component => component.FunctionalLimitationsChanged, EventCallback.Factory.Create<string>(this, _ => { }))
+            .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Other")
+            .Add(component => component.IsNoteSigned, false));
+
+        var button = cut.Find("[data-testid='assessment-generate-btn']");
+        Assert.True(button.HasAttribute("disabled"));
+        Assert.Equal("Select a body part before generating an AI assessment.", cut.Find("[data-testid='assessment-generate-btn-disabled-reason']").TextContent.Trim());
+
+        aiService.VerifyNoOtherCalls();
+        workspaceService.VerifyNoOtherCalls();
     }
 }

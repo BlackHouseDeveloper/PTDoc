@@ -640,7 +640,8 @@ public sealed class PlanTabTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123",
                 Success = false
@@ -818,6 +819,13 @@ public sealed class PlanTabTests : TestContext
         Mock<IAiClinicalGenerationService> aiService,
         bool forceAiReviewUnavailable = false)
     {
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Lumbar, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Lumbar
+            });
+
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
@@ -827,6 +835,7 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.IsReadOnly, false)
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.DiagnosisSummary, "Lumbar strain"));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = forceAiReviewUnavailable;
@@ -842,7 +851,8 @@ public sealed class PlanTabTests : TestContext
             SourceInputs = new PlanOfCareGenerationRequest
             {
                 NoteId = noteId,
-                Diagnosis = "Lumbar strain"
+                Diagnosis = "Lumbar strain",
+                SelectedBodyPart = "Lumbar"
             },
             Success = true
         };

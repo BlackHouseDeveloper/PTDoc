@@ -123,6 +123,12 @@
     public string? ChiefComplaint { get; set; }
 
     /// <summary>
+    /// Selected body part used to gate and scope AI generation.
+    /// </summary>
+    [Parameter]
+    public string? SelectedBodyPart { get; set; }
+
+    /// <summary>
     /// Examination findings to use as AI generation input (from the Objective tab).
     /// </summary>
     [Parameter]
@@ -133,6 +139,18 @@
     /// </summary>
     [Parameter]
     public string? CurrentSymptoms { get; set; }
+
+    /// <summary>
+    /// Body-part-scoped subjective fields supplied by the parent workspace.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<AiStructuredInput> SubjectiveInputs { get; set; } = Array.Empty<AiStructuredInput>();
+
+    /// <summary>
+    /// Body-part-scoped objective fields supplied by the parent workspace.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<AiStructuredInput> ObjectiveInputs { get; set; } = Array.Empty<AiStructuredInput>();
 
     /// <summary>
     /// Raised when clinician explicitly accepts AI-generated content.
@@ -147,14 +165,16 @@
         _functionalLimitations = FunctionalLimitations;
     }
 
-    private bool IsAssessmentGenerationDisabled => IsNoteSigned || NoteId == Guid.Empty;
+    private bool IsAssessmentGenerationDisabled => IsNoteSigned || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart);
 
     private string? AssessmentGenerationDisabledReason =>
         IsNoteSigned
             ? "AI generation is not available on signed notes."
             : NoteId == Guid.Empty
                 ? "Save the note before generating an AI assessment."
-                : null;
+                : !HasConcreteBodyPart(SelectedBodyPart)
+                    ? "Select a body part before generating an AI assessment."
+                    : null;
 
     // ──────────────────────────────────────────────────────────────
     // Generation flow: Generate → Review → Accept
@@ -177,6 +197,13 @@
             return;
         }
 
+        if (!HasConcreteBodyPart(SelectedBodyPart))
+        {
+            _errorMessage = "Select a body part before generating an AI assessment.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(ChiefComplaint))
         {
             _errorMessage = "A chief complaint is required before generating an assessment. Please complete the Subjective section first.";
@@ -195,9 +222,12 @@
             {
                 NoteId = NoteId,
                 ChiefComplaint = ChiefComplaint!,
+                SelectedBodyPart = SelectedBodyPart,
                 CurrentSymptoms = CurrentSymptoms,
                 ExaminationFindings = ExaminationFindings,
                 FunctionalLimitations = _functionalLimitations,
+                SubjectiveInputs = SubjectiveInputs,
+                ObjectiveInputs = ObjectiveInputs,
                 IsNoteSigned = IsNoteSigned
             };
 
@@ -305,4 +335,8 @@
         _errorMessage = null;
         return Task.CompletedTask;
     }
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 }
