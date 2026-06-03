@@ -2513,7 +2513,7 @@ else
             if (!string.Equals(_lastAutosaveToastMessage, autosaveError, StringComparison.Ordinal))
             {
                 _lastAutosaveToastMessage = autosaveError;
-                ToastService.ShowError(autosaveError, "Autosave failed");
+                ToastService.ShowError(autosaveError, "Draft save failed");
             }
         }
         else if (DraftAutosaveService.IsDirty)
