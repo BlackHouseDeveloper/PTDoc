@@ -218,7 +218,7 @@ public sealed class MainLayoutTests : TestContext
     }
 
     [Fact]
-    public void GlobalHeader_SyncingState_MatchesDisabledAccessibilityState()
+    public void GlobalHeader_SyncingState_RemainsActionableWithoutDisabledSemantics()
     {
         _syncService.IsSyncing = true;
 
@@ -227,7 +227,8 @@ public sealed class MainLayoutTests : TestContext
 
         var syncButton = cut.Find("button[data-sync-now-button]");
         Assert.False(syncButton.HasAttribute("disabled"));
-        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
         Assert.Equal("Syncing clinical data", syncButton.GetAttribute("aria-label"));
     }
 
@@ -241,7 +242,8 @@ public sealed class MainLayoutTests : TestContext
 
         var syncButton = cut.Find("button[data-sync-now-button]");
         Assert.False(syncButton.HasAttribute("disabled"));
-        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
         Assert.Equal("Sync unavailable while offline", syncButton.GetAttribute("aria-label"));
 
         syncButton.Click();
@@ -265,7 +267,8 @@ public sealed class MainLayoutTests : TestContext
 
         var syncButton = cut.Find("button[data-sync-now-button]");
         Assert.False(syncButton.HasAttribute("disabled"));
-        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
 
         syncButton.Click();
 

@@ -30,9 +30,10 @@ function applyConnectivityState(isOnline) {
 
     document.querySelectorAll("[data-sync-now-button]").forEach((element) => {
         const syncing = element.dataset.syncing === "true";
-        const disabled = !isOnline || syncing;
-        element.disabled = disabled;
-        element.setAttribute("aria-disabled", disabled.toString());
+        const blocked = !isOnline || syncing;
+        element.disabled = false;
+        element.dataset.syncBlocked = blocked.toString();
+        element.removeAttribute("aria-disabled");
         if (!isOnline) {
             element.setAttribute("aria-label", "Sync unavailable while offline");
         } else if (syncing) {
