@@ -17,6 +17,7 @@ public static class AiEndpoints
 {
     private const string AiFeatureDisabledCode = "ai_feature_disabled";
     private const string AiRequestInvalidCode = "ai_request_invalid";
+    private const string AiBodyPartRequiredCode = "ai_body_part_required";
     private const string AiNoteIdRequiredCode = "ai_note_id_required";
     private const string AiNoteNotFoundCode = "ai_note_not_found";
     private const string AiSignedNoteCode = "ai_signed_note";
@@ -74,6 +75,15 @@ public static class AiEndpoints
                 StatusCodes.Status400BadRequest,
                 "ChiefComplaint is required",
                 AiRequestInvalidCode);
+        }
+
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status400BadRequest,
+                "Select a body part before generating AI content.",
+                AiBodyPartRequiredCode);
         }
 
         var validationFailure = await ValidateDraftNoteAsync(request.NoteId, db, httpContext, cancellationToken);
@@ -153,6 +163,15 @@ public static class AiEndpoints
                 StatusCodes.Status400BadRequest,
                 "Diagnosis is required",
                 AiRequestInvalidCode);
+        }
+
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status400BadRequest,
+                "Select a body part before generating AI content.",
+                AiBodyPartRequiredCode);
         }
 
         var validationFailure = await ValidateDraftNoteAsync(request.NoteId, db, httpContext, cancellationToken);
@@ -389,4 +408,8 @@ public static class AiEndpoints
 
         return Guid.TryParse(userId, out var parsedUserId) ? parsedUserId : null;
     }
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 }

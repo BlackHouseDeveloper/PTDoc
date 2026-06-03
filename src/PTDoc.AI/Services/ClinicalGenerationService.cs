@@ -24,6 +24,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
 
     private const string DefaultModel = "gpt-4";
     private const double DefaultConfidence = 0.85;
+    private const string BodyPartRequiredMessage = "Select a body part before generating AI content.";
 
     public ClinicalGenerationService(
         IAiService aiService,
@@ -61,6 +62,18 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             };
         }
 
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new AssessmentGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = BodyPartRequiredMessage
+            };
+        }
+
         _logger.LogInformation(
             "Assessment generation attempt for note {NoteId}, template v1",
             request.NoteId);
@@ -72,10 +85,13 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             {
                 NoteId = request.NoteId,
                 ChiefComplaint = _promptBuilder.SanitizeInput(request.ChiefComplaint),
+                SelectedBodyPart = _promptBuilder.SanitizeInput(request.SelectedBodyPart!),
                 PatientHistory = request.PatientHistory is not null ? _promptBuilder.SanitizeInput(request.PatientHistory) : null,
                 CurrentSymptoms = request.CurrentSymptoms is not null ? _promptBuilder.SanitizeInput(request.CurrentSymptoms) : null,
                 PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
-                ExaminationFindings = request.ExaminationFindings is not null ? _promptBuilder.SanitizeInput(request.ExaminationFindings) : null
+                ExaminationFindings = request.ExaminationFindings is not null ? _promptBuilder.SanitizeInput(request.ExaminationFindings) : null,
+                SubjectiveInputs = SanitizeAndScopeInputs(request.SubjectiveInputs, request.SelectedBodyPart!),
+                ObjectiveInputs = SanitizeAndScopeInputs(request.ObjectiveInputs, request.SelectedBodyPart!)
             };
 
             var aiResult = await _aiService.GenerateAssessmentAsync(aiRequest, cancellationToken);
@@ -132,6 +148,18 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             };
         }
 
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new PlanGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = BodyPartRequiredMessage
+            };
+        }
+
         _logger.LogInformation(
             "Plan generation attempt for note {NoteId}, template v1",
             request.NoteId);
@@ -143,9 +171,11 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             {
                 NoteId = request.NoteId,
                 Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
+                SelectedBodyPart = _promptBuilder.SanitizeInput(request.SelectedBodyPart!),
                 AssessmentSummary = request.AssessmentSummary is not null ? _promptBuilder.SanitizeInput(request.AssessmentSummary) : null,
                 Goals = request.Goals is not null ? _promptBuilder.SanitizeInput(request.Goals) : null,
-                Precautions = request.Precautions is not null ? _promptBuilder.SanitizeInput(request.Precautions) : null
+                Precautions = request.Precautions is not null ? _promptBuilder.SanitizeInput(request.Precautions) : null,
+                StructuredInputs = SanitizeAndScopeInputs(request.StructuredInputs, request.SelectedBodyPart!)
             };
 
             var aiResult = await _aiService.GeneratePlanAsync(aiRequest, cancellationToken);
@@ -293,4 +323,30 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             warnings.Add("No prior level of function provided — goals may not reflect realistic baseline.");
         return warnings;
     }
+
+    private IReadOnlyList<AiStructuredInput> SanitizeAndScopeInputs(
+        IReadOnlyList<AiStructuredInput> inputs,
+        string selectedBodyPart)
+    {
+        return inputs
+            .Where(input => ShouldIncludeInputForBodyPart(input, selectedBodyPart))
+            .Select(input => new AiStructuredInput
+            {
+                Label = _promptBuilder.SanitizeInput(input.Label),
+                Value = _promptBuilder.SanitizeInput(input.Value),
+                BodyPart = string.IsNullOrWhiteSpace(input.BodyPart)
+                    ? null
+                    : _promptBuilder.SanitizeInput(input.BodyPart)
+            })
+            .Where(input => !string.IsNullOrWhiteSpace(input.Label) && !string.IsNullOrWhiteSpace(input.Value))
+            .ToList();
+    }
+
+    private static bool ShouldIncludeInputForBodyPart(AiStructuredInput input, string selectedBodyPart) =>
+        string.IsNullOrWhiteSpace(input.BodyPart)
+        || string.Equals(input.BodyPart.Trim(), selectedBodyPart.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 }

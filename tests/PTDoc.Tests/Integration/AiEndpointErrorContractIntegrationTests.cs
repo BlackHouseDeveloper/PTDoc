@@ -18,8 +18,8 @@ namespace PTDoc.Tests.Integration;
 public sealed class AiEndpointErrorContractIntegrationTests
 {
     [Theory]
-    [InlineData("/api/v1/ai/assessment", """{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain"}""")]
-    [InlineData("/api/v1/ai/plan", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain"}""")]
+    [InlineData("/api/v1/ai/assessment", """{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}""")]
+    [InlineData("/api/v1/ai/plan", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}""")]
     [InlineData("/api/v1/ai/goals", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","functionalLimitations":"Walking"}""")]
     public async Task AiEndpoints_WhenFeatureDisabled_ReturnStructured403(string path, string payload)
     {
@@ -85,7 +85,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             using var response = await client.PostAsync(
                 "/api/v1/ai/assessment",
-                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"   "}"""));
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"   ","selectedBodyPart":"Shoulder"}"""));
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             await AssertErrorResponseAsync(response, "ChiefComplaint is required", "ai_request_invalid");
@@ -109,10 +109,58 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             using var response = await client.PostAsync(
                 "/api/v1/ai/assessment",
-                CreateJson("""{"noteId":"00000000-0000-0000-0000-000000000000","chiefComplaint":"Shoulder pain"}"""));
+                CreateJson("""{"noteId":"00000000-0000-0000-0000-000000000000","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             await AssertErrorResponseAsync(response, "A valid NoteId is required.", "ai_note_id_required");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task AssessmentEndpoint_WhenBodyPartMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/assessment",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Other"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Select a body part before generating AI content.", "ai_body_part_required");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PlanEndpoint_WhenBodyPartMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/plan",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Other"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Select a body part before generating AI content.", "ai_body_part_required");
         }
         finally
         {
@@ -134,7 +182,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             using var response = await client.PostAsync(
                 "/api/v1/ai/assessment",
-                CreateJson($$"""{"noteId":"{{missingNoteId}}","chiefComplaint":"Shoulder pain"}"""));
+                CreateJson($$"""{"noteId":"{{missingNoteId}}","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
 
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
             await AssertErrorResponseAsync(response, $"Note {missingNoteId} not found.", "ai_note_not_found");
@@ -159,7 +207,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             using var response = await client.PostAsync(
                 "/api/v1/ai/assessment",
-                CreateJson($$"""{"noteId":"{{noteId}}","chiefComplaint":"Shoulder pain"}"""));
+                CreateJson($$"""{"noteId":"{{noteId}}","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
 
             Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
             await AssertErrorResponseAsync(response, "AI generation is not permitted on signed notes.", "ai_signed_note");
@@ -203,7 +251,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
             using var client = factory.CreateClientWithRole(Roles.PT);
             using var response = await client.PostAsync(
                 "/api/v1/ai/assessment",
-                CreateJson($$"""{"noteId":"{{noteId}}","chiefComplaint":"Shoulder pain"}"""));
+                CreateJson($$"""{"noteId":"{{noteId}}","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
 
             Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
             await AssertErrorResponseAsync(response, "AI generation failed. Please try again or contact support.", "ai_generation_failed");

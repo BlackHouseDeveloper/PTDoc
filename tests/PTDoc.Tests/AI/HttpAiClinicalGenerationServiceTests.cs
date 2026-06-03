@@ -39,6 +39,7 @@ public sealed class HttpAiClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
             AssessmentSummary = "Limited lumbar mobility",
             Goals = "Restore lifting tolerance",
             Precautions = "Avoid loaded flexion"
@@ -144,7 +145,8 @@ public sealed class HttpAiClinicalGenerationServiceTests
         var result = await service.GenerateAssessmentAsync(new AssessmentGenerationRequest
         {
             NoteId = Guid.NewGuid(),
-            ChiefComplaint = "Shoulder pain"
+            ChiefComplaint = "Shoulder pain",
+            SelectedBodyPart = "Shoulder"
         });
 
         Assert.False(result.Success);
@@ -170,11 +172,36 @@ public sealed class HttpAiClinicalGenerationServiceTests
         var result = await service.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
         {
             NoteId = Guid.NewGuid(),
-            Diagnosis = "Lumbar strain"
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar"
         });
 
         Assert.False(result.Success);
         Assert.Equal("AI generation is currently disabled. Reference ID: ai-ref-123", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task GeneratePlanOfCareAsync_WithMissingBodyPart_DoesNotCallApi()
+    {
+        var wasCalled = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            wasCalled = true;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Other"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(wasCalled);
     }
 
     private static HttpAiClinicalGenerationService CreateService(HttpMessageHandler handler)

@@ -106,6 +106,35 @@ public class ClinicalPromptBuilderTests
     }
 
     [Fact]
+    public void BuildAssessmentPrompt_IncludesSelectedBodyPartAndFiltersStructuredInputs()
+    {
+        var request = new AssessmentGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "Knee pain",
+            SelectedBodyPart = "Knee",
+            SubjectiveInputs =
+            [
+                new AiStructuredInput { Label = "Pain score", Value = "7/10", BodyPart = "Knee" },
+                new AiStructuredInput { Label = "Shoulder symptom", Value = "Overhead pain", BodyPart = "Shoulder" }
+            ],
+            ObjectiveInputs =
+            [
+                new AiStructuredInput { Label = "ROM", Value = "Flexion 100", BodyPart = "Knee" }
+            ],
+            IsNoteSigned = false
+        };
+
+        var prompt = _builder.BuildAssessmentPrompt(request);
+
+        Assert.Contains("Selected Body Part: Knee", prompt);
+        Assert.Contains("Pain score", prompt);
+        Assert.Contains("Flexion 100", prompt);
+        Assert.DoesNotContain("Shoulder symptom", prompt);
+        Assert.DoesNotContain("Overhead pain", prompt);
+    }
+
+    [Fact]
     public void BuildAssessmentPrompt_NullRequest_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
@@ -165,6 +194,29 @@ public class ClinicalPromptBuilderTests
 
         Assert.Contains("interventions", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("frequency", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildPlanPrompt_IncludesSelectedBodyPartAndStructuredInputs()
+    {
+        var request = new PlanOfCareGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Patellofemoral pain",
+            SelectedBodyPart = "Knee",
+            StructuredInputs =
+            [
+                new AiStructuredInput { Label = "Treatment focus", Value = "Quadriceps control", BodyPart = "Knee" },
+                new AiStructuredInput { Label = "Shoulder treatment", Value = "Scapular strengthening", BodyPart = "Shoulder" }
+            ],
+            IsNoteSigned = false
+        };
+
+        var prompt = _builder.BuildPlanPrompt(request);
+
+        Assert.Contains("Selected Body Part: Knee", prompt);
+        Assert.Contains("Quadriceps control", prompt);
+        Assert.DoesNotContain("Scapular strengthening", prompt);
     }
 
     [Fact]

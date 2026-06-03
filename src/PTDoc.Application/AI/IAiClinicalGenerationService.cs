@@ -50,6 +50,11 @@ public sealed record AssessmentGenerationRequest
     public required string ChiefComplaint { get; init; }
 
     /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
     /// Relevant clinical history.
     /// </summary>
     public string? PatientHistory { get; init; }
@@ -75,6 +80,16 @@ public sealed record AssessmentGenerationRequest
     public string? FunctionalLimitations { get; init; }
 
     /// <summary>
+    /// Sanitized, body-part-scoped subjective fields supplied by the note workspace.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> SubjectiveInputs { get; init; } = Array.Empty<AiStructuredInput>();
+
+    /// <summary>
+    /// Sanitized, body-part-scoped objective fields supplied by the note workspace.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> ObjectiveInputs { get; init; } = Array.Empty<AiStructuredInput>();
+
+    /// <summary>
     /// Safety guard: generation is rejected when true.
     /// The caller (API or UI) is responsible for setting this from the note's signature state.
     /// </summary>
@@ -97,6 +112,11 @@ public sealed record PlanOfCareGenerationRequest
     public required string Diagnosis { get; init; }
 
     /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
     /// Assessment summary from the clinician.
     /// </summary>
     public string? AssessmentSummary { get; init; }
@@ -110,6 +130,11 @@ public sealed record PlanOfCareGenerationRequest
     /// Precautions or contraindications.
     /// </summary>
     public string? Precautions { get; init; }
+
+    /// <summary>
+    /// Sanitized, body-part-scoped Assessment/Plan fields supplied by the note workspace.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
 
     /// <summary>
     /// Safety guard: generation is rejected when true.
@@ -204,6 +229,22 @@ public sealed record OutcomeContext
     /// Human-readable interpretation of the current score (e.g. "Moderate disability").
     /// </summary>
     public string? CurrentInterpretation { get; init; }
+}
+
+/// <summary>
+/// One structured note field that may be included in an AI generation prompt.
+/// Contains no patient identifiers and may optionally identify the body part it came from.
+/// </summary>
+public sealed record AiStructuredInput
+{
+    /// <summary>Clinical field label, for example "Pain score" or "Objective metric".</summary>
+    public required string Label { get; init; }
+
+    /// <summary>Sanitized field value.</summary>
+    public required string Value { get; init; }
+
+    /// <summary>Optional body-part scope for filtering wrong-body-part inputs.</summary>
+    public string? BodyPart { get; init; }
 }
 
 // ──────────────────────────────────────────────────────────────────

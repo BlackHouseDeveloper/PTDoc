@@ -23,6 +23,8 @@ public sealed class OpenAiService : IAiService
     private readonly IHttpClientFactory _httpClientFactory;
     private const string DefaultModel = "gpt-4";
     private const string TemplateVersion = "v1";
+    private static readonly string[] DangerousTokens =
+        ["IGNORE", "SYSTEM:", "USER:", "ASSISTANT:", "###", "```"];
 
     public OpenAiService(IConfiguration configuration, ILogger<OpenAiService> logger, IHttpClientFactory httpClientFactory)
     {
@@ -183,27 +185,36 @@ public sealed class OpenAiService : IAiService
         var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Assessment", $"{TemplateVersion}.txt");
         var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
 
-        var prompt = template.Replace("{ChiefComplaint}", request.ChiefComplaint);
+        var prompt = template.Replace("{ChiefComplaint}", Sanitize(request.ChiefComplaint));
+        prompt = string.Join(
+            Environment.NewLine,
+            prompt,
+            string.Empty,
+            $"Selected Body Part: {Sanitize(request.SelectedBodyPart)}",
+            "Use only the selected body part and structured fields provided. Do not generate for any other body part.");
 
         if (!string.IsNullOrWhiteSpace(request.PatientHistory))
-            prompt = prompt.Replace("{PatientHistory:Patient History: {0}}", $"Patient History: {request.PatientHistory}");
+            prompt = prompt.Replace("{PatientHistory:Patient History: {0}}", $"Patient History: {Sanitize(request.PatientHistory)}");
         else
             prompt = prompt.Replace("{PatientHistory:Patient History: {0}}", string.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.CurrentSymptoms))
-            prompt = prompt.Replace("{CurrentSymptoms:Current Symptoms: {0}}", $"Current Symptoms: {request.CurrentSymptoms}");
+            prompt = prompt.Replace("{CurrentSymptoms:Current Symptoms: {0}}", $"Current Symptoms: {Sanitize(request.CurrentSymptoms)}");
         else
             prompt = prompt.Replace("{CurrentSymptoms:Current Symptoms: {0}}", string.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
-            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", $"Prior Level of Function: {request.PriorLevelOfFunction}");
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", $"Prior Level of Function: {Sanitize(request.PriorLevelOfFunction)}");
         else
             prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", string.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.ExaminationFindings))
-            prompt = prompt.Replace("{ExaminationFindings:Examination Findings: {0}}", $"Examination Findings: {request.ExaminationFindings}");
+            prompt = prompt.Replace("{ExaminationFindings:Examination Findings: {0}}", $"Examination Findings: {Sanitize(request.ExaminationFindings)}");
         else
             prompt = prompt.Replace("{ExaminationFindings:Examination Findings: {0}}", string.Empty);
+
+        prompt = AppendStructuredInputs(prompt, "Structured Subjective Inputs", request.SubjectiveInputs, request.SelectedBodyPart);
+        prompt = AppendStructuredInputs(prompt, "Structured Objective Inputs", request.ObjectiveInputs, request.SelectedBodyPart);
 
         return prompt;
     }
@@ -213,22 +224,30 @@ public sealed class OpenAiService : IAiService
         var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Plan", $"{TemplateVersion}.txt");
         var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
 
-        var prompt = template.Replace("{Diagnosis}", request.Diagnosis);
+        var prompt = template.Replace("{Diagnosis}", Sanitize(request.Diagnosis));
+        prompt = string.Join(
+            Environment.NewLine,
+            prompt,
+            string.Empty,
+            $"Selected Body Part: {Sanitize(request.SelectedBodyPart)}",
+            "Use only the selected body part and structured fields provided. Do not generate for any other body part.");
 
         if (!string.IsNullOrWhiteSpace(request.AssessmentSummary))
-            prompt = prompt.Replace("{AssessmentSummary:Assessment Summary: {0}}", $"Assessment Summary: {request.AssessmentSummary}");
+            prompt = prompt.Replace("{AssessmentSummary:Assessment Summary: {0}}", $"Assessment Summary: {Sanitize(request.AssessmentSummary)}");
         else
             prompt = prompt.Replace("{AssessmentSummary:Assessment Summary: {0}}", string.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.Goals))
-            prompt = prompt.Replace("{Goals:Patient Goals: {0}}", $"Patient Goals: {request.Goals}");
+            prompt = prompt.Replace("{Goals:Patient Goals: {0}}", $"Patient Goals: {Sanitize(request.Goals)}");
         else
             prompt = prompt.Replace("{Goals:Patient Goals: {0}}", string.Empty);
 
         if (!string.IsNullOrWhiteSpace(request.Precautions))
-            prompt = prompt.Replace("{Precautions:Precautions: {0}}", $"Precautions: {request.Precautions}");
+            prompt = prompt.Replace("{Precautions:Precautions: {0}}", $"Precautions: {Sanitize(request.Precautions)}");
         else
             prompt = prompt.Replace("{Precautions:Precautions: {0}}", string.Empty);
+
+        prompt = AppendStructuredInputs(prompt, "Structured Plan Inputs", request.StructuredInputs, request.SelectedBodyPart);
 
         return prompt;
     }
@@ -237,14 +256,16 @@ public sealed class OpenAiService : IAiService
     {
         var sb = new StringBuilder();
         sb.AppendLine("SUBJECTIVE:");
-        sb.AppendLine($"Patient reports {request.ChiefComplaint}.");
+        if (!string.IsNullOrWhiteSpace(request.SelectedBodyPart))
+            sb.AppendLine($"Selected body part: {Sanitize(request.SelectedBodyPart)}.");
+        sb.AppendLine($"Patient reports {Sanitize(request.ChiefComplaint)}.");
         if (!string.IsNullOrWhiteSpace(request.CurrentSymptoms))
-            sb.AppendLine($"Current symptoms include {request.CurrentSymptoms}.");
+            sb.AppendLine($"Current symptoms include {Sanitize(request.CurrentSymptoms)}.");
 
         sb.AppendLine();
         sb.AppendLine("OBJECTIVE:");
         if (!string.IsNullOrWhiteSpace(request.ExaminationFindings))
-            sb.AppendLine($"Examination reveals {request.ExaminationFindings}.");
+            sb.AppendLine($"Examination reveals {Sanitize(request.ExaminationFindings)}.");
 
         sb.AppendLine();
         sb.AppendLine("ASSESSMENT:");
@@ -257,14 +278,14 @@ public sealed class OpenAiService : IAiService
     {
         var sb = new StringBuilder();
         sb.AppendLine("PLAN OF CARE:");
-        sb.AppendLine($"Diagnosis: {request.Diagnosis}");
+        if (!string.IsNullOrWhiteSpace(request.SelectedBodyPart))
+            sb.AppendLine($"Selected body part: {Sanitize(request.SelectedBodyPart)}");
+        sb.AppendLine($"Diagnosis: {Sanitize(request.Diagnosis)}");
         sb.AppendLine();
         sb.AppendLine("Interventions:");
         sb.AppendLine("- Therapeutic exercises to improve strength and ROM");
         sb.AppendLine("- Manual therapy techniques as indicated");
         sb.AppendLine("- Patient education on home exercise program");
-        sb.AppendLine();
-        sb.AppendLine("Frequency: 2-3x/week for 4-6 weeks");
         sb.AppendLine();
         sb.AppendLine("Expected Outcomes:");
         sb.AppendLine("- Decreased pain levels");
@@ -272,6 +293,58 @@ public sealed class OpenAiService : IAiService
         sb.AppendLine("- Return to prior level of function");
 
         return sb.ToString();
+    }
+
+    private static string AppendStructuredInputs(
+        string prompt,
+        string heading,
+        IReadOnlyList<AiStructuredInput> inputs,
+        string? selectedBodyPart)
+    {
+        var scopedInputs = inputs
+            .Where(input => ShouldIncludeInputForBodyPart(input, selectedBodyPart))
+            .Where(input => !string.IsNullOrWhiteSpace(input.Label) && !string.IsNullOrWhiteSpace(input.Value))
+            .ToList();
+
+        if (scopedInputs.Count == 0)
+        {
+            return prompt;
+        }
+
+        var builder = new StringBuilder(prompt);
+        builder.AppendLine();
+        builder.AppendLine(heading + ":");
+        foreach (var input in scopedInputs)
+        {
+            var bodyPart = Sanitize(input.BodyPart);
+            var bodyPartSuffix = string.IsNullOrWhiteSpace(bodyPart)
+                ? string.Empty
+                : $" ({bodyPart})";
+            builder.AppendLine($"- {Sanitize(input.Label)}{bodyPartSuffix}: {Sanitize(input.Value)}");
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool ShouldIncludeInputForBodyPart(AiStructuredInput input, string? selectedBodyPart) =>
+        string.IsNullOrWhiteSpace(input.BodyPart)
+        || string.IsNullOrWhiteSpace(selectedBodyPart)
+        || string.Equals(input.BodyPart.Trim(), selectedBodyPart.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string Sanitize(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return string.Empty;
+        }
+
+        var result = input.Trim();
+        foreach (var token in DangerousTokens)
+        {
+            result = result.Replace(token, string.Empty, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
     }
 
     private async Task<string> BuildGoalsPromptAsync(AiGoalsRequest request, CancellationToken cancellationToken)
