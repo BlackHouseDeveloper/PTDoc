@@ -20,6 +20,7 @@
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@inject IToastService ToastService
 @implements IDisposable
 
 <PageTitle>Patient Intake - PTDoc</PageTitle>
@@ -86,6 +87,13 @@
 
                 @if (ShouldShowWizard)
                 {
+                    @if (ShouldShowPageFeedback)
+                    {
+                        <section class="intake-page__notice" role="alert" data-testid="intake-page-feedback">
+                            <p>@_validationMessage</p>
+                        </section>
+                    }
+
                     <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
                         @switch (State.CurrentStep)
                         {
@@ -170,6 +178,9 @@
         State.IsLocked &&
         State.IsSubmitted;
     private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
+    private bool ShouldShowPageFeedback =>
+        !string.IsNullOrWhiteSpace(_validationMessage) &&
+        State.CurrentStep is not IntakeStep.Demographics and not IntakeStep.Review;
     private string? ReadOnlyNoticeMessage => State.IsLocked
         ? "This intake has been submitted and locked. Editing is disabled."
         : (!CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
@@ -331,22 +342,26 @@
         }
         catch (HttpRequestException ex)
         {
+            var message = ToUserFacingApiError(ex);
             SetDraftUnavailableState(
                 title: "Unable to Load Intake",
-                message: ToUserFacingApiError(ex),
+                message: message,
                 detail: State.IsPatientMode
                     ? "Refresh this page or request a new intake invitation if the problem continues."
                     : "Select a different patient or try again once the connection is restored.");
+            ToastService.ShowError(message, "Intake load failed");
             InitializeBlankState(patientId);
         }
         catch (Exception)
         {
+            const string message = "We could not load this intake right now.";
             SetDraftUnavailableState(
                 title: "Unable to Load Intake",
-                message: "We could not load this intake right now.",
+                message: message,
                 detail: State.IsPatientMode
                     ? "Refresh this page or request a new intake invitation if the problem continues."
                     : "Select a different patient or try again once the connection is restored.");
+            ToastService.ShowError(message, "Intake load failed");
             InitializeBlankState(patientId);
         }
         finally
@@ -395,6 +410,7 @@
         }
 
         State.CurrentStep = IntakeStep.PainAssessment;
+        State.IsDirty = true;
 
         if (!State.PatientId.HasValue)
         {
@@ -411,7 +427,9 @@
             }
             catch (HttpRequestException ex)
             {
-                _validationMessage = ToUserFacingApiError(ex);
+                var message = ToUserFacingApiError(ex);
+                _validationMessage = message;
+                ToastService.ShowError(message, "Draft save failed");
             }
             finally
             {
@@ -429,7 +447,9 @@
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            var message = ToUserFacingApiError(ex);
+            _validationMessage = message;
+            ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {
@@ -544,11 +564,15 @@
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
-            _validationMessage = "Intake submitted successfully. This form is now locked.";
+            const string message = "Intake submitted successfully. This form is now locked.";
+            _validationMessage = message;
+            ToastService.ShowSuccess(message, "Intake submitted");
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            var message = ToUserFacingApiError(ex);
+            _validationMessage = message;
+            ToastService.ShowError(message, "Intake submit failed");
         }
         finally
         {
@@ -602,15 +626,21 @@
             State.LastModifiedUtc = reviewed.LastModifiedUtc;
             State.IsLocked = reviewed.IsLocked;
             State.IsSubmitted = reviewed.IsSubmitted;
-            _validationMessage = "Intake marked reviewed.";
+            const string message = "Intake marked reviewed.";
+            _validationMessage = message;
+            ToastService.ShowSuccess(message, "Intake reviewed");
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            var message = ToUserFacingApiError(ex);
+            _validationMessage = message;
+            ToastService.ShowError(message, "Review failed");
         }
         catch (InvalidOperationException ex)
         {
-            _validationMessage = ex.Message;
+            var message = ex.Message;
+            _validationMessage = message;
+            ToastService.ShowError(message, "Review failed");
         }
         finally
         {
@@ -626,6 +656,7 @@
         }
 
         _isSavingDraft = true;
+        State.IsDirty = true;
         try
         {
             await IntakeService.SaveDraftAsync(ToPersistenceDraft());
@@ -633,7 +664,9 @@
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            var message = ToUserFacingApiError(ex);
+            _validationMessage = message;
+            ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {

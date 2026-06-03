@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using PTDoc.Tests.Integrations;
 using PTDoc.UI.Services;
@@ -68,6 +69,24 @@ public sealed class HttpSyncServiceTests
         Assert.Equal(
             DateTime.Parse("2026-03-30T15:00:00Z", null, System.Globalization.DateTimeStyles.RoundtripKind),
             service.LastSyncTime);
+        Assert.Null(service.LastErrorMessage);
+        Assert.False(service.IsSyncing);
+    }
+
+    [Fact]
+    public async Task SyncNowAsync_OnApiFailure_StoresErrorMessage()
+    {
+        var handler = new StubHttpMessageHandler(request => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("""{"error":"Sync worker is unavailable."}""", System.Text.Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(handler);
+
+        var synced = await service.SyncNowAsync();
+
+        Assert.False(synced);
+        Assert.Equal("Sync worker is unavailable.", service.LastErrorMessage);
         Assert.False(service.IsSyncing);
     }
 

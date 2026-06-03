@@ -17,6 +17,11 @@ public interface ISyncService
     bool IsSyncing { get; }
 
     /// <summary>
+    /// Gets the last user-facing sync failure message, if any.
+    /// </summary>
+    string? LastErrorMessage { get; }
+
+    /// <summary>
     /// Event raised when sync state changes (LastSyncTime or IsSyncing)
     /// </summary>
     event Action? OnSyncStateChanged;

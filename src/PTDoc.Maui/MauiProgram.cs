@@ -66,6 +66,7 @@ public static class MauiProgram
         builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
         builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
         builder.Services.AddScoped<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
+        builder.Services.AddScoped<IToastService, ToastService>();
         builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
         builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
         builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();

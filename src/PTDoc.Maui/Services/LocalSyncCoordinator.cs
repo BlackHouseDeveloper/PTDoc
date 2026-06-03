@@ -36,6 +36,7 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
     public DateTime? LastSyncTime { get; private set; }
 
     public bool IsSyncing => _isSyncing;
+    public string? LastErrorMessage { get; private set; }
 
     public event Action? OnSyncStateChanged;
 
@@ -166,11 +167,13 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
     {
         if (!await _connectivityService.CheckConnectivityAsync())
         {
+            LastErrorMessage = "Sync is unavailable while offline.";
             return false;
         }
 
         if (!await _syncGate.WaitAsync(0, cancellationToken))
         {
+            LastErrorMessage = "Sync is already running.";
             return false;
         }
 
@@ -188,11 +191,17 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
                 LastSyncTime = result.CompletedAt;
             }
 
-            return result.Push.FailedCount == 0 && result.Pull.Errors.Count == 0;
+            var succeeded = result.Push.FailedCount == 0 && result.Pull.Errors.Count == 0;
+            LastErrorMessage = succeeded
+                ? null
+                : "Sync finished with errors. Retry sync after reviewing pending changes.";
+
+            return succeeded;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Local sync cycle failed");
+            LastErrorMessage = "Sync failed. Retry when the connection is available.";
             return false;
         }
         finally

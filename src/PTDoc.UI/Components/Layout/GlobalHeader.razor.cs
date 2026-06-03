@@ -12,6 +12,7 @@ public class GlobalHeaderBase : ComponentBase, IDisposable
     [Inject] private IThemeService ThemeService { get; set; } = default!;
     [Inject] private ISyncService SyncService { get; set; } = default!;
     [Inject] private IConnectivityService ConnectivityService { get; set; } = default!;
+    [Inject] private IToastService ToastService { get; set; } = default!;
 
     /// <summary>
     /// Parameter for menu open/closed state (two-way binding)
@@ -70,13 +71,25 @@ public class GlobalHeaderBase : ComponentBase, IDisposable
     {
         if (IsSyncing || !IsOnline)
         {
+            if (!IsOnline)
+            {
+                ToastService.ShowError("Sync is unavailable while offline.", "Sync failed");
+            }
+
             return; // Already syncing or offline
         }
 
         var success = await SyncService.SyncNowAsync();
-
-        // Optionally show toast notification based on success
-        // This can be implemented when toast/notification service is added
+        if (success)
+        {
+            ToastService.ShowSuccess("Sync completed.", "Sync complete");
+        }
+        else
+        {
+            ToastService.ShowError(
+                SyncService.LastErrorMessage ?? "Sync failed. Retry when the connection is available.",
+                "Sync failed");
+        }
     }
 
     private void HandleThemeChanged()
