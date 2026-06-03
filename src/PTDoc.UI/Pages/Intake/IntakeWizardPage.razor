@@ -549,6 +549,12 @@
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
+        catch (InvalidOperationException ex)
+        {
+            var message = ex.Message;
+            _validationMessage = message;
+            ToastService.ShowError(message, "Intake submit failed");
+        }
         finally
         {
             State.IsSubmitting = false;

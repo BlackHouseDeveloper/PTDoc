@@ -288,6 +288,37 @@ public sealed class IntakeWizardPageTests : TestContext
     }
 
     [Fact]
+    public void SubmitInvalidOperation_ShowsInlineMessageAndErrorToast()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("pt-user");
+        authorization.SetRoles(Roles.PT);
+
+        var intakeService = CreateIntakeServiceMock(CreateSubmittableReviewDraft(patientId));
+        intakeService
+            .Setup(service => service.SubmitAsync(
+                It.IsAny<IntakeResponseDraft>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Cannot submit intake; intake is already locked."));
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='submit-button']")));
+        cut.Find("[data-testid='submit-button']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Cannot submit intake; intake is already locked.", cut.Markup, StringComparison.Ordinal);
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Cannot submit intake; intake is already locked.", toast.Message);
+        });
+    }
+
+    [Fact]
     public void StepDraftSaveFailure_ShowsErrorToast()
     {
         var patientId = Guid.NewGuid();
