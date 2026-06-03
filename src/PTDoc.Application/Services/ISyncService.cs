@@ -22,7 +22,7 @@ public interface ISyncService
     string? LastErrorMessage { get; }
 
     /// <summary>
-    /// Event raised when sync state changes (LastSyncTime or IsSyncing)
+    /// Event raised when sync state changes (LastSyncTime, IsSyncing, or LastErrorMessage)
     /// </summary>
     event Action? OnSyncStateChanged;
 

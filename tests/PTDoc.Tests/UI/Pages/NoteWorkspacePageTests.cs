@@ -1172,6 +1172,73 @@ public sealed class NoteWorkspacePageTests : TestContext
         });
     }
 
+    [Fact]
+    public void ManualSaveFailure_WithWarningsOnly_StillUsesErrorTone()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult
+            {
+                Success = false,
+                ErrorMessage = "Draft save was rejected.",
+                Warnings = ["Review treatment frequency."]
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var alert = cut.Find("[data-testid='note-workspace-alert']");
+            Assert.Contains("Draft save was rejected.", alert.TextContent, StringComparison.Ordinal);
+            Assert.Contains("note-workspace__alert--error", alert.ClassList);
+            Assert.Contains("Failed", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+        });
+    }
+
 
     [Fact]
     public void ExistingProgressNote_LoadSyncsSelectedBodyPartSoObjectiveCatalogLoads()

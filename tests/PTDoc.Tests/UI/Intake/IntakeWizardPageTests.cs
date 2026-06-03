@@ -187,6 +187,45 @@ public sealed class IntakeWizardPageTests : TestContext
     }
 
     [Fact]
+    public void LoadFailure_ForSamePatient_DoesNotRetryOnRerender()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("pt-user");
+        authorization.SetRoles(Roles.PT);
+
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(
+                patientId,
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Intake API unavailable.", null, HttpStatusCode.ServiceUnavailable));
+
+        Services.AddLogging();
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
+        Services.AddSingleton(intakeService.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Intake API unavailable.", cut.Markup, StringComparison.Ordinal);
+            Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+        });
+
+        cut.FindComponent<IntakeWizardPage>().Render();
+
+        intakeService.Verify(
+            service => service.GetLatestByPatientIdAsync(
+                patientId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+    }
+
+    [Fact]
     public void SubmitSuccess_ShowsInlineMessageAndSuccessToast()
     {
         var patientId = Guid.NewGuid();

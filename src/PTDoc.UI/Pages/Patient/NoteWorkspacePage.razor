@@ -1319,12 +1319,9 @@ else
                 _lastSaveFailureMessage = message;
                 if (showFeedback || saveResult.Errors.Count > 0 || saveResult.Warnings.Count > 0)
                 {
-                    var failureTone = saveResult.Errors.Count > 0 || saveResult.Warnings.Count == 0
-                        ? "error"
-                        : "info";
                     SetStatusMessage(
                         message,
-                        failureTone,
+                        "error",
                         showToast: showFeedback,
                         toastTitle: "Save failed");
                 }
