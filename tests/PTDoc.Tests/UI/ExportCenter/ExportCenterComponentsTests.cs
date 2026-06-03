@@ -219,7 +219,7 @@ public sealed class ExportCenterComponentsTests : TestContext
     }
 
     [Fact]
-    public void ExportPreviewPanel_UnsignedTarget_DisablesPreviewAndDownload()
+    public void ExportPreviewPanel_UnsignedTarget_AllowsPreviewAndDownloadWithStatusWarning()
     {
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
@@ -235,7 +235,7 @@ public sealed class ExportCenterComponentsTests : TestContext
                 Title = "Draft Daily Note",
                 Subtitle = "Draft",
                 NoteStatus = NoteStatus.Draft,
-                CanDownloadPdf = false
+                CanDownloadPdf = true
             });
 
         Services.AddSingleton(noteService.Object);
@@ -248,8 +248,8 @@ public sealed class ExportCenterComponentsTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Only finalized signed notes can be previewed or downloaded", cut.Markup, StringComparison.Ordinal);
-            Assert.All(cut.FindAll(".export-preview-panel__actions button"), button => Assert.True(button.HasAttribute("disabled")));
+            Assert.Contains("This PDF will be labeled with the current note status.", cut.Markup, StringComparison.Ordinal);
+            Assert.All(cut.FindAll(".export-preview-panel__actions button"), button => Assert.False(button.HasAttribute("disabled")));
         });
 
         noteWorkspaceService.Verify(

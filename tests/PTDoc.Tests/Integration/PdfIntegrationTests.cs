@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Core.Models;
@@ -544,6 +545,186 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.Contains("6/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("3/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Monitor soreness for 24 hours", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PDF_Export_ReEvaluation_UsesReEvaluationTitle()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            IsReEvaluation = true,
+            NoteStatus = NoteStatus.Signed,
+            DateOfService = new DateTime(2026, 4, 8, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Re-Evaluation",
+            ExportStatusLabel = "Signed",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    NarrativeContext = new SubjectNarrativeContextV2
+                    {
+                        ChiefComplaint = "Re-evaluation for persistent shoulder limitation"
+                    }
+                },
+                Assessment = new WorkspaceAssessmentV2
+                {
+                    AssessmentNarrative = "Continued skilled therapy remains medically necessary."
+                }
+            }),
+            PatientFirstName = "Reeval",
+            PatientLastName = "Patient",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = false
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+
+        Assert.Equal("Physical Therapy Re-Evaluation", hierarchy.DocumentType);
+        AssertNodeValueContains(hierarchy.Root, "Primary Issue / Problem", "persistent shoulder limitation");
+        Assert.NotEmpty(result.PdfBytes);
+    }
+
+    [Fact]
+    public async Task PDF_Export_Discharge_UsesReadableDischargeContent()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Discharge,
+            NoteStatus = NoteStatus.Signed,
+            DateOfService = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Discharge Summary",
+            ExportStatusLabel = "Signed",
+            ContentJson = JsonSerializer.Serialize(new DischargeContent
+            {
+                ReasonForDischarge = "Goals met",
+                FunctionalStatusAtDischarge = "Returned to independent community ambulation.",
+                ProgressSummary = "Patient met functional walking goals.",
+                HepRecommendations = "Continue home walking and strengthening program.",
+                FollowUpRecommendations = "Follow up with referring physician as needed."
+            }),
+            PatientFirstName = "Discharge",
+            PatientLastName = "Patient",
+            PatientDiagnosisCodesJson = """[{"icdCode":"R26.2","description":"Difficulty in walking","isPrimary":true}]""",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = false
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+
+        Assert.NotEmpty(result.PdfBytes);
+        AssertNodeValueContains(hierarchy.Root, "Reason For Discharge", "Goals met");
+        AssertNodeValueContains(hierarchy.Root, "Final Functional Changes Narrative", "independent community ambulation");
+    }
+
+    [Fact]
+    public async Task PDF_Export_DraftNote_IncludesDraftStatusLabel()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Initial Evaluation",
+            ExportStatusLabel = "Draft",
+            ExportStatusWatermark = "DRAFT",
+            ClinicName = "PFPT Beta Clinic",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    NarrativeContext = new SubjectNarrativeContextV2
+                    {
+                        ChiefComplaint = "Draft export shoulder pain"
+                    }
+                }
+            }),
+            PatientFirstName = "Draft",
+            PatientLastName = "Patient",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = false
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("DRAFT", pdfText, StringComparison.Ordinal);
+        Assert.Contains("PFPT Beta Clinic", pdfText, StringComparison.Ordinal);
+        AssertNodeValueContains(hierarchy.Root, "Primary Issue / Problem", "Draft export shoulder pain");
+    }
+
+    [Fact]
+    public async Task PDF_Export_PendingCoSignNote_IncludesPendingStatusLabel()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.PendingCoSign,
+            DateOfService = new DateTime(2026, 4, 9, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Daily Note",
+            ExportStatusLabel = "Pending co-sign",
+            ExportStatusWatermark = "PENDING CO-SIGN",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                DailyTreatment = new WorkspaceDailyTreatmentV2
+                {
+                    SubjectiveUpdate = "Pending co-sign daily note export",
+                    ResponseToTreatment = "Tolerated session without increased symptoms."
+                }
+            }),
+            PatientFirstName = "Pending",
+            PatientLastName = "Patient",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = false
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("PENDING CO-SIGN", pdfText, StringComparison.Ordinal);
+        Assert.Contains("Pending co-sign", pdfText, StringComparison.OrdinalIgnoreCase);
+        AssertNodeValueContains(hierarchy.Root, "Response", "Tolerated session without increased symptoms.");
+    }
+
+    [Fact]
+    public async Task PDF_Export_Addendum_IncludesParentContextAndAddendumContent()
+    {
+        var parentNoteId = Guid.NewGuid();
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            IsAddendum = true,
+            ParentNoteId = parentNoteId,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Signed,
+            DateOfService = new DateTime(2026, 4, 10, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Daily Note",
+            ExportStatusLabel = "Signed",
+            ContentJson = """{"content":"Clarified home program progression after signed note."}""",
+            PatientFirstName = "Addendum",
+            PatientLastName = "Patient",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = false
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+        var result = await _renderer.ExportNoteToPdfAsync(noteData);
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.Contains("Physical Therapy Daily Note Addendum", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(parentNoteId.ToString("D"), pdfText, StringComparison.OrdinalIgnoreCase);
+        AssertNodeValueContains(hierarchy.Root, "Addendum Content", "Clarified home program progression");
     }
 
     [Fact]

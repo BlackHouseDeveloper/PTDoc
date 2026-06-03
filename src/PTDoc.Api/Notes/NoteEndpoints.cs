@@ -461,7 +461,7 @@ public static class NoteEndpoints
             Subtitle = $"{previewNote.DateOfService:MMM d, yyyy} · {BuildPreviewStatusLabel(previewNote.NoteStatus)}",
             NoteStatus = previewNote.NoteStatus,
             SelectionNotice = BuildPreviewSelectionNotice(patientIds.Count, previewFilters.Count),
-            CanDownloadPdf = previewNote.NoteStatus == NoteStatus.Signed
+            CanDownloadPdf = true
         });
     }
 
@@ -1459,7 +1459,7 @@ public static class NoteEndpoints
     {
         if (selectedPatientCount == 0 && selectedNoteTypeCount == 0)
         {
-            return "Showing the most recent signed SOAP note in the current export range when available.";
+            return "Showing the most recent SOAP note in the current export range, preferring signed notes when available.";
         }
 
         if (selectedPatientCount == 0)

@@ -18,6 +18,23 @@ public class MockPdfRenderer : IPdfRenderer
         sb.AppendLine("%PDF-1.4");
         sb.AppendLine("% Mock PDF for testing");
         sb.AppendLine($"Clinical Note ID: {noteData.NoteId}");
+        sb.AppendLine($"Document Status: {noteData.ExportStatusLabel}");
+        if (!string.IsNullOrWhiteSpace(noteData.ExportStatusWatermark))
+        {
+            sb.AppendLine(noteData.ExportStatusWatermark);
+        }
+
+        if (noteData.IsAddendum)
+        {
+            sb.AppendLine("Document Kind: Addendum");
+            sb.AppendLine($"Parent Note ID: {noteData.ParentNoteId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(noteData.ClinicName))
+        {
+            sb.AppendLine($"Clinic: {noteData.ClinicName}");
+        }
+
         sb.AppendLine($"Patient: {noteData.PatientFirstName} {noteData.PatientLastName}");
         sb.AppendLine($"Date of Service: {noteData.DateOfService:yyyy-MM-dd}");
         sb.AppendLine();

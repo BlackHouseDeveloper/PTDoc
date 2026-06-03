@@ -27,7 +27,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     public ClinicalDocumentHierarchy Build(NoteExportDto noteData)
     {
         var context = ExportDocumentContext.Create(noteData);
-        var hierarchy = noteData.NoteType switch
+        var hierarchy = noteData.IsAddendum
+            ? BuildAddendumDocument(noteData, context)
+            : noteData.NoteType switch
         {
             NoteType.Evaluation => BuildInitialEvaluation(noteData, context),
             NoteType.ProgressNote => BuildProgressNote(noteData, context),
@@ -40,6 +42,18 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         return SanitizeHierarchy(hierarchy);
     }
 
+    private static ClinicalDocumentHierarchy BuildAddendumDocument(NoteExportDto noteData, ExportDocumentContext context)
+    {
+        return CreateDocument(
+            noteData.NoteType,
+            $"{noteData.NoteTypeDisplayName} Addendum",
+            BuildHeaderSection(noteData, $"{noteData.NoteTypeDisplayName} Addendum"),
+            Section("Addendum", ClinicalDocumentSourceKind.Note,
+                Field("Parent Note", noteData.ParentNoteId?.ToString("D")),
+                Paragraph("Addendum Content", BuildAddendumContentSummary(noteData.ContentJson, context))),
+            noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null);
+    }
+
     private ClinicalDocumentHierarchy BuildInitialEvaluation(NoteExportDto noteData, ExportDocumentContext context)
     {
         var evaluation = context.EvaluationContent;
@@ -47,8 +61,8 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         return CreateDocument(
             noteData.NoteType,
-            "Physical Therapy Initial Evaluation",
-            BuildHeaderSection(noteData, "Physical Therapy Initial Evaluation"),
+            noteData.NoteTypeDisplayName,
+            BuildHeaderSection(noteData, noteData.NoteTypeDisplayName),
             Section("Subjective Patient Report", ClinicalDocumentSourceKind.Note,
                 Paragraph("Narrative Summary", FirstNonEmpty(
                     workspace?.Subjective.NarrativeContext.HistoryOfPresentIllness,
@@ -183,7 +197,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Field("Education", BuildEducationSummary(daily, workspace)),
                 Field("Response", daily?.TreatmentResponse.HasValue == true
                     ? ((TreatmentResponse)daily.TreatmentResponse.Value).ToString()
-                    : string.Empty),
+                    : FirstNonEmpty(workspace?.DailyTreatment.ResponseToTreatment, workspace?.DailyTreatment.SubjectiveUpdate) ?? string.Empty),
                 Paragraph("Clinical Assessment Narrative", FirstNonEmpty(
                     daily?.AssessmentNarrative,
                     daily?.ClinicalInterpretation,
@@ -251,6 +265,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Paragraph("Final Functional Changes Narrative", FirstNonEmpty(
                     BuildLegacyJsonValue(noteData.ContentJson, "subjective"),
                     discharge?.FunctionalStatusAtDischarge,
+                    workspace?.Assessment.FunctionalLimitationsSummary,
                     discharge?.ProgressSummary,
                     workspace?.Plan.ClinicalSummary))),
             BuildDischargeEvaluationSection(noteData, context),
@@ -273,6 +288,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Section("Discharge Plan Of Care", ClinicalDocumentSourceKind.Note,
                 Field("Reason For Discharge", FirstNonEmpty(
                     discharge?.ReasonForDischarge,
+                    workspace?.Plan.ClinicalSummary,
                     BuildLegacyJsonValue(noteData.ContentJson, "reasonForDischarge"))),
                 Field("Discharge Prognosis", workspace?.Assessment.OverallPrognosis),
                 Paragraph("Discharge Instructions", FirstNonEmpty(
@@ -359,11 +375,18 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     private static ClinicalDocumentNode BuildHeaderSection(NoteExportDto noteData, string title)
     {
         return Section("Header", ClinicalDocumentSourceKind.Static,
+            Group("Clinic Branding", ClinicalDocumentSourceKind.Static,
+                Field("Clinic", Fallback(noteData.ClinicName, "PTDoc Clinic"))),
             Group("Patient Header", ClinicalDocumentSourceKind.Patient,
                 Field("Patient Name", BuildPatientName(noteData)),
                 Field("Date Of Birth", FormatDate(noteData.PatientDateOfBirth)),
+                Field("Medical Record Number", noteData.PatientMedicalRecordNumber),
                 Field("Document Date", noteData.DateOfService.ToString("M/d/yyyy", CultureInfo.InvariantCulture))),
-            Field("Document Title", title, ClinicalDocumentSourceKind.Static));
+            Field("Document Title", title, ClinicalDocumentSourceKind.Static),
+            Field("Document Status", Fallback(noteData.ExportStatusLabel, noteData.NoteStatus.ToString()), ClinicalDocumentSourceKind.Note),
+            noteData.IsAddendum
+                ? Field("Document Kind", "Addendum", ClinicalDocumentSourceKind.Note)
+                : null);
     }
 
     private static ClinicalDocumentNode BuildEvaluationSection(NoteExportDto noteData, ExportDocumentContext context)
@@ -569,8 +592,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
     private static ClinicalDocumentNode BuildClinicianSignatureSection(NoteExportDto noteData)
     {
+        var signedByLabel = string.IsNullOrWhiteSpace(noteData.SignatureHash)
+            ? "Prepared By"
+            : "Signed By";
+
         return Group("Clinician Signature Block", ClinicalDocumentSourceKind.Note,
-            Field("Signed By", Fallback(noteData.ClinicianDisplayName)),
+            Field(signedByLabel, Fallback(noteData.ClinicianDisplayName)),
             Field("Credentials", Fallback(noteData.ClinicianCredentials)),
             Field("Therapist NPI", Fallback(noteData.TherapistNpi)),
             Field("Signed On", FormatDateTime(noteData.SignedUtc)),
@@ -1214,6 +1241,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         var values = new List<string>();
+        AddIfPresent(values, workspace?.DailyTreatment.SubjectiveUpdate, "Daily update");
+        AddIfPresent(values, workspace?.DailyTreatment.ChangesSinceLastVisit, "Changes since last visit");
+        AddIfPresent(values, workspace?.DailyTreatment.PainLevelChanges, "Pain changes");
+        AddIfPresent(values, workspace?.DailyTreatment.FunctionalImprovements, "Functional improvements");
+        AddIfPresent(values, workspace?.DailyTreatment.NewOrChangedSymptoms, "New or changed symptoms");
+        AddIfPresent(values, workspace?.DailyTreatment.BarriersToProgress, "Barriers");
         AddIfPresent(values, BuildProblemSummary(workspace), "Problem");
         AddIfPresent(values, BuildPainSummary(workspace), "Pain");
         AddIfPresent(values, BuildPainDescription(workspace), "Pain details");
@@ -1309,6 +1342,89 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         return string.Join("; ", values);
+    }
+
+    private static string BuildAddendumContentSummary(string contentJson, ExportDocumentContext context)
+    {
+        if (context.WorkspacePayload is not null)
+        {
+            var workspaceSummary = BuildTreatmentComments(
+                context.WorkspacePayload.Subjective.NarrativeContext.ChiefComplaint,
+                context.WorkspacePayload.Subjective.NarrativeContext.HistoryOfPresentIllness,
+                context.WorkspacePayload.Objective.ClinicalObservationNotes,
+                context.WorkspacePayload.Assessment.AssessmentNarrative,
+                context.WorkspacePayload.Plan.ClinicalSummary,
+                context.WorkspacePayload.Plan.PlanOfCareNarrative,
+                context.WorkspacePayload.Plan.DischargePlanningNotes,
+                context.WorkspacePayload.DailyTreatment.SubjectiveUpdate,
+                context.WorkspacePayload.DailyTreatment.ResponseToTreatment);
+
+            if (!string.IsNullOrWhiteSpace(workspaceSummary))
+            {
+                return workspaceSummary;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            if (document.RootElement.ValueKind == JsonValueKind.String)
+            {
+                return document.RootElement.GetString() ?? string.Empty;
+            }
+
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var propertyName in new[] { "content", "text", "addendum", "note", "comment", "summary" })
+                {
+                    if (document.RootElement.TryGetProperty(propertyName, out var property)
+                        && property.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(property.GetString()))
+                    {
+                        return property.GetString()!;
+                    }
+                }
+            }
+
+            var values = new List<string>();
+            CollectStringValues(document.RootElement, values);
+            return string.Join("; ", values.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return contentJson;
+        }
+    }
+
+    private static void CollectStringValues(JsonElement element, ICollection<string> values)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    CollectStringValues(property.Value, values);
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    CollectStringValues(item, values);
+                }
+                break;
+            case JsonValueKind.String:
+                var value = element.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    values.Add(value.Trim());
+                }
+                break;
+        }
     }
 
     private static string BuildTreatmentComments(params string?[] values)
@@ -1496,8 +1612,10 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         public static ExportDocumentContext Create(NoteExportDto noteData)
         {
-            var workspacePayload = TryDeserialize<NoteWorkspaceV2Payload>(noteData.ContentJson, payload =>
-                payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2);
+            var workspacePayload = LooksLikeWorkspacePayload(noteData.ContentJson)
+                ? TryDeserialize<NoteWorkspaceV2Payload>(noteData.ContentJson, payload =>
+                    payload is not null && payload.SchemaVersion == WorkspaceSchemaVersions.EvalReevalProgressV2)
+                : null;
 
             return new ExportDocumentContext
             {
@@ -1543,6 +1661,49 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             catch (JsonException)
             {
                 return default;
+            }
+        }
+
+        private static bool LooksLikeWorkspacePayload(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return false;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return false;
+                }
+
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (property.NameEquals("schemaVersion")
+                        || property.NameEquals("subjective")
+                        || property.NameEquals("Subjective")
+                        || property.NameEquals("objective")
+                        || property.NameEquals("Objective")
+                        || property.NameEquals("assessment")
+                        || property.NameEquals("Assessment")
+                        || property.NameEquals("plan")
+                        || property.NameEquals("Plan")
+                        || property.NameEquals("dailyTreatment")
+                        || property.NameEquals("DailyTreatment")
+                        || property.NameEquals("dryNeedling")
+                        || property.NameEquals("DryNeedling"))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (JsonException)
+            {
+                return false;
             }
         }
 
