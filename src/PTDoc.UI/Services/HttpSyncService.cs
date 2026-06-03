@@ -15,6 +15,7 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private const string SyncFailedFallbackMessage = "Sync failed. Retry when the connection is available.";
 
     private DateTime? _lastSyncTime;
     private bool _isSyncing;
@@ -42,13 +43,14 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         try
         {
             _isSyncing = true;
+            LastErrorMessage = null;
             OnSyncStateChanged?.Invoke();
 
             using var response = await httpClient.PostAsync("/api/v1/sync/run", content: null);
             if (!response.IsSuccessStatusCode)
             {
                 LastErrorMessage = await ApiErrorReader.ReadMessageAsync(response)
-                    ?? "Sync failed. Retry when the connection is available.";
+                    ?? SyncFailedFallbackMessage;
                 return false;
             }
 
@@ -60,9 +62,7 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         }
         catch (Exception ex)
         {
-            LastErrorMessage = ex is HttpRequestException && !string.IsNullOrWhiteSpace(ex.Message)
-                ? ex.Message
-                : "Sync failed. Retry when the connection is available.";
+            LastErrorMessage = GetUserFacingExceptionMessage(ex);
             return false;
         }
         finally
@@ -123,6 +123,18 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         {
             OnSyncStateChanged?.Invoke();
         }
+    }
+
+    private static string GetUserFacingExceptionMessage(Exception exception)
+    {
+        if (exception is HttpRequestException httpException &&
+            !string.IsNullOrWhiteSpace(httpException.Message) &&
+            !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return httpException.Message.Trim();
+        }
+
+        return SyncFailedFallbackMessage;
     }
 
     private sealed class SyncStatusResponse
