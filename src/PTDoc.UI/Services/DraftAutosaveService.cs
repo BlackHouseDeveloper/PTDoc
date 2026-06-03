@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace PTDoc.UI.Services;
 
-public readonly record struct DraftAutosaveSaveResult(bool Success, string? ErrorMessage)
+internal readonly record struct DraftAutosaveSaveResult(bool Success, string? ErrorMessage)
 {
     public static DraftAutosaveSaveResult Succeeded() => new(true, null);
 
@@ -30,7 +30,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
     public event Action? StateChanged;
 
-    public void Configure(Func<CancellationToken, Task<DraftAutosaveSaveResult>> saveAsync, Func<bool> canSave)
+    internal void Configure(Func<CancellationToken, Task<DraftAutosaveSaveResult>> saveAsync, Func<bool> canSave)
     {
         _saveAsync = saveAsync;
         _canSave = canSave;
