@@ -478,7 +478,8 @@
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
-    [Parameter] public bool ForceAiReviewUnavailable { get; set; }
+
+    internal bool TreatAiReviewBoxAsUnavailable { get; set; }
 
     private bool _isLoadingCatalog;
     private bool _isGeneratingDischarge;
@@ -1073,7 +1074,7 @@
         string sectionName,
         string unavailableMessage)
     {
-        if (ForceAiReviewUnavailable || narrativeBox is null)
+        if (TreatAiReviewBoxAsUnavailable || narrativeBox is null)
         {
             Logger.LogWarning(
                 "Plan AI generation succeeded for {SectionName} on note {NoteId}, but the review box reference was unavailable.",

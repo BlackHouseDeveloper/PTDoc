@@ -110,8 +110,9 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.ChiefComplaint, "Knee pain")
-            .Add(component => component.IsReadOnly, false)
-            .Add(component => component.ForceAiReviewUnavailable, true));
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Instance.TreatAiReviewBoxAsUnavailable = true;
 
         cut.FindAll("button")
             .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
@@ -220,8 +221,9 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
-            .Add(component => component.IsReadOnly, false)
-            .Add(component => component.ForceAiReviewUnavailable, true));
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Instance.TreatAiReviewBoxAsUnavailable = true;
 
         cut.FindAll("button")
             .First(button => button.TextContent.Contains("Generate Summary", StringComparison.Ordinal))

@@ -141,7 +141,8 @@
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
-    [Parameter] public bool ForceAiReviewUnavailable { get; set; }
+
+    internal bool TreatAiReviewBoxAsUnavailable { get; set; }
 
     protected override void OnParametersSet()
     {
@@ -255,7 +256,7 @@
                 return;
             }
 
-            if (ForceAiReviewUnavailable || _clinicalSummaryBox is null)
+            if (TreatAiReviewBoxAsUnavailable || _clinicalSummaryBox is null)
             {
                 _summaryErrorMessage = "Unable to open AI review for the clinical summary. Please try again.";
                 ToastService.ShowError(_summaryErrorMessage, "AI generation failed");

@@ -822,13 +822,15 @@ public sealed class PlanTabTests : TestContext
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
 
-        return RenderComponent<PlanTab>(parameters => parameters
+        var cut = RenderComponent<PlanTab>(parameters => parameters
             .Add(component => component.Vm, vm)
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.IsReadOnly, false)
-            .Add(component => component.DiagnosisSummary, "Lumbar strain")
-            .Add(component => component.ForceAiReviewUnavailable, forceAiReviewUnavailable));
+            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+
+        cut.Instance.TreatAiReviewBoxAsUnavailable = forceAiReviewUnavailable;
+        return cut;
     }
 
     private static PlanGenerationResult CreateSuccessfulPlanResult(Guid noteId, string generatedText)

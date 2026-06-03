@@ -139,8 +139,9 @@ public sealed class AssessmentTabTests : TestContext
             .Add(component => component.FunctionalLimitations, functionalLimitations)
             .Add(component => component.FunctionalLimitationsChanged, EventCallback.Factory.Create<string>(this, value => functionalLimitations = value))
             .Add(component => component.ChiefComplaint, "Knee pain")
-            .Add(component => component.IsNoteSigned, false)
-            .Add(component => component.ForceAiReviewUnavailable, true));
+            .Add(component => component.IsNoteSigned, false));
+
+        cut.Instance.TreatAiReviewBoxAsUnavailable = true;
 
         cut.Find("[data-testid='assessment-generate-btn']").Click();
 
