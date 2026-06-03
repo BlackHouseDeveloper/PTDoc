@@ -182,6 +182,7 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
         try
         {
             _isSyncing = true;
+            LastErrorMessage = null;
             OnSyncStateChanged?.Invoke();
 
             using var scope = _scopeFactory.CreateScope();

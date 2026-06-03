@@ -35,7 +35,7 @@
                 data-syncing="@IsSyncing.ToString().ToLowerInvariant()"
                 data-sync-blocked="@((IsSyncing || !IsOnline).ToString().ToLowerInvariant())"
                 aria-label="@(IsSyncing ? "Syncing clinical data" : IsOnline ? "Sync now" : "Sync unavailable while offline")"
-                aria-busy="@IsSyncing.ToString().ToLower()"
+                aria-busy="@IsSyncing.ToString().ToLowerInvariant()"
                 @onclick="HandleSyncNow">
                 <span class="sync-icon @(IsSyncing ? "syncing" : "")" aria-hidden="true"></span>
                 <span class="sync-button-text" data-sync-now-text>@(IsSyncing ? "Syncing..." : IsOnline ? "Sync Now" : "Sync Offline")</span>

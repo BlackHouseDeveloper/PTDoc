@@ -61,6 +61,7 @@ public class SyncService : ISyncService
         try
         {
             _isSyncing = true;
+            LastErrorMessage = null;
             OnSyncStateChanged?.Invoke();
 
             // Simulate sync operation (replace with actual EF Core + API sync later)

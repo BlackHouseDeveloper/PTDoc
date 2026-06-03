@@ -427,6 +427,7 @@ public sealed class IntakeWizardPageTests : TestContext
             "State",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
-        return Assert.IsType<IntakeWizardState>(stateProperty!.GetValue(component.Instance));
+        Assert.NotNull(stateProperty);
+        return Assert.IsType<IntakeWizardState>(stateProperty.GetValue(component.Instance));
     }
 }
