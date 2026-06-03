@@ -69,14 +69,16 @@ public class GlobalHeaderBase : ComponentBase, IDisposable
 
     protected async Task HandleSyncNow()
     {
-        if (IsSyncing || !IsOnline)
+        if (IsSyncing)
         {
-            if (!IsOnline)
-            {
-                ToastService.ShowError("Sync is unavailable while offline.", "Sync failed");
-            }
+            ToastService.ShowInfo("Sync is already running.", "Sync in progress");
+            return;
+        }
 
-            return; // Already syncing or offline
+        if (!IsOnline)
+        {
+            ToastService.ShowError("Sync is unavailable while offline.", "Sync failed");
+            return;
         }
 
         var success = await SyncService.SyncNowAsync();

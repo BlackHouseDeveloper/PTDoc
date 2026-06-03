@@ -226,9 +226,56 @@ public sealed class MainLayoutTests : TestContext
             .Add(component => component.IsMenuOpen, false));
 
         var syncButton = cut.Find("button[data-sync-now-button]");
-        Assert.True(syncButton.HasAttribute("disabled"));
+        Assert.False(syncButton.HasAttribute("disabled"));
         Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
         Assert.Equal("Syncing clinical data", syncButton.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowWhileOffline_ShowsToast()
+    {
+        _connectivityService.IsOnline = false;
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        var syncButton = cut.Find("button[data-sync-now-button]");
+        Assert.False(syncButton.HasAttribute("disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.Equal("Sync unavailable while offline", syncButton.GetAttribute("aria-label"));
+
+        syncButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Sync is unavailable while offline.", toast.Message);
+            Assert.Equal(0, _syncService.SyncCallCount);
+        });
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowWhileSyncing_ShowsToast()
+    {
+        _syncService.IsSyncing = true;
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        var syncButton = cut.Find("button[data-sync-now-button]");
+        Assert.False(syncButton.HasAttribute("disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+
+        syncButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Info, toast.Level);
+            Assert.Equal("Sync is already running.", toast.Message);
+            Assert.Equal(0, _syncService.SyncCallCount);
+        });
     }
 
     [Fact]
@@ -320,7 +367,12 @@ public sealed class MainLayoutTests : TestContext
         }
 
         public Task InitializeAsync() => Task.CompletedTask;
-        public Task<bool> SyncNowAsync() => Task.FromResult(SyncResult);
+        public int SyncCallCount { get; private set; }
+        public Task<bool> SyncNowAsync()
+        {
+            SyncCallCount++;
+            return Task.FromResult(SyncResult);
+        }
         public string GetElapsedTimeSinceSync() => "Just now";
     }
 
