@@ -243,7 +243,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.DailyTreatmentChanged, EventCallback.Factory.Create<DailyTreatmentVm>(this, updated => dailyTreatment = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
-            .Add(component => component.SelectedBodyPart, "Lumbar")
+            .Add(component => component.SelectedBodyPart, " Lumbar ")
             .Add(component => component.StructuredInputs, new[]
             {
                 new AiStructuredInput { Label = "Daily treatment plan", Value = "Continue HEP", BodyPart = "Lumbar" },
@@ -261,6 +261,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
         {
             Assert.NotNull(capturedRequest);
             Assert.Equal(4, capturedRequest!.StructuredInputs.Count);
+            Assert.All(capturedRequest.StructuredInputs, input => Assert.Equal("Lumbar", input.BodyPart));
             Assert.All(capturedRequest.StructuredInputs, input =>
             {
                 var matchingRows = capturedRequest.StructuredInputs.Count(candidate =>

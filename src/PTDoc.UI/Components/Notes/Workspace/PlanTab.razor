@@ -1170,7 +1170,7 @@
         {
             Label = label,
             Value = value.Trim(),
-            BodyPart = bodyPart
+            BodyPart = string.IsNullOrWhiteSpace(bodyPart) ? null : bodyPart.Trim()
         });
     }
 

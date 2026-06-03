@@ -654,7 +654,7 @@ public sealed class PlanTabTests : TestContext
             new AiStructuredInput { Label = "Selected CPT codes", Value = "97110 Therapeutic exercise", BodyPart = "Lumbar" }
         };
 
-        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService, structuredInputs: structuredInputs);
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService, structuredInputs: structuredInputs, selectedBodyPart: " Lumbar ");
 
         cut.Find("[data-testid='generate-summary-btn']").Click();
 
@@ -662,6 +662,7 @@ public sealed class PlanTabTests : TestContext
         {
             Assert.NotNull(capturedRequest);
             Assert.Equal(5, capturedRequest!.StructuredInputs.Count);
+            Assert.All(capturedRequest.StructuredInputs, input => Assert.Equal("Lumbar", input.BodyPart));
             Assert.All(capturedRequest.StructuredInputs, input =>
             {
                 var matchingRows = capturedRequest.StructuredInputs.Count(candidate =>
@@ -868,7 +869,8 @@ public sealed class PlanTabTests : TestContext
         Mock<INoteWorkspaceService> workspaceService,
         Mock<IAiClinicalGenerationService> aiService,
         bool forceAiReviewUnavailable = false,
-        IReadOnlyList<AiStructuredInput>? structuredInputs = null)
+        IReadOnlyList<AiStructuredInput>? structuredInputs = null,
+        string selectedBodyPart = "Lumbar")
     {
         workspaceService
             .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Lumbar, It.IsAny<CancellationToken>()))
@@ -886,7 +888,7 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.IsReadOnly, false)
-            .Add(component => component.SelectedBodyPart, "Lumbar")
+            .Add(component => component.SelectedBodyPart, selectedBodyPart)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
             .Add(component => component.StructuredInputs, structuredInputs ?? Array.Empty<AiStructuredInput>()));
 
