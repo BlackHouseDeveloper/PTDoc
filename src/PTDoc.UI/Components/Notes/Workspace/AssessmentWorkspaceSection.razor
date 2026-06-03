@@ -24,7 +24,10 @@
                    FunctionalLimitations="@Vm.FunctionalLimitations"
                    FunctionalLimitationsChanged="@(v => SetAndNotify(vm => vm.FunctionalLimitations = v))"
                    ChiefComplaint="@ChiefComplaint"
+                   SelectedBodyPart="@SelectedBodyPart"
                    ExaminationFindings="@ExaminationFindings"
+                   SubjectiveInputs="@SubjectiveInputs"
+                   ObjectiveInputs="@ObjectiveInputs"
                    OnAiAccepted="@(v => SetAndNotify(vm => vm.AssessmentNarrative = v))" />
 
     <!-- 2. Deficits & Impairments -->
@@ -431,7 +434,10 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool ShowSmartGoals { get; set; } = true;
     [Parameter] public string? ChiefComplaint { get; set; }
+    [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? ExaminationFindings { get; set; }
+    [Parameter] public IReadOnlyList<AiStructuredInput> SubjectiveInputs { get; set; } = Array.Empty<AiStructuredInput>();
+    [Parameter] public IReadOnlyList<AiStructuredInput> ObjectiveInputs { get; set; } = Array.Empty<AiStructuredInput>();
 
     // ── Static option lists ──────────────────────────────────────────
 

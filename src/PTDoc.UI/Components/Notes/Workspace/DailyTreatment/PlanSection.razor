@@ -94,7 +94,7 @@
         <div class="daily-col-12">
             <FormSection Title="Clinical Summary (S.O.A.P)" Subtitle="AI-generated comprehensive summary of all SOAP sections">
                 <div class="daily-plan__summary-header">
-                    <button type="button" disabled="@(IsReadOnly || NoteId == Guid.Empty || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
+                    <button type="button" disabled="@(IsReadOnly || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart) || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
                         @(_isGeneratingSummary ? "Generating..." : "Generate Summary")
                     </button>
                 </div>
@@ -112,6 +112,10 @@
                 @if (!IsReadOnly && NoteId == Guid.Empty)
                 {
                     <p class="daily-plan__message" role="note">Save the note before generating an AI plan summary.</p>
+                }
+                else if (!IsReadOnly && !HasConcreteBodyPart(SelectedBodyPart))
+                {
+                    <p class="daily-plan__message" role="note">Select a body part before generating an AI plan summary.</p>
                 }
 
                 @if (!string.IsNullOrWhiteSpace(_summaryErrorMessage))
@@ -141,6 +145,8 @@
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
+    [Parameter] public string? SelectedBodyPart { get; set; }
+    [Parameter] public IReadOnlyList<AiStructuredInput> StructuredInputs { get; set; } = Array.Empty<AiStructuredInput>();
 
     internal bool TreatAiReviewBoxAsUnavailable { get; set; }
 
@@ -233,6 +239,13 @@
             return;
         }
 
+        if (!HasConcreteBodyPart(SelectedBodyPart))
+        {
+            _summaryErrorMessage = "Select a body part before generating an AI plan summary.";
+            ToastService.ShowError(_summaryErrorMessage, "AI generation unavailable");
+            return;
+        }
+
         _isGeneratingSummary = true;
         _summaryErrorMessage = null;
         StateHasChanged();
@@ -243,9 +256,11 @@
             {
                 NoteId = NoteId,
                 Diagnosis = string.IsNullOrWhiteSpace(DiagnosisSummary) ? "Physical therapy plan of care" : DiagnosisSummary!,
+                SelectedBodyPart = SelectedBodyPart,
                 AssessmentSummary = AssessmentSummary,
                 Goals = GoalsSummary,
                 Precautions = PrecautionsSummary,
+                StructuredInputs = BuildStructuredInputs(),
                 IsNoteSigned = IsReadOnly
             });
 
@@ -277,6 +292,55 @@
             _isGeneratingSummary = false;
         }
     }
+
+    private IReadOnlyList<AiStructuredInput> BuildStructuredInputs()
+    {
+        var inputs = new List<AiStructuredInput>();
+        inputs.AddRange(StructuredInputs);
+        AddInput(inputs, "Daily treatment plan", _vm.HomeExerciseProgramNotes, SelectedBodyPart);
+        AddInput(inputs, "Daily interventions", JoinValues(_vm.GeneralInterventions.Select(FormatIntervention)), SelectedBodyPart);
+        AddInput(inputs, "Response to treatment", _dailyTreatment.ResponseToTreatment, SelectedBodyPart);
+        AddInput(inputs, "Follow-up instructions", _vm.FollowUpInstructions, SelectedBodyPart);
+        return DeduplicateInputs(inputs);
+    }
+
+    private static IReadOnlyList<AiStructuredInput> DeduplicateInputs(IEnumerable<AiStructuredInput> inputs) =>
+        inputs
+            .GroupBy(input => $"{input.Label}\u001f{input.Value}\u001f{input.BodyPart}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+    private static string FormatIntervention(GeneralInterventionEntry intervention)
+    {
+        var parts = new[] { intervention.Name, intervention.Category, intervention.Notes }
+            .Where(value => !string.IsNullOrWhiteSpace(value));
+        return string.Join(" - ", parts);
+    }
+
+    private static void AddInput(List<AiStructuredInput> inputs, string label, string? value, string? bodyPart)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        inputs.Add(new AiStructuredInput
+        {
+            Label = label,
+            Value = value.Trim(),
+            BodyPart = string.IsNullOrWhiteSpace(bodyPart) ? null : bodyPart.Trim()
+        });
+    }
+
+    private static string? JoinValues(IEnumerable<string?> values)
+    {
+        var joined = string.Join("; ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 
     private Task HandleClinicalSummaryDiscardedAsync()
     {

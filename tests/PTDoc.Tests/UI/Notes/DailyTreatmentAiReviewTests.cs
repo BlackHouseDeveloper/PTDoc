@@ -39,7 +39,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new AssessmentGenerationRequest
                 {
                     NoteId = noteId,
-                    ChiefComplaint = "Knee pain"
+                    ChiefComplaint = "Knee pain",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -53,6 +54,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")
@@ -96,7 +98,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new AssessmentGenerationRequest
                 {
                     NoteId = noteId,
-                    ChiefComplaint = "Knee pain"
+                    ChiefComplaint = "Knee pain",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -110,6 +113,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.SelectedBodyPart, "Knee")
             .Add(component => component.IsReadOnly, false));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = true;
@@ -150,7 +154,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -164,6 +169,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")
@@ -188,6 +194,86 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
     }
 
     [Fact]
+    public void PlanSection_PlanRequestDeduplicatesStructuredInputs()
+    {
+        var noteId = Guid.NewGuid();
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Existing summary",
+            HomeExerciseProgramNotes = "Continue HEP",
+            FollowUpInstructions = "Progress next visit"
+        };
+        vm.GeneralInterventions.Add(new GeneralInterventionEntry
+        {
+            Name = "Therapeutic exercise",
+            Notes = "Quad strengthening"
+        });
+        var dailyTreatment = new DailyTreatmentVm
+        {
+            ResponseToTreatment = "Tolerated session without symptom increase."
+        };
+        PlanOfCareGenerationRequest? capturedRequest = null;
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PlanOfCareGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new PlanGenerationResult
+            {
+                GeneratedText = "AI plan summary draft",
+                Confidence = 0.85,
+                SourceInputs = new PlanOfCareGenerationRequest
+                {
+                    NoteId = noteId,
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
+                },
+                Success = true
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<PlanSection>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.DailyTreatment, dailyTreatment)
+            .Add(component => component.DailyTreatmentChanged, EventCallback.Factory.Create<DailyTreatmentVm>(this, updated => dailyTreatment = updated))
+            .Add(component => component.NoteId, noteId)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, " Lumbar ")
+            .Add(component => component.StructuredInputs, new[]
+            {
+                new AiStructuredInput { Label = "Daily treatment plan", Value = "Continue HEP", BodyPart = "Lumbar" },
+                new AiStructuredInput { Label = "Daily interventions", Value = "Therapeutic exercise - Quad strengthening", BodyPart = "Lumbar" },
+                new AiStructuredInput { Label = "Response to treatment", Value = "Tolerated session without symptom increase.", BodyPart = "Lumbar" },
+                new AiStructuredInput { Label = "Follow-up instructions", Value = "Progress next visit", BodyPart = "Lumbar" }
+            })
+            .Add(component => component.IsReadOnly, false));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Generate Summary", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(capturedRequest);
+            Assert.Equal(4, capturedRequest!.StructuredInputs.Count);
+            Assert.All(capturedRequest.StructuredInputs, input => Assert.Equal("Lumbar", input.BodyPart));
+            Assert.All(capturedRequest.StructuredInputs, input =>
+            {
+                var matchingRows = capturedRequest.StructuredInputs.Count(candidate =>
+                    string.Equals(candidate.Label, input.Label, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidate.Value, input.Value, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidate.BodyPart, input.BodyPart, StringComparison.OrdinalIgnoreCase));
+                Assert.Equal(1, matchingRows);
+            });
+        });
+    }
+
+    [Fact]
     public void PlanSection_GenerateSummary_WhenReviewUnavailable_ShowsErrorToastOnly()
     {
         var noteId = Guid.NewGuid();
@@ -207,7 +293,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -221,6 +308,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = true;
@@ -261,7 +349,8 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 Success = true
             });
@@ -284,6 +373,7 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.SelectedBodyPart, "Lumbar")
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")

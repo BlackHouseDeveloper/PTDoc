@@ -624,6 +624,57 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
+    public void PlanTab_PlanRequestDeduplicatesStructuredInputs()
+    {
+        var noteId = Guid.NewGuid();
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Existing summary",
+            TreatmentFrequency = "2x/week",
+            TreatmentDuration = "6 weeks",
+            HomeExerciseProgramNotes = "Continue knee HEP"
+        };
+        vm.TreatmentFocuses.Add("Strength");
+        vm.SelectedCptCodes.Add(new CptCodeEntry { Code = "97110", Description = "Therapeutic exercise" });
+
+        PlanOfCareGenerationRequest? capturedRequest = null;
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PlanOfCareGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+
+        var structuredInputs = new[]
+        {
+            new AiStructuredInput { Label = "Treatment frequency", Value = "2x/week", BodyPart = "Lumbar" },
+            new AiStructuredInput { Label = "Treatment duration", Value = "6 weeks", BodyPart = "Lumbar" },
+            new AiStructuredInput { Label = "Treatment focuses", Value = "Strength", BodyPart = "Lumbar" },
+            new AiStructuredInput { Label = "Home exercise program", Value = "Continue knee HEP", BodyPart = "Lumbar" },
+            new AiStructuredInput { Label = "Selected CPT codes", Value = "97110 Therapeutic exercise", BodyPart = "Lumbar" }
+        };
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService, structuredInputs: structuredInputs, selectedBodyPart: " Lumbar ");
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(capturedRequest);
+            Assert.Equal(5, capturedRequest!.StructuredInputs.Count);
+            Assert.All(capturedRequest.StructuredInputs, input => Assert.Equal("Lumbar", input.BodyPart));
+            Assert.All(capturedRequest.StructuredInputs, input =>
+            {
+                var matchingRows = capturedRequest.StructuredInputs.Count(candidate =>
+                    string.Equals(candidate.Label, input.Label, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidate.Value, input.Value, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidate.BodyPart, input.BodyPart, StringComparison.OrdinalIgnoreCase));
+                Assert.Equal(1, matchingRows);
+            });
+        });
+    }
+
+    [Fact]
     public void PlanTab_GenerationFailureShowsVisibleErrorMessage()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
@@ -640,7 +691,8 @@ public sealed class PlanTabTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Lumbar strain"
+                    Diagnosis = "Lumbar strain",
+                    SelectedBodyPart = "Lumbar"
                 },
                 ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123",
                 Success = false
@@ -816,8 +868,17 @@ public sealed class PlanTabTests : TestContext
         Guid noteId,
         Mock<INoteWorkspaceService> workspaceService,
         Mock<IAiClinicalGenerationService> aiService,
-        bool forceAiReviewUnavailable = false)
+        bool forceAiReviewUnavailable = false,
+        IReadOnlyList<AiStructuredInput>? structuredInputs = null,
+        string selectedBodyPart = "Lumbar")
     {
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Lumbar, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Lumbar
+            });
+
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
@@ -827,7 +888,9 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.IsReadOnly, false)
-            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+            .Add(component => component.SelectedBodyPart, selectedBodyPart)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.StructuredInputs, structuredInputs ?? Array.Empty<AiStructuredInput>()));
 
         cut.Instance.TreatAiReviewBoxAsUnavailable = forceAiReviewUnavailable;
         return cut;
@@ -842,7 +905,8 @@ public sealed class PlanTabTests : TestContext
             SourceInputs = new PlanOfCareGenerationRequest
             {
                 NoteId = noteId,
-                Diagnosis = "Lumbar strain"
+                Diagnosis = "Lumbar strain",
+                SelectedBodyPart = "Lumbar"
             },
             Success = true
         };

@@ -48,6 +48,11 @@ public sealed record AiAssessmentRequest
     public required string ChiefComplaint { get; init; }
 
     /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
     /// Relevant patient history.
     /// </summary>
     public string? PatientHistory { get; init; }
@@ -66,6 +71,16 @@ public sealed record AiAssessmentRequest
     /// Examination findings.
     /// </summary>
     public string? ExaminationFindings { get; init; }
+
+    /// <summary>
+    /// Body-part-scoped subjective fields to include in the prompt.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> SubjectiveInputs { get; init; } = Array.Empty<AiStructuredInput>();
+
+    /// <summary>
+    /// Body-part-scoped objective fields to include in the prompt.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> ObjectiveInputs { get; init; } = Array.Empty<AiStructuredInput>();
 }
 
 /// <summary>
@@ -85,6 +100,11 @@ public sealed record AiPlanRequest
     public required string Diagnosis { get; init; }
 
     /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
     /// Assessment summary from clinician.
     /// </summary>
     public string? AssessmentSummary { get; init; }
@@ -98,6 +118,11 @@ public sealed record AiPlanRequest
     /// Precautions or contraindications.
     /// </summary>
     public string? Precautions { get; init; }
+
+    /// <summary>
+    /// Body-part-scoped Assessment/Plan fields to include in the prompt.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
 }
 
 /// <summary>

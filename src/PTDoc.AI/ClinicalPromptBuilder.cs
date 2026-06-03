@@ -31,7 +31,9 @@ public sealed class ClinicalPromptBuilder
         sb.AppendLine("You are a licensed physical therapist assistant helping to document a patient assessment.");
         sb.AppendLine("Generate professional clinical documentation based ONLY on the provided information.");
         sb.AppendLine("Do not invent, assume, or add clinical details not given below.");
+        sb.AppendLine("Use only the selected body part and structured fields provided below.");
         sb.AppendLine();
+        AppendOptionalField(sb, "Selected Body Part", request.SelectedBodyPart);
         sb.AppendLine($"Chief Complaint: {Sanitize(request.ChiefComplaint)}");
 
         AppendOptionalField(sb, "Patient History", request.PatientHistory);
@@ -39,6 +41,8 @@ public sealed class ClinicalPromptBuilder
         AppendOptionalField(sb, "Prior Level of Function", request.PriorLevelOfFunction);
         AppendOptionalField(sb, "Examination Findings", request.ExaminationFindings);
         AppendOptionalField(sb, "Functional Limitations", request.FunctionalLimitations);
+        AppendStructuredInputs(sb, "Structured Subjective Inputs", request.SubjectiveInputs, request.SelectedBodyPart);
+        AppendStructuredInputs(sb, "Structured Objective Inputs", request.ObjectiveInputs, request.SelectedBodyPart);
 
         sb.AppendLine();
         sb.AppendLine("Generate a concise, professional assessment section. Include:");
@@ -62,12 +66,15 @@ public sealed class ClinicalPromptBuilder
         sb.AppendLine("You are a licensed physical therapist assistant helping to document a plan of care.");
         sb.AppendLine("Generate professional clinical documentation based ONLY on the provided information.");
         sb.AppendLine("Do not invent contraindications or precautions not mentioned below.");
+        sb.AppendLine("Use only the selected body part and structured fields provided below.");
         sb.AppendLine();
+        AppendOptionalField(sb, "Selected Body Part", request.SelectedBodyPart);
         sb.AppendLine($"Diagnosis: {Sanitize(request.Diagnosis)}");
 
         AppendOptionalField(sb, "Assessment Summary", request.AssessmentSummary);
         AppendOptionalField(sb, "Patient Goals", request.Goals);
         AppendOptionalField(sb, "Precautions", request.Precautions);
+        AppendStructuredInputs(sb, "Structured Plan Inputs", request.StructuredInputs, request.SelectedBodyPart);
 
         sb.AppendLine();
         sb.AppendLine("Generate a concise, professional plan of care section. Include:");
@@ -120,6 +127,44 @@ public sealed class ClinicalPromptBuilder
             sb.AppendLine($"{label}: {Sanitize(value)}");
         }
     }
+
+    private static void AppendStructuredInputs(
+        System.Text.StringBuilder sb,
+        string heading,
+        IReadOnlyList<AiStructuredInput> inputs,
+        string? selectedBodyPart)
+    {
+        var scopedInputs = inputs
+            .Where(input => ShouldIncludeInputForBodyPart(input, selectedBodyPart))
+            .Select(input => new
+            {
+                Label = Sanitize(input.Label),
+                Value = Sanitize(input.Value),
+                BodyPart = string.IsNullOrWhiteSpace(input.BodyPart) ? null : Sanitize(input.BodyPart)
+            })
+            .Where(input => !string.IsNullOrWhiteSpace(input.Label) && !string.IsNullOrWhiteSpace(input.Value))
+            .ToList();
+
+        if (scopedInputs.Count == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"{heading}:");
+        foreach (var input in scopedInputs)
+        {
+            var bodyPartSuffix = string.IsNullOrWhiteSpace(input.BodyPart)
+                ? string.Empty
+                : $" ({input.BodyPart})";
+            sb.AppendLine($"- {input.Label}{bodyPartSuffix}: {input.Value}");
+        }
+    }
+
+    private static bool ShouldIncludeInputForBodyPart(AiStructuredInput input, string? selectedBodyPart) =>
+        string.IsNullOrWhiteSpace(input.BodyPart)
+        || string.IsNullOrWhiteSpace(selectedBodyPart)
+        || string.Equals(input.BodyPart.Trim(), selectedBodyPart.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Strips known prompt-injection tokens from a single input string.

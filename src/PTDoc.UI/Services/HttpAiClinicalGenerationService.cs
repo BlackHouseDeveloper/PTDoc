@@ -48,16 +48,31 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             };
         }
 
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new AssessmentGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Select a body part before generating AI content."
+            };
+        }
+
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/ai/assessment",
             new AiAssessmentRequest
             {
                 NoteId = request.NoteId,
                 ChiefComplaint = request.ChiefComplaint,
+                SelectedBodyPart = request.SelectedBodyPart,
                 PatientHistory = request.PatientHistory,
                 CurrentSymptoms = request.CurrentSymptoms,
                 PriorLevelOfFunction = request.PriorLevelOfFunction,
-                ExaminationFindings = request.ExaminationFindings
+                ExaminationFindings = request.ExaminationFindings,
+                SubjectiveInputs = request.SubjectiveInputs,
+                ObjectiveInputs = request.ObjectiveInputs
             },
             cancellationToken);
 
@@ -116,15 +131,29 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
             };
         }
 
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new PlanGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Select a body part before generating AI content."
+            };
+        }
+
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/ai/plan",
             new AiPlanRequest
             {
                 NoteId = request.NoteId,
                 Diagnosis = request.Diagnosis,
+                SelectedBodyPart = request.SelectedBodyPart,
                 AssessmentSummary = request.AssessmentSummary,
                 Goals = request.Goals,
-                Precautions = request.Precautions
+                Precautions = request.Precautions,
+                StructuredInputs = request.StructuredInputs
             },
             cancellationToken);
 
@@ -324,6 +353,10 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
 
         return $"{message} Reference ID: {correlationId}";
     }
+
+    private static bool HasConcreteBodyPart(string? bodyPart) =>
+        !string.IsNullOrWhiteSpace(bodyPart)
+        && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 
     private static AiPromptMetadata? ToPromptMetadata(MetadataResponse? metadata)
     {

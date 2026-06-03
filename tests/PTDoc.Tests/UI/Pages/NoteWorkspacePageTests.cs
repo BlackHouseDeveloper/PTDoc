@@ -879,7 +879,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm()
                 }
@@ -1279,7 +1279,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         SelectedBodyPart = BodyPart.Knee.ToString(),
                         CurrentPainScore = 4
                     },
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm()
                 }
@@ -1327,6 +1327,197 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public void ExistingDailyTreatmentNote_AssessmentGenerationUsesDailySubjectiveComplaint()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        AssessmentGenerationRequest? capturedRequest = null;
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Ella",
+                LastName = "Adams",
+                DateOfBirth = new DateTime(1971, 2, 14, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Daily Treatment Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily
+                    },
+                    Subjective = new SubjectiveVm
+                    {
+                        Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Knee Pain" },
+                        OtherLocation = "Right knee",
+                        OtherProblem = "Pain with stairs"
+                    },
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
+                    Assessment = new AssessmentWorkspaceVm
+                    {
+                        AssessmentNarrative = "Existing assessment"
+                    },
+                    Plan = new PlanVm(),
+                    DailyTreatment = new DailyTreatmentVm
+                    {
+                        SubjectiveUpdate = "Reports symptoms improved after HEP.",
+                        ChangesSinceLastVisit = "Better stair tolerance.",
+                        NewOrChangedSymptoms = "No new symptoms."
+                    }
+                }
+            });
+
+        aiService
+            .Setup(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AssessmentGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new AssessmentGenerationResult
+            {
+                GeneratedText = "AI assessment draft",
+                Confidence = 0.85,
+                SourceInputs = new AssessmentGenerationRequest
+                {
+                    NoteId = noteId,
+                    ChiefComplaint = "Knee Pain; Right knee; Pain with stairs",
+                    SelectedBodyPart = "Knee"
+                },
+                Success = true
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='soap-tab-assessment']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-assessment-section']"));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(capturedRequest);
+            Assert.Equal(noteId, capturedRequest!.NoteId);
+            Assert.Equal("Knee", capturedRequest.SelectedBodyPart);
+            Assert.Contains("Knee Pain", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
+            Assert.Contains("Right knee", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
+            Assert.Contains("Pain with stairs", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
+            Assert.Contains("Reports symptoms improved after HEP.", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
+            Assert.DoesNotContain("A chief complaint is required before generating an assessment.", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("AI-generated content", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("AI assessment draft", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void ExistingDailyTreatmentNote_AssessmentGenerationWithoutDailyComplaintStillBlocksAi()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Ella",
+                LastName = "Adams",
+                DateOfBirth = new DateTime(1971, 2, 14, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Daily Treatment Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Daily
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
+                    Assessment = new AssessmentWorkspaceVm
+                    {
+                        AssessmentNarrative = "Existing assessment"
+                    },
+                    Plan = new PlanVm(),
+                    DailyTreatment = new DailyTreatmentVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='soap-tab-assessment']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-assessment-section']"));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("A chief complaint is required before generating an assessment.", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("A chief complaint is required before generating an assessment.", toast.Message);
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public void ReviewPage_RegeneratedSummaryRequiresExplicitAcceptance()
     {
         var patientId = Guid.NewGuid();
@@ -1361,7 +1552,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm
                     {
@@ -1379,7 +1570,8 @@ public sealed class NoteWorkspacePageTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Progress note"
+                    Diagnosis = "Progress note",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -1462,7 +1654,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm
                     {
@@ -1480,7 +1672,8 @@ public sealed class NoteWorkspacePageTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Progress note"
+                    Diagnosis = "Progress note",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });
@@ -1588,7 +1781,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm
                     {
@@ -1606,7 +1799,8 @@ public sealed class NoteWorkspacePageTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Progress note"
+                    Diagnosis = "Progress note",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = false,
                 ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123"
@@ -1681,7 +1875,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm
                     {
@@ -1763,7 +1957,7 @@ public sealed class NoteWorkspacePageTests : TestContext
                         NoteType = NoteType.ProgressNote
                     },
                     Subjective = new SubjectiveVm(),
-                    Objective = new ObjectiveVm(),
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Knee" },
                     Assessment = new AssessmentWorkspaceVm(),
                     Plan = new PlanVm
                     {
@@ -1781,7 +1975,8 @@ public sealed class NoteWorkspacePageTests : TestContext
                 SourceInputs = new PlanOfCareGenerationRequest
                 {
                     NoteId = noteId,
-                    Diagnosis = "Progress note"
+                    Diagnosis = "Progress note",
+                    SelectedBodyPart = "Knee"
                 },
                 Success = true
             });

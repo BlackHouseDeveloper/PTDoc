@@ -146,14 +146,14 @@ public sealed class AiFaultDiagnosticsIntegrationTests
 
             using var adminPlanResponse = await adminClient.PostAsync(
                 "/api/v1/ai/plan",
-                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain"}"""));
+                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}"""));
 
             Assert.Equal(HttpStatusCode.OK, adminPlanResponse.StatusCode);
             Assert.Single(await GetFaultsAsync(adminClient));
 
             using var ptPlanResponse = await ptClient.PostAsync(
                 "/api/v1/ai/plan",
-                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain"}"""));
+                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}"""));
 
             Assert.Equal(HttpStatusCode.InternalServerError, ptPlanResponse.StatusCode);
             await AssertErrorEnvelopeAsync(
@@ -164,7 +164,7 @@ public sealed class AiFaultDiagnosticsIntegrationTests
 
             using var ptSecondResponse = await ptClient.PostAsync(
                 "/api/v1/ai/plan",
-                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain"}"""));
+                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}"""));
 
             Assert.Equal(HttpStatusCode.OK, ptSecondResponse.StatusCode);
         }

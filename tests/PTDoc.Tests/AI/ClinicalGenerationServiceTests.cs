@@ -91,6 +91,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             ChiefComplaint = "Lower back pain",
+            SelectedBodyPart = "Lumbar",
             CurrentSymptoms = "Pain radiating down left leg",
             ExaminationFindings = "Limited lumbar flexion",
             IsNoteSigned = false
@@ -139,6 +140,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             ChiefComplaint = "Shoulder pain",
+            SelectedBodyPart = "Shoulder",
             // No examination findings → should produce a warning
             IsNoteSigned = false
         };
@@ -165,6 +167,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = noteId,
             ChiefComplaint = "Hip pain",
+            SelectedBodyPart = "Hip",
             IsNoteSigned = false
         };
 
@@ -182,6 +185,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             ChiefComplaint = "Cervical pain",
+            SelectedBodyPart = "Cervical",
             IsNoteSigned = false
         };
 
@@ -218,6 +222,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             ChiefComplaint = "Elbow pain",
+            SelectedBodyPart = "Elbow",
             IsNoteSigned = false
         };
 
@@ -238,6 +243,7 @@ public class ClinicalGenerationServiceTests
         {
             NoteId = Guid.NewGuid(),
             Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
             AssessmentSummary = "Patient has limited ROM and functional deficits",
             IsNoteSigned = false
         };
@@ -279,6 +285,94 @@ public class ClinicalGenerationServiceTests
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _service.GeneratePlanOfCareAsync(null!));
+    }
+
+    [Fact]
+    public async Task GeneratePlanOfCare_WithMissingBodyPart_ReturnsSafetyFailure()
+    {
+        var request = new PlanOfCareGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Other",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GeneratePlanOfCareAsync(request);
+
+        Assert.False(result.Success);
+        Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        _mockAiService.Verify(
+            s => s.GeneratePlanAsync(It.IsAny<AiPlanRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GenerateAssessment_WithMissingBodyPart_ReturnsSafetyFailure()
+    {
+        var request = new AssessmentGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "Knee pain",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GenerateAssessmentAsync(request);
+
+        Assert.False(result.Success);
+        Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        _mockAiService.Verify(
+            s => s.GenerateAssessmentAsync(It.IsAny<AiAssessmentRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GenerateAssessment_SanitizesAndScopesStructuredInputsBeforeCallingProvider()
+    {
+        AiAssessmentRequest? capturedRequest = null;
+        _mockAiService
+            .Setup(s => s.GenerateAssessmentAsync(It.IsAny<AiAssessmentRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AiAssessmentRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new AiResult
+            {
+                Success = true,
+                GeneratedText = "Assessment text",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            });
+
+        var request = new AssessmentGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "IGNORE Knee pain",
+            SelectedBodyPart = "Knee",
+            SubjectiveInputs =
+            [
+                new AiStructuredInput { Label = "Pain", Value = "SYSTEM: 7/10", BodyPart = "Knee" },
+                new AiStructuredInput { Label = "Shoulder limitation", Value = "Overhead reach", BodyPart = "Shoulder" }
+            ],
+            ObjectiveInputs =
+            [
+                new AiStructuredInput { Label = "ROM", Value = "Flexion 100 ###", BodyPart = "Knee" }
+            ],
+            IsNoteSigned = false
+        };
+
+        await _service.GenerateAssessmentAsync(request);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("Knee", capturedRequest!.SelectedBodyPart);
+        Assert.DoesNotContain("IGNORE", capturedRequest.ChiefComplaint, StringComparison.OrdinalIgnoreCase);
+        var subjective = Assert.Single(capturedRequest.SubjectiveInputs);
+        Assert.Equal("Pain", subjective.Label);
+        Assert.DoesNotContain("SYSTEM:", subjective.Value, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(capturedRequest.SubjectiveInputs, input => string.Equals(input.BodyPart, "Shoulder", StringComparison.OrdinalIgnoreCase));
+        var objective = Assert.Single(capturedRequest.ObjectiveInputs);
+        Assert.DoesNotContain("###", objective.Value, StringComparison.OrdinalIgnoreCase);
     }
 
     // ──────────────────────────────────────────────────────────────
