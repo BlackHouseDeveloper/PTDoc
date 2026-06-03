@@ -4,6 +4,7 @@
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<AssessmentTab> Logger
+@inject IToastService ToastService
 
 <section class="assessment-tab" data-testid="assessment-tab">
 
@@ -163,18 +164,21 @@
         if (IsNoteSigned)
         {
             _errorMessage = "AI generation is not permitted on signed notes.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
 
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating an AI assessment.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(ChiefComplaint))
         {
             _errorMessage = "A chief complaint is required before generating an assessment. Please complete the Subjective section first.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
 
@@ -201,6 +205,7 @@
             {
                 _errorMessage = result.ErrorMessage ?? "AI generation failed.";
                 Logger.LogWarning("Assessment generation failed for note {NoteId}: {Error}", NoteId, result.ErrorMessage);
+                ToastService.ShowError(_errorMessage, "AI generation failed");
                 return;
             }
 
@@ -212,11 +217,14 @@
             {
                 await _narrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
             }
+
+            ToastService.ShowSuccess("AI assessment generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Unexpected error during assessment generation for note {NoteId}", NoteId);
             _errorMessage = "An unexpected error occurred. Please try again.";
+            ToastService.ShowError(_errorMessage, "AI generation failed");
         }
         finally
         {
@@ -250,6 +258,7 @@
                 if (!acceptance.Success)
                 {
                     _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated assessment content.";
+                    ToastService.ShowError(_errorMessage, "AI acceptance failed");
                     await InvokeAsync(StateHasChanged);
                     return EditableNarrativeAcceptResult.Fail(_errorMessage);
                 }
@@ -260,6 +269,7 @@
             _errorMessage = null;
             await AssessmentTextChanged.InvokeAsync(acceptedText);
             await OnAiAccepted.InvokeAsync(acceptedText);
+            ToastService.ShowSuccess("AI assessment accepted. Save the note to keep it.", "AI content accepted");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Ok();
         }
@@ -267,6 +277,7 @@
         {
             Logger.LogError(ex, "Assessment acceptance failed for note {NoteId}", NoteId);
             _errorMessage = "Unable to accept AI-generated assessment content.";
+            ToastService.ShowError(_errorMessage, "AI acceptance failed");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Fail(_errorMessage);
         }

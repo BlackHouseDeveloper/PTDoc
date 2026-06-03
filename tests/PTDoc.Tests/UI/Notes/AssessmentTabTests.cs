@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.AI;
+using PTDoc.Application.Services;
 using PTDoc.UI.Components.Notes.Workspace;
 using PTDoc.UI.Services;
 using Xunit;
@@ -12,6 +13,11 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class AssessmentTabTests : TestContext
 {
+    public AssessmentTabTests()
+    {
+        Services.AddSingleton<IToastService, ToastService>();
+    }
+
     [Fact]
     public void AssessmentTab_AcceptException_ShowsVisibleErrorAndKeepsReviewPending()
     {

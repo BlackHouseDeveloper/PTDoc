@@ -5,6 +5,7 @@
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<PlanSection> Logger
+@inject IToastService ToastService
 
 <section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
     <div class="daily-grid">
@@ -226,6 +227,7 @@
         if (NoteId == Guid.Empty)
         {
             _summaryErrorMessage = "Save the note before generating an AI plan summary.";
+            ToastService.ShowError(_summaryErrorMessage, "AI generation unavailable");
             return;
         }
 
@@ -248,6 +250,7 @@
             if (!result.Success)
             {
                 _summaryErrorMessage = result.ErrorMessage ?? "Unable to generate a clinical summary.";
+                ToastService.ShowError(_summaryErrorMessage, "AI generation failed");
                 return;
             }
 
@@ -255,11 +258,14 @@
             {
                 await _clinicalSummaryBox.LoadAiSuggestionAsync(result.GeneratedText);
             }
+
+            ToastService.ShowSuccess("AI clinical summary generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Daily plan summary generation failed for note {NoteId}", NoteId);
             _summaryErrorMessage = "Unable to generate a clinical summary.";
+            ToastService.ShowError(_summaryErrorMessage, "AI generation failed");
         }
         finally
         {
@@ -288,6 +294,7 @@
                 if (!acceptance.Success)
                 {
                     _summaryErrorMessage = acceptance.ErrorMessage ?? "Unable to accept the AI-generated summary.";
+                    ToastService.ShowError(_summaryErrorMessage, "AI acceptance failed");
                     await InvokeAsync(StateHasChanged);
                     return EditableNarrativeAcceptResult.Fail(_summaryErrorMessage);
                 }
@@ -296,6 +303,7 @@
             _vm.ClinicalSummary = acceptedText;
             _summaryErrorMessage = null;
             await NotifyChangedAsync();
+            ToastService.ShowSuccess("AI clinical summary accepted. Save the note to keep it.", "AI content accepted");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Ok();
         }
@@ -303,6 +311,7 @@
         {
             Logger.LogError(ex, "Daily plan summary acceptance failed for note {NoteId}", NoteId);
             _summaryErrorMessage = "Unable to accept the AI-generated summary.";
+            ToastService.ShowError(_summaryErrorMessage, "AI acceptance failed");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Fail(_summaryErrorMessage);
         }

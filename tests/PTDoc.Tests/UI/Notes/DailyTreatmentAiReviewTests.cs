@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.AI;
+using PTDoc.Application.Services;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Components.Notes.Workspace.DailyTreatment;
 using PTDoc.UI.Services;
@@ -13,6 +14,11 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class DailyTreatmentAiReviewTests : TestContext
 {
+    public DailyTreatmentAiReviewTests()
+    {
+        Services.AddSingleton<IToastService, ToastService>();
+    }
+
     [Fact]
     public void AssessmentSection_GeneratedNarrativeRequiresExplicitAcceptance()
     {

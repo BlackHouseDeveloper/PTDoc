@@ -19,7 +19,7 @@ public sealed class DraftAutosaveServiceTests
                 Interlocked.Increment(ref saveCount);
                 saveInvoked.TrySetResult(true);
                 await Task.Yield();
-                return true;
+                return DraftAutosaveSaveResult.Succeeded();
             },
             () => true);
 
@@ -45,7 +45,7 @@ public sealed class DraftAutosaveServiceTests
             cancellationToken =>
             {
                 Interlocked.Increment(ref saveCount);
-                return Task.FromResult(true);
+                return Task.FromResult(DraftAutosaveSaveResult.Succeeded());
             },
             () => false);
 
@@ -55,6 +55,40 @@ public sealed class DraftAutosaveServiceTests
         Assert.True(flushed);
         Assert.Equal(0, Volatile.Read(ref saveCount));
         Assert.False(autosave.IsDirty);
+    }
+
+    [Fact]
+    public async Task FlushAsync_FailureRetainsDirtyState_AndRetryClearsError()
+    {
+        await using var autosave = new DraftAutosaveService();
+        var saveCount = 0;
+
+        autosave.Configure(
+            cancellationToken =>
+            {
+                var attempt = Interlocked.Increment(ref saveCount);
+                return Task.FromResult(attempt == 1
+                    ? DraftAutosaveSaveResult.Failed("API rejected the draft.")
+                    : DraftAutosaveSaveResult.Succeeded());
+            },
+            () => true);
+
+        autosave.MarkDirty();
+        var firstFlush = await autosave.FlushAsync();
+
+        Assert.False(firstFlush);
+        Assert.True(autosave.IsDirty);
+        Assert.False(autosave.IsSaving);
+        Assert.Equal("API rejected the draft.", autosave.LastErrorMessage);
+        Assert.Null(autosave.LastSavedAt);
+
+        var secondFlush = await autosave.FlushAsync();
+
+        Assert.True(secondFlush);
+        Assert.False(autosave.IsDirty);
+        Assert.False(autosave.IsSaving);
+        Assert.Null(autosave.LastErrorMessage);
+        Assert.NotNull(autosave.LastSavedAt);
     }
 
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)

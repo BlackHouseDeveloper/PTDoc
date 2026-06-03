@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.AI;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Components.Notes.Workspace;
@@ -16,6 +17,11 @@ namespace PTDoc.Tests.UI.Notes;
 public sealed class PlanTabTests : TestContext
 {
     private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
+
+    public PlanTabTests()
+    {
+        Services.AddSingleton<IToastService, ToastService>();
+    }
 
     [Fact]
     public void PlanTab_SearchResultAddsSuggestedModifierSelection()
