@@ -1837,6 +1837,36 @@ public sealed class NoteWorkspacePageTests : TestContext
         aiService.VerifyAll();
     }
 
+    [Fact]
+    public void GetUserFacingMessage_TrimsHttpRequestMessages()
+    {
+        var message = GetNoteWorkspaceUserFacingMessage(
+            new HttpRequestException("  Connection refused (localhost:5170)  "),
+            "Unable to save draft right now. Please retry.");
+
+        Assert.Equal("Connection refused (localhost:5170)", message);
+    }
+
+    [Fact]
+    public void GetUserFacingMessage_FallsBackForGenericStatusMessagesAfterTrim()
+    {
+        var message = GetNoteWorkspaceUserFacingMessage(
+            new HttpRequestException("  Response status code does not indicate success: 500 (Internal Server Error).  "),
+            "Unable to export the note as PDF.");
+
+        Assert.Equal("Unable to export the note as PDF.", message);
+    }
+
+    private static string GetNoteWorkspaceUserFacingMessage(Exception exception, string fallback)
+    {
+        var method = typeof(global::PTDoc.UI.Pages.Patient.NoteWorkspacePage).GetMethod(
+            "GetUserFacingMessage",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+        return Assert.IsType<string>(method.Invoke(null, new object[] { exception, fallback }));
+    }
+
     private sealed class TestAuthenticationStateProvider(string role) : AuthenticationStateProvider
     {
         private readonly AuthenticationState _state = new(new ClaimsPrincipal(new ClaimsIdentity(

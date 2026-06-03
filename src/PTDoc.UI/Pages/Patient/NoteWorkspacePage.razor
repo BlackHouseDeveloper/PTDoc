@@ -2561,10 +2561,11 @@ else
     {
         if (exception is HttpRequestException httpException)
         {
-            if (!string.IsNullOrWhiteSpace(httpException.Message) &&
-                !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+            var message = httpException.Message.Trim();
+            if (!string.IsNullOrWhiteSpace(message) &&
+                !message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
             {
-                return httpException.Message;
+                return message;
             }
         }
 
