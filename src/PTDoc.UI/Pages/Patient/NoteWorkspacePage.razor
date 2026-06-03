@@ -32,6 +32,7 @@
 @inject IPatientService PatientService
 @inject IAiClinicalGenerationService AiService
 @inject DraftAutosaveService DraftAutosaveService
+@inject IToastService ToastService
 @inject IJSRuntime JS
 
 <PageTitle>SOAP Workspace - PTDoc</PageTitle>
@@ -511,6 +512,9 @@ else
     private bool _isOverridable;
     private List<OverrideRequirement> _overrideRequirements = [];
     private string _overrideReason = string.Empty;
+    private string? _lastSaveFailureMessage;
+    private string? _lastAutosaveToastMessage;
+    private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
@@ -1049,7 +1053,7 @@ else
 
         if (!_note.NoteId.HasValue)
         {
-            SetStatusMessage("Save the note before generating an AI plan summary.", "error");
+            SetStatusMessage("Save the note before generating an AI plan summary.", "error", showToast: true, toastTitle: "AI generation unavailable");
             return;
         }
 
@@ -1071,17 +1075,17 @@ else
 
             if (!result.Success)
             {
-                SetStatusMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error");
+                SetStatusMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error", showToast: true, toastTitle: "AI generation failed");
                 return;
             }
 
             _pendingClinicalSummary = result.GeneratedText;
-            SetStatusMessage("Clinical summary regenerated. Review and accept it before applying it to the note.", "success");
+            SetStatusMessage("Clinical summary regenerated. Review and accept it before applying it to the note.", "success", showToast: true, toastTitle: "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Clinical summary regeneration failed for note {NoteId}", _note.NoteId);
-            SetStatusMessage("Unable to generate a clinical summary.", "error");
+            SetStatusMessage("Unable to generate a clinical summary.", "error", showToast: true, toastTitle: "AI generation failed");
         }
         finally
         {
@@ -1098,7 +1102,7 @@ else
 
         if (!_note.NoteId.HasValue)
         {
-            SetStatusMessage("Save the note before accepting AI-generated summary content.", "error");
+            SetStatusMessage("Save the note before accepting AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance unavailable");
             return;
         }
 
@@ -1112,19 +1116,19 @@ else
 
             if (!acceptance.Success)
             {
-                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error");
+                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
                 return;
             }
 
             _note.Plan.ClinicalSummary = _pendingClinicalSummary;
             _pendingClinicalSummary = null;
             MarkUnsaved();
-            SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success");
+            SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success", showToast: true, toastTitle: "AI content accepted");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", _note.NoteId);
-            SetStatusMessage("Unable to accept AI-generated summary content.", "error");
+            SetStatusMessage("Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
         }
     }
 
@@ -1165,7 +1169,7 @@ else
 
             if (!result.Success)
             {
-                SetStatusMessage(result.ErrorMessage ?? "Unable to generate AI treatment goals.", "error");
+                SetStatusMessage(result.ErrorMessage ?? "Unable to generate AI treatment goals.", "error", showToast: true, toastTitle: "AI generation failed");
                 return;
             }
 
@@ -1187,7 +1191,12 @@ else
             }
 
             MarkUnsaved();
-            SetStatusMessage("AI treatment goals regenerated. Review and accept the suggested goals before saving.", "success");
+            SetStatusMessage("AI treatment goals regenerated. Review and accept the suggested goals before saving.", "success", showToast: true, toastTitle: "AI generation complete");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "AI treatment goal regeneration failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage("Unable to generate AI treatment goals.", "error", showToast: true, toastTitle: "AI generation failed");
         }
         finally
         {
@@ -1199,26 +1208,34 @@ else
     {
         if (!CanExportPdf)
         {
-            SetStatusMessage("Your role does not have permission to export note PDFs.", "error");
+            SetStatusMessage("Your role does not have permission to export note PDFs.", "error", showToast: true, toastTitle: "PDF export unavailable");
             return;
         }
 
         if (!_note.NoteId.HasValue)
         {
-            SetStatusMessage("Save and submit the note before exporting PDF.", "error");
+            SetStatusMessage("Save and submit the note before exporting PDF.", "error", showToast: true, toastTitle: "PDF export unavailable");
             return;
         }
 
-        var result = await NoteWorkspaceService.ExportPdfAsync(_note.NoteId.Value);
-        if (!result.Success)
+        try
         {
-            SetStatusMessage(result.ErrorMessage ?? "Unable to export the note as PDF.", "error");
-            return;
-        }
+            var result = await NoteWorkspaceService.ExportPdfAsync(_note.NoteId.Value);
+            if (!result.Success)
+            {
+                SetStatusMessage(result.ErrorMessage ?? "Unable to export the note as PDF.", "error", showToast: true, toastTitle: "PDF export failed");
+                return;
+            }
 
-        var base64 = Convert.ToBase64String(result.Content);
-        await JS.InvokeVoidAsync("open", $"data:{result.ContentType};base64,{base64}", "_blank");
-        SetStatusMessage("PDF export opened in a new browser tab.", "success");
+            var base64 = Convert.ToBase64String(result.Content);
+            await JS.InvokeVoidAsync("open", $"data:{result.ContentType};base64,{base64}", "_blank");
+            SetStatusMessage("PDF export opened in a new browser tab.", "success", showToast: true, toastTitle: "PDF export ready");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "PDF export failed for note {NoteId}", _note.NoteId);
+            SetStatusMessage(GetUserFacingMessage(ex, "Unable to export the note as PDF."), "error", showToast: true, toastTitle: "PDF export failed");
+        }
     }
 
     private async Task HandleSaveAsync()
@@ -1227,24 +1244,35 @@ else
         {
             if (!string.IsNullOrWhiteSpace(GetReadOnlySaveMessage()))
             {
-                SetStatusMessage(GetReadOnlySaveMessage()!, "error");
+                SetStatusMessage(GetReadOnlySaveMessage()!, "error", showToast: true, toastTitle: "Save unavailable");
             }
             return;
         }
 
-        var saveSucceeded = DraftAutosaveService.IsDirty
+        var flushedAutosave = DraftAutosaveService.IsDirty;
+        var saveSucceeded = flushedAutosave
             ? await DraftAutosaveService.FlushAsync()
-            : await PersistDraftAsync(showFeedback: false, CancellationToken.None);
+            : await PersistDraftAsync(showFeedback: true, CancellationToken.None);
 
         if (saveSucceeded && _warningValidationMessages.Count == 0 && !_requiresOverride)
         {
-            SetStatusMessage("Draft saved.", "success");
+            SetStatusMessage("Draft saved.", "success", showToast: flushedAutosave, toastTitle: "Draft saved");
+        }
+        else if (!saveSucceeded)
+        {
+            var message = DraftAutosaveService.LastErrorMessage
+                ?? _lastSaveFailureMessage
+                ?? "Unable to save draft right now. Please retry.";
+            SetStatusMessage(message, "error");
         }
     }
 
-    private async Task<bool> AutosaveSaveAsync(CancellationToken cancellationToken)
+    private async Task<DraftAutosaveSaveResult> AutosaveSaveAsync(CancellationToken cancellationToken)
     {
-        return await PersistDraftAsync(showFeedback: false, cancellationToken);
+        var saved = await PersistDraftAsync(showFeedback: false, cancellationToken);
+        return saved
+            ? DraftAutosaveSaveResult.Succeeded()
+            : DraftAutosaveSaveResult.Failed(_lastSaveFailureMessage);
     }
 
     private async Task<bool> PersistDraftAsync(
@@ -1258,6 +1286,7 @@ else
         }
 
         await _persistGate.WaitAsync(cancellationToken);
+        DateTimeOffset? savingStateStartedAt = null;
         try
         {
             if (!_patientGuid.HasValue || !CanSaveDraft)
@@ -1265,13 +1294,16 @@ else
                 return false;
             }
 
+            _lastSaveFailureMessage = null;
             _dateOfService = ResolveDateOfService();
             _note.StartSaving();
+            savingStateStartedAt = DateTimeOffset.UtcNow;
             await InvokeAsync(StateHasChanged);
 
             var saveResult = await NoteWorkspaceService.SaveDraftAsync(
                 BuildDraft(_patientGuid.Value, overrideSubmission),
                 cancellationToken);
+            await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
             ApplyValidationDetails(
                 saveResult.Errors,
                 saveResult.Warnings,
@@ -1283,9 +1315,15 @@ else
             if (!saveResult.Success)
             {
                 _note.MarkSaveError();
+                var message = saveResult.ErrorMessage ?? "Unable to save draft right now. Please retry.";
+                _lastSaveFailureMessage = message;
                 if (showFeedback || saveResult.Errors.Count > 0 || saveResult.Warnings.Count > 0)
                 {
-                    SetStatusMessage(saveResult.ErrorMessage ?? "Unable to save draft right now. Please retry.", saveResult.Errors.Count > 0 ? "error" : "info");
+                    SetStatusMessage(
+                        message,
+                        "error",
+                        showToast: showFeedback,
+                        toastTitle: "Save failed");
                 }
 
                 return false;
@@ -1313,6 +1351,8 @@ else
             EnsureSavedNoteRoute(saveResult.NoteId);
 
             ApplyWorkspaceNotice();
+            _lastSaveFailureMessage = null;
+            _lastAutosaveToastMessage = null;
 
             if (saveResult.Warnings.Count > 0)
             {
@@ -1320,7 +1360,9 @@ else
                     saveResult.ErrorMessage ?? (overrideSubmission is null
                         ? "Draft saved with warnings."
                         : "Draft saved with PT override and warnings."),
-                    "info");
+                    "info",
+                    showToast: showFeedback,
+                    toastTitle: "Draft saved");
             }
             else if (showFeedback)
             {
@@ -1328,7 +1370,9 @@ else
                     overrideSubmission is null
                         ? "Draft saved."
                         : "Draft saved with PT override.",
-                    "success");
+                    "success",
+                    showToast: true,
+                    toastTitle: "Draft saved");
             }
             else
             {
@@ -1343,14 +1387,37 @@ else
         }
         catch (Exception ex)
         {
+            if (savingStateStartedAt.HasValue)
+            {
+                await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
+            }
+
             _note.MarkSaveError();
-            SetStatusMessage(GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."), "error");
+            var message = GetUserFacingMessage(ex, "Unable to save draft right now. Please retry.");
+            _lastSaveFailureMessage = message;
+            SetStatusMessage(message, "error", showToast: showFeedback, toastTitle: "Save failed");
             return false;
         }
         finally
         {
             await InvokeAsync(StateHasChanged);
             _persistGate.Release();
+        }
+    }
+
+    private static async Task EnsureMinimumVisibleSavingStateAsync(DateTimeOffset savingStateStartedAt, CancellationToken cancellationToken)
+    {
+        var remaining = MinimumVisibleSavingStateDuration - (DateTimeOffset.UtcNow - savingStateStartedAt);
+        if (remaining > TimeSpan.Zero)
+        {
+            try
+            {
+                await Task.Delay(remaining, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Cancellation should skip the cosmetic delay without discarding an API result already received.
+            }
         }
     }
 
@@ -1401,7 +1468,7 @@ else
     {
         if (!CanSubmitCurrentNote)
         {
-            SetStatusMessage(GetReadOnlySubmitMessage(), "error");
+            SetStatusMessage(GetReadOnlySubmitMessage(), "error", showToast: true, toastTitle: "Submit unavailable");
             return;
         }
 
@@ -1411,7 +1478,7 @@ else
             if (!string.IsNullOrWhiteSpace(submitValidationMessage))
             {
                 _note.MarkSaveError();
-                SetStatusMessage(submitValidationMessage, "error");
+                SetStatusMessage(submitValidationMessage, "error", showToast: true, toastTitle: "Submit blocked");
                 return;
             }
 
@@ -1420,7 +1487,7 @@ else
             {
                 if (!_note.NoteId.HasValue)
                 {
-                    SetStatusMessage("Unable to submit because the note ID is missing.", "error");
+                    SetStatusMessage("Unable to submit because the note ID is missing.", "error", showToast: true, toastTitle: "Submit failed");
                 }
 
                 return;
@@ -1428,7 +1495,7 @@ else
         }
         else if (!_note.NoteId.HasValue)
         {
-            SetStatusMessage("This note must be saved before PT finalization can continue.", "error");
+            SetStatusMessage("This note must be saved before PT finalization can continue.", "error", showToast: true, toastTitle: "Submit unavailable");
             return;
         }
 
@@ -1470,7 +1537,7 @@ else
             {
                 ApplyValidationFailures(submitResult.ValidationFailures);
                 _note.MarkSaveError();
-                SetStatusMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error");
+                SetStatusMessage(submitResult.ErrorMessage ?? "Unable to submit note.", "error", showToast: true, toastTitle: "Submit failed");
                 return;
             }
 
@@ -1493,7 +1560,15 @@ else
                     : (wasPendingCoSignFinalization
                         ? "Pending co-sign note finalized successfully."
                         : "Note submitted successfully."),
-                submitResult.RequiresCoSign ? "info" : "success");
+                submitResult.RequiresCoSign ? "info" : "success",
+                showToast: true,
+                toastTitle: submitResult.RequiresCoSign ? "Note submitted" : "Note submitted");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Note submit failed for note {NoteId}", _note.NoteId);
+            _note.MarkSaveError();
+            SetStatusMessage(GetUserFacingMessage(ex, "Unable to submit note."), "error", showToast: true, toastTitle: "Submit failed");
         }
         finally
         {
@@ -1543,13 +1618,13 @@ else
 
         if (!_overrideRuleType.HasValue)
         {
-            SetStatusMessage("Override rule metadata is missing for this draft. Please review the note and retry.", "error");
+            SetStatusMessage("Override rule metadata is missing for this draft. Please review the note and retry.", "error", showToast: true, toastTitle: "Override save failed");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_overrideReason))
         {
-            SetStatusMessage("A PT override justification is required before saving.", "error");
+            SetStatusMessage("A PT override justification is required before saving.", "error", showToast: true, toastTitle: "Override save blocked");
             return;
         }
 
@@ -1579,7 +1654,7 @@ else
         var seedResult = await NoteWorkspaceService.GetEvaluationSeedAsync(_patientGuid.Value);
         if (!seedResult.Success)
         {
-            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error");
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error", showToast: true, toastTitle: "Prefill failed");
             return;
         }
 
@@ -1654,7 +1729,7 @@ else
 
         if (!seedResult.Success)
         {
-            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error");
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load intake data for Evaluation prefill.", "error", showToast: true, toastTitle: "Prefill failed");
             return false;
         }
 
@@ -1696,7 +1771,7 @@ else
         var seedResult = await NoteWorkspaceService.GetCarryForwardSeedAsync(_patientGuid.Value, noteType);
         if (!seedResult.Success)
         {
-            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load signed note carry-forward data right now.", "error");
+            SetStatusMessage(seedResult.ErrorMessage ?? "Unable to load signed note carry-forward data right now.", "error", showToast: true, toastTitle: "Carry-forward failed");
             return SeedApplicationResult.Failed;
         }
 
@@ -1842,10 +1917,31 @@ else
 
     private string GetAlertToneClass() => $"note-workspace__alert--{_statusTone}";
 
-    private void SetStatusMessage(string message, string tone)
+    private void SetStatusMessage(string message, string tone, bool showToast = false, string? toastTitle = null)
     {
         _statusMessage = message;
         _statusTone = tone;
+
+        if (!showToast)
+        {
+            return;
+        }
+
+        switch (tone)
+        {
+            case "success":
+                ToastService.ShowSuccess(message, toastTitle);
+                break;
+            case "error":
+                ToastService.ShowError(message, toastTitle);
+                break;
+            case "info":
+                ToastService.ShowInfo(message, toastTitle);
+                break;
+            default:
+                ToastService.ShowWarning(message, toastTitle);
+                break;
+        }
     }
 
     private void ClearStatusMessage()
@@ -2412,7 +2508,13 @@ else
         }
         else if (!string.IsNullOrWhiteSpace(DraftAutosaveService.LastErrorMessage))
         {
+            var autosaveError = DraftAutosaveService.LastErrorMessage ?? "Unable to save draft.";
             _note.SaveState = NoteSaveState.Error;
+            if (!string.Equals(_lastAutosaveToastMessage, autosaveError, StringComparison.Ordinal))
+            {
+                _lastAutosaveToastMessage = autosaveError;
+                ToastService.ShowError(autosaveError, "Draft save failed");
+            }
         }
         else if (DraftAutosaveService.IsDirty)
         {
@@ -2421,6 +2523,7 @@ else
         else if (DraftAutosaveService.LastSavedAt.HasValue)
         {
             _note.SaveState = NoteSaveState.Saved;
+            _lastAutosaveToastMessage = null;
         }
 
         _ = InvokeAsync(StateHasChanged);
@@ -2445,7 +2548,7 @@ else
         var saved = await EnsureDraftPersistedAsync();
         if (!saved)
         {
-            SetStatusMessage("Unable to save the draft before leaving this page. Resolve the error and try again.", "error");
+            SetStatusMessage("Unable to save the draft before leaving this page. Resolve the error and try again.", "error", showToast: true, toastTitle: "Save failed");
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -2458,10 +2561,11 @@ else
     {
         if (exception is HttpRequestException httpException)
         {
-            if (!string.IsNullOrWhiteSpace(httpException.Message) &&
-                !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+            var message = httpException.Message.Trim();
+            if (!string.IsNullOrWhiteSpace(message) &&
+                !message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
             {
-                return httpException.Message;
+                return message;
             }
         }
 

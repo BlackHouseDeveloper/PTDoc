@@ -123,7 +123,7 @@
     color: var(--secondary-foreground);
 }
 
-.sync-button:hover:not(:disabled) {
+.sync-button:hover:not([data-sync-blocked="true"]) {
     background: rgba(var(--secondary-foreground-rgb), 0.1);
 }
 
@@ -132,9 +132,9 @@
     outline-offset: 2px;
 }
 
-.sync-button:disabled {
+.sync-button[data-sync-blocked="true"] {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: help;
 }
 
 .sync-icon {

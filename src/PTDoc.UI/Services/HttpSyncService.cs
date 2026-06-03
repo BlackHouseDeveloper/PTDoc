@@ -15,12 +15,14 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private const string SyncFailedFallbackMessage = "Sync failed. Retry when the connection is available.";
 
     private DateTime? _lastSyncTime;
     private bool _isSyncing;
 
     public DateTime? LastSyncTime => _lastSyncTime;
     public bool IsSyncing => _isSyncing;
+    public string? LastErrorMessage { get; private set; }
 
     public event Action? OnSyncStateChanged;
 
@@ -33,27 +35,34 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
     {
         if (_isSyncing)
         {
+            LastErrorMessage = "Sync is already running.";
+            OnSyncStateChanged?.Invoke();
             return false;
         }
 
         try
         {
             _isSyncing = true;
+            LastErrorMessage = null;
             OnSyncStateChanged?.Invoke();
 
-            var response = await httpClient.PostAsync("/api/v1/sync/run", content: null);
+            using var response = await httpClient.PostAsync("/api/v1/sync/run", content: null);
             if (!response.IsSuccessStatusCode)
             {
+                LastErrorMessage = await ApiErrorReader.ReadMessageAsync(response)
+                    ?? SyncFailedFallbackMessage;
                 return false;
             }
 
             var result = await response.Content.ReadFromJsonAsync<RunSyncResponse>(SerializerOptions);
             _lastSyncTime = result?.CompletedAt ?? DateTime.UtcNow;
             await RefreshStatusAsync();
+            LastErrorMessage = null;
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            LastErrorMessage = GetUserFacingExceptionMessage(ex);
             return false;
         }
         finally
@@ -114,6 +123,18 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         {
             OnSyncStateChanged?.Invoke();
         }
+    }
+
+    private static string GetUserFacingExceptionMessage(Exception exception)
+    {
+        if (exception is HttpRequestException httpException &&
+            !string.IsNullOrWhiteSpace(httpException.Message) &&
+            !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return httpException.Message.Trim();
+        }
+
+        return SyncFailedFallbackMessage;
     }
 
     private sealed class SyncStatusResponse

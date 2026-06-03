@@ -7,6 +7,7 @@
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<AssessmentWorkspaceSection> Logger
+@inject IToastService ToastService
 
 @* AssessmentWorkspaceSection: orchestrates all assessment cards per Blueprint.
    Embeds existing AssessmentTab for narrative/functional limitations (AI generation)
@@ -561,6 +562,7 @@
             if (!result.Success)
             {
                 _goalGenerationError = result.ErrorMessage ?? "Unable to generate AI goals.";
+                ToastService.ShowError(_goalGenerationError, "AI generation failed");
                 return;
             }
 
@@ -582,11 +584,13 @@
             }
 
             await VmChanged.InvokeAsync(Vm);
+            ToastService.ShowSuccess("AI goals generated. Review and accept the suggestions before saving.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Goal generation failed for note {NoteId}", NoteId);
             _goalGenerationError = "Unable to generate AI goals.";
+            ToastService.ShowError(_goalGenerationError, "AI generation failed");
         }
         finally
         {

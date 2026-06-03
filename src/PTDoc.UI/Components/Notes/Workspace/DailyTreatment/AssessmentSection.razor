@@ -8,6 +8,7 @@
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<AssessmentSection> Logger
+@inject IToastService ToastService
 
 <section class="daily-assessment @(IsDarkMode ? "daily-assessment--dark" : string.Empty)" data-testid="daily-assessment-section">
     <div class="daily-grid">
@@ -322,6 +323,8 @@
     [Parameter] public string? ChiefComplaint { get; set; }
     [Parameter] public string? ExaminationFindings { get; set; }
 
+    internal bool TreatAiReviewBoxAsUnavailable { get; set; }
+
     protected override void OnParametersSet() => _vm = Vm;
 
     private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
@@ -391,6 +394,7 @@
         {
             _assessmentErrorMessage = "A chief complaint is required before generating an assessment.";
             _assessmentWarnings = Array.Empty<string>();
+            ToastService.ShowError(_assessmentErrorMessage, "AI generation unavailable");
             return;
         }
 
@@ -398,6 +402,7 @@
         {
             _assessmentErrorMessage = "Save the note before generating an AI assessment.";
             _assessmentWarnings = Array.Empty<string>();
+            ToastService.ShowError(_assessmentErrorMessage, "AI generation unavailable");
             return;
         }
 
@@ -420,20 +425,27 @@
             if (!result.Success)
             {
                 _assessmentErrorMessage = result.ErrorMessage ?? "Unable to generate an assessment narrative.";
+                ToastService.ShowError(_assessmentErrorMessage, "AI generation failed");
                 return;
             }
 
             _assessmentWarnings = result.Warnings;
 
-            if (_assessmentNarrativeBox is not null)
+            if (TreatAiReviewBoxAsUnavailable || _assessmentNarrativeBox is null)
             {
-                await _assessmentNarrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+                _assessmentErrorMessage = "Unable to open AI review for the assessment narrative. Please try again.";
+                ToastService.ShowError(_assessmentErrorMessage, "AI generation failed");
+                return;
             }
+
+            await _assessmentNarrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+            ToastService.ShowSuccess("AI assessment generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Daily assessment generation failed for note {NoteId}", NoteId);
             _assessmentErrorMessage = "Unable to generate an assessment narrative.";
+            ToastService.ShowError(_assessmentErrorMessage, "AI generation failed");
         }
         finally
         {
@@ -463,6 +475,7 @@
                 if (!acceptance.Success)
                 {
                     _assessmentErrorMessage = acceptance.ErrorMessage ?? "Unable to accept the AI-generated assessment.";
+                    ToastService.ShowError(_assessmentErrorMessage, "AI acceptance failed");
                     await InvokeAsync(StateHasChanged);
                     return EditableNarrativeAcceptResult.Fail(_assessmentErrorMessage);
                 }
@@ -472,6 +485,7 @@
             _assessmentWarnings = Array.Empty<string>();
             _assessmentErrorMessage = null;
             await NotifyChangedAsync();
+            ToastService.ShowSuccess("AI assessment accepted. Save the note to keep it.", "AI content accepted");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Ok();
         }
@@ -479,6 +493,7 @@
         {
             Logger.LogError(ex, "Daily assessment acceptance failed for note {NoteId}", NoteId);
             _assessmentErrorMessage = "Unable to accept the AI-generated assessment.";
+            ToastService.ShowError(_assessmentErrorMessage, "AI acceptance failed");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Fail(_assessmentErrorMessage);
         }

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.AI;
@@ -27,6 +28,7 @@ public sealed class NoteWorkspacePageTests : TestContext
     {
         Services.AddLogging();
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
+        Services.AddSingleton<IToastService, ToastService>();
     }
 
     [Fact]
@@ -1024,6 +1026,216 @@ public sealed class NoteWorkspacePageTests : TestContext
                 $"/patient/{patientId}/note/{savedNoteId:D}?section=objective",
                 Services.GetRequiredService<NavigationManager>().Uri,
                 StringComparison.Ordinal);
+            Assert.Contains("Saved", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task ManualSave_ShowsSavingStateWhilePersistenceIsInFlight()
+    {
+        var patientId = Guid.NewGuid();
+        var savedNoteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var saveCompletion = new TaskCompletionSource<NoteWorkspaceSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .Returns(() => saveCompletion.Task);
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        var clickTask = cut.Find("[data-testid='footer-save']").ClickAsync(new MouseEventArgs());
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Saving", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+        });
+
+        saveCompletion.SetResult(new NoteWorkspaceSaveResult
+        {
+            Success = true,
+            NoteId = savedNoteId,
+            Status = NoteStatus.Draft
+        });
+
+        await clickTask;
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Saved", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void ManualSaveFailure_ShowsFailedStateInlineBannerAndToast()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult
+            {
+                Success = false,
+                ErrorMessage = "Treatment frequency is required before saving."
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Treatment frequency is required before saving.", cut.Find("[data-testid='note-workspace-alert']").TextContent, StringComparison.Ordinal);
+            Assert.Contains("Failed", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Treatment frequency is required before saving.", toast.Message);
+        });
+    }
+
+    [Fact]
+    public void ManualSaveFailure_WithWarningsOnly_StillUsesErrorTone()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult
+            {
+                Success = false,
+                ErrorMessage = "Draft save was rejected.",
+                Warnings = ["Review treatment frequency."]
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-save']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var alert = cut.Find("[data-testid='note-workspace-alert']");
+            Assert.Contains("Draft save was rejected.", alert.TextContent, StringComparison.Ordinal);
+            Assert.Contains("note-workspace__alert--error", alert.ClassList);
+            Assert.Contains("Failed", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
         });
     }
 
@@ -1623,6 +1835,36 @@ public sealed class NoteWorkspacePageTests : TestContext
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
         noteWorkspaceService.VerifyAll();
         aiService.VerifyAll();
+    }
+
+    [Fact]
+    public void GetUserFacingMessage_TrimsHttpRequestMessages()
+    {
+        var message = GetNoteWorkspaceUserFacingMessage(
+            new HttpRequestException("  Connection refused (localhost:5170)  "),
+            "Unable to save draft right now. Please retry.");
+
+        Assert.Equal("Connection refused (localhost:5170)", message);
+    }
+
+    [Fact]
+    public void GetUserFacingMessage_FallsBackForGenericStatusMessagesAfterTrim()
+    {
+        var message = GetNoteWorkspaceUserFacingMessage(
+            new HttpRequestException("  Response status code does not indicate success: 500 (Internal Server Error).  "),
+            "Unable to export the note as PDF.");
+
+        Assert.Equal("Unable to export the note as PDF.", message);
+    }
+
+    private static string GetNoteWorkspaceUserFacingMessage(Exception exception, string fallback)
+    {
+        var method = typeof(global::PTDoc.UI.Pages.Patient.NoteWorkspacePage).GetMethod(
+            "GetUserFacingMessage",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+        return Assert.IsType<string>(method.Invoke(null, new object[] { exception, fallback }));
     }
 
     private sealed class TestAuthenticationStateProvider(string role) : AuthenticationStateProvider

@@ -16,6 +16,7 @@ public class SyncService : ISyncService
 
     public DateTime? LastSyncTime => _lastSyncTime;
     public bool IsSyncing => _isSyncing;
+    public string? LastErrorMessage { get; private set; }
 
     public event Action? OnSyncStateChanged;
 
@@ -52,12 +53,15 @@ public class SyncService : ISyncService
     {
         if (_isSyncing)
         {
+            LastErrorMessage = "Sync is already running.";
+            OnSyncStateChanged?.Invoke();
             return false; // Already syncing
         }
 
         try
         {
             _isSyncing = true;
+            LastErrorMessage = null;
             OnSyncStateChanged?.Invoke();
 
             // Simulate sync operation (replace with actual EF Core + API sync later)
@@ -74,10 +78,12 @@ public class SyncService : ISyncService
                 LAST_SYNC_KEY,
                 _lastSyncTime.Value.ToString("o"));
 
+            LastErrorMessage = null;
             return true;
         }
         catch
         {
+            LastErrorMessage = "Sync failed. Retry when the connection is available.";
             return false;
         }
         finally

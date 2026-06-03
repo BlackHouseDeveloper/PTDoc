@@ -1,6 +1,14 @@
+using System.Net.Http;
 using System.Threading;
 
 namespace PTDoc.UI.Services;
+
+internal readonly record struct DraftAutosaveSaveResult(bool Success, string? ErrorMessage)
+{
+    public static DraftAutosaveSaveResult Succeeded() => new(true, null);
+
+    public static DraftAutosaveSaveResult Failed(string? errorMessage = null) => new(false, errorMessage);
+}
 
 public sealed class DraftAutosaveService : IAsyncDisposable
 {
@@ -11,7 +19,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     private CancellationTokenSource _lifetimeCts = new();
     private CancellationTokenSource? _debounceCts;
     private Task? _fallbackLoopTask;
-    private Func<CancellationToken, Task<bool>>? _saveAsync;
+    private Func<CancellationToken, Task<DraftAutosaveSaveResult>>? _saveAsync;
     private Func<bool>? _canSave;
     private bool _disposed;
 
@@ -22,7 +30,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
     public event Action? StateChanged;
 
-    public void Configure(Func<CancellationToken, Task<bool>> saveAsync, Func<bool> canSave)
+    internal void Configure(Func<CancellationToken, Task<DraftAutosaveSaveResult>> saveAsync, Func<bool> canSave)
     {
         _saveAsync = saveAsync;
         _canSave = canSave;
@@ -117,8 +125,8 @@ public sealed class DraftAutosaveService : IAsyncDisposable
             LastErrorMessage = null;
             NotifyStateChanged();
 
-            var success = await _saveAsync(cancellationToken);
-            if (success)
+            var result = await _saveAsync(cancellationToken);
+            if (result.Success)
             {
                 IsDirty = false;
                 LastSavedAt = DateTimeOffset.UtcNow;
@@ -126,10 +134,12 @@ public sealed class DraftAutosaveService : IAsyncDisposable
             }
             else
             {
-                LastErrorMessage ??= "Unable to save draft.";
+                LastErrorMessage = string.IsNullOrWhiteSpace(result.ErrorMessage)
+                    ? "Unable to save draft."
+                    : result.ErrorMessage.Trim();
             }
 
-            return success;
+            return result.Success;
         }
         catch (OperationCanceledException)
         {
@@ -137,7 +147,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            LastErrorMessage = ex.Message;
+            LastErrorMessage = GetUserFacingExceptionMessage(ex);
             return false;
         }
         finally
@@ -156,6 +166,18 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     }
 
     private void NotifyStateChanged() => StateChanged?.Invoke();
+
+    private static string GetUserFacingExceptionMessage(Exception exception)
+    {
+        if (exception is HttpRequestException httpException &&
+            !string.IsNullOrWhiteSpace(httpException.Message) &&
+            !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return httpException.Message.Trim();
+        }
+
+        return "Unable to save draft.";
+    }
 
     public async ValueTask DisposeAsync()
     {

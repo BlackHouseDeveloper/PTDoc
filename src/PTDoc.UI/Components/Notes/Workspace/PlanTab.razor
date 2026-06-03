@@ -10,6 +10,7 @@
 @inject IAiClinicalGenerationService AiService
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<PlanTab> Logger
+@inject IToastService ToastService
 
 @* PlanTab: CPT codes, treatment plan, additional planning, clinical summary.
    Per Blueprint: CPT quick-pick grid, frequency/duration required fields, AI-assisted
@@ -478,6 +479,8 @@
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
 
+    internal bool TreatAiReviewBoxAsUnavailable { get; set; }
+
     private bool _isLoadingCatalog;
     private bool _isGeneratingDischarge;
     private bool _isGeneratingFollowUp;
@@ -865,6 +868,7 @@
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
         _isGeneratingDischarge = true;
@@ -876,20 +880,29 @@
             if (!result.Success)
             {
                 _errorMessage = result.ErrorMessage ?? "Unable to generate discharge planning guidance.";
+                ToastService.ShowError(_errorMessage, "AI generation failed");
                 return;
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _dischargePlanningBox,
                 suggestion,
                 "discharge planning",
                 "Unable to open AI review for discharge planning. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for discharge planning. Please try again.", "AI generation failed");
+                return;
+            }
+
+            ToastService.ShowSuccess("AI discharge planning guidance generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Discharge plan generation failed for note {NoteId}", NoteId);
             _errorMessage = "Unable to generate discharge planning guidance.";
+            ToastService.ShowError(_errorMessage, "AI generation failed");
         }
         finally { _isGeneratingDischarge = false; }
     }
@@ -900,6 +913,7 @@
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
         _isGeneratingFollowUp = true;
@@ -911,20 +925,29 @@
             if (!result.Success)
             {
                 _errorMessage = result.ErrorMessage ?? "Unable to generate follow-up instructions.";
+                ToastService.ShowError(_errorMessage, "AI generation failed");
                 return;
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _followUpBox,
                 suggestion,
                 "follow-up instructions",
                 "Unable to open AI review for follow-up instructions. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for follow-up instructions. Please try again.", "AI generation failed");
+                return;
+            }
+
+            ToastService.ShowSuccess("AI follow-up instructions generated. Review them before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Follow-up generation failed for note {NoteId}", NoteId);
             _errorMessage = "Unable to generate follow-up instructions.";
+            ToastService.ShowError(_errorMessage, "AI generation failed");
         }
         finally { _isGeneratingFollowUp = false; }
     }
@@ -935,6 +958,7 @@
         if (NoteId == Guid.Empty)
         {
             _errorMessage = "Save the note before generating AI plan content.";
+            ToastService.ShowError(_errorMessage, "AI generation unavailable");
             return;
         }
         _isGeneratingSummary = true;
@@ -946,20 +970,29 @@
             if (!result.Success)
             {
                 _errorMessage = result.ErrorMessage ?? "Unable to generate a clinical summary.";
+                ToastService.ShowError(_errorMessage, "AI generation failed");
                 return;
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _clinicalSummaryBox,
                 suggestion,
                 "clinical summary",
                 "Unable to open AI review for the clinical summary. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for the clinical summary. Please try again.", "AI generation failed");
+                return;
+            }
+
+            ToastService.ShowSuccess("AI clinical summary generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Clinical summary generation failed for note {NoteId}", NoteId);
             _errorMessage = "Unable to generate a clinical summary.";
+            ToastService.ShowError(_errorMessage, "AI generation failed");
         }
         finally { _isGeneratingSummary = false; }
     }
@@ -1007,6 +1040,7 @@
                 if (!acceptance.Success)
                 {
                     _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.";
+                    ToastService.ShowError(_errorMessage, "AI acceptance failed");
                     await InvokeAsync(StateHasChanged);
                     return EditableNarrativeAcceptResult.Fail(_errorMessage);
                 }
@@ -1014,6 +1048,7 @@
 
             await SetAndNotify(vm => vm.ClinicalSummary = acceptedText);
             _errorMessage = null;
+            ToastService.ShowSuccess("AI clinical summary accepted. Save the note to keep it.", "AI content accepted");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Ok();
         }
@@ -1021,6 +1056,7 @@
         {
             Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", NoteId);
             _errorMessage = "Unable to accept AI-generated summary content.";
+            ToastService.ShowError(_errorMessage, "AI acceptance failed");
             await InvokeAsync(StateHasChanged);
             return EditableNarrativeAcceptResult.Fail(_errorMessage);
         }
@@ -1032,23 +1068,24 @@
         return Task.CompletedTask;
     }
 
-    private async Task ShowPlanSuggestionAsync(
+    private async Task<bool> ShowPlanSuggestionAsync(
         EditableNarrativeBox? narrativeBox,
         string suggestion,
         string sectionName,
         string unavailableMessage)
     {
-        if (narrativeBox is null)
+        if (TreatAiReviewBoxAsUnavailable || narrativeBox is null)
         {
             Logger.LogWarning(
                 "Plan AI generation succeeded for {SectionName} on note {NoteId}, but the review box reference was unavailable.",
                 sectionName,
                 NoteId);
             _errorMessage = unavailableMessage;
-            return;
+            return false;
         }
 
         await narrativeBox.LoadAiSuggestionAsync(suggestion);
+        return true;
     }
 
     private PlanOfCareGenerationRequest BuildPlanRequest()

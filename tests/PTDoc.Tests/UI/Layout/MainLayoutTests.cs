@@ -17,6 +17,7 @@ public sealed class MainLayoutTests : TestContext
     private readonly TestSyncService _syncService = new();
     private readonly TestConnectivityService _connectivityService = new();
     private readonly TestNavigationBadgeService _navigationBadgeService = new();
+    private readonly TestToastService _toastService = new();
     private readonly TestAuthorizationContext _authorization;
 
     public MainLayoutTests()
@@ -37,7 +38,7 @@ public sealed class MainLayoutTests : TestContext
         Services.AddSingleton<ISyncService>(_syncService);
         Services.AddSingleton<IConnectivityService>(_connectivityService);
         Services.AddSingleton<IViewportDiagnosticsService, DisabledViewportDiagnosticsService>();
-        Services.AddSingleton<IToastService, TestToastService>();
+        Services.AddSingleton<IToastService>(_toastService);
         Services.AddSingleton<INotificationCenterService, TestNotificationCenterService>();
         Services.AddSingleton<INavigationBadgeService>(_navigationBadgeService);
         Services.AddSingleton<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
@@ -217,7 +218,7 @@ public sealed class MainLayoutTests : TestContext
     }
 
     [Fact]
-    public void GlobalHeader_SyncingState_MatchesDisabledAccessibilityState()
+    public void GlobalHeader_SyncingState_RemainsActionableWithoutDisabledSemantics()
     {
         _syncService.IsSyncing = true;
 
@@ -225,9 +226,101 @@ public sealed class MainLayoutTests : TestContext
             .Add(component => component.IsMenuOpen, false));
 
         var syncButton = cut.Find("button[data-sync-now-button]");
-        Assert.True(syncButton.HasAttribute("disabled"));
-        Assert.Equal("true", syncButton.GetAttribute("aria-disabled"));
+        Assert.False(syncButton.HasAttribute("disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
+        Assert.Equal("true", syncButton.GetAttribute("aria-busy"));
         Assert.Equal("Syncing clinical data", syncButton.GetAttribute("aria-label"));
+        Assert.Equal("Syncing...", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowWhileOffline_ShowsToast()
+    {
+        _connectivityService.IsOnline = false;
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        var syncButton = cut.Find("button[data-sync-now-button]");
+        Assert.False(syncButton.HasAttribute("disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
+        Assert.Equal("false", syncButton.GetAttribute("aria-busy"));
+        Assert.Equal("Sync unavailable while offline", syncButton.GetAttribute("aria-label"));
+        Assert.Equal("Sync Offline", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
+
+        syncButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Sync is unavailable while offline.", toast.Message);
+            Assert.Equal(0, _syncService.SyncCallCount);
+        });
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowWhileSyncing_ShowsToast()
+    {
+        _syncService.IsSyncing = true;
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        var syncButton = cut.Find("button[data-sync-now-button]");
+        Assert.False(syncButton.HasAttribute("disabled"));
+        Assert.False(syncButton.HasAttribute("aria-disabled"));
+        Assert.Equal("true", syncButton.GetAttribute("data-sync-blocked"));
+        Assert.Equal("true", syncButton.GetAttribute("aria-busy"));
+        Assert.Equal("Syncing...", syncButton.QuerySelector("[data-sync-now-text]")?.TextContent);
+
+        syncButton.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Info, toast.Level);
+            Assert.Equal("Sync is already running.", toast.Message);
+            Assert.Equal(0, _syncService.SyncCallCount);
+        });
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowSuccess_ShowsToast()
+    {
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        cut.Find("button[data-sync-now-button]").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Sync Now", cut.Find("[data-sync-now-text]").TextContent);
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Success, toast.Level);
+            Assert.Equal("Sync completed.", toast.Message);
+        });
+    }
+
+    [Fact]
+    public void GlobalHeader_SyncNowFailure_ShowsServiceErrorToast()
+    {
+        _syncService.SyncResult = false;
+        _syncService.LastErrorMessage = "Sync queue rejected the request.";
+
+        var cut = RenderComponent<GlobalHeader>(parameters => parameters
+            .Add(component => component.IsMenuOpen, false));
+
+        cut.Find("button[data-sync-now-button]").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var toast = Assert.Single(_toastService.Messages);
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Sync queue rejected the request.", toast.Message);
+        });
     }
 
     private IRenderedComponent<MainLayout> RenderLayout()
@@ -275,6 +368,8 @@ public sealed class MainLayoutTests : TestContext
     {
         public DateTime? LastSyncTime => DateTime.UtcNow;
         public bool IsSyncing { get; set; }
+        public bool SyncResult { get; set; } = true;
+        public string? LastErrorMessage { get; set; }
         public event Action? OnSyncStateChanged
         {
             add { }
@@ -282,7 +377,12 @@ public sealed class MainLayoutTests : TestContext
         }
 
         public Task InitializeAsync() => Task.CompletedTask;
-        public Task<bool> SyncNowAsync() => Task.FromResult(true);
+        public int SyncCallCount { get; private set; }
+        public Task<bool> SyncNowAsync()
+        {
+            SyncCallCount++;
+            return Task.FromResult(SyncResult);
+        }
         public string GetElapsedTimeSinceSync() => "Just now";
     }
 
@@ -302,12 +402,19 @@ public sealed class MainLayoutTests : TestContext
     private sealed class TestToastService : IToastService
     {
         public event Action? OnChange;
-        public IReadOnlyList<ToastMessage> GetAll() => [];
-        public void ShowSuccess(string message, string? title = null) => OnChange?.Invoke();
-        public void ShowError(string message, string? title = null) => OnChange?.Invoke();
-        public void ShowWarning(string message, string? title = null) => OnChange?.Invoke();
-        public void ShowInfo(string message, string? title = null) => OnChange?.Invoke();
+        public List<ToastMessage> Messages { get; } = [];
+        public IReadOnlyList<ToastMessage> GetAll() => Messages;
+        public void ShowSuccess(string message, string? title = null) => Add(ToastLevel.Success, message, title);
+        public void ShowError(string message, string? title = null) => Add(ToastLevel.Error, message, title);
+        public void ShowWarning(string message, string? title = null) => Add(ToastLevel.Warning, message, title);
+        public void ShowInfo(string message, string? title = null) => Add(ToastLevel.Info, message, title);
         public void Dismiss(Guid id) => OnChange?.Invoke();
+
+        private void Add(ToastLevel level, string message, string? title)
+        {
+            Messages.Add(new ToastMessage(Guid.NewGuid(), level, message, title));
+            OnChange?.Invoke();
+        }
     }
 
     private sealed class TestNotificationCenterService : INotificationCenterService
