@@ -104,4 +104,56 @@ public sealed class AssessmentTabTests : TestContext
         aiService.VerifyAll();
         workspaceService.VerifyAll();
     }
+
+    [Fact]
+    public void AssessmentTab_Generate_WhenReviewUnavailable_ShowsErrorToastOnly()
+    {
+        var noteId = Guid.NewGuid();
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var assessmentText = "Original assessment";
+        var functionalLimitations = string.Empty;
+
+        aiService
+            .Setup(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssessmentGenerationResult
+            {
+                GeneratedText = "AI assessment draft",
+                Confidence = 0.85,
+                SourceInputs = new AssessmentGenerationRequest
+                {
+                    NoteId = noteId,
+                    ChiefComplaint = "Knee pain"
+                },
+                Success = true
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<AssessmentTab>(parameters => parameters
+            .Add(component => component.NoteId, noteId)
+            .Add(component => component.AssessmentText, assessmentText)
+            .Add(component => component.AssessmentTextChanged, EventCallback.Factory.Create<string>(this, value => assessmentText = value))
+            .Add(component => component.FunctionalLimitations, functionalLimitations)
+            .Add(component => component.FunctionalLimitationsChanged, EventCallback.Factory.Create<string>(this, value => functionalLimitations = value))
+            .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.IsNoteSigned, false)
+            .Add(component => component.ForceAiReviewUnavailable, true));
+
+        cut.Find("[data-testid='assessment-generate-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to open AI review for assessment content. Please try again.", cut.Find("[data-testid='assessment-tab-error']").TextContent, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("[data-testid='assessment-narrative-box-review-banner']"));
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Unable to open AI review for assessment content. Please try again.", toast.Message);
+        });
+
+        aiService.VerifyAll();
+        workspaceService.VerifyAll();
+    }
 }

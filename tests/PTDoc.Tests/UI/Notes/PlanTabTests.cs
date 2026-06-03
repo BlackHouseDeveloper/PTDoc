@@ -779,11 +779,44 @@ public sealed class PlanTabTests : TestContext
         workspaceService.VerifyAll();
     }
 
+    [Fact]
+    public void PlanTab_GenerateSummary_WhenReviewUnavailable_ShowsErrorToastOnly()
+    {
+        var noteId = Guid.NewGuid();
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Original summary"
+        };
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+
+        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService, forceAiReviewUnavailable: true);
+
+        cut.Find("[data-testid='generate-summary-btn']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to open AI review for the clinical summary. Please try again.", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Unable to open AI review for the clinical summary. Please try again.", toast.Message);
+        });
+
+        aiService.VerifyAll();
+        workspaceService.VerifyAll();
+    }
+
     private IRenderedComponent<PlanTab> RenderSavedPlanTab(
         PlanVm vm,
         Guid noteId,
         Mock<INoteWorkspaceService> workspaceService,
-        Mock<IAiClinicalGenerationService> aiService)
+        Mock<IAiClinicalGenerationService> aiService,
+        bool forceAiReviewUnavailable = false)
     {
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
@@ -794,7 +827,8 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
             .Add(component => component.IsReadOnly, false)
-            .Add(component => component.DiagnosisSummary, "Lumbar strain"));
+            .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.ForceAiReviewUnavailable, forceAiReviewUnavailable));
     }
 
     private static PlanGenerationResult CreateSuccessfulPlanResult(Guid noteId, string generatedText)

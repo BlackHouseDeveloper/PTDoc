@@ -77,6 +77,59 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
     }
 
     [Fact]
+    public void AssessmentSection_Generate_WhenReviewUnavailable_ShowsErrorToastOnly()
+    {
+        var noteId = Guid.NewGuid();
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var vm = new AssessmentWorkspaceVm
+        {
+            AssessmentNarrative = "Existing assessment"
+        };
+
+        aiService
+            .Setup(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssessmentGenerationResult
+            {
+                GeneratedText = "AI assessment draft",
+                Confidence = 0.85,
+                SourceInputs = new AssessmentGenerationRequest
+                {
+                    NoteId = noteId,
+                    ChiefComplaint = "Knee pain"
+                },
+                Success = true
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<AssessmentSection>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, noteId)
+            .Add(component => component.ChiefComplaint, "Knee pain")
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.ForceAiReviewUnavailable, true));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to open AI review for the assessment narrative. Please try again.", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("[data-testid='daily-assessment-narrative-box-review-banner']"));
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Unable to open AI review for the assessment narrative. Please try again.", toast.Message);
+        });
+
+        aiService.VerifyAll();
+    }
+
+    [Fact]
     public void PlanSection_GeneratedSummaryRequiresExplicitAcceptance()
     {
         var noteId = Guid.NewGuid();
@@ -128,6 +181,59 @@ public sealed class DailyTreatmentAiReviewTests : TestContext
         {
             Assert.Equal("Existing summary", vm.ClinicalSummary);
             Assert.DoesNotContain("AI-generated content", cut.Markup, StringComparison.Ordinal);
+        });
+
+        aiService.VerifyAll();
+    }
+
+    [Fact]
+    public void PlanSection_GenerateSummary_WhenReviewUnavailable_ShowsErrorToastOnly()
+    {
+        var noteId = Guid.NewGuid();
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var vm = new PlanVm
+        {
+            ClinicalSummary = "Existing summary"
+        };
+
+        aiService
+            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlanGenerationResult
+            {
+                GeneratedText = "AI plan summary draft",
+                Confidence = 0.85,
+                SourceInputs = new PlanOfCareGenerationRequest
+                {
+                    NoteId = noteId,
+                    Diagnosis = "Lumbar strain"
+                },
+                Success = true
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<PlanSection>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, noteId)
+            .Add(component => component.DiagnosisSummary, "Lumbar strain")
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.ForceAiReviewUnavailable, true));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Generate Summary", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to open AI review for the clinical summary. Please try again.", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("[data-testid='daily-plan-clinical-summary-box-review-banner']"));
+            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
+            Assert.Equal(ToastLevel.Error, toast.Level);
+            Assert.Equal("Unable to open AI review for the clinical summary. Please try again.", toast.Message);
         });
 
         aiService.VerifyAll();

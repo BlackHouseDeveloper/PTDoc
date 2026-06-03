@@ -90,6 +90,9 @@
     [Parameter]
     public bool IsNoteSigned { get; set; } = false;
 
+    [Parameter]
+    public bool ForceAiReviewUnavailable { get; set; }
+
     /// <summary>
     /// Current assessment narrative text.
     /// </summary>
@@ -213,11 +216,14 @@
             _generationWarnings.AddRange(result.Warnings);
 
             // Load the result into the narrative box for clinician review
-            if (_narrativeBox is not null)
+            if (ForceAiReviewUnavailable || _narrativeBox is null)
             {
-                await _narrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+                _errorMessage = "Unable to open AI review for assessment content. Please try again.";
+                ToastService.ShowError(_errorMessage, "AI generation failed");
+                return;
             }
 
+            await _narrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
             ToastService.ShowSuccess("AI assessment generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)

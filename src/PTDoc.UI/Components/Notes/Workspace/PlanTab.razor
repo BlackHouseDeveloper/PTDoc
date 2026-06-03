@@ -478,6 +478,7 @@
     [Parameter] public string? AssessmentSummary { get; set; }
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
+    [Parameter] public bool ForceAiReviewUnavailable { get; set; }
 
     private bool _isLoadingCatalog;
     private bool _isGeneratingDischarge;
@@ -883,11 +884,17 @@
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _dischargePlanningBox,
                 suggestion,
                 "discharge planning",
                 "Unable to open AI review for discharge planning. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for discharge planning. Please try again.", "AI generation failed");
+                return;
+            }
+
             ToastService.ShowSuccess("AI discharge planning guidance generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
@@ -922,11 +929,17 @@
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _followUpBox,
                 suggestion,
                 "follow-up instructions",
                 "Unable to open AI review for follow-up instructions. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for follow-up instructions. Please try again.", "AI generation failed");
+                return;
+            }
+
             ToastService.ShowSuccess("AI follow-up instructions generated. Review them before accepting.", "AI generation complete");
         }
         catch (Exception ex)
@@ -961,11 +974,17 @@
             }
 
             var suggestion = result.GeneratedText;
-            await ShowPlanSuggestionAsync(
+            var suggestionLoaded = await ShowPlanSuggestionAsync(
                 _clinicalSummaryBox,
                 suggestion,
                 "clinical summary",
                 "Unable to open AI review for the clinical summary. Please try again.");
+            if (!suggestionLoaded)
+            {
+                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for the clinical summary. Please try again.", "AI generation failed");
+                return;
+            }
+
             ToastService.ShowSuccess("AI clinical summary generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
@@ -1048,23 +1067,24 @@
         return Task.CompletedTask;
     }
 
-    private async Task ShowPlanSuggestionAsync(
+    private async Task<bool> ShowPlanSuggestionAsync(
         EditableNarrativeBox? narrativeBox,
         string suggestion,
         string sectionName,
         string unavailableMessage)
     {
-        if (narrativeBox is null)
+        if (ForceAiReviewUnavailable || narrativeBox is null)
         {
             Logger.LogWarning(
                 "Plan AI generation succeeded for {SectionName} on note {NoteId}, but the review box reference was unavailable.",
                 sectionName,
                 NoteId);
             _errorMessage = unavailableMessage;
-            return;
+            return false;
         }
 
         await narrativeBox.LoadAiSuggestionAsync(suggestion);
+        return true;
     }
 
     private PlanOfCareGenerationRequest BuildPlanRequest()

@@ -322,6 +322,7 @@
     [Parameter] public Guid NoteId { get; set; }
     [Parameter] public string? ChiefComplaint { get; set; }
     [Parameter] public string? ExaminationFindings { get; set; }
+    [Parameter] public bool ForceAiReviewUnavailable { get; set; }
 
     protected override void OnParametersSet() => _vm = Vm;
 
@@ -429,11 +430,14 @@
 
             _assessmentWarnings = result.Warnings;
 
-            if (_assessmentNarrativeBox is not null)
+            if (ForceAiReviewUnavailable || _assessmentNarrativeBox is null)
             {
-                await _assessmentNarrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
+                _assessmentErrorMessage = "Unable to open AI review for the assessment narrative. Please try again.";
+                ToastService.ShowError(_assessmentErrorMessage, "AI generation failed");
+                return;
             }
 
+            await _assessmentNarrativeBox.LoadAiSuggestionAsync(result.GeneratedText);
             ToastService.ShowSuccess("AI assessment generated. Review it before accepting.", "AI generation complete");
         }
         catch (Exception ex)
