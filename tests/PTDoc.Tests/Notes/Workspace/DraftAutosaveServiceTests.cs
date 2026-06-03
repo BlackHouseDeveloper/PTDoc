@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Threading;
 using PTDoc.UI.Services;
 
@@ -89,6 +90,42 @@ public sealed class DraftAutosaveServiceTests
         Assert.False(autosave.IsSaving);
         Assert.Null(autosave.LastErrorMessage);
         Assert.NotNull(autosave.LastSavedAt);
+    }
+
+    [Fact]
+    public async Task FlushAsync_GenericException_UsesStableFallbackMessage()
+    {
+        await using var autosave = new DraftAutosaveService();
+
+        autosave.Configure(
+            cancellationToken => throw new InvalidOperationException("Internal persistence secret details."),
+            () => true);
+
+        autosave.MarkDirty();
+        var flushed = await autosave.FlushAsync();
+
+        Assert.False(flushed);
+        Assert.True(autosave.IsDirty);
+        Assert.False(autosave.IsSaving);
+        Assert.Equal("Unable to save draft.", autosave.LastErrorMessage);
+    }
+
+    [Fact]
+    public async Task FlushAsync_HttpRequestException_UsesTrimmedUserFacingMessage()
+    {
+        await using var autosave = new DraftAutosaveService();
+
+        autosave.Configure(
+            cancellationToken => throw new HttpRequestException("  Connection refused (localhost:5170)  "),
+            () => true);
+
+        autosave.MarkDirty();
+        var flushed = await autosave.FlushAsync();
+
+        Assert.False(flushed);
+        Assert.True(autosave.IsDirty);
+        Assert.False(autosave.IsSaving);
+        Assert.Equal("Connection refused (localhost:5170)", autosave.LastErrorMessage);
     }
 
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)

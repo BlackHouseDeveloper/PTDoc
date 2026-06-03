@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Threading;
 
 namespace PTDoc.UI.Services;
@@ -146,9 +147,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            LastErrorMessage = string.IsNullOrWhiteSpace(ex.Message)
-                ? "Unable to save draft."
-                : ex.Message;
+            LastErrorMessage = GetUserFacingExceptionMessage(ex);
             return false;
         }
         finally
@@ -167,6 +166,18 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     }
 
     private void NotifyStateChanged() => StateChanged?.Invoke();
+
+    private static string GetUserFacingExceptionMessage(Exception exception)
+    {
+        if (exception is HttpRequestException httpException &&
+            !string.IsNullOrWhiteSpace(httpException.Message) &&
+            !httpException.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
+        {
+            return httpException.Message.Trim();
+        }
+
+        return "Unable to save draft.";
+    }
 
     public async ValueTask DisposeAsync()
     {
