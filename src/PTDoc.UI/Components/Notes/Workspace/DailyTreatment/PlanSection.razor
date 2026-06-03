@@ -301,8 +301,14 @@
         AddInput(inputs, "Daily interventions", JoinValues(_vm.GeneralInterventions.Select(FormatIntervention)), SelectedBodyPart);
         AddInput(inputs, "Response to treatment", _dailyTreatment.ResponseToTreatment, SelectedBodyPart);
         AddInput(inputs, "Follow-up instructions", _vm.FollowUpInstructions, SelectedBodyPart);
-        return inputs;
+        return DeduplicateInputs(inputs);
     }
+
+    private static IReadOnlyList<AiStructuredInput> DeduplicateInputs(IEnumerable<AiStructuredInput> inputs) =>
+        inputs
+            .GroupBy(input => $"{input.Label}\u001f{input.Value}\u001f{input.BodyPart}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
 
     private static string FormatIntervention(GeneralInterventionEntry intervention)
     {

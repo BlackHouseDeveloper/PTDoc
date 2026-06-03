@@ -1138,8 +1138,14 @@
         AddInput(inputs, "Home exercise program", Vm.HomeExerciseProgramNotes, SelectedBodyPart);
         AddInput(inputs, "Selected CPT codes", JoinValues(Vm.SelectedCptCodes.Select(code => $"{code.Code} {code.Description}".Trim())), SelectedBodyPart);
 
-        return inputs;
+        return DeduplicateInputs(inputs);
     }
+
+    private static IReadOnlyList<AiStructuredInput> DeduplicateInputs(IEnumerable<AiStructuredInput> inputs) =>
+        inputs
+            .GroupBy(input => $"{input.Label}\u001f{input.Value}\u001f{input.BodyPart}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
 
     private static string FormatIntervention(GeneralInterventionEntry intervention)
     {
