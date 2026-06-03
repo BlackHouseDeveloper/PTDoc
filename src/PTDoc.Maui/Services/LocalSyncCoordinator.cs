@@ -168,12 +168,14 @@ public sealed class LocalSyncCoordinator : ISyncService, IAsyncDisposable
         if (!await _connectivityService.CheckConnectivityAsync())
         {
             LastErrorMessage = "Sync is unavailable while offline.";
+            OnSyncStateChanged?.Invoke();
             return false;
         }
 
         if (!await _syncGate.WaitAsync(0, cancellationToken))
         {
             LastErrorMessage = "Sync is already running.";
+            OnSyncStateChanged?.Invoke();
             return false;
         }
 

@@ -90,6 +90,48 @@ public sealed class HttpSyncServiceTests
         Assert.False(service.IsSyncing);
     }
 
+    [Fact]
+    public async Task SyncNowAsync_WhenAlreadySyncing_RaisesStateChangedForErrorMessage()
+    {
+        var runStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRun = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/sync/run")
+            {
+                runStarted.TrySetResult();
+                await releaseRun.Task.WaitAsync(cancellationToken);
+                return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "completedAt": "2026-03-30T15:00:00Z"
+                }
+                """);
+            }
+
+            return StubHttpMessageHandler.JsonResponse("""
+            {
+              "lastSyncAt": "2026-03-30T15:00:00Z"
+            }
+            """);
+        });
+        var service = CreateService(handler);
+        var eventCount = 0;
+        service.OnSyncStateChanged += () => eventCount++;
+
+        var firstRun = service.SyncNowAsync();
+        await runStarted.Task;
+        var eventCountBeforeAlreadyRunning = eventCount;
+
+        var secondRun = await service.SyncNowAsync();
+
+        Assert.False(secondRun);
+        Assert.Equal("Sync is already running.", service.LastErrorMessage);
+        Assert.True(eventCount > eventCountBeforeAlreadyRunning);
+
+        releaseRun.SetResult();
+        Assert.True(await firstRun);
+    }
+
     private static HttpSyncService CreateService(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler)

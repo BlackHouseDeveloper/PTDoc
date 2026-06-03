@@ -35,6 +35,7 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
         if (_isSyncing)
         {
             LastErrorMessage = "Sync is already running.";
+            OnSyncStateChanged?.Invoke();
             return false;
         }
 

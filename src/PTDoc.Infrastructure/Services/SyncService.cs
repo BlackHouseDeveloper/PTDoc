@@ -54,6 +54,7 @@ public class SyncService : ISyncService
         if (_isSyncing)
         {
             LastErrorMessage = "Sync is already running.";
+            OnSyncStateChanged?.Invoke();
             return false; // Already syncing
         }
 

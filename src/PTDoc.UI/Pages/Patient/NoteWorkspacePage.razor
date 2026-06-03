@@ -1303,7 +1303,7 @@ else
             var saveResult = await NoteWorkspaceService.SaveDraftAsync(
                 BuildDraft(_patientGuid.Value, overrideSubmission),
                 cancellationToken);
-            await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, CancellationToken.None);
+            await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
             ApplyValidationDetails(
                 saveResult.Errors,
                 saveResult.Warnings,
@@ -1392,7 +1392,7 @@ else
         {
             if (savingStateStartedAt.HasValue)
             {
-                await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, CancellationToken.None);
+                await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
             }
 
             _note.MarkSaveError();
@@ -1413,7 +1413,14 @@ else
         var remaining = MinimumVisibleSavingStateDuration - (DateTimeOffset.UtcNow - savingStateStartedAt);
         if (remaining > TimeSpan.Zero)
         {
-            await Task.Delay(remaining, cancellationToken);
+            try
+            {
+                await Task.Delay(remaining, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Cancellation should skip the cosmetic delay without discarding an API result already received.
+            }
         }
     }
 
