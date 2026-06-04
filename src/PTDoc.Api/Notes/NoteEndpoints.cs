@@ -456,6 +456,8 @@ public static class NoteEndpoints
         var previewNote = matchingNotes.FirstOrDefault(note => note.NoteStatus == NoteStatus.Signed)
             ?? matchingNotes[0];
 
+        var canUserExportPdf = CanUserExportPdf(httpContext.User);
+
         return Results.Ok(new ExportPreviewTargetResponse
         {
             NoteId = previewNote.Id,
@@ -463,7 +465,10 @@ public static class NoteEndpoints
             Subtitle = $"{previewNote.DateOfService:MMM d, yyyy} · {BuildPreviewStatusLabel(previewNote.NoteStatus)}",
             NoteStatus = previewNote.NoteStatus,
             SelectionNotice = BuildPreviewSelectionNotice(patientIds.Count, previewFilters.Count),
-            CanDownloadPdf = CanUserExportPdf(httpContext.User)
+            UnavailableReason = canUserExportPdf
+                ? null
+                : "Your role does not have permission to export note PDFs.",
+            CanDownloadPdf = canUserExportPdf
         });
     }
 

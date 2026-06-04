@@ -258,6 +258,48 @@ public sealed class ExportCenterComponentsTests : TestContext
     }
 
     [Fact]
+    public void ExportPreviewPanel_TargetWithoutExportPermission_DisablesPreviewAndDownload()
+    {
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var noteId = Guid.NewGuid();
+
+        noteService
+            .Setup(service => service.ResolveExportPreviewTargetAsync(
+                It.IsAny<ExportPreviewTargetRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExportPreviewTargetResponse
+            {
+                NoteId = noteId,
+                Title = "Draft Daily Note",
+                Subtitle = "Draft",
+                NoteStatus = NoteStatus.Draft,
+                UnavailableReason = "Your role does not have permission to export note PDFs.",
+                CanDownloadPdf = false
+            });
+
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var cut = RenderComponent<ExportPreviewPanel>(parameters => parameters
+            .Add(component => component.SelectedTab, ExportTab.SoapNotes)
+            .Add(component => component.SelectedFormat, ExportFormat.PDF)
+            .Add(component => component.State, new ExportDraftState()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("does not have permission to export note PDFs", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            var actionButtons = cut.FindAll("button");
+            Assert.True(actionButtons[0].HasAttribute("disabled"));
+            Assert.True(actionButtons[1].HasAttribute("disabled"));
+        });
+
+        noteWorkspaceService.Verify(
+            service => service.GetDocumentHierarchyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void ExportPreviewPanel_ShowsInlineError_WhenPreviewGenerationFails()
     {
         var noteService = new Mock<INoteService>(MockBehavior.Strict);

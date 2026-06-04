@@ -233,7 +233,7 @@
     private bool HasInvalidDateRange => State.DateRangeStart.HasValue
         && State.DateRangeEnd.HasValue
         && State.DateRangeStart.Value.Date > State.DateRangeEnd.Value.Date;
-    private bool CanPreviewDocument => _previewTarget.CanPreview;
+    private bool CanPreviewDocument => _previewTarget.CanPreview && _previewTarget.CanDownloadPdf;
 
     private bool IsProgressSummaryExport => SelectedTab == ExportTab.Reports
         && State.SelectedReportTypes.Contains("progress-summary", StringComparer.OrdinalIgnoreCase);

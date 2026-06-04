@@ -1442,6 +1442,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             JsonOpts);
         Assert.NotNull(payload);
         Assert.False(payload!.CanDownloadPdf);
+        Assert.Contains("does not have permission", payload.UnavailableReason ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
