@@ -313,7 +313,8 @@ public static class PdfEndpoints
         if (IsProgressQuestionnairePainLevelPath(propertyPath))
         {
             return noteType is NoteType.ProgressNote or NoteType.Discharge
-                && element.TryGetDouble(out _);
+                && element.TryGetDouble(out var value)
+                && value > 0;
         }
 
         var isClinicalNumericField = propertyName.Contains("score", StringComparison.OrdinalIgnoreCase)
