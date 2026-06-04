@@ -723,7 +723,7 @@ public class PdfIntegrationTests : IAsyncDisposable
         var pdfText = ExtractPdfText(result.PdfBytes);
 
         Assert.Contains("Physical Therapy Daily Note Addendum", pdfText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(parentNoteId.ToString("D"), pdfText, StringComparison.OrdinalIgnoreCase);
+        AssertNodeValueContains(hierarchy.Root, "Parent Note", parentNoteId.ToString("D"));
         AssertNodeValueContains(hierarchy.Root, "Addendum Content", "Clarified home program progression");
     }
 

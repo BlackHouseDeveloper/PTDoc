@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 11 PDF export addendum test follow-up
+
+- **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`** — Replaced the brittle extracted-PDF UUID assertion for addendum parent context with a deterministic hierarchy assertion while retaining PDF text coverage for the addendum title/content. Reason: extracted PDF text was not stable enough to guarantee a literal UUID substring match even when the parent context is present in the rendered hierarchy.
+
 ### Fixed - PR 11 PDF export review follow-ups
 
 - **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`src/PTDoc.UI/Pages/Notes/NotesPage.razor`**, **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Treated explicit `false` values for clinical boolean fields (for example `takingMedications: false`) as documented clinical content during PDF export-readiness checks, expanded numeric readiness detection to include clinical pain/level fields (for example `currentPainLevel`) and accept documented zero values, added non-PHI exception logging for failed PDF exports keyed by note ID, made export-preview `CanDownloadPdf` role-aware so read-only roles do not receive misleading export capability flags, aligned notes-page export warnings to role-based gating, removed hardcoded clinic-name fallback from PDF headers for legacy notes with no clinic association, and added end-to-end regressions for boolean-false, pain-level numeric (including zero), and billing preview-capability signaling. Reason: address validated PR review findings so clinically meaningful negative boolean and numeric pain documentation are exportable, role signaling remains accurate across preview/download surfaces, legacy clinic branding is not fabricated, and 500-path troubleshooting remains diagnosable without exposing PHI.
