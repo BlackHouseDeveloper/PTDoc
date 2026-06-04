@@ -57,7 +57,7 @@
         else if (!_previewTarget.CanPreview)
         {
             <div class="record-count-disabled">
-                <p class="record-count-disabled__title">No preview target</p>
+                <p class="record-count-disabled__title">@CurrentUnavailableTitle</p>
                 <p id="@CurrentUnavailableReasonId" class="record-count-disabled__text">@CurrentUnavailableReason</p>
             </div>
         }
@@ -248,6 +248,9 @@
 
     private string UnsupportedReasonId => _unsupportedReasonId;
     private string CurrentUnavailableReasonId => _targetUnavailableReasonId;
+    private string CurrentUnavailableTitle => _previewTarget.NoteId.HasValue
+        ? "Preview unavailable"
+        : "No preview target";
     private string CurrentUnavailableReason => string.IsNullOrWhiteSpace(_previewTarget.UnavailableReason)
         ? "No SOAP note matches the current export filters."
         : _previewTarget.UnavailableReason;
@@ -567,9 +570,16 @@
             return "Resolving…";
         }
 
-        if (!_previewTarget.CanPreview)
+        if (!_previewTarget.NoteId.HasValue)
         {
             return "No matching note";
+        }
+
+        if (!_previewTarget.CanPreview)
+        {
+            return string.IsNullOrWhiteSpace(_previewTarget.Title)
+                ? "Preview unavailable"
+                : _previewTarget.Title;
         }
 
         return _previewTarget.Title;

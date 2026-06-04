@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 11 export preview target messaging
+
+- **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor`** — Updated preview-disabled messaging so resolved notes that are unavailable (for example, permission-gated notes) show `Preview unavailable` instead of `No preview target`, and made Preview Target metadata return `No matching note` only when no note is resolved while preserving the resolved note title when actions are unavailable. Reason: address validated PR review findings where `CanPreview` can be false for permission reasons even when a concrete preview note exists.
+
 ### Fixed - PR 11 PDF export addendum test follow-up
 
 - **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`** — Replaced the brittle extracted-PDF UUID assertion for addendum parent context with a deterministic hierarchy assertion while retaining PDF text coverage for the addendum title/content. Reason: extracted PDF text was not stable enough to guarantee a literal UUID substring match even when the parent context is present in the rendered hierarchy.
