@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 11 PDF export review follow-ups
+
+- **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Treated explicit `false` values for clinical boolean fields (for example `takingMedications: false`) as documented clinical content during PDF export-readiness checks, added non-PHI exception logging for failed PDF exports keyed by note ID, and added an end-to-end regression for boolean-false export eligibility. Reason: address validated PR review findings so clinically meaningful negative boolean documentation is exportable and 500-path troubleshooting remains diagnosable without exposing PHI.
+
 ### Changed - PR 11 PDF export for all beta notes
 
 - **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`src/PTDoc.Application/Pdf/PdfModels.cs`**, **`src/PTDoc.Infrastructure/Pdf/*`**, **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`src/PTDoc.UI/Pages/Notes/NotesPage.razor`**, **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor`** — Allowed PDF export and hierarchy preview for all supported note statuses and addendums, added clinic/status/addendum export metadata, labeled draft and pending co-sign PDFs, kept signed-note preference in Export Center target selection, and blocked malformed or clinically empty note content with visible 422 errors before rendering. Reason: beta testers need clinically reviewable PDFs for Eval/Re-Eval, Daily, Dry Needling, Progress, Discharge, drafts, pending co-sign notes, finalized notes, and addendums without exporting empty or broken notes.

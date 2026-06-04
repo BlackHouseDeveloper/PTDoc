@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
@@ -62,8 +63,11 @@ public static class PdfEndpoints
         [FromServices] IPdfRenderer pdfRenderer,
         [FromServices] IAuditService auditService,
         [FromServices] ApplicationDbContext dbContext,
+        [FromServices] ILoggerFactory loggerFactory,
         HttpContext httpContext)
     {
+        var logger = loggerFactory.CreateLogger("PTDoc.Api.Pdf.PdfEndpoints");
+
         try
         {
             var noteData = await LoadNoteExportDtoAsync(dbContext, noteId);
@@ -112,8 +116,10 @@ public static class PdfEndpoints
                 result.ContentType,
                 result.FileName);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger.LogError(ex, "PDF export failed for note {NoteId}", noteId);
+
             return Results.Problem(
                 title: "PDF Export Failed",
                 detail: "The server could not generate this PDF. Retry after confirming the note content is complete.",
@@ -256,6 +262,8 @@ public static class PdfEndpoints
                 return IsClinicalNumber(propertyName, element);
             case JsonValueKind.True:
                 return IsClinicalBoolean(propertyName);
+            case JsonValueKind.False:
+                return IsClinicalBooleanFalse(propertyName);
             default:
                 return false;
         }
@@ -292,6 +300,11 @@ public static class PdfEndpoints
                 || propertyName.EndsWith("documented", StringComparison.OrdinalIgnoreCase)
                 || propertyName.EndsWith("normalLimits", StringComparison.OrdinalIgnoreCase));
 
+    private static bool IsClinicalBooleanFalse(string? propertyName)
+        => propertyName is not null
+            && !IsNonClinicalProperty(propertyName)
+            && ExplicitClinicalFalseBooleanProperties.Contains(propertyName);
+
     private static bool IsNonClinicalProperty(string? propertyName)
     {
         if (string.IsNullOrWhiteSpace(propertyName))
@@ -323,6 +336,12 @@ public static class PdfEndpoints
         "dateOfTreatment",
         "startDate",
         "endDate"
+    };
+
+    private static readonly HashSet<string> ExplicitClinicalFalseBooleanProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "takingMedications",
+        "hasImaging"
     };
 
     private static async Task<(string DisplayName, string Credentials)> ResolveClinicianInfoAsync(ApplicationDbContext dbContext, Guid? userId)

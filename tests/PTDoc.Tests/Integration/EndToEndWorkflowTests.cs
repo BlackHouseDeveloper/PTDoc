@@ -1516,6 +1516,33 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PT_Can_Export_Note_With_ExplicitFalse_ClinicalBoolean()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"takingMedications\":false}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task PT_Cannot_Export_BrokenContent_Note_Returns_422()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
