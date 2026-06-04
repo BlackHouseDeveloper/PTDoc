@@ -30,15 +30,15 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         var hierarchy = noteData.IsAddendum
             ? BuildAddendumDocument(noteData, context)
             : noteData.NoteType switch
-        {
-            NoteType.Evaluation => BuildInitialEvaluation(noteData, context),
-            NoteType.ProgressNote => BuildProgressNote(noteData, context),
-            NoteType.Daily => context.WorkspacePayload?.DryNeedling is not null
-                ? BuildDryNeedlingNote(noteData, context)
-                : BuildDailyNote(noteData, context),
-            NoteType.Discharge => BuildDischargeSummary(noteData, context),
-            _ => BuildFallbackDocument(noteData, context)
-        };
+            {
+                NoteType.Evaluation => BuildInitialEvaluation(noteData, context),
+                NoteType.ProgressNote => BuildProgressNote(noteData, context),
+                NoteType.Daily => context.WorkspacePayload?.DryNeedling is not null
+                    ? BuildDryNeedlingNote(noteData, context)
+                    : BuildDailyNote(noteData, context),
+                NoteType.Discharge => BuildDischargeSummary(noteData, context),
+                _ => BuildFallbackDocument(noteData, context)
+            };
         return SanitizeHierarchy(hierarchy);
     }
 
