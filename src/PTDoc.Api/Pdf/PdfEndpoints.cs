@@ -282,8 +282,16 @@ public static class PdfEndpoints
     private static bool IsClinicalNumber(string? propertyName, JsonElement element)
     {
         if (propertyName is null
-            || IsNonClinicalProperty(propertyName)
-            || !propertyName.Contains("score", StringComparison.OrdinalIgnoreCase))
+            || IsNonClinicalProperty(propertyName))
+        {
+            return false;
+        }
+
+        var isClinicalNumericField = propertyName.Contains("score", StringComparison.OrdinalIgnoreCase)
+            || propertyName.Contains("level", StringComparison.OrdinalIgnoreCase)
+            || propertyName.Contains("pain", StringComparison.OrdinalIgnoreCase);
+
+        if (!isClinicalNumericField)
         {
             return false;
         }
