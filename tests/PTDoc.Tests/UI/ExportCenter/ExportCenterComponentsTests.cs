@@ -289,9 +289,15 @@ public sealed class ExportCenterComponentsTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("does not have permission to export note PDFs", cut.Markup, StringComparison.OrdinalIgnoreCase);
-            var actionButtons = cut.FindAll("button");
-            Assert.True(actionButtons[0].HasAttribute("disabled"));
-            Assert.True(actionButtons[1].HasAttribute("disabled"));
+            var unavailableMessageId = cut.Find(".record-count-disabled__text").GetAttribute("id");
+            Assert.False(string.IsNullOrWhiteSpace(unavailableMessageId));
+
+            var actionButtons = cut.FindAll(".export-preview-panel__actions button");
+            Assert.All(actionButtons, button =>
+            {
+                Assert.True(button.HasAttribute("disabled"));
+                Assert.Equal(unavailableMessageId, button.GetAttribute("aria-describedby"));
+            });
         });
 
         noteWorkspaceService.Verify(
