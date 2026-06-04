@@ -49,7 +49,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             $"{noteData.NoteTypeDisplayName} Addendum",
             BuildHeaderSection(noteData, $"{noteData.NoteTypeDisplayName} Addendum"),
             Section("Addendum", ClinicalDocumentSourceKind.Note,
-                Field("Parent Note", noteData.ParentNoteId?.ToString("D")),
+                Paragraph("Parent Note", noteData.ParentNoteId?.ToString("D")),
                 Paragraph("Addendum Content", BuildAddendumContentSummary(noteData.ContentJson, context))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null);
     }
@@ -376,7 +376,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     {
         return Section("Header", ClinicalDocumentSourceKind.Static,
             Group("Clinic Branding", ClinicalDocumentSourceKind.Static,
-                Field("Clinic", Fallback(noteData.ClinicName, "PTDoc Clinic"))),
+                string.IsNullOrWhiteSpace(noteData.ClinicName)
+                    ? null
+                    : Field("Clinic", noteData.ClinicName)),
             Group("Patient Header", ClinicalDocumentSourceKind.Patient,
                 Field("Patient Name", BuildPatientName(noteData)),
                 Field("Date Of Birth", FormatDate(noteData.PatientDateOfBirth)),

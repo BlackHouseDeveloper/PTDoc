@@ -217,7 +217,7 @@ public static class PdfEndpoints
 
         using (var parsedDocument = document!)
         {
-            if (!ContainsClinicalContent(parsedDocument.RootElement))
+            if (!ContainsClinicalContent(parsedDocument.RootElement, noteData.NoteType))
             {
                 return ExportReadinessResult.NotReady(
                     "This note cannot be exported because it does not contain clinical documentation yet.");
@@ -246,20 +246,30 @@ public static class PdfEndpoints
         }
     }
 
-    private static bool ContainsClinicalContent(JsonElement element, string? propertyName = null)
+    private static bool ContainsClinicalContent(
+        JsonElement element,
+        NoteType noteType,
+        string? propertyName = null,
+        string? propertyPath = null,
+        JsonElement? parent = null)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 return element.EnumerateObject()
-                    .Any(property => ContainsClinicalContent(property.Value, property.Name));
+                    .Any(property => ContainsClinicalContent(
+                        property.Value,
+                        noteType,
+                        property.Name,
+                        BuildPropertyPath(propertyPath, property.Name),
+                        element));
             case JsonValueKind.Array:
                 return element.EnumerateArray()
-                    .Any(item => ContainsClinicalContent(item, propertyName));
+                    .Any(item => ContainsClinicalContent(item, noteType, propertyName, propertyPath, parent));
             case JsonValueKind.String:
                 return IsClinicalString(propertyName, element.GetString());
             case JsonValueKind.Number:
-                return IsClinicalNumber(propertyName, element);
+                return IsClinicalNumber(noteType, propertyName, propertyPath, element, parent);
             case JsonValueKind.True:
                 return IsClinicalBoolean(propertyName);
             case JsonValueKind.False:
@@ -279,12 +289,31 @@ public static class PdfEndpoints
         return true;
     }
 
-    private static bool IsClinicalNumber(string? propertyName, JsonElement element)
+    private static bool IsClinicalNumber(
+        NoteType noteType,
+        string? propertyName,
+        string? propertyPath,
+        JsonElement element,
+        JsonElement? parent)
     {
         if (propertyName is null
             || IsNonClinicalProperty(propertyName))
         {
             return false;
+        }
+
+        if (IsSubjectivePainScorePath(propertyPath))
+        {
+            return element.TryGetDouble(out _)
+                && parent.HasValue
+                && TryGetBooleanProperty(parent.Value, "IsPainScoreDocumented", out var isDocumented)
+                && isDocumented;
+        }
+
+        if (IsProgressQuestionnairePainLevelPath(propertyPath))
+        {
+            return noteType is NoteType.ProgressNote or NoteType.Discharge
+                && element.TryGetDouble(out _);
         }
 
         var isClinicalNumericField = propertyName.Contains("score", StringComparison.OrdinalIgnoreCase)
@@ -296,7 +325,46 @@ public static class PdfEndpoints
             return false;
         }
 
-        return element.TryGetDouble(out var value) && Math.Abs(value) > double.Epsilon;
+        return element.TryGetDouble(out _);
+    }
+
+    private static string BuildPropertyPath(string? parentPath, string propertyName)
+        => string.IsNullOrWhiteSpace(parentPath)
+            ? propertyName
+            : $"{parentPath}.{propertyName}";
+
+    private static bool IsSubjectivePainScorePath(string? propertyPath)
+        => propertyPath is not null
+            && (propertyPath.Equals("subjective.currentPainScore", StringComparison.OrdinalIgnoreCase)
+                || propertyPath.Equals("subjective.bestPainScore", StringComparison.OrdinalIgnoreCase)
+                || propertyPath.Equals("subjective.worstPainScore", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsProgressQuestionnairePainLevelPath(string? propertyPath)
+        => propertyPath is not null
+            && (propertyPath.Equals("progressQuestionnaire.currentPainLevel", StringComparison.OrdinalIgnoreCase)
+                || propertyPath.Equals("progressQuestionnaire.bestPainLevel", StringComparison.OrdinalIgnoreCase)
+                || propertyPath.Equals("progressQuestionnaire.worstPainLevel", StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryGetBooleanProperty(JsonElement element, string propertyName, out bool value)
+    {
+        value = false;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                value = property.Value.GetBoolean();
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     private static bool IsClinicalBoolean(string? propertyName)

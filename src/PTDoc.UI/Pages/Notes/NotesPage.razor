@@ -535,10 +535,7 @@
     {
         if (!note.CanDownloadPdf)
         {
-            var message = string.Equals(note.Status, "Submitted", StringComparison.OrdinalIgnoreCase)
-                ? "Your role does not have permission to export note PDFs."
-                : "This note is not ready for PDF export.";
-            ToastService.ShowWarning(message);
+            ToastService.ShowWarning("Your role does not have permission to export note PDFs.");
             return;
         }
 

@@ -1413,6 +1413,38 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task Billing_ExportPreviewTarget_Indicates_CannotDownloadPdf()
+    {
+        using var authoringClient = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(authoringClient);
+
+        using var createResponse = await authoringClient.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var billingClient = _factory.CreateClientWithRole(Roles.Billing);
+        using var previewResponse = await billingClient.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                PatientIds = [patientId]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = JsonSerializer.Deserialize<ExportPreviewTargetResponse>(
+            await previewResponse.Content.ReadAsStringAsync(),
+            JsonOpts);
+        Assert.NotNull(payload);
+        Assert.False(payload!.CanDownloadPdf);
+    }
+
+    [Fact]
     public async Task PT_Can_Export_Draft_Note_Returns_Pdf_File()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
@@ -1554,6 +1586,33 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
             ContentJson = "{\"currentPainLevel\":4}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Note_With_Zero_PainLevel_Numeric_Field()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"currentPainLevel\":0}",
             CptCodesJson = "[]"
         }));
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);

@@ -11,6 +11,7 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace PTDoc.Api.Notes;
@@ -383,6 +384,7 @@ public static class NoteEndpoints
     private static async Task<IResult> ResolveExportPreviewTarget(
         [FromBody] ExportPreviewTargetRequest request,
         [FromServices] ApplicationDbContext db,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var invalidFilter = (request.NoteTypeFilters ?? Array.Empty<string>())
@@ -461,9 +463,14 @@ public static class NoteEndpoints
             Subtitle = $"{previewNote.DateOfService:MMM d, yyyy} · {BuildPreviewStatusLabel(previewNote.NoteStatus)}",
             NoteStatus = previewNote.NoteStatus,
             SelectionNotice = BuildPreviewSelectionNotice(patientIds.Count, previewFilters.Count),
-            CanDownloadPdf = true
+            CanDownloadPdf = CanUserExportPdf(httpContext.User)
         });
     }
+
+    private static bool CanUserExportPdf(ClaimsPrincipal user)
+        => user.IsInRole(Roles.PT)
+            || user.IsInRole(Roles.PTA)
+            || user.IsInRole(Roles.Admin);
 
     // POST /api/v1/notes
     private static async Task<IResult> CreateNote(
