@@ -57,15 +57,8 @@
         else if (!_previewTarget.CanPreview)
         {
             <div class="record-count-disabled">
-                <p class="record-count-disabled__title">No preview target</p>
+                <p class="record-count-disabled__title">@CurrentUnavailableTitle</p>
                 <p id="@CurrentUnavailableReasonId" class="record-count-disabled__text">@CurrentUnavailableReason</p>
-            </div>
-        }
-        else if (!CanPreviewDocument)
-        {
-            <div class="record-count-disabled">
-                <p class="record-count-disabled__title">Finalization required</p>
-                <p id="@CurrentUnavailableReasonId" class="record-count-disabled__text">@FinalizedNoteRequiredMessage</p>
             </div>
         }
         else if (_isPreviewLoading)
@@ -87,7 +80,7 @@
             <div class="record-count-disabled">
                 <p class="record-count-disabled__title">Preview ready</p>
                 <p class="record-count-disabled__text">
-                    Generate a finalized-note hierarchy preview for @_previewTarget.Title.
+                    Generate a note hierarchy preview for @_previewTarget.Title.
                 </p>
             </div>
         }
@@ -112,7 +105,7 @@
 
     @if (_previewTarget.CanPreview && !_previewTarget.IsSigned)
     {
-        <div class="phi-warning-card" role="status">
+        <div class="phi-warning-card phi-warning-card--info" role="status">
             <span class="phi-warning-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M9 2.5 16 14.5H2L9 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
@@ -121,8 +114,8 @@
                 </svg>
             </span>
             <div class="phi-warning-content">
-                <div class="phi-warning-title">Finalization required</div>
-                <div class="phi-warning-text">@FinalizedNoteRequiredMessage</div>
+                <div class="phi-warning-title">Non-final note</div>
+                <div class="phi-warning-text">@NonFinalNoteExportMessage</div>
             </div>
         </div>
     }
@@ -203,7 +196,7 @@
                 <path d="M6.5 8V6.5a2.5 2.5 0 1 1 5 0V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
         </span>
-        <span class="footer-text">PDF exports remain backend-audited and finalized-note rules still apply.</span>
+        <span class="footer-text">PDF exports remain backend-audited and non-final notes are labeled with their current status.</span>
     </div>
 </div>
 
@@ -222,7 +215,7 @@
     private readonly string _unsupportedReasonId = $"export-preview-unavailable-{Guid.NewGuid():N}";
     private readonly string _targetUnavailableReasonId = $"export-preview-target-unavailable-{Guid.NewGuid():N}";
     private const string InvalidDateRangeMessage = "Start date must be before or equal to end date before export preview can be resolved.";
-    private const string FinalizedNoteRequiredMessage = "Only finalized signed notes can be previewed or downloaded from Export Center.";
+    private const string NonFinalNoteExportMessage = "This PDF will be labeled with the current note status.";
 
     [Parameter]
     [EditorRequired]
@@ -240,7 +233,7 @@
     private bool HasInvalidDateRange => State.DateRangeStart.HasValue
         && State.DateRangeEnd.HasValue
         && State.DateRangeStart.Value.Date > State.DateRangeEnd.Value.Date;
-    private bool CanPreviewDocument => _previewTarget.CanPreview && _previewTarget.IsSigned;
+    private bool CanPreviewDocument => _previewTarget.CanPreview && _previewTarget.CanDownloadPdf;
 
     private bool IsProgressSummaryExport => SelectedTab == ExportTab.Reports
         && State.SelectedReportTypes.Contains("progress-summary", StringComparer.OrdinalIgnoreCase);
@@ -255,6 +248,9 @@
 
     private string UnsupportedReasonId => _unsupportedReasonId;
     private string CurrentUnavailableReasonId => _targetUnavailableReasonId;
+    private string CurrentUnavailableTitle => _previewTarget.NoteId.HasValue
+        ? "Preview unavailable"
+        : "No preview target";
     private string CurrentUnavailableReason => string.IsNullOrWhiteSpace(_previewTarget.UnavailableReason)
         ? "No SOAP note matches the current export filters."
         : _previewTarget.UnavailableReason;
@@ -421,9 +417,7 @@
     {
         if (!CanPreviewDocument || !_previewTarget.NoteId.HasValue)
         {
-            _previewErrorMessage = _previewTarget.IsSigned
-                ? CurrentUnavailableReason
-                : FinalizedNoteRequiredMessage;
+            _previewErrorMessage = CurrentUnavailableReason;
             _statusMessage = null;
             return;
         }
@@ -493,9 +487,7 @@
     {
         if (!_previewTarget.CanDownloadPdf || !_previewTarget.NoteId.HasValue)
         {
-            _previewErrorMessage = _previewTarget.IsSigned
-                ? CurrentUnavailableReason
-                : "Only signed notes can be downloaded as PDF.";
+            _previewErrorMessage = CurrentUnavailableReason;
             _statusMessage = null;
             return;
         }
@@ -578,14 +570,16 @@
             return "Resolving…";
         }
 
-        if (!_previewTarget.CanPreview)
+        if (!_previewTarget.NoteId.HasValue)
         {
             return "No matching note";
         }
 
-        if (!_previewTarget.IsSigned)
+        if (!_previewTarget.CanPreview)
         {
-            return "Unsigned note";
+            return string.IsNullOrWhiteSpace(_previewTarget.Title)
+                ? "Preview unavailable"
+                : _previewTarget.Title;
         }
 
         return _previewTarget.Title;

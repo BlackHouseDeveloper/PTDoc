@@ -1413,7 +1413,40 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    public async Task PT_Cannot_Export_Unsigned_Note_Returns_422()
+    public async Task Billing_ExportPreviewTarget_Indicates_CannotDownloadPdf()
+    {
+        using var authoringClient = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(authoringClient);
+
+        using var createResponse = await authoringClient.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var billingClient = _factory.CreateClientWithRole(Roles.Billing);
+        using var previewResponse = await billingClient.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                PatientIds = [patientId]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = JsonSerializer.Deserialize<ExportPreviewTargetResponse>(
+            await previewResponse.Content.ReadAsStringAsync(),
+            JsonOpts);
+        Assert.NotNull(payload);
+        Assert.False(payload!.CanDownloadPdf);
+        Assert.Contains("does not have permission", payload.UnavailableReason ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Draft_Note_Returns_Pdf_File()
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
@@ -1423,7 +1456,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             PatientId = patientId,
             NoteType = NoteType.Daily,
             DateOfService = DateTime.UtcNow,
-            ContentJson = "{}",
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
             CptCodesJson = "[]"
         });
         using var createResponse = await client.PostAsync("/api/v1/notes", body);
@@ -1434,11 +1467,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(noteId, _factory.LastPdfExportNoteId);
+        var exportedNote = Assert.IsType<NoteExportDto>(_factory.LastPdfExportNote);
+        Assert.Equal(NoteStatus.Draft, exportedNote.NoteStatus);
+        Assert.Equal("Draft", exportedNote.ExportStatusLabel);
+        Assert.Equal("DRAFT", exportedNote.ExportStatusWatermark);
     }
 
     [Fact]
-    public async Task PTA_Cannot_Export_PendingCoSign_Note_EvenWhenSignatureExists_Returns_422()
+    public async Task PTA_Can_Export_PendingCoSign_Note_WithPendingStatus()
     {
         using var client = _factory.CreateClientWithRole(Roles.PTA);
         var patientId = await CreatePatientAsync(client);
@@ -1472,7 +1511,257 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
 
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(noteId, _factory.LastPdfExportNoteId);
+        var exportedNote = Assert.IsType<NoteExportDto>(_factory.LastPdfExportNote);
+        Assert.Equal(NoteStatus.PendingCoSign, exportedNote.NoteStatus);
+        Assert.Equal("Pending co-sign", exportedNote.ExportStatusLabel);
+        Assert.Equal("PENDING CO-SIGN", exportedNote.ExportStatusWatermark);
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Export_ClinicallyEmpty_Note_Returns_422()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
         Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+        var errorBody = await exportResponse.Content.ReadAsStringAsync();
+        Assert.Contains("does not contain clinical documentation", errorBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Note_With_ExplicitFalse_ClinicalBoolean()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"takingMedications\":false}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Note_With_PainLevel_Numeric_Field()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"currentPainLevel\":4}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Note_With_Zero_PainLevel_Numeric_Field()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"currentPainLevel\":0}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Export_Progress_Note_With_Default_Questionnaire_PainLevels()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"progressQuestionnaire\":{\"currentPainLevel\":0,\"bestPainLevel\":0,\"worstPainLevel\":0}}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+        var errorBody = await exportResponse.Content.ReadAsStringAsync();
+        Assert.Contains("does not contain clinical documentation", errorBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Progress_Note_With_Documented_Questionnaire_PainLevel()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{\"progressQuestionnaire\":{\"currentPainLevel\":4,\"bestPainLevel\":0,\"worstPainLevel\":0}}",
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createPayload = JsonSerializer.Deserialize<JsonDocument>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = createPayload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal("application/pdf", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Export_BrokenContent_Note_Returns_422()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var noteId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = noteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow,
+                ContentJson = "{broken-json",
+                NoteStatus = NoteStatus.Draft,
+                LastModifiedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, exportResponse.StatusCode);
+        var errorBody = await exportResponse.Content.ReadAsStringAsync();
+        Assert.Contains("not valid JSON", errorBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PT_Can_Export_Addendum_IncludesAddendumContext()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var parentNoteId = Guid.NewGuid();
+        var addendumId = Guid.NewGuid();
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = parentNoteId,
+                PatientId = patientId,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow.AddDays(-1),
+                ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+                NoteStatus = NoteStatus.Signed,
+                SignatureHash = "signed-parent",
+                SignedUtc = DateTime.UtcNow.AddDays(-1),
+                LastModifiedUtc = DateTime.UtcNow.AddDays(-1)
+            });
+            db.ClinicalNotes.Add(new ClinicalNote
+            {
+                Id = addendumId,
+                PatientId = patientId,
+                ParentNoteId = parentNoteId,
+                IsAddendum = true,
+                NoteType = NoteType.Daily,
+                DateOfService = DateTime.UtcNow,
+                ContentJson = """{"content":"Clarified signed-note treatment response."}""",
+                NoteStatus = NoteStatus.Signed,
+                SignatureHash = "signed-addendum",
+                SignedUtc = DateTime.UtcNow,
+                LastModifiedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var exportResponse = await client.PostAsync($"/api/v1/notes/{addendumId}/export/pdf", null);
+
+        Assert.Equal(HttpStatusCode.OK, exportResponse.StatusCode);
+        Assert.Equal(addendumId, _factory.LastPdfExportNoteId);
+        var exportedNote = Assert.IsType<NoteExportDto>(_factory.LastPdfExportNote);
+        Assert.True(exportedNote.IsAddendum);
+        Assert.Equal(parentNoteId, exportedNote.ParentNoteId);
+        Assert.Contains("Clarified signed-note treatment response", exportedNote.ContentJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1511,7 +1800,11 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "PdfExport");
+        var exportAudits = await db.AuditLogs
+            .Where(log => log.EventType == "PdfExport")
+            .ToListAsync();
+        var audit = Assert.Single(exportAudits.Where(log =>
+            log.MetadataJson.Contains(noteId.ToString(), StringComparison.OrdinalIgnoreCase)));
         Assert.Contains(noteId.ToString(), audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Test", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
@@ -1935,12 +2228,14 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     private SqliteConnection? _sharedConnection;
     public Guid? LastPdfExportNoteId { get; private set; }
     public string? LastPdfExportContentJson { get; private set; }
+    public NoteExportDto? LastPdfExportNote { get; private set; }
     public string? LastIntakeOtpCode { get; private set; }
 
     public void ResetPdfExportCapture()
     {
         LastPdfExportNoteId = null;
         LastPdfExportContentJson = null;
+        LastPdfExportNote = null;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -2080,6 +2375,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 {
                     LastPdfExportNoteId = note.NoteId;
                     LastPdfExportContentJson = note.ContentJson;
+                    LastPdfExportNote = note;
                     var content = Encoding.UTF8.GetBytes($"%PDF-1.4 test export {note.NoteId:D}");
                     return new PdfExportResult
                     {

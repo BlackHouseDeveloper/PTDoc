@@ -1394,6 +1394,31 @@ public sealed class NoteWorkspaceApiServiceTests
         Assert.Equal(expectedBytes, result.Content);
     }
 
+    [Fact]
+    public async Task ExportPdfAsync_WhenServerRejectsExport_ReturnsVisibleErrorMessage()
+    {
+        var noteId = Guid.NewGuid();
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/notes/{noteId}/export/pdf", request.RequestUri!.AbsolutePath);
+
+            return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
+            {
+                Content = new StringContent("""{"error":"This note cannot be exported because it does not contain clinical documentation yet."}""")
+            };
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ExportPdfAsync(noteId);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("does not contain clinical documentation", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static NoteWorkspaceApiService CreateService(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler)

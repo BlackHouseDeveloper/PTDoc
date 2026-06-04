@@ -31,13 +31,21 @@ public class PdfExportResult
 public class NoteExportDto
 {
     public Guid NoteId { get; set; }
+    public bool IsAddendum { get; set; }
+    public Guid? ParentNoteId { get; set; }
     public NoteType NoteType { get; set; }
+    public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public DateTime DateOfService { get; set; }
     public string NoteTypeDisplayName { get; set; } = string.Empty;
+    public string ExportStatusLabel { get; set; } = string.Empty;
+    public string ExportStatusWatermark { get; set; } = string.Empty;
     public string ContentJson { get; set; } = string.Empty;
     public string CptCodesJson { get; set; } = "[]";
     public int? TotalTreatmentMinutes { get; set; }
+
+    // Clinic branding (NO migration-backed branding profile in beta)
+    public string ClinicName { get; set; } = string.Empty;
 
     // Patient information (NO PHI in logs - only for PDF rendering)
     public string PatientFirstName { get; set; } = string.Empty;

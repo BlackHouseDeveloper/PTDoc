@@ -30,7 +30,7 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
                     page.PageColor(Colors.White);
                     page.DefaultTextStyle(x => x.FontSize(9).FontColor(Colors.Black));
 
-                    page.Content().Element(container => ComposeDocument(container, hierarchy));
+                    page.Content().Element(container => ComposeDocument(container, hierarchy, noteData));
                     page.Footer().Element(container => ComposeFooter(container, noteData));
                 });
             });
@@ -47,10 +47,19 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
         };
     }
 
-    private static void ComposeDocument(IContainer container, ClinicalDocumentHierarchy hierarchy)
+    private static void ComposeDocument(IContainer container, ClinicalDocumentHierarchy hierarchy, NoteExportDto noteData)
     {
         container.Column(column =>
         {
+            if (!string.IsNullOrWhiteSpace(noteData.ExportStatusWatermark))
+            {
+                column.Item().PaddingBottom(8).Border(1).BorderColor(Colors.Orange.Darken1).Padding(8)
+                    .Text(noteData.ExportStatusWatermark)
+                    .FontSize(14)
+                    .SemiBold()
+                    .FontColor(Colors.Orange.Darken2);
+            }
+
             foreach (var child in hierarchy.Root.Children)
             {
                 column.Item().PaddingBottom(10).Element(item => ComposeNode(item, child));
@@ -242,7 +251,11 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
                     text.TotalPages();
                 });
 
-                row.RelativeItem().AlignRight().Text(noteData.NoteTypeDisplayName)
+                var footerLabel = string.IsNullOrWhiteSpace(noteData.ExportStatusLabel)
+                    ? noteData.NoteTypeDisplayName
+                    : $"{noteData.NoteTypeDisplayName} - {noteData.ExportStatusLabel}";
+
+                row.RelativeItem().AlignRight().Text(footerLabel)
                     .FontSize(8)
                     .FontColor(Colors.Grey.Darken2);
             });

@@ -219,7 +219,7 @@ public sealed class ExportCenterComponentsTests : TestContext
     }
 
     [Fact]
-    public void ExportPreviewPanel_UnsignedTarget_DisablesPreviewAndDownload()
+    public void ExportPreviewPanel_UnsignedTarget_AllowsPreviewAndDownloadWithStatusWarning()
     {
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
@@ -235,6 +235,46 @@ public sealed class ExportCenterComponentsTests : TestContext
                 Title = "Draft Daily Note",
                 Subtitle = "Draft",
                 NoteStatus = NoteStatus.Draft,
+                CanDownloadPdf = true
+            });
+
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var cut = RenderComponent<ExportPreviewPanel>(parameters => parameters
+            .Add(component => component.SelectedTab, ExportTab.SoapNotes)
+            .Add(component => component.SelectedFormat, ExportFormat.PDF)
+            .Add(component => component.State, new ExportDraftState()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("This PDF will be labeled with the current note status.", cut.Markup, StringComparison.Ordinal);
+            Assert.All(cut.FindAll(".export-preview-panel__actions button"), button => Assert.False(button.HasAttribute("disabled")));
+        });
+
+        noteWorkspaceService.Verify(
+            service => service.GetDocumentHierarchyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void ExportPreviewPanel_TargetWithoutExportPermission_DisablesPreviewAndDownload()
+    {
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var noteId = Guid.NewGuid();
+
+        noteService
+            .Setup(service => service.ResolveExportPreviewTargetAsync(
+                It.IsAny<ExportPreviewTargetRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExportPreviewTargetResponse
+            {
+                NoteId = noteId,
+                Title = "Draft Daily Note",
+                Subtitle = "Draft",
+                NoteStatus = NoteStatus.Draft,
+                UnavailableReason = "Your role does not have permission to export note PDFs.",
                 CanDownloadPdf = false
             });
 
@@ -248,8 +288,16 @@ public sealed class ExportCenterComponentsTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Only finalized signed notes can be previewed or downloaded", cut.Markup, StringComparison.Ordinal);
-            Assert.All(cut.FindAll(".export-preview-panel__actions button"), button => Assert.True(button.HasAttribute("disabled")));
+            Assert.Contains("does not have permission to export note PDFs", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            var unavailableMessageId = cut.Find(".record-count-disabled__text").GetAttribute("id");
+            Assert.False(string.IsNullOrWhiteSpace(unavailableMessageId));
+
+            var actionButtons = cut.FindAll(".export-preview-panel__actions button");
+            Assert.All(actionButtons, button =>
+            {
+                Assert.True(button.HasAttribute("disabled"));
+                Assert.Equal(unavailableMessageId, button.GetAttribute("aria-describedby"));
+            });
         });
 
         noteWorkspaceService.Verify(

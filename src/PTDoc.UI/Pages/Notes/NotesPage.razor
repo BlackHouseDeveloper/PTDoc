@@ -184,7 +184,7 @@
             IsPendingCoSign = noteStatus == NoteStatus.PendingCoSign,
             CanEdit = CanEditNote(noteStatus, dto.NoteType),
             CanResolveAttention = CanResolveAttention(noteStatus, dto.NoteType),
-            CanDownloadPdf = CanDownloadPdf(noteStatus),
+            CanDownloadPdf = CanDownloadPdf(),
             ReadOnlyReason = GetReadOnlyReason(noteStatus, dto.NoteType)
         };
     }
@@ -215,12 +215,11 @@
         return CanEditNote(noteStatus, noteType);
     }
 
-    private bool CanDownloadPdf(NoteStatus noteStatus)
+    private bool CanDownloadPdf()
     {
-        return noteStatus == NoteStatus.Signed
-            && (_user.IsInRole(Roles.PT)
+        return _user.IsInRole(Roles.PT)
             || _user.IsInRole(Roles.PTA)
-            || _user.IsInRole(Roles.Admin));
+            || _user.IsInRole(Roles.Admin);
     }
 
     private string? GetReadOnlyReason(NoteStatus noteStatus, string noteType)
@@ -536,10 +535,7 @@
     {
         if (!note.CanDownloadPdf)
         {
-            var message = string.Equals(note.Status, "Submitted", StringComparison.OrdinalIgnoreCase)
-                ? "Your role does not have permission to export note PDFs."
-                : "Only submitted notes can be exported as PDFs.";
-            ToastService.ShowWarning(message);
+            ToastService.ShowWarning("Your role does not have permission to export note PDFs.");
             return;
         }
 
