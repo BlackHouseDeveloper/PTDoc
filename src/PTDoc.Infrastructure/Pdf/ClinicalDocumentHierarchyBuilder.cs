@@ -197,7 +197,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Field("Education", BuildEducationSummary(daily, workspace)),
                 Field("Response", daily?.TreatmentResponse.HasValue == true
                     ? ((TreatmentResponse)daily.TreatmentResponse.Value).ToString()
-                    : FirstNonEmpty(workspace?.DailyTreatment.ResponseToTreatment) ?? string.Empty),
+                    : FirstNonEmpty(workspace?.DailyTreatment.ResponseToTreatment)),
                 Paragraph("Clinical Assessment Narrative", FirstNonEmpty(
                     daily?.AssessmentNarrative,
                     daily?.ClinicalInterpretation,

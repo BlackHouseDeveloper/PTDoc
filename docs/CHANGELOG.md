@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 11 hierarchy builder cleanup
+
+- **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`** — Removed a redundant `?? string.Empty` after `FirstNonEmpty(...)` in the Daily note Assessment `Response` field expression. Reason: `FirstNonEmpty` already guarantees a non-null string, so the extra coalescing added noise without changing behavior.
+
 ### Fixed - PR 11 export preview target messaging
 
 - **`src/PTDoc.UI/Components/ExportCenter/ExportPreviewPanel.razor`** — Updated preview-disabled messaging so resolved notes that are unavailable (for example, permission-gated notes) show `Preview unavailable` instead of `No preview target`, and made Preview Target metadata return `No matching note` only when no note is resolved while preserving the resolved note title when actions are unavailable. Reason: address validated PR review findings where `CanPreview` can be false for permission reasons even when a concrete preview note exists.
