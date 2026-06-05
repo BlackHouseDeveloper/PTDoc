@@ -35,6 +35,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         var pendingNote = SeedAppointmentCase(db, clinician.Id, prefix, "PendingNote", date.AddHours(11), AppointmentStatus.CheckedIn, NoteStatus.PendingCoSign);
         var signedNote = SeedAppointmentCase(db, clinician.Id, prefix, "SignedNote", date.AddHours(12), AppointmentStatus.CheckedIn, NoteStatus.Signed);
         var completed = SeedAppointmentCase(db, clinician.Id, prefix, "Completed", date.AddHours(13), AppointmentStatus.Completed);
+        var cancelledWithDraft = SeedAppointmentCase(db, clinician.Id, prefix, "CancelledWithDraft", date.AddHours(14), AppointmentStatus.Cancelled, NoteStatus.Draft);
+        var noShowWithSigned = SeedAppointmentCase(db, clinician.Id, prefix, "NoShowWithSigned", date.AddHours(15), AppointmentStatus.NoShow, NoteStatus.Signed);
 
         await db.SaveChangesAsync();
 
@@ -48,14 +50,24 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
 
         var appointmentsByPatient = overview!.Appointments
             .Where(appointment => appointment.PatientName.StartsWith(prefix, StringComparison.Ordinal))
-            .ToDictionary(appointment => appointment.PatientName, appointment => appointment.VisitWorkflowStatus);
+            .ToDictionary(appointment => appointment.PatientName);
 
-        Assert.Equal("Scheduled", appointmentsByPatient[scheduled.PatientName]);
-        Assert.Equal("Checked In", appointmentsByPatient[checkedIn.PatientName]);
-        Assert.Equal("Note Started", appointmentsByPatient[draftNote.PatientName]);
-        Assert.Equal("Note Started", appointmentsByPatient[pendingNote.PatientName]);
-        Assert.Equal("Completed", appointmentsByPatient[signedNote.PatientName]);
-        Assert.Equal("Completed", appointmentsByPatient[completed.PatientName]);
+        Assert.Equal("Scheduled", appointmentsByPatient[scheduled.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[scheduled.PatientName].VisitNoteId);
+        Assert.Equal("Checked In", appointmentsByPatient[checkedIn.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[checkedIn.PatientName].VisitNoteId);
+        Assert.Equal("Note Started", appointmentsByPatient[draftNote.PatientName].VisitWorkflowStatus);
+        Assert.Equal(draftNote.NoteId, appointmentsByPatient[draftNote.PatientName].VisitNoteId);
+        Assert.Equal("Note Started", appointmentsByPatient[pendingNote.PatientName].VisitWorkflowStatus);
+        Assert.Equal(pendingNote.NoteId, appointmentsByPatient[pendingNote.PatientName].VisitNoteId);
+        Assert.Equal("Completed", appointmentsByPatient[signedNote.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[signedNote.PatientName].VisitNoteId);
+        Assert.Equal("Completed", appointmentsByPatient[completed.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[completed.PatientName].VisitNoteId);
+        Assert.Equal("Cancelled", appointmentsByPatient[cancelledWithDraft.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[cancelledWithDraft.PatientName].VisitNoteId);
+        Assert.Equal("No Show", appointmentsByPatient[noShowWithSigned.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[noShowWithSigned.PatientName].VisitNoteId);
     }
 
     private static SeededAppointmentCase SeedAppointmentCase(
@@ -96,11 +108,13 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         db.Patients.Add(patient);
         db.Appointments.Add(appointment);
 
+        Guid? noteId = null;
         if (noteStatus.HasValue)
         {
+            noteId = Guid.NewGuid();
             db.ClinicalNotes.Add(new ClinicalNote
             {
-                Id = Guid.NewGuid(),
+                Id = noteId.Value,
                 PatientId = patient.Id,
                 AppointmentId = appointment.Id,
                 NoteType = NoteType.Daily,
@@ -118,8 +132,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             });
         }
 
-        return new SeededAppointmentCase(appointment.Id, $"{patient.FirstName} {patient.LastName}");
+        return new SeededAppointmentCase(appointment.Id, noteId, $"{patient.FirstName} {patient.LastName}");
     }
 
-    private sealed record SeededAppointmentCase(Guid AppointmentId, string PatientName);
+    private sealed record SeededAppointmentCase(Guid AppointmentId, Guid? NoteId, string PatientName);
 }

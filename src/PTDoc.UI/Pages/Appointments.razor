@@ -473,6 +473,15 @@
         }
 
         var patientRecordId = selectedAppointmentDetail.PatientRecordId;
+        if (selectedAppointmentDetail.VisitNoteId.HasValue
+            && string.Equals(selectedAppointmentDetail.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase))
+        {
+            var visitNoteId = selectedAppointmentDetail.VisitNoteId.Value;
+            await HandleAppointmentDetailModalChanged(false);
+            NavigationManager.NavigateTo($"/patient/{patientRecordId}/note/{visitNoteId:D}");
+            return;
+        }
+
         var noteIntent = AppointmentVisitNoteTypeResolver.ResolveIntent(selectedAppointmentDetail.AppointmentType);
         var encodedNoteType = Uri.EscapeDataString(noteIntent.WorkspaceNoteType);
         var encodedAppointmentId = Uri.EscapeDataString(selectedAppointmentDetail.AppointmentId.ToString("D"));
@@ -627,6 +636,7 @@
         return new AppointmentDetailViewModel
         {
             AppointmentId = appointment.Id,
+            VisitNoteId = appointment.VisitNoteId,
             PatientRecordId = appointment.PatientRecordId,
             PatientName = appointment.PatientName,
             PatientId = GetDisplayPatientIdentifier(appointment),

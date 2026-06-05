@@ -3,6 +3,7 @@ namespace PTDoc.UI.Components.Appointments;
 public sealed class AppointmentDetailViewModel
 {
     public Guid AppointmentId { get; init; }
+    public Guid? VisitNoteId { get; init; }
     public Guid PatientRecordId { get; init; }
     public string PatientName { get; init; } = string.Empty;
     public string PatientId { get; init; } = string.Empty;

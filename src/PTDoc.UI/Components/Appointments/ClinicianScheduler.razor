@@ -313,6 +313,7 @@
         return new AppointmentDetailViewModel
         {
             AppointmentId = appointment.AppointmentId,
+            VisitNoteId = appointment.VisitNoteId,
             PatientRecordId = appointment.PatientRecordId,
             PatientName = appointment.PatientName,
             PatientId = GetDisplayPatientIdentifier(appointment),
@@ -449,6 +450,7 @@
             AppointmentType = appointment.AppointmentType,
             AppointmentStatus = appointment.AppointmentStatus,
             VisitWorkflowStatus = appointment.VisitWorkflowStatus,
+            VisitNoteId = appointment.VisitNoteId,
             IntakeStatus = appointment.IntakeStatus,
             StartMinute = (int)(localStartTime.TimeOfDay - new TimeSpan(localStartTime.Hour, localStartTime.Minute, 0)).TotalMinutes,
             DurationMinutes = durationMinutes,
@@ -459,6 +461,7 @@
     private sealed class SchedulerAppointmentItem
     {
         public Guid AppointmentId { get; init; }
+        public Guid? VisitNoteId { get; init; }
         public Guid PatientRecordId { get; init; }
         public string PatientName { get; init; } = string.Empty;
         public string? MedicalRecordNumber { get; init; }

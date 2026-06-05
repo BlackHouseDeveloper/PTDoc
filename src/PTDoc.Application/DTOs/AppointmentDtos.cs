@@ -47,6 +47,7 @@ public sealed class AppointmentListItemResponse
     public string AppointmentType { get; set; } = string.Empty;
     public string AppointmentStatus { get; set; } = string.Empty;
     public string VisitWorkflowStatus { get; set; } = string.Empty;
+    public Guid? VisitNoteId { get; set; }
     public string IntakeStatus { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }

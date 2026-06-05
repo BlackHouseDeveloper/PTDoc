@@ -122,6 +122,7 @@ public sealed class AppointmentsPageTests : TestContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         var patientId = Guid.NewGuid();
         var appointmentId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
         var clinicianId = Guid.NewGuid();
         var appointmentDate = DateTime.Today;
         var localStart = DateTime.SpecifyKind(appointmentDate.AddHours(11), DateTimeKind.Local);
@@ -142,6 +143,7 @@ public sealed class AppointmentsPageTests : TestContext
                     AppointmentType = "Follow Up",
                     AppointmentStatus = "Checked In",
                     VisitWorkflowStatus = "Note Started",
+                    VisitNoteId = noteId,
                     IntakeStatus = "Complete"
                 }
             ],
@@ -167,7 +169,7 @@ public sealed class AppointmentsPageTests : TestContext
 
         var navigation = Services.GetRequiredService<NavigationManager>();
         Assert.EndsWith(
-            $"/patient/{patientId:D}/new-note?noteType=Daily%20Treatment%20Note&appointmentId={appointmentId:D}&dateOfService={appointmentDate:yyyy-MM-dd}&allowEvaluationFallback=true",
+            $"/patient/{patientId:D}/note/{noteId:D}",
             navigation.Uri,
             StringComparison.Ordinal);
     }

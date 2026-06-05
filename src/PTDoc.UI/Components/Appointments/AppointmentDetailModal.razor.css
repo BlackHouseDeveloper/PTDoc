@@ -211,8 +211,8 @@
 }
 
 .appointment-detail-modal__status-badge--completed {
-    background: rgba(var(--primary-rgb), 0.16);
-    color: var(--primary);
+    background: rgba(var(--success-rgb), 0.16);
+    color: var(--success);
 }
 
 .appointment-detail-modal__status-badge--neutral {

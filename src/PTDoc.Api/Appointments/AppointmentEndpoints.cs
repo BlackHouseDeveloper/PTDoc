@@ -384,6 +384,18 @@ public static class AppointmentEndpoints
                         && (note.NoteStatus == NoteStatus.Signed
                             || note.SignatureHash != null
                             || note.SignedUtc != null)),
+                VisitNoteId = db.ClinicalNotes
+                    .AsNoTracking()
+                    .Where(note =>
+                        note.AppointmentId == appointment.Id
+                        && !note.IsAddendum
+                        && note.NoteStatus != NoteStatus.Signed
+                        && note.SignatureHash == null
+                        && note.SignedUtc == null)
+                    .OrderByDescending(note => note.LastModifiedUtc)
+                    .ThenByDescending(note => note.CreatedUtc)
+                    .Select(note => (Guid?)note.Id)
+                    .FirstOrDefault(),
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
@@ -592,6 +604,8 @@ public static class AppointmentEndpoints
 
     private static AppointmentListItemResponse ToResponse(AppointmentQueryRow row)
     {
+        var visitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote);
+
         return new AppointmentListItemResponse
         {
             Id = row.Id,
@@ -604,7 +618,10 @@ public static class AppointmentEndpoints
             EndTimeUtc = DateTime.SpecifyKind(row.EndTimeUtc, DateTimeKind.Utc),
             AppointmentType = MapAppointmentType(row.AppointmentType),
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
-            VisitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote),
+            VisitWorkflowStatus = visitWorkflowStatus,
+            VisitNoteId = string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+                ? row.VisitNoteId
+                : null,
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty
         };
@@ -641,6 +658,11 @@ public static class AppointmentEndpoints
         bool hasStartedNote,
         bool hasCompletedNote)
     {
+        if (appointmentStatus is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+        {
+            return MapAppointmentStatus(appointmentStatus);
+        }
+
         if (appointmentStatus == AppointmentStatus.Completed || hasCompletedNote)
         {
             return "Completed";
@@ -686,6 +708,7 @@ public static class AppointmentEndpoints
         public string? Notes { get; init; }
         public bool HasStartedNote { get; init; }
         public bool HasCompletedNote { get; init; }
+        public Guid? VisitNoteId { get; init; }
         public DateTime? IntakeSubmittedAt { get; init; }
         public bool HasIntake { get; init; }
     }
