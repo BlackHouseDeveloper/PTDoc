@@ -1,4 +1,5 @@
 using Bunit;
+using AngleSharp.Html.Dom;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -115,7 +116,127 @@ public sealed class AppointmentsPageTests : TestContext
             StringComparison.Ordinal);
     }
 
-    private void RegisterServices(AppointmentsOverviewResponse? overview = null)
+    [Fact]
+    public void AppointmentsPage_NoteStartedAppointment_EntersVisitFromDetails()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var appointmentId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var appointmentDate = DateTime.Today;
+        var localStart = DateTime.SpecifyKind(appointmentDate.AddHours(11), DateTimeKind.Local);
+
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = appointmentId,
+                    PatientRecordId = patientId,
+                    PatientName = "Jordan Patient",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = localStart.ToUniversalTime(),
+                    EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow Up",
+                    AppointmentStatus = "Checked In",
+                    VisitWorkflowStatus = "Note Started",
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+
+        cut.Find(".appointment-block").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Note Started", cut.Markup, StringComparison.Ordinal));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Enter Visit", StringComparison.Ordinal))
+            .Click();
+
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        Assert.EndsWith(
+            $"/patient/{patientId:D}/new-note?noteType=Daily%20Treatment%20Note&appointmentId={appointmentId:D}&dateOfService={appointmentDate:yyyy-MM-dd}&allowEvaluationFallback=true",
+            navigation.Uri,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentsPage_EditAppointment_OpensPrefilledTypeForm()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+
+        RegisterServices(
+            new AppointmentsOverviewResponse
+            {
+                Appointments =
+                [
+                    new AppointmentListItemResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientRecordId = patientId,
+                        PatientName = "Alex Patient",
+                        ClinicianId = clinicianId,
+                        ClinicianName = "Taylor PT",
+                        StartTimeUtc = localStart.ToUniversalTime(),
+                        EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                        AppointmentType = "Follow-up",
+                        AppointmentStatus = "Scheduled",
+                        VisitWorkflowStatus = "Scheduled",
+                        IntakeStatus = "Complete",
+                        Notes = "Change visit type if needed."
+                    }
+                ],
+                Clinicians =
+                [
+                    new AppointmentClinicianResponse
+                    {
+                        Id = clinicianId,
+                        DisplayName = "Taylor PT"
+                    }
+                ]
+            },
+            patients:
+            [
+                new PatientListItemResponse
+                {
+                    Id = patientId,
+                    DisplayName = "Alex Patient"
+                }
+            ]);
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+
+        cut.Find(".appointment-block").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Appointment Type", cut.Markup, StringComparison.Ordinal));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Edit Appointment", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Edit Appointment", cut.Markup, StringComparison.Ordinal));
+        var appointmentTypeSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(cut.Find("#appointmentType"));
+        Assert.Equal("Follow Up", appointmentTypeSelect.Value);
+    }
+
+    private void RegisterServices(
+        AppointmentsOverviewResponse? overview = null,
+        IReadOnlyList<PatientListItemResponse>? patients = null)
     {
         Services.AddLogging();
 
@@ -133,7 +254,7 @@ public sealed class AppointmentsPageTests : TestContext
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         patientService
             .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+            .ReturnsAsync(patients ?? Array.Empty<PatientListItemResponse>());
 
         var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
         appointmentService

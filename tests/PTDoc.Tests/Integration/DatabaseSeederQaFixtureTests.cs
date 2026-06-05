@@ -144,6 +144,49 @@ public sealed class DatabaseSeederQaFixtureTests : IDisposable
         Assert.Equal(1, await _context.IntakeForms.CountAsync(form => form.Id == SubmittedShoulderIntakeFormId));
     }
 
+    [Fact]
+    public async Task SeedTestDataAsync_CreatesTodayAppointmentWorkflowShowcase()
+    {
+        await DatabaseSeeder.SeedTestDataAsync(_context, NullLogger.Instance);
+        await DatabaseSeeder.SeedTestDataAsync(_context, NullLogger.Instance);
+
+        var localToday = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.Local).Date;
+        var markerPrefix = $"[dev-seed] workflow-showcase:{localToday:yyyy-MM-dd}:";
+        var appointments = await _context.Appointments
+            .Where(appointment => appointment.Notes != null && appointment.Notes.StartsWith(markerPrefix))
+            .OrderBy(appointment => appointment.Notes)
+            .ToListAsync();
+
+        Assert.Equal(4, appointments.Count);
+        Assert.Contains(appointments, appointment => appointment.Notes!.EndsWith(":Scheduled", StringComparison.Ordinal)
+            && appointment.Status == AppointmentStatus.Scheduled);
+        Assert.Contains(appointments, appointment => appointment.Notes!.EndsWith(":CheckedIn", StringComparison.Ordinal)
+            && appointment.Status == AppointmentStatus.CheckedIn);
+        Assert.Contains(appointments, appointment => appointment.Notes!.EndsWith(":NoteStarted", StringComparison.Ordinal)
+            && appointment.Status == AppointmentStatus.CheckedIn);
+        Assert.Contains(appointments, appointment => appointment.Notes!.EndsWith(":Completed", StringComparison.Ordinal)
+            && appointment.Status == AppointmentStatus.Completed);
+
+        var appointmentIds = appointments.Select(appointment => appointment.Id).ToArray();
+        var linkedNoteAppointmentIds = await _context.ClinicalNotes
+            .Where(note => note.AppointmentId != null && appointmentIds.Contains(note.AppointmentId.Value))
+            .Select(note => note.AppointmentId!.Value)
+            .ToListAsync();
+
+        Assert.DoesNotContain(
+            appointments.Single(appointment => appointment.Notes!.EndsWith(":Scheduled", StringComparison.Ordinal)).Id,
+            linkedNoteAppointmentIds);
+        Assert.DoesNotContain(
+            appointments.Single(appointment => appointment.Notes!.EndsWith(":CheckedIn", StringComparison.Ordinal)).Id,
+            linkedNoteAppointmentIds);
+        Assert.Contains(
+            appointments.Single(appointment => appointment.Notes!.EndsWith(":NoteStarted", StringComparison.Ordinal)).Id,
+            linkedNoteAppointmentIds);
+        Assert.Contains(
+            appointments.Single(appointment => appointment.Notes!.EndsWith(":Completed", StringComparison.Ordinal)).Id,
+            linkedNoteAppointmentIds);
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();

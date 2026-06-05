@@ -13,6 +13,7 @@ public sealed class AppointmentDetailViewModel
     public int DurationMinutes { get; init; } = 45;
     public string AppointmentType { get; init; } = string.Empty;
     public string AppointmentStatus { get; init; } = string.Empty;
+    public string VisitWorkflowStatus { get; init; } = string.Empty;
     public string IntakeStatus { get; init; } = string.Empty;
     public string Notes { get; init; } = string.Empty;
 

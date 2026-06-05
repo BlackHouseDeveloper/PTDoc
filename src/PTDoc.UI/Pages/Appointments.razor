@@ -67,9 +67,9 @@
 <!-- New Appointment Modal -->
 <NewAppointmentModal IsOpen="@isNewAppointmentModalOpen"
                     IsOpenChanged="@HandleNewAppointmentModalChanged"
-                    Title="@(isRescheduleMode ? "Reschedule Appointment" : "New Appointment")"
-                    Description="@(isRescheduleMode ? "Update the appointment schedule and details" : "Schedule a new appointment for a patient")"
-                    SubmitButtonText="@(isRescheduleMode ? "Save Changes" : "Schedule Appointment")"
+                    Title="@(isRescheduleMode ? "Edit Appointment" : "New Appointment")"
+                    Description="@(isRescheduleMode ? "Update appointment type, timing, clinician, and notes" : "Schedule a new appointment for a patient")"
+                    SubmitButtonText="@(isRescheduleMode ? "Save Appointment" : "Schedule Appointment")"
                     InitialValues="@appointmentFormInitialValues"
                     AvailablePatients="@availablePatients"
                     AvailableClinicians="@availableClinicians"
@@ -198,7 +198,7 @@
 
         var patientName = availablePatients.FirstOrDefault(patient => patient.Id == formData.PatientId)?.Name ?? "Patient";
         var appointmentTime = TimeOnly.FromTimeSpan(formData.AppointmentTime).ToString("h:mm tt");
-        var actionVerb = isRescheduleMode ? "rescheduled" : "scheduled";
+        var actionVerb = isRescheduleMode ? "updated" : "scheduled";
         var requestNotes = string.IsNullOrWhiteSpace(formData.Notes) ? null : formData.Notes.Trim();
 
         try
@@ -209,7 +209,7 @@
             {
                 if (!appointmentBeingEditedId.HasValue)
                 {
-                    ToastService.ShowError("The selected appointment could not be rescheduled.");
+                    ToastService.ShowError("The selected appointment could not be edited.");
                     return false;
                 }
 
@@ -227,7 +227,7 @@
                 var updatedAppointment = await AppointmentService.UpdateAsync(appointmentBeingEditedId.Value, updateRequest);
                 if (updatedAppointment is null)
                 {
-                    ToastService.ShowError("The appointment could not be found for rescheduling.");
+                    ToastService.ShowError("The appointment could not be found for editing.");
                     return false;
                 }
 
@@ -297,11 +297,8 @@
             case "start-visit":
                 await HandleStartVisitAsync();
                 break;
-            case "send-reminder":
-                await HandleSendReminderAsync();
-                break;
-            case "reschedule":
-                await HandleRescheduleAsync();
+            case "edit-appointment":
+                await HandleEditAppointmentAsync();
                 break;
         }
     }
@@ -461,7 +458,9 @@
             return;
         }
 
-        if (!string.Equals(selectedAppointmentDetail.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(selectedAppointmentDetail.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(selectedAppointmentDetail.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(selectedAppointmentDetail.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase))
         {
             ToastService.ShowWarning("Check in the patient before starting the visit.");
             return;
@@ -484,7 +483,7 @@
         NavigationManager.NavigateTo($"/patient/{patientRecordId}/new-note?noteType={encodedNoteType}&appointmentId={encodedAppointmentId}&dateOfService={encodedDateOfService}{fallbackQuery}");
     }
 
-    private async Task HandleSendReminderAsync()
+    private async Task HandleEditAppointmentAsync()
     {
         if (selectedAppointmentDetail is null)
         {
@@ -493,49 +492,7 @@
 
         if (selectedAppointmentDetail.PatientRecordId == Guid.Empty)
         {
-            ToastService.ShowWarning("Patient record not found. Unable to launch the reminder workflow.");
-            return;
-        }
-
-        var patientDetail = await PatientService.GetByIdAsync(selectedAppointmentDetail.PatientRecordId);
-        if (patientDetail is null)
-        {
-            ToastService.ShowWarning("Patient contact details are unavailable.");
-            return;
-        }
-
-        var message = $"Hello {selectedAppointmentDetail.PatientName}, this is a reminder for your PT appointment on {selectedAppointmentDetail.AppointmentDate:dddd, MMMM d, yyyy} at {selectedAppointmentDetail.StartTime:h:mm tt}.";
-
-        if (!string.IsNullOrWhiteSpace(patientDetail.Email))
-        {
-            var subject = Uri.EscapeDataString("Appointment Reminder");
-            var body = Uri.EscapeDataString(message);
-            await HandleAppointmentDetailModalChanged(false);
-            NavigationManager.NavigateTo($"mailto:{patientDetail.Email}?subject={subject}&body={body}", forceLoad: true);
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(patientDetail.Phone))
-        {
-            var body = Uri.EscapeDataString(message);
-            await HandleAppointmentDetailModalChanged(false);
-            NavigationManager.NavigateTo($"sms:{patientDetail.Phone}?body={body}", forceLoad: true);
-            return;
-        }
-
-        ToastService.ShowWarning("No email address or phone number is available for this patient.");
-    }
-
-    private async Task HandleRescheduleAsync()
-    {
-        if (selectedAppointmentDetail is null)
-        {
-            return;
-        }
-
-        if (selectedAppointmentDetail.PatientRecordId == Guid.Empty)
-        {
-            ToastService.ShowWarning("Patient record not found. Opening reschedule form without a patient selection.");
+            ToastService.ShowWarning("Patient record not found. Opening edit form without a patient selection.");
         }
 
         appointmentFormInitialValues = new NewAppointmentModal.AppointmentFormData
@@ -679,7 +636,8 @@
             StartTime = TimeOnly.FromDateTime(localStart),
             DurationMinutes = durationMinutes,
             AppointmentType = appointment.AppointmentType,
-            AppointmentStatus = appointment.AppointmentStatus,
+            AppointmentStatus = GetEffectiveAppointmentStatus(appointment),
+            VisitWorkflowStatus = GetEffectiveAppointmentStatus(appointment),
             IntakeStatus = appointment.IntakeStatus,
             Notes = appointment.Notes
         };
@@ -688,7 +646,8 @@
     private int TotalCount => visibleAppointments.Count;
 
     private int InProgressCount => visibleAppointments.Count(appointment =>
-        string.Equals(GetEffectiveAppointmentStatus(appointment), "In Progress", StringComparison.OrdinalIgnoreCase));
+        string.Equals(GetEffectiveAppointmentStatus(appointment), "Note Started", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(GetEffectiveAppointmentStatus(appointment), "In Progress", StringComparison.OrdinalIgnoreCase));
 
     private int CheckedInCount => visibleAppointments.Count(appointment =>
         string.Equals(GetEffectiveAppointmentStatus(appointment), "Checked In", StringComparison.OrdinalIgnoreCase));
@@ -808,7 +767,9 @@
             return overriddenStatus;
         }
 
-        return appointment.AppointmentStatus;
+        return string.IsNullOrWhiteSpace(appointment.VisitWorkflowStatus)
+            ? appointment.AppointmentStatus
+            : appointment.VisitWorkflowStatus;
     }
 
     private static string GetClinicianIdentityKey(AppointmentListItemResponse appointment) =>

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - PR 12 appointment flow beta cleanup
+
+- **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`**, **`src/PTDoc.Application/DTOs/AppointmentDtos.cs`**, **`src/PTDoc.UI/Pages/Appointments.razor`**, **`src/PTDoc.UI/Components/Appointments/*`** — Added an additive appointment visit-workflow status derived from linked notes, surfaced Scheduled/Checked In/Note Started/Completed status indicators in the calendar and details modal, renamed the beta edit path to `Edit Appointment`, hid the external reminder action, and tightened appointment-detail modal sizing so content and footer stay inside the viewport. Reason: PR 12 beta testers need to open appointments, view/change type, and start or enter visit notes without unstable actions or clipped Windows modal content.
+- **`tests/PTDoc.Tests/Integration/AppointmentApiIntegrationTests.cs`**, **`tests/PTDoc.Tests/UI/Appointments/*`** — Added focused coverage for API workflow-status projection from scheduled, checked-in, draft/pending-note, signed-note, and completed appointment data, plus UI regressions for note-started entry, prefilled edit type, hidden reminders, and terminal disabled states. Reason: protect the appointment beta workflow without adding a migration or widening the scheduling feature surface.
+- **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`**, **`tests/PTDoc.Tests/Integration/DatabaseSeederQaFixtureTests.cs`** — Added today's dev-data appointment workflow showcase fixtures for Scheduled, Checked In, Note Started, and Completed states, while skipping linked seeded notes for the Scheduled and Checked In showcase rows. Reason: live beta validation needs visible examples of each PR 12 status treatment instead of every seeded same-day appointment deriving `Note Started` from an auto-created draft note.
+
 ### Fixed - PR 123 progress questionnaire export-readiness guard
 
 - **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`** — Tightened Progress/Discharge export-readiness numeric detection for `progressQuestionnaire` pain-level fields so default `0` values no longer count as clinical content by themselves, and added regressions proving all-zero questionnaire pain payloads are blocked while documented non-zero questionnaire pain remains exportable. Reason: validated PR review finding that default non-nullable questionnaire pain values could allow clinically empty Progress/Discharge exports.

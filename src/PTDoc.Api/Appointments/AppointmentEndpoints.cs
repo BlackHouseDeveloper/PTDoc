@@ -373,6 +373,17 @@ public static class AppointmentEndpoints
                 AppointmentType = appointment.AppointmentType,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
+                HasStartedNote = db.ClinicalNotes
+                    .AsNoTracking()
+                    .Any(note => note.AppointmentId == appointment.Id && !note.IsAddendum),
+                HasCompletedNote = db.ClinicalNotes
+                    .AsNoTracking()
+                    .Any(note =>
+                        note.AppointmentId == appointment.Id
+                        && !note.IsAddendum
+                        && (note.NoteStatus == NoteStatus.Signed
+                            || note.SignatureHash != null
+                            || note.SignedUtc != null)),
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
@@ -593,6 +604,7 @@ public static class AppointmentEndpoints
             EndTimeUtc = DateTime.SpecifyKind(row.EndTimeUtc, DateTimeKind.Utc),
             AppointmentType = MapAppointmentType(row.AppointmentType),
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
+            VisitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote),
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty
         };
@@ -624,6 +636,30 @@ public static class AppointmentEndpoints
             _ => "Scheduled"
         };
 
+    private static string MapVisitWorkflowStatus(
+        AppointmentStatus appointmentStatus,
+        bool hasStartedNote,
+        bool hasCompletedNote)
+    {
+        if (appointmentStatus == AppointmentStatus.Completed || hasCompletedNote)
+        {
+            return "Completed";
+        }
+
+        if (hasStartedNote || appointmentStatus == AppointmentStatus.InProgress)
+        {
+            return "Note Started";
+        }
+
+        return appointmentStatus switch
+        {
+            AppointmentStatus.CheckedIn => "Checked In",
+            AppointmentStatus.Cancelled => "Cancelled",
+            AppointmentStatus.NoShow => "No Show",
+            _ => "Scheduled"
+        };
+    }
+
     private static string MapIntakeStatus(bool hasIntake, DateTime? intakeSubmittedAt)
     {
         if (!hasIntake)
@@ -648,6 +684,8 @@ public static class AppointmentEndpoints
         public AppointmentType AppointmentType { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
+        public bool HasStartedNote { get; init; }
+        public bool HasCompletedNote { get; init; }
         public DateTime? IntakeSubmittedAt { get; init; }
         public bool HasIntake { get; init; }
     }

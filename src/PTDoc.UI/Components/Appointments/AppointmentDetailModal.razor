@@ -119,27 +119,14 @@
 
                         <button type="button"
                                 class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
-                                @onclick="HandleSendReminderRequested"
-                                disabled="@IsTerminalStatus"
-                                aria-describedby="@GetTerminalActionDescriptionId()">
-                            <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M5 2.5H11L13 4.5V13C13 13.5523 12.5523 14 12 14H5C4.44772 14 4 13.5523 4 13V3.5C4 2.94772 4.44772 2.5 5 2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-                                <path d="M10.5 2.75V4.75H12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                                <path d="M6.5 7.25H10.5M6.5 10H10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                            </svg>
-                            <span>Send Reminder</span>
-                        </button>
-
-                        <button type="button"
-                                class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary"
-                                @onclick="HandleRescheduleRequested"
+                                @onclick="HandleEditAppointmentRequested"
                                 disabled="@IsTerminalStatus"
                                 aria-describedby="@GetTerminalActionDescriptionId()">
                             <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M4 2.75V4.25M12 2.75V4.25M3.25 6H12.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
                                 <rect x="3.25" y="3.5" width="9.5" height="9.25" rx="1.5" stroke="currentColor" stroke-width="1.5" />
                             </svg>
-                            <span>Reschedule</span>
+                            <span>Edit Appointment</span>
                         </button>
                     </div>
                 </section>
@@ -248,7 +235,8 @@
 
     private bool CanStartVisit =>
         string.Equals(Appointment?.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Appointment?.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase);
 
     private bool IsTerminalStatus =>
         string.Equals(Appointment?.AppointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
@@ -282,9 +270,7 @@
         return Task.CompletedTask;
     }
 
-    private Task HandleSendReminderRequested() => HandleActionRequested("send-reminder");
-
-    private Task HandleRescheduleRequested() => HandleActionRequested("reschedule");
+    private Task HandleEditAppointmentRequested() => HandleActionRequested("edit-appointment");
 
     private string GetContextualQuickActionClass()
     {
@@ -296,6 +282,12 @@
         if (CanCheckIn)
         {
             return "Check In";
+        }
+
+        if (string.Equals(Appointment?.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Enter Visit";
         }
 
         return "Start Visit";
@@ -348,6 +340,8 @@
         {
             "scheduled" => "appointment-detail-modal__status-badge--scheduled",
             "checked in" => "appointment-detail-modal__status-badge--checked-in",
+            "in progress" => "appointment-detail-modal__status-badge--note-started",
+            "note started" => "appointment-detail-modal__status-badge--note-started",
             "completed" => "appointment-detail-modal__status-badge--completed",
             _ => "appointment-detail-modal__status-badge--neutral"
         };

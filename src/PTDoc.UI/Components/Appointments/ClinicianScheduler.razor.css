@@ -172,8 +172,18 @@
     border-color: var(--primary);
 }
 
+.appointment-block.note-started {
+    background: color-mix(in srgb, var(--background) 88%, var(--primary) 12%);
+    border-color: var(--primary);
+}
+
 .appointment-block.checked-in {
     border-color: var(--info);
+}
+
+.appointment-block.completed {
+    background: color-mix(in srgb, var(--background) 88%, var(--success) 12%);
+    border-color: var(--success);
 }
 
 .appointment-block.missing-intake {
@@ -222,19 +232,52 @@
     min-width: 0;
 }
 
-.appointment-status {
-    display: flex;
+.appointment-workflow-status {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    max-width: 5.25rem;
+    min-height: 1.125rem;
     margin-left: auto;
+    padding: 0 var(--spacing-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: 0.625rem;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.checkmark {
-    font-family: var(--font-family-base);
-    font-size: 10px;
-    font-weight: var(--font-weight-normal);
-    line-height: 1.5;
+.appointment-workflow-status--scheduled {
+    color: var(--muted-foreground);
+    background: var(--background);
+}
+
+.appointment-workflow-status--checked-in {
+    color: var(--info);
+    background: rgba(var(--info-rgb), 0.12);
+    border-color: rgba(var(--info-rgb), 0.3);
+}
+
+.appointment-workflow-status--note-started {
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.12);
+    border-color: rgba(var(--primary-rgb), 0.3);
+}
+
+.appointment-workflow-status--completed {
     color: var(--success);
+    background: color-mix(in srgb, var(--background) 84%, var(--success) 16%);
+    border-color: color-mix(in srgb, var(--border) 60%, var(--success) 40%);
+}
+
+.appointment-workflow-status--closed {
+    color: var(--muted-foreground);
+    background: var(--muted);
 }
 
 /* Duration-density styles — compact blocks use slightly tighter padding
