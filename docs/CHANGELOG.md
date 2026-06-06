@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for showcase seeding
+
+- **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Narrowed the today-workflow showcase appointment lookup to clinic rows overlapping the current local-day window before collision checks. Reason: validated PR review feedback that loading every clinic appointment into memory was avoidable and made seeding heavier than necessary.
+
 ### Changed - PR 12 appointment flow beta cleanup
 
 - **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`**, **`src/PTDoc.Application/DTOs/AppointmentDtos.cs`**, **`src/PTDoc.UI/Pages/Appointments.razor`**, **`src/PTDoc.UI/Components/Appointments/*`** — Added an additive appointment visit-workflow status derived from linked notes, surfaced Scheduled/Checked In/Note Started/Completed status indicators in the calendar and details modal, renamed the beta edit path to `Edit Appointment`, hid the external reminder action, and tightened appointment-detail modal sizing so content and footer stay inside the viewport. Reason: PR 12 beta testers need to open appointments, view/change type, and start or enter visit notes without unstable actions or clipped Windows modal content.

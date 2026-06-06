@@ -1238,8 +1238,13 @@ public static class DatabaseSeeder
         }
 
         var localToday = TimeZoneInfo.ConvertTimeFromUtc(now, TimeZoneInfo.Local).Date;
+        var localTomorrow = localToday.AddDays(1);
+        var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(localToday, TimeZoneInfo.Local);
+        var dayEndExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(localTomorrow, TimeZoneInfo.Local);
         var existingAppointments = await context.Appointments
-            .Where(a => a.ClinicId == clinicId)
+            .Where(a => a.ClinicId == clinicId
+                && a.EndTimeUtc > dayStartUtc
+                && a.StartTimeUtc < dayEndExclusiveUtc)
             .ToListAsync();
 
         var showcaseCases = new[]
