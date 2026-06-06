@@ -353,11 +353,36 @@ public static class AppointmentEndpoints
         IQueryable<Appointment> appointmentQuery,
         ApplicationDbContext db)
     {
+        var appointmentNoteSummaries =
+            from note in db.ClinicalNotes.AsNoTracking()
+            where note.AppointmentId != null && !note.IsAddendum
+            group note by note.AppointmentId!.Value into noteGroup
+            select new
+            {
+                AppointmentId = noteGroup.Key,
+                HasStartedNote = true,
+                HasCompletedNote = noteGroup.Any(note =>
+                    note.NoteStatus == NoteStatus.Signed
+                    || note.SignatureHash != null
+                    || note.SignedUtc != null),
+                VisitNoteId = noteGroup
+                    .Where(note =>
+                        note.NoteStatus != NoteStatus.Signed
+                        && note.SignatureHash == null
+                        && note.SignedUtc == null)
+                    .OrderByDescending(note => note.LastModifiedUtc)
+                    .ThenByDescending(note => note.CreatedUtc)
+                    .Select(note => (Guid?)note.Id)
+                    .FirstOrDefault()
+            };
+
         return
             from appointment in appointmentQuery
             join patient in db.Patients.AsNoTracking() on appointment.PatientId equals patient.Id
             join clinician in db.Users.AsNoTracking() on appointment.ClinicalId equals clinician.Id into clinicianJoin
             from clinician in clinicianJoin.DefaultIfEmpty()
+            join noteSummary in appointmentNoteSummaries on appointment.Id equals noteSummary.AppointmentId into noteSummaryJoin
+            from noteSummary in noteSummaryJoin.DefaultIfEmpty()
             where !patient.IsArchived
             select new AppointmentQueryRow
             {
@@ -373,29 +398,9 @@ public static class AppointmentEndpoints
                 AppointmentType = appointment.AppointmentType,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
-                HasStartedNote = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Any(note => note.AppointmentId == appointment.Id && !note.IsAddendum),
-                HasCompletedNote = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Any(note =>
-                        note.AppointmentId == appointment.Id
-                        && !note.IsAddendum
-                        && (note.NoteStatus == NoteStatus.Signed
-                            || note.SignatureHash != null
-                            || note.SignedUtc != null)),
-                VisitNoteId = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Where(note =>
-                        note.AppointmentId == appointment.Id
-                        && !note.IsAddendum
-                        && note.NoteStatus != NoteStatus.Signed
-                        && note.SignatureHash == null
-                        && note.SignedUtc == null)
-                    .OrderByDescending(note => note.LastModifiedUtc)
-                    .ThenByDescending(note => note.CreatedUtc)
-                    .Select(note => (Guid?)note.Id)
-                    .FirstOrDefault(),
+                HasStartedNote = noteSummary != null && noteSummary.HasStartedNote,
+                HasCompletedNote = noteSummary != null && noteSummary.HasCompletedNote,
+                VisitNoteId = noteSummary != null ? noteSummary.VisitNoteId : null,
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
