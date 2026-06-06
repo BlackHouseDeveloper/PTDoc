@@ -84,6 +84,7 @@ public static class AppointmentEndpoints
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.PatientName)
             .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
 
         var clinicians = await BuildCliniciansQuery(db, currentClinicId).ToListAsync(cancellationToken);
 
@@ -127,6 +128,7 @@ public static class AppointmentEndpoints
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.AppointmentType)
             .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
 
         return Results.Ok(appointments.Select(ToResponse).ToList());
     }
@@ -388,12 +390,15 @@ public static class AppointmentEndpoints
         Guid appointmentId,
         CancellationToken cancellationToken)
     {
-        var row = await BuildAppointmentRowsQuery(
+        var rows = await BuildAppointmentRowsQuery(
                 db.Appointments
                     .AsNoTracking()
                     .Where(appointment => appointment.Id == appointmentId),
                 db)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, rows, cancellationToken);
+
+        var row = rows.FirstOrDefault();
 
         if (row is null)
         {
@@ -401,6 +406,77 @@ public static class AppointmentEndpoints
         }
 
         return ToResponse(row);
+    }
+
+    private static async Task HydrateAppointmentNoteWorkflowAsync(
+        ApplicationDbContext db,
+        IReadOnlyList<AppointmentQueryRow> appointments,
+        CancellationToken cancellationToken)
+    {
+        if (appointments.Count == 0)
+        {
+            return;
+        }
+
+        var appointmentIds = appointments
+            .Select(appointment => appointment.Id)
+            .ToArray();
+
+        const int appointmentIdBatchSize = 500;
+        var noteRows = new List<AppointmentNoteWorkflowRow>();
+        for (var offset = 0; offset < appointmentIds.Length; offset += appointmentIdBatchSize)
+        {
+            var batchIds = appointmentIds
+                .Skip(offset)
+                .Take(appointmentIdBatchSize)
+                .ToArray();
+
+            var batchRows = await db.ClinicalNotes
+                .AsNoTracking()
+                .Where(note => note.AppointmentId != null
+                    && batchIds.Contains(note.AppointmentId.Value)
+                    && !note.IsAddendum)
+                .Select(note => new AppointmentNoteWorkflowRow
+                {
+                    AppointmentId = note.AppointmentId!.Value,
+                    NoteId = note.Id,
+                    IsCompleted = note.NoteStatus == NoteStatus.Signed
+                        || note.SignatureHash != null
+                        || note.SignedUtc != null,
+                    LastModifiedUtc = note.LastModifiedUtc,
+                    CreatedUtc = note.CreatedUtc
+                })
+                .ToListAsync(cancellationToken);
+
+            noteRows.AddRange(batchRows);
+        }
+
+        var noteSummaries = noteRows
+            .GroupBy(note => note.AppointmentId)
+            .ToDictionary(
+                group => group.Key,
+                group => new
+                {
+                    HasCompletedNote = group.Any(note => note.IsCompleted),
+                    VisitNoteId = group
+                        .Where(note => !note.IsCompleted)
+                        .OrderByDescending(note => note.LastModifiedUtc)
+                        .ThenByDescending(note => note.CreatedUtc)
+                        .Select(note => (Guid?)note.NoteId)
+                        .FirstOrDefault()
+                });
+
+        foreach (var appointment in appointments)
+        {
+            if (!noteSummaries.TryGetValue(appointment.Id, out var noteSummary))
+            {
+                continue;
+            }
+
+            appointment.HasStartedNote = true;
+            appointment.HasCompletedNote = noteSummary.HasCompletedNote;
+            appointment.VisitNoteId = noteSummary.VisitNoteId;
+        }
     }
 
     private static Dictionary<string, string[]> ValidateWriteRequest(
@@ -581,6 +657,8 @@ public static class AppointmentEndpoints
 
     private static AppointmentListItemResponse ToResponse(AppointmentQueryRow row)
     {
+        var visitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote);
+
         return new AppointmentListItemResponse
         {
             Id = row.Id,
@@ -593,6 +671,10 @@ public static class AppointmentEndpoints
             EndTimeUtc = DateTime.SpecifyKind(row.EndTimeUtc, DateTimeKind.Utc),
             AppointmentType = MapAppointmentType(row.AppointmentType),
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
+            VisitWorkflowStatus = visitWorkflowStatus,
+            VisitNoteId = string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+                ? row.VisitNoteId
+                : null,
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty
         };
@@ -624,6 +706,33 @@ public static class AppointmentEndpoints
             _ => "Scheduled"
         };
 
+    private static string MapVisitWorkflowStatus(
+        AppointmentStatus appointmentStatus,
+        bool hasStartedNote,
+        bool hasCompletedNote)
+    {
+        if (appointmentStatus is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+        {
+            return MapAppointmentStatus(appointmentStatus);
+        }
+
+        if (appointmentStatus == AppointmentStatus.Completed || hasCompletedNote)
+        {
+            return "Completed";
+        }
+
+        if (hasStartedNote || appointmentStatus == AppointmentStatus.InProgress)
+        {
+            return "Note Started";
+        }
+
+        return appointmentStatus switch
+        {
+            AppointmentStatus.CheckedIn => "Checked In",
+            _ => "Scheduled"
+        };
+    }
+
     private static string MapIntakeStatus(bool hasIntake, DateTime? intakeSubmittedAt)
     {
         if (!hasIntake)
@@ -648,8 +757,20 @@ public static class AppointmentEndpoints
         public AppointmentType AppointmentType { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
+        public bool HasStartedNote { get; set; }
+        public bool HasCompletedNote { get; set; }
+        public Guid? VisitNoteId { get; set; }
         public DateTime? IntakeSubmittedAt { get; init; }
         public bool HasIntake { get; init; }
+    }
+
+    private sealed class AppointmentNoteWorkflowRow
+    {
+        public Guid AppointmentId { get; init; }
+        public Guid NoteId { get; init; }
+        public bool IsCompleted { get; init; }
+        public DateTime LastModifiedUtc { get; init; }
+        public DateTime CreatedUtc { get; init; }
     }
 
     private sealed class AppointmentConflictRow

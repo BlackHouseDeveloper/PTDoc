@@ -69,12 +69,9 @@
                                                 <span>@appt.Time</span>
                                             </div>
                                             <div class="appointment-patient">@appt.PatientName</div>
-                                            @if (string.Equals(GetEffectiveAppointmentStatusLabel(appt, SelectedDate), "Completed", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                <div class="appointment-status">
-                                                    <span class="checkmark">✓</span>
-                                                </div>
-                                            }
+                                            <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, SelectedDate))">
+                                                @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, SelectedDate))
+                                            </span>
                                         </div>
                                     </button>
                                 }
@@ -123,12 +120,9 @@
                                             <span>@appt.Time</span>
                                         </div>
                                         <div class="appointment-patient">@appt.PatientName</div>
-                                        @if (string.Equals(GetEffectiveAppointmentStatusLabel(appt, day.Date), "Completed", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            <div class="appointment-status">
-                                                <span class="checkmark">✓</span>
-                                            </div>
-                                        }
+                                        <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
+                                            @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
+                                        </span>
                                     </div>
                                 </button>
                             }
@@ -263,7 +257,7 @@
     {
         return status switch
         {
-            "in-progress" => "in-progress",
+            "note-started" => "note-started",
             "checked-in" => "checked-in",
             "missing-intake" => "missing-intake",
             "completed" => "completed",
@@ -318,6 +312,7 @@
         return new AppointmentDetailViewModel
         {
             AppointmentId = appointment.AppointmentId,
+            VisitNoteId = appointment.VisitNoteId,
             PatientRecordId = appointment.PatientRecordId,
             PatientName = appointment.PatientName,
             PatientId = GetDisplayPatientIdentifier(appointment),
@@ -328,6 +323,7 @@
             DurationMinutes = appointment.DurationMinutes,
             AppointmentType = appointment.AppointmentType,
             AppointmentStatus = GetEffectiveAppointmentStatusLabel(appointment, appointmentDate),
+            VisitWorkflowStatus = GetEffectiveAppointmentStatusLabel(appointment, appointmentDate),
             IntakeStatus = appointment.IntakeStatus,
             Notes = appointment.Notes
         };
@@ -340,7 +336,8 @@
         return appointmentStatus.ToLowerInvariant() switch
         {
             "checked in" => "checked-in",
-            "in progress" => "in-progress",
+            "in progress" => "note-started",
+            "note started" => "note-started",
             "completed" => "completed",
             _ when string.Equals(appointment.IntakeStatus, "Missing", StringComparison.OrdinalIgnoreCase) => "missing-intake",
             _ => "scheduled"
@@ -357,8 +354,34 @@
             return overriddenStatus;
         }
 
-        return appointment.AppointmentStatus;
+        return string.IsNullOrWhiteSpace(appointment.VisitWorkflowStatus)
+            ? appointment.AppointmentStatus
+            : appointment.VisitWorkflowStatus;
     }
+
+    private static string GetWorkflowStatusShortLabel(string status) =>
+        status switch
+        {
+            "Checked In" => "Checked In",
+            "Note Started" => "Started",
+            "In Progress" => "Started",
+            "Completed" => "Done",
+            "Cancelled" => "Cancelled",
+            "No Show" => "No Show",
+            _ => "Scheduled"
+        };
+
+    private static string GetWorkflowStatusClass(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "checked in" => "appointment-workflow-status--checked-in",
+            "in progress" => "appointment-workflow-status--note-started",
+            "note started" => "appointment-workflow-status--note-started",
+            "completed" => "appointment-workflow-status--completed",
+            "cancelled" => "appointment-workflow-status--closed",
+            "no show" => "appointment-workflow-status--closed",
+            _ => "appointment-workflow-status--scheduled"
+        };
 
     private string GetAppointmentAriaLabel(SchedulerAppointmentItem appointment, DateTime appointmentDate)
     {
@@ -425,6 +448,8 @@
             Status = appointment.AppointmentStatus,
             AppointmentType = appointment.AppointmentType,
             AppointmentStatus = appointment.AppointmentStatus,
+            VisitWorkflowStatus = appointment.VisitWorkflowStatus,
+            VisitNoteId = appointment.VisitNoteId,
             IntakeStatus = appointment.IntakeStatus,
             StartMinute = (int)(localStartTime.TimeOfDay - new TimeSpan(localStartTime.Hour, localStartTime.Minute, 0)).TotalMinutes,
             DurationMinutes = durationMinutes,
@@ -435,6 +460,7 @@
     private sealed class SchedulerAppointmentItem
     {
         public Guid AppointmentId { get; init; }
+        public Guid? VisitNoteId { get; init; }
         public Guid PatientRecordId { get; init; }
         public string PatientName { get; init; } = string.Empty;
         public string? MedicalRecordNumber { get; init; }
@@ -445,6 +471,7 @@
         public string Status { get; init; } = string.Empty;
         public string AppointmentType { get; init; } = string.Empty;
         public string AppointmentStatus { get; init; } = string.Empty;
+        public string VisitWorkflowStatus { get; init; } = string.Empty;
         public string IntakeStatus { get; init; } = string.Empty;
         public int StartMinute { get; init; }
         public int DurationMinutes { get; init; }

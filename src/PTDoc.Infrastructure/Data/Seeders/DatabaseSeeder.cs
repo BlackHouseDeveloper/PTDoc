@@ -142,6 +142,7 @@ public static class DatabaseSeeder
         await EnsurePatientsAsync(context, clinic.Id, seedActorId, logger, now);
         await EnsureAppointmentsAsync(context, clinic.Id, seedActorId, ptClinicians, ptaClinicians, logger, now);
         await EnsureTodayShowcaseAppointmentsAsync(context, clinic.Id, seedActorId, ptClinicians, ptaClinicians, logger, now);
+        await EnsureTodayWorkflowShowcaseAppointmentsAsync(context, clinic.Id, seedActorId, ptClinicians, ptaClinicians, logger, now);
         await NormalizeSeedAppointmentsAsync(context, clinic.Id, seedActorId, logger, now);
         await EnsureNotesAsync(context, clinic.Id, ptClinicians, ptaClinicians, logger, now);
         await EnsureOutcomeMeasureQaFixturesAsync(context, clinic.Id, seedActorId, ptClinicians, intakeReferenceData, logger, now);
@@ -1210,6 +1211,132 @@ public static class DatabaseSeeder
         logger.LogInformation("Seeded {Count} daytime showcase appointments for today's scheduler view.", created);
     }
 
+    private static async Task EnsureTodayWorkflowShowcaseAppointmentsAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid seedActorId,
+        IReadOnlyList<User> ptClinicians,
+        IReadOnlyList<User> ptaClinicians,
+        ILogger logger,
+        DateTime now)
+    {
+        var clinicians = ptClinicians.Concat(ptaClinicians).ToList();
+        if (clinicians.Count == 0)
+        {
+            return;
+        }
+
+        var patients = await context.Patients
+            .Where(p => p.ClinicId == clinicId && !p.IsArchived)
+            .OrderBy(p => p.LastName)
+            .ThenBy(p => p.FirstName)
+            .ToListAsync();
+
+        if (patients.Count == 0)
+        {
+            return;
+        }
+
+        var localToday = TimeZoneInfo.ConvertTimeFromUtc(now, TimeZoneInfo.Local).Date;
+        var localTomorrow = localToday.AddDays(1);
+        var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(localToday, TimeZoneInfo.Local);
+        var dayEndExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(localTomorrow, TimeZoneInfo.Local);
+        var markerPrefix = $"[dev-seed] workflow-showcase:{localToday:yyyy-MM-dd}:";
+        var existingAppointments = await context.Appointments
+            .Where(a => a.ClinicId == clinicId
+                && a.EndTimeUtc > dayStartUtc
+                && a.StartTimeUtc < dayEndExclusiveUtc)
+            .ToListAsync();
+        var existingShowcaseAppointments = await context.Appointments
+            .Where(a => a.ClinicId == clinicId
+                && a.Notes != null
+                && a.Notes.StartsWith(markerPrefix))
+            .ToListAsync();
+
+        var showcaseCases = new[]
+        {
+            new TodayWorkflowShowcaseCase(TodayWorkflowShowcaseStatus.Scheduled, AppointmentStatus.Scheduled, 7, 0),
+            new TodayWorkflowShowcaseCase(TodayWorkflowShowcaseStatus.CheckedIn, AppointmentStatus.CheckedIn, 7, 45),
+            new TodayWorkflowShowcaseCase(TodayWorkflowShowcaseStatus.NoteStarted, AppointmentStatus.CheckedIn, 8, 30),
+            new TodayWorkflowShowcaseCase(TodayWorkflowShowcaseStatus.Completed, AppointmentStatus.Completed, 16, 0)
+        };
+
+        var created = 0;
+        var updated = 0;
+
+        for (var index = 0; index < showcaseCases.Length; index++)
+        {
+            var showcaseCase = showcaseCases[index];
+            var marker = BuildTodayWorkflowShowcaseMarker(localToday, showcaseCase.Status);
+            var appointment = existingShowcaseAppointments.FirstOrDefault(a => string.Equals(a.Notes, marker, StringComparison.Ordinal));
+            var localStart = localToday.AddHours(showcaseCase.StartHour).AddMinutes(showcaseCase.StartMinute);
+            var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
+
+            if (appointment is null)
+            {
+                var patient = patients[index % patients.Count];
+                appointment = new Appointment
+                {
+                    Id = Guid.NewGuid(),
+                    PatientId = patient.Id,
+                    ClinicalId = clinicians[index % clinicians.Count].Id,
+                    StartTimeUtc = startUtc,
+                    EndTimeUtc = startUtc.AddMinutes(45),
+                    AppointmentType = AppointmentType.FollowUp,
+                    Status = showcaseCase.AppointmentStatus,
+                    Notes = marker,
+                    ClinicId = patient.ClinicId,
+                    LastModifiedUtc = now,
+                    ModifiedByUserId = seedActorId,
+                    SyncState = SyncState.Pending
+                };
+
+                context.Appointments.Add(appointment);
+                existingAppointments.Add(appointment);
+                existingShowcaseAppointments.Add(appointment);
+                created++;
+            }
+            else if (existingAppointments.All(existing => existing.Id != appointment.Id))
+            {
+                existingAppointments.Add(appointment);
+            }
+
+            var originalStart = appointment.StartTimeUtc;
+            var originalEnd = appointment.EndTimeUtc;
+            var originalStatus = appointment.Status;
+
+            appointment.StartTimeUtc = startUtc;
+            appointment.EndTimeUtc = startUtc.AddMinutes(45);
+
+            if (appointment.Status != showcaseCase.AppointmentStatus)
+            {
+                appointment.Status = showcaseCase.AppointmentStatus;
+            }
+
+            MoveAppointmentToNextAvailableSlot(appointment, existingAppointments);
+
+            if (appointment.Status != originalStatus
+                || appointment.StartTimeUtc != originalStart
+                || appointment.EndTimeUtc != originalEnd)
+            {
+                appointment.LastModifiedUtc = now;
+                appointment.ModifiedByUserId = seedActorId;
+                updated++;
+            }
+        }
+
+        if (created == 0 && updated == 0)
+        {
+            return;
+        }
+
+        await context.SaveChangesAsync();
+        logger.LogInformation(
+            "Ensured today's appointment workflow showcase fixtures. Created={CreatedCount}, Updated={UpdatedCount}.",
+            created,
+            updated);
+    }
+
     private static async Task NormalizeSeedAppointmentsAsync(
         ApplicationDbContext context,
         Guid clinicId,
@@ -1442,6 +1569,12 @@ public static class DatabaseSeeder
             }
 
             if (clinician.Role != Roles.PT && clinician.Role != Roles.PTA)
+            {
+                continue;
+            }
+
+            var showcaseStatus = TryGetTodayWorkflowShowcaseStatus(appointment.Notes);
+            if (showcaseStatus is TodayWorkflowShowcaseStatus.Scheduled or TodayWorkflowShowcaseStatus.CheckedIn)
             {
                 continue;
             }
@@ -1789,6 +1922,31 @@ public static class DatabaseSeeder
     private static string BuildTodayShowcaseMarker(DateTime localDate, Guid clinicianId) =>
         $"[dev-seed] showcase:{localDate:yyyy-MM-dd}:{clinicianId:D}";
 
+    private static string BuildTodayWorkflowShowcaseMarker(DateTime localDate, TodayWorkflowShowcaseStatus status) =>
+        $"[dev-seed] workflow-showcase:{localDate:yyyy-MM-dd}:{status}";
+
+    private static TodayWorkflowShowcaseStatus? TryGetTodayWorkflowShowcaseStatus(string? marker)
+    {
+        const string prefix = "[dev-seed] workflow-showcase:";
+        if (string.IsNullOrWhiteSpace(marker) || !marker.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var lastSeparatorIndex = marker.LastIndexOf(':');
+        if (lastSeparatorIndex < prefix.Length || lastSeparatorIndex == marker.Length - 1)
+        {
+            return null;
+        }
+
+        return Enum.TryParse<TodayWorkflowShowcaseStatus>(
+            marker[(lastSeparatorIndex + 1)..],
+            ignoreCase: false,
+            out var status)
+            ? status
+            : null;
+    }
+
     private static bool IsSeedAppointment(Appointment appointment) =>
         appointment.Notes?.StartsWith("[dev-seed]", StringComparison.Ordinal) == true;
 
@@ -1988,4 +2146,18 @@ public static class DatabaseSeeder
         ClinicalNote Note,
         ObjectiveMetric? ObjectiveMetric,
         OutcomeMeasureResult? OutcomeMeasure);
+
+    private sealed record TodayWorkflowShowcaseCase(
+        TodayWorkflowShowcaseStatus Status,
+        AppointmentStatus AppointmentStatus,
+        int StartHour,
+        int StartMinute);
+
+    private enum TodayWorkflowShowcaseStatus
+    {
+        Scheduled,
+        CheckedIn,
+        NoteStarted,
+        Completed
+    }
 }
