@@ -422,22 +422,34 @@ public static class AppointmentEndpoints
             .Select(appointment => appointment.Id)
             .ToArray();
 
-        var noteRows = await db.ClinicalNotes
-            .AsNoTracking()
-            .Where(note => note.AppointmentId != null
-                && appointmentIds.Contains(note.AppointmentId.Value)
-                && !note.IsAddendum)
-            .Select(note => new AppointmentNoteWorkflowRow
-            {
-                AppointmentId = note.AppointmentId!.Value,
-                NoteId = note.Id,
-                IsCompleted = note.NoteStatus == NoteStatus.Signed
-                    || note.SignatureHash != null
-                    || note.SignedUtc != null,
-                LastModifiedUtc = note.LastModifiedUtc,
-                CreatedUtc = note.CreatedUtc
-            })
-            .ToListAsync(cancellationToken);
+        const int appointmentIdBatchSize = 500;
+        var noteRows = new List<AppointmentNoteWorkflowRow>();
+        for (var offset = 0; offset < appointmentIds.Length; offset += appointmentIdBatchSize)
+        {
+            var batchIds = appointmentIds
+                .Skip(offset)
+                .Take(appointmentIdBatchSize)
+                .ToArray();
+
+            var batchRows = await db.ClinicalNotes
+                .AsNoTracking()
+                .Where(note => note.AppointmentId != null
+                    && batchIds.Contains(note.AppointmentId.Value)
+                    && !note.IsAddendum)
+                .Select(note => new AppointmentNoteWorkflowRow
+                {
+                    AppointmentId = note.AppointmentId!.Value,
+                    NoteId = note.Id,
+                    IsCompleted = note.NoteStatus == NoteStatus.Signed
+                        || note.SignatureHash != null
+                        || note.SignedUtc != null,
+                    LastModifiedUtc = note.LastModifiedUtc,
+                    CreatedUtc = note.CreatedUtc
+                })
+                .ToListAsync(cancellationToken);
+
+            noteRows.AddRange(batchRows);
+        }
 
         var noteSummaries = noteRows
             .GroupBy(note => note.AppointmentId)

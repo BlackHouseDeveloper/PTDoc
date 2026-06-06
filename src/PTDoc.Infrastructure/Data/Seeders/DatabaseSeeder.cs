@@ -1241,10 +1241,16 @@ public static class DatabaseSeeder
         var localTomorrow = localToday.AddDays(1);
         var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(localToday, TimeZoneInfo.Local);
         var dayEndExclusiveUtc = TimeZoneInfo.ConvertTimeToUtc(localTomorrow, TimeZoneInfo.Local);
+        var markerPrefix = $"[dev-seed] workflow-showcase:{localToday:yyyy-MM-dd}:";
         var existingAppointments = await context.Appointments
             .Where(a => a.ClinicId == clinicId
                 && a.EndTimeUtc > dayStartUtc
                 && a.StartTimeUtc < dayEndExclusiveUtc)
+            .ToListAsync();
+        var existingShowcaseAppointments = await context.Appointments
+            .Where(a => a.ClinicId == clinicId
+                && a.Notes != null
+                && a.Notes.StartsWith(markerPrefix))
             .ToListAsync();
 
         var showcaseCases = new[]
@@ -1262,12 +1268,12 @@ public static class DatabaseSeeder
         {
             var showcaseCase = showcaseCases[index];
             var marker = BuildTodayWorkflowShowcaseMarker(localToday, showcaseCase.Status);
-            var appointment = existingAppointments.FirstOrDefault(a => string.Equals(a.Notes, marker, StringComparison.Ordinal));
+            var appointment = existingShowcaseAppointments.FirstOrDefault(a => string.Equals(a.Notes, marker, StringComparison.Ordinal));
+            var localStart = localToday.AddHours(showcaseCase.StartHour).AddMinutes(showcaseCase.StartMinute);
+            var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
 
             if (appointment is null)
             {
-                var localStart = localToday.AddHours(showcaseCase.StartHour).AddMinutes(showcaseCase.StartMinute);
-                var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, TimeZoneInfo.Local);
                 var patient = patients[index % patients.Count];
                 appointment = new Appointment
                 {
@@ -1287,12 +1293,20 @@ public static class DatabaseSeeder
 
                 context.Appointments.Add(appointment);
                 existingAppointments.Add(appointment);
+                existingShowcaseAppointments.Add(appointment);
                 created++;
+            }
+            else if (existingAppointments.All(existing => existing.Id != appointment.Id))
+            {
+                existingAppointments.Add(appointment);
             }
 
             var originalStart = appointment.StartTimeUtc;
             var originalEnd = appointment.EndTimeUtc;
             var originalStatus = appointment.Status;
+
+            appointment.StartTimeUtc = startUtc;
+            appointment.EndTimeUtc = startUtc.AddMinutes(45);
 
             if (appointment.Status != showcaseCase.AppointmentStatus)
             {

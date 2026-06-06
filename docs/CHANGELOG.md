@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - PR review follow-up for showcase seeding
 
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Narrowed the today-workflow showcase appointment lookup to clinic rows overlapping the current local-day window before collision checks. Reason: validated PR review feedback that loading every clinic appointment into memory was avoidable and made seeding heavier than necessary.
+- **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Made today-workflow showcase marker lookup clinic-wide while keeping collision checks day-scoped, and re-anchors existing showcase rows to their intended local-day slots before collision adjustment. Reason: repeated dev seeding must not create duplicate workflow showcase appointments if an existing showcase row was previously moved outside the local-day window.
 - **`src/PTDoc.UI/Components/Appointments/ClinicianScheduler.razor`** — Removed the unreachable `"in-progress"` appointment block-class branch from `GetAppointmentClass(...)` because effective scheduler block statuses now normalize In Progress and Note Started into `"note-started"`. Reason: validated PR review cleanup to eliminate dead status mapping code.
 - **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`** — Removed unreachable Cancelled/No Show switch arms from visit-workflow status mapping after terminal statuses were moved to an early return. Reason: keep the PR 12 workflow-status mapper easier to reason about.
 - **`src/PTDoc.UI/Components/Appointments/AppointmentDetailModal.razor`**, **`tests/PTDoc.Tests/UI/Appointments/AppointmentComponentsTests.cs`** — Made the appointment detail modal derive its displayed status badge and primary action behavior from `VisitWorkflowStatus` when present, falling back to `AppointmentStatus`. Reason: the modal should remain correct if callers preserve scheduling status separately from visit workflow status.
+- **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`** — Batched appointment IDs when hydrating linked-note workflow metadata. Reason: keep appointment list hydration below common provider parameter limits for busy clinics or wider date ranges.
 
 ### Changed - PR 12 appointment flow beta cleanup
 
