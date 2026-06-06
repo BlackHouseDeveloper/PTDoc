@@ -78,8 +78,8 @@
                     <div class="appointment-detail-modal__status-grid">
                         <div class="appointment-detail-modal__info-item">
                             <p class="appointment-detail-modal__field-label">Appointment Status</p>
-                            <span class="@GetStatusBadgeClass(Appointment.AppointmentStatus)">
-                                @Appointment.AppointmentStatus
+                            <span class="@GetStatusBadgeClass(EffectiveAppointmentStatus)">
+                                @EffectiveAppointmentStatus
                             </span>
                         </div>
                         <div class="appointment-detail-modal__info-item">
@@ -230,18 +230,23 @@
             ? OnActionRequested.InvokeAsync(actionName)
             : Task.CompletedTask;
 
+    private string EffectiveAppointmentStatus =>
+        string.IsNullOrWhiteSpace(Appointment?.VisitWorkflowStatus)
+            ? Appointment?.AppointmentStatus ?? string.Empty
+            : Appointment.VisitWorkflowStatus;
+
     private bool CanCheckIn =>
-        string.Equals(Appointment?.AppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase);
+        string.Equals(EffectiveAppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase);
 
     private bool CanStartVisit =>
-        string.Equals(Appointment?.AppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Appointment?.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase);
+        string.Equals(EffectiveAppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveAppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveAppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase);
 
     private bool IsTerminalStatus =>
-        string.Equals(Appointment?.AppointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Appointment?.AppointmentStatus, "No Show", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Appointment?.AppointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(EffectiveAppointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveAppointmentStatus, "No Show", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveAppointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase);
 
     private bool CanUsePrimaryAction => CanCheckIn || CanStartVisit;
 
@@ -284,8 +289,8 @@
             return "Check In";
         }
 
-        if (string.Equals(Appointment?.AppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(Appointment?.AppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(EffectiveAppointmentStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(EffectiveAppointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase))
         {
             return "Enter Visit";
         }

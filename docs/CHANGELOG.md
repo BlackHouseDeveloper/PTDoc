@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Narrowed the today-workflow showcase appointment lookup to clinic rows overlapping the current local-day window before collision checks. Reason: validated PR review feedback that loading every clinic appointment into memory was avoidable and made seeding heavier than necessary.
 - **`src/PTDoc.UI/Components/Appointments/ClinicianScheduler.razor`** — Removed the unreachable `"in-progress"` appointment block-class branch from `GetAppointmentClass(...)` because effective scheduler block statuses now normalize In Progress and Note Started into `"note-started"`. Reason: validated PR review cleanup to eliminate dead status mapping code.
 - **`src/PTDoc.Api/Appointments/AppointmentEndpoints.cs`** — Removed unreachable Cancelled/No Show switch arms from visit-workflow status mapping after terminal statuses were moved to an early return. Reason: keep the PR 12 workflow-status mapper easier to reason about.
+- **`src/PTDoc.UI/Components/Appointments/AppointmentDetailModal.razor`**, **`tests/PTDoc.Tests/UI/Appointments/AppointmentComponentsTests.cs`** — Made the appointment detail modal derive its displayed status badge and primary action behavior from `VisitWorkflowStatus` when present, falling back to `AppointmentStatus`. Reason: the modal should remain correct if callers preserve scheduling status separately from visit workflow status.
 
 ### Changed - PR 12 appointment flow beta cleanup
 

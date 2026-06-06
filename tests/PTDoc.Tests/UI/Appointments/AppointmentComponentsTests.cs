@@ -54,6 +54,29 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void AppointmentDetailModal_UsesVisitWorkflowStatusForPrimaryAction()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var requestedAction = string.Empty;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Checked In", visitWorkflowStatus: "Note Started"))
+            .Add(component => component.OnActionRequested, action => requestedAction = action));
+
+        Assert.Contains("Note Started", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Start Visit", cut.Markup, StringComparison.Ordinal);
+
+        var enterVisitButtons = cut.FindAll("button").Where(button => button.TextContent.Contains("Enter Visit", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(enterVisitButtons);
+        Assert.All(enterVisitButtons, button => Assert.False(button.HasAttribute("disabled")));
+
+        enterVisitButtons[0].Click();
+
+        Assert.Equal("start-visit", requestedAction);
+    }
+
+    [Fact]
     public void AppointmentDetailModal_ScheduledAppointment_ShowsCheckInAction()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -256,7 +279,7 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
     }
 
-    private static AppointmentDetailViewModel CreateAppointment(string status)
+    private static AppointmentDetailViewModel CreateAppointment(string status, string? visitWorkflowStatus = null)
     {
         return new AppointmentDetailViewModel
         {
@@ -271,6 +294,7 @@ public sealed class AppointmentComponentsTests : TestContext
             DurationMinutes = 45,
             AppointmentType = "Follow Up",
             AppointmentStatus = status,
+            VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
             IntakeStatus = "Completed",
             Notes = "Shoulder mobility follow-up."
         };
