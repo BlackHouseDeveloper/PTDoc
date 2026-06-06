@@ -364,16 +364,7 @@ public static class AppointmentEndpoints
                 HasCompletedNote = noteGroup.Any(note =>
                     note.NoteStatus == NoteStatus.Signed
                     || note.SignatureHash != null
-                    || note.SignedUtc != null),
-                VisitNoteId = noteGroup
-                    .Where(note =>
-                        note.NoteStatus != NoteStatus.Signed
-                        && note.SignatureHash == null
-                        && note.SignedUtc == null)
-                    .OrderByDescending(note => note.LastModifiedUtc)
-                    .ThenByDescending(note => note.CreatedUtc)
-                    .Select(note => (Guid?)note.Id)
-                    .FirstOrDefault()
+                    || note.SignedUtc != null)
             };
 
         return
@@ -400,7 +391,18 @@ public static class AppointmentEndpoints
                 Notes = appointment.Notes,
                 HasStartedNote = noteSummary != null && noteSummary.HasStartedNote,
                 HasCompletedNote = noteSummary != null && noteSummary.HasCompletedNote,
-                VisitNoteId = noteSummary != null ? noteSummary.VisitNoteId : null,
+                VisitNoteId = db.ClinicalNotes
+                    .AsNoTracking()
+                    .Where(note =>
+                        note.AppointmentId == appointment.Id
+                        && !note.IsAddendum
+                        && note.NoteStatus != NoteStatus.Signed
+                        && note.SignatureHash == null
+                        && note.SignedUtc == null)
+                    .OrderByDescending(note => note.LastModifiedUtc)
+                    .ThenByDescending(note => note.CreatedUtc)
+                    .Select(note => (Guid?)note.Id)
+                    .FirstOrDefault(),
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
