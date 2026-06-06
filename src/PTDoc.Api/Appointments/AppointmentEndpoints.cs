@@ -84,6 +84,7 @@ public static class AppointmentEndpoints
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.PatientName)
             .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
 
         var clinicians = await BuildCliniciansQuery(db, currentClinicId).ToListAsync(cancellationToken);
 
@@ -127,6 +128,7 @@ public static class AppointmentEndpoints
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.AppointmentType)
             .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
 
         return Results.Ok(appointments.Select(ToResponse).ToList());
     }
@@ -373,29 +375,6 @@ public static class AppointmentEndpoints
                 AppointmentType = appointment.AppointmentType,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
-                HasStartedNote = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Any(note => note.AppointmentId == appointment.Id && !note.IsAddendum),
-                HasCompletedNote = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Any(note =>
-                        note.AppointmentId == appointment.Id
-                        && !note.IsAddendum
-                        && (note.NoteStatus == NoteStatus.Signed
-                            || note.SignatureHash != null
-                            || note.SignedUtc != null)),
-                VisitNoteId = db.ClinicalNotes
-                    .AsNoTracking()
-                    .Where(note =>
-                        note.AppointmentId == appointment.Id
-                        && !note.IsAddendum
-                        && note.NoteStatus != NoteStatus.Signed
-                        && note.SignatureHash == null
-                        && note.SignedUtc == null)
-                    .OrderByDescending(note => note.LastModifiedUtc)
-                    .ThenByDescending(note => note.CreatedUtc)
-                    .Select(note => (Guid?)note.Id)
-                    .FirstOrDefault(),
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
@@ -411,12 +390,15 @@ public static class AppointmentEndpoints
         Guid appointmentId,
         CancellationToken cancellationToken)
     {
-        var row = await BuildAppointmentRowsQuery(
+        var rows = await BuildAppointmentRowsQuery(
                 db.Appointments
                     .AsNoTracking()
                     .Where(appointment => appointment.Id == appointmentId),
                 db)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        await HydrateAppointmentNoteWorkflowAsync(db, rows, cancellationToken);
+
+        var row = rows.FirstOrDefault();
 
         if (row is null)
         {
@@ -424,6 +406,65 @@ public static class AppointmentEndpoints
         }
 
         return ToResponse(row);
+    }
+
+    private static async Task HydrateAppointmentNoteWorkflowAsync(
+        ApplicationDbContext db,
+        IReadOnlyList<AppointmentQueryRow> appointments,
+        CancellationToken cancellationToken)
+    {
+        if (appointments.Count == 0)
+        {
+            return;
+        }
+
+        var appointmentIds = appointments
+            .Select(appointment => appointment.Id)
+            .ToArray();
+
+        var noteRows = await db.ClinicalNotes
+            .AsNoTracking()
+            .Where(note => note.AppointmentId != null
+                && appointmentIds.Contains(note.AppointmentId.Value)
+                && !note.IsAddendum)
+            .Select(note => new AppointmentNoteWorkflowRow
+            {
+                AppointmentId = note.AppointmentId!.Value,
+                NoteId = note.Id,
+                IsCompleted = note.NoteStatus == NoteStatus.Signed
+                    || note.SignatureHash != null
+                    || note.SignedUtc != null,
+                LastModifiedUtc = note.LastModifiedUtc,
+                CreatedUtc = note.CreatedUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var noteSummaries = noteRows
+            .GroupBy(note => note.AppointmentId)
+            .ToDictionary(
+                group => group.Key,
+                group => new
+                {
+                    HasCompletedNote = group.Any(note => note.IsCompleted),
+                    VisitNoteId = group
+                        .Where(note => !note.IsCompleted)
+                        .OrderByDescending(note => note.LastModifiedUtc)
+                        .ThenByDescending(note => note.CreatedUtc)
+                        .Select(note => (Guid?)note.NoteId)
+                        .FirstOrDefault()
+                });
+
+        foreach (var appointment in appointments)
+        {
+            if (!noteSummaries.TryGetValue(appointment.Id, out var noteSummary))
+            {
+                continue;
+            }
+
+            appointment.HasStartedNote = true;
+            appointment.HasCompletedNote = noteSummary.HasCompletedNote;
+            appointment.VisitNoteId = noteSummary.VisitNoteId;
+        }
     }
 
     private static Dictionary<string, string[]> ValidateWriteRequest(
@@ -704,11 +745,20 @@ public static class AppointmentEndpoints
         public AppointmentType AppointmentType { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
-        public bool HasStartedNote { get; init; }
-        public bool HasCompletedNote { get; init; }
-        public Guid? VisitNoteId { get; init; }
+        public bool HasStartedNote { get; set; }
+        public bool HasCompletedNote { get; set; }
+        public Guid? VisitNoteId { get; set; }
         public DateTime? IntakeSubmittedAt { get; init; }
         public bool HasIntake { get; init; }
+    }
+
+    private sealed class AppointmentNoteWorkflowRow
+    {
+        public Guid AppointmentId { get; init; }
+        public Guid NoteId { get; init; }
+        public bool IsCompleted { get; init; }
+        public DateTime LastModifiedUtc { get; init; }
+        public DateTime CreatedUtc { get; init; }
     }
 
     private sealed class AppointmentConflictRow
