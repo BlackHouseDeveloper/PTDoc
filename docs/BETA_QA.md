@@ -1,6 +1,6 @@
 # PTDoc Beta QA
 
-This guide is the manual beta test matrix for January, Dani, and internal QA. Use it with the beta deployment runbook in [docs/deployment/BETA_DEPLOYMENT.md](deployment/BETA_DEPLOYMENT.md) and the responsive browser matrix in [docs/RESPONSIVE_QA.md](RESPONSIVE_QA.md).
+This guide is the manual beta test matrix for seeded Admin/PT/PTA/Patient accounts and internal QA. Use it with the beta deployment runbook in [docs/deployment/BETA_DEPLOYMENT.md](deployment/BETA_DEPLOYMENT.md) and the responsive browser matrix in [docs/RESPONSIVE_QA.md](RESPONSIVE_QA.md).
 
 Source context: [Prototype Beta Notes](https://docs.google.com/document/d/1zq2i-Nrlnq4C3yjJ_N-5q70VQhgcYYYU3G04hzz21gI/edit?usp=sharing).
 
@@ -17,10 +17,10 @@ Source context: [Prototype Beta Notes](https://docs.google.com/document/d/1zq2i-
 
 The shared beta PIN is managed outside the repository in Azure as `BetaAccess__SeedPin`. Get the current PIN from the beta environment owner. Do not commit the PIN to the repository, bug reports, screenshots, or chat logs.
 
-| Tester focus | Username | Email | Role | Primary coverage |
+| Account focus | Username | Email | Role | Primary coverage |
 | --- | --- | --- | --- | --- |
-| January | `january.beta` | `january.beta@physicallyfitpt.test` | Admin | Login, dashboard, settings/admin visibility, patient directory, intake send/review, non-clinical beta readiness |
-| Dani | `dani.beta` | `dani.beta@physicallyfitpt.test` | PT | Clinician workflow, notes, appointments, intake review, PDF export, AI when enabled |
+| Admin coverage | `january.beta` | `january.beta@physicallyfitpt.test` | Admin | Login, dashboard, settings/admin visibility, patient directory, intake send/review, non-clinical beta readiness |
+| PT coverage | `dani.beta` | `dani.beta@physicallyfitpt.test` | PT | Clinician workflow, notes, appointments, intake review, PDF export, AI when enabled |
 | PTA coverage | `pta.beta` | `pta.beta@physicallyfitpt.test` | PTA | PTA note creation/editing, co-sign limitations, appointment note entry |
 | Patient coverage | `patient.beta` | `patient.beta@physicallyfitpt.test` | Patient | Patient login boundaries and patient-only surfaces |
 
@@ -43,7 +43,7 @@ Seeded beta patient fixtures:
 - Confirm no beta browser network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor navigation remains connected after login, page changes, and refreshes.
 
-### January - Admin Readiness
+### Admin Readiness (`january.beta`)
 
 - Sign in as `january.beta`.
 - Review dashboard cards, recent activity, alerts, and navigation badges.
@@ -55,7 +55,7 @@ Seeded beta patient fixtures:
 - Open Settings/Admin areas and record any area that is unavailable, unclear, or prototype-critical.
 - Confirm Admin can view clinical data needed for oversight but cannot perform PT-only note-writing actions where the app enforces that boundary.
 
-### Dani - PT Clinical Workflow
+### PT Clinical Workflow (`dani.beta`)
 
 - Sign in as `dani.beta`.
 - Review dashboard workflow cards, notifications, and recently edited plan-of-care content.
@@ -114,7 +114,7 @@ Treat these as documented beta limitations unless they block a core workflow in 
 - Settings and Progress Tracking are exploratory for beta; record clarity issues and missing prototype-critical controls.
 - Some legal copy is placeholder beta content until final clinic-approved Terms of Service and Privacy Policy copy is supplied.
 - AI generation is config-gated. If it is disabled in beta, report that as environment state rather than an app bug.
-- Do not treat final product-design preferences from the Prototype Beta Notes as beta blockers unless they prevent January or Dani from completing the current manual test flow.
+- Do not treat final product-design preferences from the Prototype Beta Notes as beta blockers unless they prevent the seeded Admin/PT testers from completing the current manual test flow.
 
 ## Bug Report Format
 
@@ -141,8 +141,8 @@ Beta can start when all of these are true:
 
 - Hosted Web and API beta URLs are reachable and healthy.
 - Seeded Admin, PT, PTA, and Patient users can sign in with the configured beta PIN.
-- January can validate the dashboard, patient directory, seeded patients, and intake entry points without unclear setup instructions.
-- Dani can validate appointment entry, patient profile navigation, note draft save/reload, note review, and supported PDF export without losing draft work.
+- The Admin tester (`january.beta`) can validate the dashboard, patient directory, seeded patients, and intake entry points without unclear setup instructions.
+- The PT tester (`dani.beta`) can validate appointment entry, patient profile navigation, note draft save/reload, note review, and supported PDF export without losing draft work.
 - Patient users cannot access clinician-only workflows.
 - Known limitations are documented and not confused with unexpected regressions.
 - Bugs are reported with page, role, device/browser, steps, expected behavior, actual behavior, and screenshot when safe.
@@ -156,4 +156,4 @@ Beta should not start, or should pause, if any of these occur:
 - Core draft save/reload loses note or intake content.
 - Critical actions fail without visible feedback.
 - The UI is unusable at the documented `1280x720` beta floor.
-- January or Dani cannot tell what to test or how to report bugs.
+- The seeded Admin/PT testers cannot tell what to test or how to report bugs.

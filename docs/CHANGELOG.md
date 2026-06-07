@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - PR 14 beta QA readiness
 
-- **`docs/BETA_QA.md`**, **`.github/ISSUE_TEMPLATE/beta-bug-report.md`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added the beta tester checklist, seeded-account login notes, known limitations, bug reporting format, Prototype Beta Notes reference, and pass/fail gate for January/Dani beta validation. Reason: beta testing needs a repeatable handoff that makes the unfinished scope explicit and keeps bug reports consistent.
+- **`docs/BETA_QA.md`**, **`.github/ISSUE_TEMPLATE/beta-bug-report.md`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added the beta tester checklist, seeded-account login notes, known limitations, bug reporting format, Prototype Beta Notes reference, and pass/fail gate for Admin/PT beta validation. Reason: beta testing needs a repeatable handoff that makes the unfinished scope explicit and keeps bug reports consistent.
 
 ### Changed - PR 13 beta compliance minimums
 
