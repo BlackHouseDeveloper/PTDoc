@@ -2,7 +2,7 @@
 name: Beta bug report
 about: Report a beta QA issue with consistent reproduction details
 title: "[Beta Bug] "
-labels: [beta, bug]
+labels: [bug]
 assignees: []
 ---
 
