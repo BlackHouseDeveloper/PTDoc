@@ -37,6 +37,11 @@ public interface IAuditService
     Task LogAddendumCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Logs a note creation/save event.
+    /// </summary>
+    Task LogNoteCreatedAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Logs a note edit event (content or CPT codes changed on a draft note).
     /// </summary>
     Task LogNoteEditedAsync(AuditEvent auditEvent, CancellationToken ct = default);
@@ -237,6 +242,39 @@ public class AuditEvent
             Metadata = new Dictionary<string, object>
             {
                 ["NoteId"] = noteId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent NoteCreated(Guid noteId, Guid userId)
+    {
+        return new AuditEvent
+        {
+            EventType = "NoteCreated",
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["Timestamp"] = DateTime.UtcNow
+            }
+        };
+    }
+
+    public static AuditEvent PdfExported(Guid noteId, Guid userId, long fileSizeBytes)
+    {
+        return new AuditEvent
+        {
+            EventType = "PdfExport",
+            UserId = userId,
+            EntityType = "ClinicalNote",
+            EntityId = noteId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["NoteId"] = noteId,
+                ["FileSizeBytes"] = fileSizeBytes,
                 ["Timestamp"] = DateTime.UtcNow
             }
         };

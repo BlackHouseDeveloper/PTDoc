@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -94,21 +95,13 @@ public static class PdfEndpoints
             var result = await pdfRenderer.ExportNoteToPdfAsync(noteData);
 
             // Audit PDF export (NO PHI - only metadata)
-            var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
+            var userId = (httpContext.User.FindFirst(PTDocClaimTypes.InternalUserId)
+                ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier))?.Value;
             if (Guid.TryParse(userId, out var userGuid))
             {
                 await auditService.LogRuleEvaluationAsync(
-                    new AuditEvent
-                    {
-                        EventType = "PdfExport",
-                        UserId = userGuid,
-                        Metadata = new Dictionary<string, object>
-                        {
-                            ["NoteId"] = noteId,
-                            ["FileSizeBytes"] = result.FileSizeBytes,
-                            ["ExportedAt"] = DateTime.UtcNow
-                        }
-                    });
+                    AuditEvent.PdfExported(noteId, userGuid, result.FileSizeBytes),
+                    httpContext.RequestAborted);
             }
 
             return Results.File(

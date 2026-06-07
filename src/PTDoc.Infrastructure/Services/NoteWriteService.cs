@@ -111,6 +111,7 @@ public sealed class NoteWriteService(
         };
 
         db.ClinicalNotes.Add(note);
+        db.AuditLogs.Add(AuditService.CreateAuditLog(AuditEvent.NoteCreated(note.Id, userId)));
 
         if (request.NoteType == NoteType.Evaluation)
         {
