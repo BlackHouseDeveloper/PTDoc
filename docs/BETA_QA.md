@@ -2,7 +2,7 @@
 
 This guide is the manual beta test matrix for seeded Admin/PT/PTA/Patient accounts and internal QA. Use it with the beta deployment runbook in [docs/deployment/BETA_DEPLOYMENT.md](deployment/BETA_DEPLOYMENT.md) and the responsive browser matrix in [docs/RESPONSIVE_QA.md](RESPONSIVE_QA.md).
 
-Source context: [Prototype Beta Notes](https://docs.google.com/document/d/1zq2i-Nrlnq4C3yjJ_N-5q70VQhgcYYYU3G04hzz21gI/edit?usp=sharing).
+Source context (internal, may require access): [Prototype Beta Notes](https://docs.google.com/document/d/1zq2i-Nrlnq4C3yjJ_N-5q70VQhgcYYYU3G04hzz21gI/edit?usp=sharing).
 
 ## Beta Start Rules
 
