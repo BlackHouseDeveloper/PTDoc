@@ -69,6 +69,24 @@ public sealed class BetaDeploymentConfigurationTests : IClassFixture<PtDocApiFac
     }
 
     [Fact]
+    public void ApiBetaConfiguration_UsesConservativeCostDefaults()
+    {
+        var repoRoot = ConfigurationValidationTests.FindRepoRoot();
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.json"))
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.Beta.json"))
+            .Build();
+
+        Assert.False(configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration"));
+        Assert.Equal(400, configuration.GetValue<int>("Ai:MaxOutputTokens"));
+        Assert.Equal(10, configuration.GetValue<int>("Ai:RateLimits:RequestsPerHour"));
+        Assert.Equal(60, configuration.GetValue<int>("Ai:RateLimits:WindowMinutes"));
+        Assert.Equal(TimeSpan.FromMinutes(5), configuration.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:Interval"));
+        Assert.Equal(TimeSpan.FromMinutes(5), configuration.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:MinRetryDelay"));
+        Assert.Equal(TimeSpan.FromMinutes(30), configuration.GetValue<TimeSpan>("BackgroundJobs:SessionCleanup:Interval"));
+    }
+
+    [Fact]
     public void ApiProductionConfiguration_DoesNotEnableBetaStartupSeed()
     {
         var repoRoot = ConfigurationValidationTests.FindRepoRoot();

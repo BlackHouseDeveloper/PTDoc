@@ -244,12 +244,17 @@ public class SyncEngine : ISyncEngine
         };
     }
 
-    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetQueueItemsAsync(CancellationToken cancellationToken = default)
+    public async Task<SyncQueueItemPage> GetQueueItemsAsync(int skip, int take, CancellationToken cancellationToken = default)
     {
-        return await _context.SyncQueueItems
+        var query = _context.SyncQueueItems
             .AsNoTracking()
-            .Where(q => q.Status != SyncQueueStatus.Completed && q.Status != SyncQueueStatus.DeadLetter)
+            .Where(q => q.Status != SyncQueueStatus.Completed && q.Status != SyncQueueStatus.DeadLetter);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
             .OrderBy(q => q.EnqueuedAt)
+            .Skip(skip)
+            .Take(take)
             .Select(q => new SyncQueueItemStatus
             {
                 Id = q.Id,
@@ -263,14 +268,27 @@ public class SyncEngine : ISyncEngine
                 ErrorMessage = q.ErrorMessage
             })
             .ToListAsync(cancellationToken);
+
+        return new SyncQueueItemPage
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Skip = skip,
+            Take = take
+        };
     }
 
-    public async Task<IReadOnlyList<SyncQueueItemStatus>> GetDeadLetterItemsAsync(CancellationToken cancellationToken = default)
+    public async Task<SyncQueueItemPage> GetDeadLetterItemsAsync(int skip, int take, CancellationToken cancellationToken = default)
     {
-        return await _context.SyncQueueItems
+        var query = _context.SyncQueueItems
             .AsNoTracking()
-            .Where(q => q.Status == SyncQueueStatus.DeadLetter)
+            .Where(q => q.Status == SyncQueueStatus.DeadLetter);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
             .OrderBy(q => q.EnqueuedAt)
+            .Skip(skip)
+            .Take(take)
             .Select(q => new SyncQueueItemStatus
             {
                 Id = q.Id,
@@ -284,6 +302,14 @@ public class SyncEngine : ISyncEngine
                 ErrorMessage = q.ErrorMessage
             })
             .ToListAsync(cancellationToken);
+
+        return new SyncQueueItemPage
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Skip = skip,
+            Take = take
+        };
     }
 
     public async Task<SyncHealthStatus> GetHealthStatusAsync(CancellationToken cancellationToken = default)

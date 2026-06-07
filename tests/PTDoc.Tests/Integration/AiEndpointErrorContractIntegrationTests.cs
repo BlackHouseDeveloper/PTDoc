@@ -73,6 +73,62 @@ public sealed class AiEndpointErrorContractIntegrationTests
     }
 
     [Fact]
+    public async Task AiEndpoint_WhenRateLimitExceeded_ReturnsStructured429()
+    {
+        using var env = CreateAiRateLimitedEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var firstResponse = await client.PostAsync(
+                "/api/v1/ai/assessment",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
+            using var secondResponse = await client.PostAsync(
+                "/api/v1/ai/assessment",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}"""));
+
+            Assert.Equal(HttpStatusCode.Forbidden, firstResponse.StatusCode);
+            Assert.Equal((HttpStatusCode)429, secondResponse.StatusCode);
+            await AssertErrorResponseAsync(secondResponse, "Too many AI generation requests. Please try again later.", "ai_rate_limited");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task DailyNoteGenerateAssessment_WhenRateLimitExceeded_ReturnsStructured429()
+    {
+        using var env = CreateAiRateLimitedEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var firstResponse = await client.PostAsync(
+                "/api/v1/daily-notes/generate-assessment",
+                CreateJson("""{"subjective":"Shoulder pain"}"""));
+            using var secondResponse = await client.PostAsync(
+                "/api/v1/daily-notes/generate-assessment",
+                CreateJson("""{"subjective":"Shoulder pain"}"""));
+
+            Assert.Equal(HttpStatusCode.Forbidden, firstResponse.StatusCode);
+            Assert.Equal((HttpStatusCode)429, secondResponse.StatusCode);
+            await AssertErrorResponseAsync(secondResponse, "Too many AI generation requests. Please try again later.", "ai_rate_limited");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task AssessmentEndpoint_WhenChiefComplaintMissing_ReturnsStructured400()
     {
         using var env = CreateAiEnabledEnvironment();
@@ -273,6 +329,16 @@ public sealed class AiEndpointErrorContractIntegrationTests
             ["AzureOpenAIEndpoint"] = "https://example.openai.azure.com/",
             ["AzureOpenAIKey"] = "integration-test-azure-key",
             ["AzureOpenAIDeployment"] = "ptdoc-gpt4o-mini"
+        });
+    }
+
+    private static EnvironmentVariableScope CreateAiRateLimitedEnvironment()
+    {
+        return new EnvironmentVariableScope(new Dictionary<string, string?>
+        {
+            ["FeatureFlags__EnableAiGeneration"] = "false",
+            ["Ai__RateLimits__RequestsPerHour"] = "1",
+            ["Ai__RateLimits__WindowMinutes"] = "60"
         });
     }
 

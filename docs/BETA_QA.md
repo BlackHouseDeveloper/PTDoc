@@ -38,7 +38,8 @@ Seeded beta patient fixtures:
 ### Environment Gate
 
 - Open `https://ptdoc.bhdevsites.com` and confirm the login page loads without unstyled content.
-- Confirm `https://api-ptdoc.bhdevsites.com/health/ready` returns healthy before account validation.
+- Confirm `https://api-ptdoc.bhdevsites.com/health/live` returns healthy for basic availability.
+- Confirm `https://api-ptdoc.bhdevsites.com/health/ready` returns healthy once before account validation; do not use readiness as a frequent polling probe.
 - Sign in with `january.beta`, `dani.beta`, `pta.beta`, and `patient.beta`.
 - Confirm no beta browser network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor navigation remains connected after login, page changes, and refreshes.
@@ -114,6 +115,7 @@ Treat these as documented beta limitations unless they block a core workflow in 
 - Settings and Progress Tracking are exploratory for beta; record clarity issues and missing prototype-critical controls.
 - Some legal copy is placeholder beta content until final clinic-approved Terms of Service and Privacy Policy copy is supplied.
 - AI generation is config-gated. If it is disabled in beta, report that as environment state rather than an app bug.
+- AI generation is rate-limited when enabled. If repeated AI requests return `ai_rate_limited`, wait for the configured window instead of treating it as a beta blocker.
 - Do not treat final product-design preferences from the Prototype Beta Notes as beta blockers unless they prevent the seeded Admin/PT testers from completing the current manual test flow.
 
 ## Bug Report Format

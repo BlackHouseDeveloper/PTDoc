@@ -97,6 +97,7 @@ public static class DailyNoteEndpoints
             var narrative = await service.GenerateAssessmentNarrativeAsync(content, ct);
             return Results.Ok(new { narrative });
         }).RequireAuthorization(AuthorizationPolicies.NoteWrite)
+          .RequireRateLimiting("AiGeneration")
           .WithName("GenerateAssessmentNarrative");
 
         group.MapPost("/cpt-time", ([FromBody] CptTimeCalculationRequest request, IDailyNoteService service) =>
