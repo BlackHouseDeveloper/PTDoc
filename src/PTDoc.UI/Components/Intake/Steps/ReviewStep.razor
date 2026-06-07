@@ -432,6 +432,7 @@
                 <input id="terms-privacy-ack"
                        type="checkbox"
                        class="form-check-input"
+                       aria-label="I agree to the Terms of Service and Privacy Policy."
                        checked="@State.TermsOfServiceAccepted"
                        @onchange="OnTermsChanged"
                        disabled="@IsReadOnlyReview" />
@@ -1113,6 +1114,8 @@
     private void OpenPhiDetails()
     {
         _isPhiDetailsOpen = true;
+        _isTermsDetailsOpen = false;
+        _isPrivacyDetailsOpen = false;
     }
 
     private void ClosePhiDetails()

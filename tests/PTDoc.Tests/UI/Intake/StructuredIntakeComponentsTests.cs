@@ -623,6 +623,9 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         var cut = RenderComponent<ReviewStep>(parameters => parameters
             .Add(component => component.State, state));
 
+        var checkbox = cut.Find("#terms-privacy-ack");
+        Assert.Equal("I agree to the Terms of Service and Privacy Policy.", checkbox.GetAttribute("aria-label"));
+
         var trigger = cut.Find("[data-testid='terms-modal-trigger']");
         Assert.Equal("Terms of Service", trigger.TextContent.Trim());
 
@@ -689,6 +692,38 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         cut.Find("[data-testid='privacy-modal-trigger']").Click();
         Assert.DoesNotContain("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Privacy Policy", cut.Find("[data-testid='privacy-modal']").TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReviewStep_PhiDetailsTrigger_ClosesLegalModals()
+    {
+        var state = new IntakeWizardState
+        {
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        cut.Find("[data-testid='terms-modal-trigger']").Click();
+        Assert.Contains("Terms of Service", cut.Find("[data-testid='terms-modal']").TextContent, StringComparison.OrdinalIgnoreCase);
+
+        cut.Find(".review-step__text-button").Click();
+        Assert.DoesNotContain("data-testid=\"terms-modal\"", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        cut.Find("button[aria-label='Close PHI release details']").Click();
+
+        cut.Find("[data-testid='privacy-modal-trigger']").Click();
+        Assert.Contains("Privacy Policy", cut.Find("[data-testid='privacy-modal']").TextContent, StringComparison.OrdinalIgnoreCase);
+
+        cut.Find(".review-step__text-button").Click();
+        Assert.DoesNotContain("data-testid=\"privacy-modal\"", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

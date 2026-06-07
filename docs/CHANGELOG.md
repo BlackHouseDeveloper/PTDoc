@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`src/PTDoc.Infrastructure/Services/NoteWriteService.cs`** — Queued the `NoteCreated` audit row in the current note-create unit of work instead of calling the audit service after the note save. Reason: validated review feedback that a separate audit save could make note creation appear to fail after the note was already persisted.
 - **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor.css`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Made intake legal detail modals close the PHI details modal before opening and removed the pointer cursor from the non-label legal agreement row. Reason: validated review feedback that modal state should stay mutually exclusive and cursor affordances should match actual click targets.
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Added a complete accessible name for the Terms/Privacy acknowledgement checkbox and made opening PHI details close legal modals. Reason: validated review feedback that screen readers need the full legal-agreement target and all review-step modals should stay mutually exclusive.
 
 ### Fixed - PR review follow-up for showcase seeding
 
