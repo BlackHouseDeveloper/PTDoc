@@ -608,6 +608,58 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void ReviewStep_TermsTrigger_OpensBetaStubModal()
+    {
+        var state = new IntakeWizardState
+        {
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        var trigger = cut.Find("[data-testid='terms-modal-trigger']");
+        Assert.Equal("Terms of Service", trigger.TextContent.Trim());
+
+        trigger.Click();
+
+        var modal = cut.Find("[data-testid='terms-modal']");
+        Assert.Contains("Beta placeholder", modal.TextContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Final legal language", modal.TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReviewStep_PrivacyTrigger_OpensBetaStubModal()
+    {
+        var state = new IntakeWizardState
+        {
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        var trigger = cut.Find("[data-testid='privacy-modal-trigger']");
+        Assert.Equal("Privacy Policy", trigger.TextContent.Trim());
+
+        trigger.Click();
+
+        var modal = cut.Find("[data-testid='privacy-modal']");
+        Assert.Contains("Beta placeholder", modal.TextContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Final clinic-approved privacy language", modal.TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ReviewStep_ReadOnlyReview_HidesMutationControlsAndCopy()
     {
         var state = new IntakeWizardState

@@ -126,6 +126,7 @@
 
 .review-step__edit-button,
 .review-step__text-button,
+.review-step__inline-link,
 .review-step__modal-close {
     background: none;
     border: 0;
@@ -320,6 +321,22 @@
 
 .review-step__check-row span {
     margin-top: 2px;
+}
+
+.review-step__legal-copy {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-1);
+}
+
+.review-step__legal-copy label {
+    margin: 0;
+}
+
+.review-step__inline-link {
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 .review-step__check-row--disabled {

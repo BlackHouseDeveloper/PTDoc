@@ -428,10 +428,21 @@
         </div>
 
         <div class="review-step__check-grid">
-            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@State.TermsOfServiceAccepted" @onchange="OnTermsChanged" disabled="@IsReadOnlyReview" />
-                <span>I agree to the Terms of Service and Privacy Policy.</span>
-            </label>
+            <div class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input id="terms-privacy-ack"
+                       type="checkbox"
+                       class="form-check-input"
+                       checked="@State.TermsOfServiceAccepted"
+                       @onchange="OnTermsChanged"
+                       disabled="@IsReadOnlyReview" />
+                <span class="review-step__legal-copy">
+                    <label for="terms-privacy-ack">I agree to the</label>
+                    <button type="button" class="review-step__inline-link" @onclick="OpenTermsDetails" data-testid="terms-modal-trigger">Terms of Service</button>
+                    <span>and</span>
+                    <button type="button" class="review-step__inline-link" @onclick="OpenPrivacyDetails" data-testid="privacy-modal-trigger">Privacy Policy</button>
+                    <span>.</span>
+                </span>
+            </div>
 
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
                 <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@IsReadOnlyReview" />
@@ -748,8 +759,48 @@
     </div>
 }
 
+@if (_isTermsDetailsOpen)
+{
+    <div class="review-step__modal-backdrop" @onclick="CloseTermsDetails"></div>
+    <div class="review-step__modal" role="dialog" aria-modal="true" aria-labelledby="terms-details-title" data-testid="terms-modal">
+        <div class="review-step__modal-header">
+            <div>
+                <h2 id="terms-details-title">Terms of Service</h2>
+                <p>Beta placeholder for patient intake testing.</p>
+            </div>
+            <button type="button" class="review-step__modal-close" @onclick="CloseTermsDetails" aria-label="Close Terms of Service">Close</button>
+        </div>
+
+        <div class="review-step__modal-body">
+            <p>This beta Terms of Service stub confirms that the intake workflow can present required legal terms before submission.</p>
+            <p>Final legal language will be provided before production use. This placeholder does not replace clinic-approved terms.</p>
+        </div>
+    </div>
+}
+
+@if (_isPrivacyDetailsOpen)
+{
+    <div class="review-step__modal-backdrop" @onclick="ClosePrivacyDetails"></div>
+    <div class="review-step__modal" role="dialog" aria-modal="true" aria-labelledby="privacy-details-title" data-testid="privacy-modal">
+        <div class="review-step__modal-header">
+            <div>
+                <h2 id="privacy-details-title">Privacy Policy</h2>
+                <p>Beta placeholder for patient intake testing.</p>
+            </div>
+            <button type="button" class="review-step__modal-close" @onclick="ClosePrivacyDetails" aria-label="Close Privacy Policy">Close</button>
+        </div>
+
+        <div class="review-step__modal-body">
+            <p>This beta Privacy Policy stub confirms that patients can review privacy information before submitting intake responses.</p>
+            <p>Final clinic-approved privacy language will be provided before production use and must remain separate from audit metadata.</p>
+        </div>
+    </div>
+}
+
 @code {
     private bool _isPhiDetailsOpen;
+    private bool _isTermsDetailsOpen;
+    private bool _isPrivacyDetailsOpen;
     private ElementReference _submitStatusElement;
     private string? _focusedSubmitStatusMessage;
 
@@ -1067,6 +1118,28 @@
     private void ClosePhiDetails()
     {
         _isPhiDetailsOpen = false;
+    }
+
+    private void OpenTermsDetails()
+    {
+        _isTermsDetailsOpen = true;
+        _isPrivacyDetailsOpen = false;
+    }
+
+    private void CloseTermsDetails()
+    {
+        _isTermsDetailsOpen = false;
+    }
+
+    private void OpenPrivacyDetails()
+    {
+        _isPrivacyDetailsOpen = true;
+        _isTermsDetailsOpen = false;
+    }
+
+    private void ClosePrivacyDetails()
+    {
+        _isPrivacyDetailsOpen = false;
     }
 
     private string GetAgeBannerIcon()

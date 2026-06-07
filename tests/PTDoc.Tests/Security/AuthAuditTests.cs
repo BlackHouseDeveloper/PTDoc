@@ -166,6 +166,44 @@ public class AuthAuditTests : IAsyncDisposable
 
     [Fact]
     [Trait("Category", "CoreCi")]
+    public void AuditEvent_NoteCreated_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.NoteCreated(noteId, userId);
+
+        Assert.Equal("NoteCreated", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal(noteId, evt.Metadata["NoteId"]);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Diagnosis", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "CoreCi")]
+    public void AuditEvent_PdfExported_HasCorrectEventTypeAndNoPhi()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.PdfExported(noteId, userId, 1234);
+
+        Assert.Equal("PdfExport", evt.EventType);
+        Assert.Equal("ClinicalNote", evt.EntityType);
+        Assert.Equal(noteId, evt.EntityId);
+        Assert.Equal(userId, evt.UserId);
+        Assert.Equal(noteId, evt.Metadata["NoteId"]);
+        Assert.Equal(1234L, evt.Metadata["FileSizeBytes"]);
+        Assert.DoesNotContain("Patient", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DateOfBirth", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("MedicalRecord", evt.Metadata.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "CoreCi")]
     public void AuditEvent_OverrideApplied_HasCorrectEventTypeAndNoPhi()
     {
         var noteId = Guid.NewGuid();
@@ -314,6 +352,24 @@ public class AuthAuditTests : IAsyncDisposable
         Assert.Equal(userId, record.UserId);
         Assert.False(record.Success);
         Assert.Contains("\"ruleType\":\"ProgressNoteRequired\"", record.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Category", "CoreCi")]
+    public async Task LogNoteCreatedAsync_PersistsToAuditLog()
+    {
+        var noteId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var evt = AuditEvent.NoteCreated(noteId, userId);
+
+        await _auditService.LogNoteCreatedAsync(evt);
+
+        var record = await _context.AuditLogs.SingleAsync(a => a.EventType == "NoteCreated");
+        Assert.Equal("ClinicalNote", record.EntityType);
+        Assert.Equal(noteId, record.EntityId);
+        Assert.Equal(userId, record.UserId);
+        Assert.DoesNotContain("patient", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("content", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     // ─── Multiple auth events ─────────────────────────────────────────────────

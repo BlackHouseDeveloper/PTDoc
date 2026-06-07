@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - PR 13 beta compliance minimums
+
+- **`src/PTDoc.Application/Compliance/IAuditService.cs`**, **`src/PTDoc.Infrastructure/Compliance/AuditService.cs`**, **`src/PTDoc.Api/Auth/AuthEndpoints.cs`**, **`src/PTDoc.Infrastructure/Services/NoteWriteService.cs`**, **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`** — Added PHI-safe audit coverage for legacy JWT login success/failure, note creation, note updates, PDF export entity metadata, and existing intake submission flows. Reason: beta testing requires key compliance actions to write audit records without storing credentials, tokens, patient names, or clinical text in audit metadata.
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`** — Added visible beta placeholder modals for Terms of Service and Privacy Policy from the intake legal-agreement acknowledgement. Reason: beta patients need reviewable legal affordances even before final clinic-approved legal copy is available.
+- **`tests/PTDoc.Tests/Security/AuthAuditTests.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Added regressions for audit event shape, legacy token-login audit records, note create/edit/export/intake-submit audit records, signed-note edit blocking, and legal modal behavior. Reason: protect the PR 13 compliance minimums across service, API, and UI surfaces.
+
 ### Fixed - PR review follow-up for showcase seeding
 
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Narrowed the today-workflow showcase appointment lookup to clinic rows overlapping the current local-day window before collision checks. Reason: validated PR review feedback that loading every clinic appointment into memory was avoidable and made seeding heavier than necessary.

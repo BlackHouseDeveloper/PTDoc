@@ -30,6 +30,7 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Tests.Integration;
 
@@ -68,6 +69,83 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         using var response = await client.GetAsync("/api/v1/sync/status");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LegacyTokenLogin_Success_WritesAuditWithoutCredentials()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var userId = Guid.NewGuid();
+        var username = $"legacy-login-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = userId,
+                Username = username,
+                Email = $"{username}@example.com",
+                PinHash = AuthService.HashPin("2468"),
+                FirstName = "Legacy",
+                LastName = "Login",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "2468"
+        }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var audit = await verifyDb.AuditLogs.SingleAsync(log =>
+            log.EventType == "LoginSuccess" &&
+            log.UserId == userId);
+        Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LegacyTokenLogin_Failure_WritesAuditWithoutCredentials()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"missing-login-{Guid.NewGuid():N}";
+        int auditCountBefore;
+
+        await using (var beforeScope = _factory.Services.CreateAsyncScope())
+        {
+            var beforeDb = beforeScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            auditCountBefore = await beforeDb.AuditLogs.CountAsync(log => log.EventType == "LoginFailed");
+        }
+
+        using var response = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "2468"
+        }));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var auditDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(auditCountBefore + 1, await auditDb.AuditLogs.CountAsync(log => log.EventType == "LoginFailed"));
+        var audit = await auditDb.AuditLogs
+            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "InvalidCredentials")
+            .OrderByDescending(log => log.TimestampUtc)
+            .FirstAsync();
+        Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("password", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -221,6 +299,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         // 3. PT reviews the submitted intake
         using var reviewResp = await ptClient.PostAsync($"/api/v1/intake/{intakeId}/review", null);
         Assert.Equal(HttpStatusCode.OK, reviewResp.StatusCode);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var submitAudit = await db.AuditLogs.SingleAsync(log =>
+            log.EventType == "IntakeSubmitted" &&
+            log.EntityType == "IntakeForm" &&
+            log.EntityId == intakeId);
+        Assert.Equal(TestRoleAuthHandler.GetUserIdForRole(Roles.PT), submitAudit.UserId);
+        Assert.Contains(intakeId.ToString(), submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("knee", submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Test Patient", submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -448,6 +537,16 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.True(submittedResponseJson.RootElement.GetProperty("isSubmitted").GetBoolean());
         Assert.True(submittedResponseJson.RootElement.TryGetProperty("submittedAt", out var submittedAt));
         Assert.Equal(JsonValueKind.String, submittedAt.ValueKind);
+
+        var submitAudit = await db.AuditLogs.SingleAsync(log =>
+            log.EventType == "IntakeSubmitted" &&
+            log.EntityType == "IntakeForm" &&
+            log.EntityId == intakeId);
+        Assert.Equal(Guid.Empty, submitAudit.UserId);
+        Assert.Contains(intakeId.ToString(), submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Patient Updated Through Invite", submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("lumbar", submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("test.", submitAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Note authoring → compliance workflow ─────────────────────────────────
@@ -752,6 +851,22 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Equal("Symptoms improving since last visit", storedJson.RootElement.GetProperty("subjective").GetProperty("narrativeContext").GetProperty("chiefComplaint").GetString());
         Assert.Equal("Gait is less antalgic", storedJson.RootElement.GetProperty("objective").GetProperty("clinicalObservationNotes").GetString());
         Assert.Equal("Advance exercise challenge next session", storedJson.RootElement.GetProperty("plan").GetProperty("clinicalSummary").GetString());
+
+        var noteCreatedAudit = await db.AuditLogs.SingleAsync(log =>
+            log.EventType == "NoteCreated" &&
+            log.EntityType == "ClinicalNote" &&
+            log.EntityId == noteId);
+        Assert.Contains(noteId.ToString(), noteCreatedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Symptoms improving", noteCreatedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Test Patient", noteCreatedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+
+        var noteEditedAudit = await db.AuditLogs.SingleAsync(log =>
+            log.EventType == "NoteEdited" &&
+            log.EntityType == "ClinicalNote" &&
+            log.EntityId == noteId);
+        Assert.Contains(noteId.ToString(), noteEditedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Symptoms improving", noteEditedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Test Patient", noteEditedAudit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1111,6 +1226,51 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var verifyAliasDoc = JsonSerializer.Deserialize<JsonDocument>(await verifyAliasResp.Content.ReadAsStringAsync(), JsonOpts);
         Assert.True(verifyAliasDoc!.RootElement.GetProperty("isValid").GetBoolean());
         Assert.Equal("Verified", verifyAliasDoc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task PT_Cannot_Update_Signed_Note_And_Response_Points_To_Addendum()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+
+        using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(NoteType.Daily),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var created = JsonSerializer.Deserialize<NoteOperationResponse>(
+            await createResponse.Content.ReadAsStringAsync(),
+            JsonOpts)!;
+        var noteId = created.Note!.Id;
+
+        using var signResponse = await client.PostAsync(
+            $"/api/v1/notes/{noteId}/sign",
+            JsonContent(new { consentAccepted = true, intentConfirmed = true }));
+        Assert.Equal(HttpStatusCode.OK, signResponse.StatusCode);
+
+        using var updateResponse = await client.PutAsync(
+            $"/api/v1/notes/{noteId}",
+            JsonContent(new UpdateNoteRequest
+            {
+                ContentJson = """{"assessment":"Edited after signature"}"""
+            }));
+
+        Assert.Equal(HttpStatusCode.Conflict, updateResponse.StatusCode);
+        var errorJson = await updateResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Signed notes cannot be modified", errorJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("addendum", errorJson, StringComparison.OrdinalIgnoreCase);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var stored = await db.ClinicalNotes.AsNoTracking().SingleAsync(note => note.Id == noteId);
+        Assert.Equal(NoteStatus.Signed, stored.NoteStatus);
+        Assert.DoesNotContain("Edited after signature", stored.ContentJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1805,6 +1965,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             .ToListAsync();
         var audit = Assert.Single(exportAudits.Where(log =>
             log.MetadataJson.Contains(noteId.ToString(), StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal("ClinicalNote", audit.EntityType);
+        Assert.Equal(noteId, audit.EntityId);
         Assert.Contains(noteId.ToString(), audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Test", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
