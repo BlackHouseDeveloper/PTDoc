@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using PTDoc.Api.Auth;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
@@ -315,6 +317,24 @@ public class AuthAuditTests : IAsyncDisposable
         // Metadata JSON must not contain raw token value
         Assert.DoesNotContain(JwtHeaderPrefix, record.MetadataJson);    // JWT header prefix
         Assert.DoesNotContain("signingkey", record.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "CoreCi")]
+    public async Task LogAuthEventBestEffortAsync_AuditFailure_DoesNotThrow()
+    {
+        var auditMock = new Mock<IAuditService>();
+        auditMock
+            .Setup(service => service.LogAuthEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Audit storage unavailable."));
+
+        await AuthEndpoints.LogAuthEventBestEffortAsync(
+            auditMock.Object,
+            AuditEvent.LoginFailed("127.0.0.1", "InvalidCredentials"));
+
+        auditMock.Verify(
+            service => service.LogAuthEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

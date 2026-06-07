@@ -24,7 +24,8 @@ public static class AuthEndpoints
 
             if (identity is null)
             {
-                await auditService.LogAuthEventAsync(
+                await LogAuthEventBestEffortAsync(
+                    auditService,
                     AuditEvent.LoginFailed(GetRemoteIpAddress(httpContext), "InvalidCredentials"),
                     cancellationToken);
                 return Results.Unauthorized();
@@ -33,7 +34,8 @@ public static class AuthEndpoints
             var tokens = await issuer.IssueAsync(identity, cancellationToken);
             if (TryResolveUserId(identity, out var userId))
             {
-                await auditService.LogAuthEventAsync(
+                await LogAuthEventBestEffortAsync(
+                    auditService,
                     AuditEvent.LoginSuccess(userId, GetRemoteIpAddress(httpContext)),
                     cancellationToken);
             }
@@ -78,6 +80,21 @@ public static class AuthEndpoints
 
     private static string? GetRemoteIpAddress(HttpContext httpContext)
         => httpContext.Connection.RemoteIpAddress?.ToString();
+
+    internal static async Task LogAuthEventBestEffortAsync(
+        IAuditService auditService,
+        AuditEvent auditEvent,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await auditService.LogAuthEventAsync(auditEvent, cancellationToken);
+        }
+        catch
+        {
+            // Audit failures must never break authentication.
+        }
+    }
 
     private static bool TryResolveUserId(ClaimsIdentity identity, out Guid userId)
     {
