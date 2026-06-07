@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for AI rate-limit coverage
+
+- **`tests/PTDoc.Tests/Integration/AiEndpointErrorContractIntegrationTests.cs`** — Changed the AI endpoint rate-limit regression to enable AI and use a validation-failing request before asserting the second request returns `ai_rate_limited`. Reason: review correctly identified that the prior test only proved rate limiting after disabled-feature `403` responses instead of the enabled-AI cost-control path.
+
 ### Changed - conservative beta cost controls
 
 - **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/AI/*`**, **`src/PTDoc.Api/Notes/DailyNoteEndpoints.cs`**, **`src/PTDoc.Application/AI/AiGenerationRateLimitOptions.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Production.json`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`docs/BETA_QA.md`** — Added explicit Beta/Production AI-off defaults, AI token and rate-limit settings, conservative background-job intervals, and AI generation 429 handling for both current and legacy generation routes. Reason: Beta and Production need spend guardrails before AI is enabled beyond controlled validation.
