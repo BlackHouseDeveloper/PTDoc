@@ -91,6 +91,8 @@ The seeded clinic is `Physically Fit Physical Therapy` with slug `pfpt-beta`. Th
 
 The same Beta startup seed also creates a small idempotent PFPT patient directory fixture under the seeded clinic. These records use non-real `.test` email addresses and deterministic MRNs `BETA-PT-001` through `BETA-PT-004` so Beta users can validate Patients search by name, MRN, and email, open patient profiles, and start the existing intake invite workflow without creating live patient data first.
 
+Use [PTDoc Beta QA](../BETA_QA.md) for the tester checklist, known limitations, bug report format, and beta pass/fail gate.
+
 Required Beta database order:
 
 1. Apply EF Core migrations out-of-band to Azure SQL.
