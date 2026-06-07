@@ -339,6 +339,10 @@
     text-underline-offset: 2px;
 }
 
+div.review-step__check-row:not(.review-step__check-row--disabled) {
+    cursor: default;
+}
+
 .review-step__check-row--disabled {
     opacity: 0.7;
     cursor: not-allowed;

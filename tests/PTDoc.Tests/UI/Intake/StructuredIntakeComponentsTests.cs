@@ -660,6 +660,38 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void ReviewStep_LegalModalTriggers_ClosePhiDetailsModal()
+    {
+        var state = new IntakeWizardState
+        {
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true
+            }
+        };
+
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        cut.Find(".review-step__text-button").Click();
+        Assert.Contains("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
+
+        cut.Find("[data-testid='terms-modal-trigger']").Click();
+        Assert.DoesNotContain("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Terms of Service", cut.Find("[data-testid='terms-modal']").TextContent, StringComparison.OrdinalIgnoreCase);
+        cut.Find("button[aria-label='Close Terms of Service']").Click();
+
+        cut.Find(".review-step__text-button").Click();
+        Assert.Contains("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
+
+        cut.Find("[data-testid='privacy-modal-trigger']").Click();
+        Assert.DoesNotContain("PHI Release Details", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Privacy Policy", cut.Find("[data-testid='privacy-modal']").TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ReviewStep_ReadOnlyReview_HidesMutationControlsAndCopy()
     {
         var state = new IntakeWizardState

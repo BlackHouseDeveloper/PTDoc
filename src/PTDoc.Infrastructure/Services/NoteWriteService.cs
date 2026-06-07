@@ -111,6 +111,7 @@ public sealed class NoteWriteService(
         };
 
         db.ClinicalNotes.Add(note);
+        db.AuditLogs.Add(AuditService.CreateAuditLog(AuditEvent.NoteCreated(note.Id, userId)));
 
         if (request.NoteType == NoteType.Evaluation)
         {
@@ -141,7 +142,6 @@ public sealed class NoteWriteService(
         }
 
         await syncEngine.EnqueueAsync("ClinicalNote", note.Id, SyncOperation.Create, ct);
-        await auditService.LogNoteCreatedAsync(AuditEvent.NoteCreated(note.Id, userId), ct);
 
         if (request.Override is not null)
         {

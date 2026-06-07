@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`** — Added visible beta placeholder modals for Terms of Service and Privacy Policy from the intake legal-agreement acknowledgement. Reason: beta patients need reviewable legal affordances even before final clinic-approved legal copy is available.
 - **`tests/PTDoc.Tests/Security/AuthAuditTests.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Added regressions for audit event shape, legacy token-login audit records, note create/edit/export/intake-submit audit records, signed-note edit blocking, and legal modal behavior. Reason: protect the PR 13 compliance minimums across service, API, and UI surfaces.
 
+### Fixed - PR 13 review follow-up
+
+- **`src/PTDoc.Infrastructure/Services/NoteWriteService.cs`** — Queued the `NoteCreated` audit row in the current note-create unit of work instead of calling the audit service after the note save. Reason: validated review feedback that a separate audit save could make note creation appear to fail after the note was already persisted.
+- **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/ReviewStep.razor.css`**, **`tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs`** — Made intake legal detail modals close the PHI details modal before opening and removed the pointer cursor from the non-label legal agreement row. Reason: validated review feedback that modal state should stay mutually exclusive and cursor affordances should match actual click targets.
+
 ### Fixed - PR review follow-up for showcase seeding
 
 - **`src/PTDoc.Infrastructure/Data/Seeders/DatabaseSeeder.cs`** — Narrowed the today-workflow showcase appointment lookup to clinic rows overlapping the current local-day window before collision checks. Reason: validated PR review feedback that loading every clinic appointment into memory was avoidable and made seeding heavier than necessary.
