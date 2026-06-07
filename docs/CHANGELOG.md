@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for sync inspection paging
+
+- **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`** — Added `Id` as a secondary sort key for sync queue and dead-letter inspection pages. Reason: review correctly identified that ordering only by non-unique `EnqueuedAt` could make paged inspection results unstable when rows share the same enqueue timestamp.
+
 ### Fixed - PR review follow-up for AI rate-limit coverage
 
 - **`tests/PTDoc.Tests/Integration/AiEndpointErrorContractIntegrationTests.cs`** — Changed the AI endpoint rate-limit regression to enable AI and use a validation-failing request before asserting the second request returns `ai_rate_limited`. Reason: review correctly identified that the prior test only proved rate limiting after disabled-feature `403` responses instead of the enabled-AI cost-control path.

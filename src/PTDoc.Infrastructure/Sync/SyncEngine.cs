@@ -253,6 +253,7 @@ public class SyncEngine : ISyncEngine
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(q => q.EnqueuedAt)
+            .ThenBy(q => q.Id)
             .Skip(skip)
             .Take(take)
             .Select(q => new SyncQueueItemStatus
@@ -287,6 +288,7 @@ public class SyncEngine : ISyncEngine
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(q => q.EnqueuedAt)
+            .ThenBy(q => q.Id)
             .Skip(skip)
             .Take(take)
             .Select(q => new SyncQueueItemStatus
