@@ -124,9 +124,9 @@ builder.Services.AddRateLimiter(options =>
         .GetSection(AiGenerationRateLimitOptions.SectionName)
         .Get<AiGenerationRateLimitOptions>()
         ?? new AiGenerationRateLimitOptions();
-    var aiPermitLimit = aiRateLimitOptions.RequestsPerHour <= 0
+    var aiPermitLimit = aiRateLimitOptions.PermitLimit <= 0
         ? 10
-        : aiRateLimitOptions.RequestsPerHour;
+        : aiRateLimitOptions.PermitLimit;
     var aiWindow = aiRateLimitOptions.WindowMinutes <= 0
         ? TimeSpan.FromHours(1)
         : TimeSpan.FromMinutes(aiRateLimitOptions.WindowMinutes);

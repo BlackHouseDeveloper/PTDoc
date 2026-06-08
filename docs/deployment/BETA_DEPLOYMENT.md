@@ -63,7 +63,7 @@ AzureStorageConnectionString=<Azure Storage connection string>
 Cors__AllowedOrigins__0=https://ptdoc.bhdevsites.com
 FeatureFlags__EnableAiGeneration=false
 Ai__MaxOutputTokens=400
-Ai__RateLimits__RequestsPerHour=10
+Ai__RateLimits__PermitLimit=10
 Ai__RateLimits__WindowMinutes=60
 BackgroundJobs__SyncRetry__Interval=00:05:00
 BackgroundJobs__SyncRetry__MinRetryDelay=00:05:00
@@ -141,7 +141,7 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
 - Confirm the API App Service is still single-instance before relying on startup seeding.
 - Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, and `BetaAccess__SeedPin` are configured in Azure.
-- Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__RequestsPerHour=10` and `Ai__RateLimits__WindowMinutes=60`.
+- Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__PermitLimit=10` and `Ai__RateLimits__WindowMinutes=60`. The legacy key `Ai__RateLimits__RequestsPerHour` is still accepted for existing environments, but new settings should use `PermitLimit`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.
 - Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
 - Confirm a new signup receives the pending administrator approval message instead of a generic login failure.

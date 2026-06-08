@@ -274,7 +274,7 @@ public class ProductionConfigurationTests
 
         Assert.False(config.GetValue<bool>("FeatureFlags:EnableAiGeneration"));
         Assert.Equal(400, config.GetValue<int>("Ai:MaxOutputTokens"));
-        Assert.Equal(10, config.GetValue<int>("Ai:RateLimits:RequestsPerHour"));
+        Assert.Equal(10, config.GetValue<int>("Ai:RateLimits:PermitLimit"));
         Assert.Equal(60, config.GetValue<int>("Ai:RateLimits:WindowMinutes"));
         Assert.Equal(TimeSpan.FromMinutes(5), config.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:Interval"));
         Assert.Equal(TimeSpan.FromMinutes(5), config.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:MinRetryDelay"));

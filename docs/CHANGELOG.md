@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for AI rate-limit option naming
+
+- **`src/PTDoc.Application/AI/AiGenerationRateLimitOptions.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Production.json`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`tests/PTDoc.Tests/Integration/*ConfigurationTests.cs`** — Renamed the runtime-facing AI rate-limit option and new committed settings to `PermitLimit` while keeping `RequestsPerHour` as a compatibility alias for existing environment overrides. Reason: review correctly identified that `RequestsPerHour` was misleading once the fixed-window duration became configurable.
+
 ### Fixed - PR review follow-up for sync inspection paging
 
 - **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`** — Added `Id` as a secondary sort key for sync queue and dead-letter inspection pages. Reason: review correctly identified that ordering only by non-unique `EnqueuedAt` could make paged inspection results unstable when rows share the same enqueue timestamp.

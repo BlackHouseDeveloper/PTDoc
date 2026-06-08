@@ -79,7 +79,7 @@ public sealed class BetaDeploymentConfigurationTests : IClassFixture<PtDocApiFac
 
         Assert.False(configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration"));
         Assert.Equal(400, configuration.GetValue<int>("Ai:MaxOutputTokens"));
-        Assert.Equal(10, configuration.GetValue<int>("Ai:RateLimits:RequestsPerHour"));
+        Assert.Equal(10, configuration.GetValue<int>("Ai:RateLimits:PermitLimit"));
         Assert.Equal(60, configuration.GetValue<int>("Ai:RateLimits:WindowMinutes"));
         Assert.Equal(TimeSpan.FromMinutes(5), configuration.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:Interval"));
         Assert.Equal(TimeSpan.FromMinutes(5), configuration.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:MinRetryDelay"));
