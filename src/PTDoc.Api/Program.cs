@@ -157,7 +157,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 
     options.OnRejected = (context, cancellationToken) =>
-        new ValueTask(IsAiGenerationRequest(context.HttpContext)
+        new ValueTask(UsesAiGenerationRateLimitPolicy(context.HttpContext)
             ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
             : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
 });
@@ -1075,12 +1075,9 @@ static string GetAiGenerationRateLimitPartitionKey(HttpContext httpContext)
     return string.IsNullOrWhiteSpace(remoteAddress) ? "unknown" : $"ip:{remoteAddress}";
 }
 
-static bool IsAiGenerationRequest(HttpContext httpContext)
-{
-    var path = httpContext.Request.Path.Value ?? string.Empty;
-    return path.StartsWith("/api/v1/ai", StringComparison.OrdinalIgnoreCase)
-        || path.Equals("/api/v1/daily-notes/generate-assessment", StringComparison.OrdinalIgnoreCase);
-}
+static bool UsesAiGenerationRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "AiGeneration", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)

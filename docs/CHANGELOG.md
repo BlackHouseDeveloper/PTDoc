@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for AI rate-limit rejection routing
+
+- **`src/PTDoc.Api/Program.cs`** — Switched AI rate-limit rejection response selection from hard-coded route matching to endpoint rate-limiting metadata. Reason: review correctly identified that future routes using the `AiGeneration` policy should inherit the structured `ai_rate_limited` response without needing to update a path list.
+
 ### Fixed - PR review follow-up for AI rate-limit option naming
 
 - **`src/PTDoc.Application/AI/AiGenerationRateLimitOptions.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Production.json`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`tests/PTDoc.Tests/Integration/*ConfigurationTests.cs`** — Renamed the runtime-facing AI rate-limit option and new committed settings to `PermitLimit` while keeping `RequestsPerHour` as a compatibility alias for existing environment overrides. Reason: review correctly identified that `RequestsPerHour` was misleading once the fixed-window duration became configurable.
