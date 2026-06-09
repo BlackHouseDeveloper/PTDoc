@@ -2,7 +2,7 @@
 
 <div class="day-switcher">
     <div class="switcher-content">
-        <button type="button" class="nav-button" @onclick="OnPrevDay" aria-label="Previous day">
+        <button type="button" class="nav-button" @onclick="OnPrevDay" aria-label="@PreviousLabel">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -13,7 +13,7 @@
             <p>@Label</p>
         </div>
         
-        <button type="button" class="nav-button" @onclick="OnNextDay" aria-label="Next day">
+        <button type="button" class="nav-button" @onclick="OnNextDay" aria-label="@NextLabel">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M6 4L10 8L6 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -26,6 +26,9 @@
     public DateTime SelectedDate { get; set; } = DateTime.Today;
 
     [Parameter]
+    public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
     public EventCallback OnPrevDay { get; set; }
 
     [Parameter]
@@ -34,7 +37,39 @@
     [Parameter]
     public EventCallback OnToday { get; set; }
 
-    private string FormattedDate => SelectedDate.ToString("dddd, MMMM d, yyyy");
+    private string FormattedDate => SelectedView == AppointmentsView.Week
+        ? FormatWeekRange(SelectedDate)
+        : SelectedDate.ToString("dddd, MMMM d, yyyy");
 
-    private string Label => SelectedDate.Date == DateTime.Today.Date ? "Today's Schedule" : "Schedule";
+    private string Label => SelectedView == AppointmentsView.Week
+        ? "Week Schedule"
+        : SelectedDate.Date == DateTime.Today.Date ? "Today's Schedule" : "Schedule";
+
+    private string PreviousLabel => SelectedView == AppointmentsView.Week ? "Previous week" : "Previous day";
+
+    private string NextLabel => SelectedView == AppointmentsView.Week ? "Next week" : "Next day";
+
+    private static string FormatWeekRange(DateTime selectedDate)
+    {
+        var startOfWeek = GetStartOfWeek(selectedDate);
+        var endOfWeek = startOfWeek.AddDays(6);
+
+        if (startOfWeek.Year != endOfWeek.Year)
+        {
+            return $"{startOfWeek:MMM d, yyyy} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        if (startOfWeek.Month != endOfWeek.Month)
+        {
+            return $"{startOfWeek:MMM d} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        return $"{startOfWeek:MMMM d} - {endOfWeek:d, yyyy}";
+    }
+
+    private static DateTime GetStartOfWeek(DateTime date)
+    {
+        var daysFromSunday = (int)date.DayOfWeek;
+        return date.Date.AddDays(-daysFromSunday);
+    }
 }

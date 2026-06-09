@@ -120,6 +120,7 @@
                                             <span>@appt.Time</span>
                                         </div>
                                         <div class="appointment-patient">@appt.PatientName</div>
+                                        <div class="appointment-clinician">@appt.ClinicianName</div>
                                         <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
                                             @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
                                         </span>

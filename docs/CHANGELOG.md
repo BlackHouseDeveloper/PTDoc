@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Appointments detail readiness and week clinician labels
+
+- **`src/PTDoc.UI/Pages/Appointments.razor`**, **`src/PTDoc.UI/Components/Appointments/AppointmentDetailModal.razor`**, **`src/PTDoc.UI/Components/Appointments/AppointmentDetailModal.razor.css`**, **`src/PTDoc.UI/Components/Appointments/ClinicianScheduler.razor`**, **`src/PTDoc.UI/Components/Appointments/ClinicianScheduler.razor.css`**, **`src/PTDoc.UI/Components/Appointments/AppointmentsDaySwitcher.razor`**, **`src/PTDoc.UI/Components/Appointments/AppointmentsLeftColumn.razor`**, **`tests/PTDoc.Tests/UI/Appointments/AppointmentComponentsTests.cs`** — Added an appointment-detail Billing & Documents section with intake/clinical-document readiness badges, an explicit disabled copay action when collection data is not configured, visible clinician names on week-view appointment cards, and week-specific date ranges/navigation labels. Reason: client feedback requested appointment detail prototype context, copay action visibility, completed-document color coding, clearer therapist context in week view, and distinct Week-view time-period behavior without removing the current scheduler workflow.
+
 ### Added - Dashboard authorization alerts
 
 - **`src/PTDoc.Api/Dashboard/DashboardEndpoints.cs`**, **`tests/PTDoc.Tests/Integration/DashboardApiIntegrationTests.cs`** — Added live dashboard alerts for existing patient payer/auth data, including authorization status follow-up, expiring/overdue authorization dates, re-authorization due dates, and visit-limit thresholds, with actions routed to the patient Insurance & Authorization page; visit-limit fields are accepted whether stored as JSON strings or numbers. Reason: client feedback requested Dashboard alert categories for Authorization in addition to notes/intake, and the existing UI grouping already expected authorization alert kinds.
