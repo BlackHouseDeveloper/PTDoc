@@ -1357,6 +1357,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "EnqueuedAt");
+
                     b.HasIndex("EntityType", "EntityId");
 
                     b.ToTable("SyncQueueItems");

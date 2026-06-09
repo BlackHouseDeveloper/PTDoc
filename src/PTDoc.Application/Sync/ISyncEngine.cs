@@ -40,12 +40,12 @@ public interface ISyncEngine
     /// <summary>
     /// Returns queue items for operational inspection.
     /// </summary>
-    Task<IReadOnlyList<SyncQueueItemStatus>> GetQueueItemsAsync(CancellationToken cancellationToken = default);
+    Task<SyncQueueItemPage> GetQueueItemsAsync(int skip, int take, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns dead-lettered queue items for operational inspection.
     /// </summary>
-    Task<IReadOnlyList<SyncQueueItemStatus>> GetDeadLetterItemsAsync(CancellationToken cancellationToken = default);
+    Task<SyncQueueItemPage> GetDeadLetterItemsAsync(int skip, int take, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns health details for the server-side sync pipeline.
@@ -192,6 +192,14 @@ public sealed class SyncQueueItemStatus
     public DateTime? LastAttemptAt { get; init; }
     public SyncFailureType? FailureType { get; init; }
     public string? ErrorMessage { get; init; }
+}
+
+public sealed class SyncQueueItemPage
+{
+    public IReadOnlyList<SyncQueueItemStatus> Items { get; init; } = Array.Empty<SyncQueueItemStatus>();
+    public int TotalCount { get; init; }
+    public int Skip { get; init; }
+    public int Take { get; init; }
 }
 
 public sealed class SyncHealthStatus

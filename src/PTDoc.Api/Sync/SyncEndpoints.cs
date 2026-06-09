@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,9 @@ namespace PTDoc.Api.Sync;
 /// </summary>
 public static class SyncEndpoints
 {
+    private const int DefaultInspectionTake = 50;
+    private const int MaxInspectionTake = 200;
+
     public static void MapSyncEndpoints(this IEndpointRouteBuilder app)
     {
         var syncGroup = app.MapGroup("/api/v1/sync")
@@ -307,24 +311,28 @@ public static class SyncEndpoints
     }
 
     private static async Task<IResult> GetSyncQueue(
+        [FromQuery] string? skip,
+        [FromQuery] string? take,
         [FromServices] ISyncEngine syncEngine,
-        [FromServices] ILogger<ISyncEngine> logger)
+        [FromServices] ILogger<ISyncEngine> logger,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var items = await syncEngine.GetQueueItemsAsync();
-            return Results.Ok(items.Select(item => new
+            if (!TryNormalizeInspectionPage(skip, take, httpContext, out var normalizedSkip, out var normalizedTake, out var failure))
             {
-                id = item.Id,
-                entityType = item.EntityType,
-                entityId = item.EntityId,
-                operationType = item.OperationType.ToString(),
-                status = item.Status.ToString(),
-                retryCount = item.RetryCount,
-                lastAttempt = item.LastAttemptAt,
-                failureType = item.FailureType?.ToString(),
-                errorMessage = item.ErrorMessage
-            }));
+                return failure!;
+            }
+
+            var page = await syncEngine.GetQueueItemsAsync(normalizedSkip, normalizedTake, cancellationToken);
+            return Results.Ok(new
+            {
+                items = page.Items.Select(ToInspectionItem),
+                page.TotalCount,
+                page.Skip,
+                page.Take
+            });
         }
         catch (Exception ex)
         {
@@ -337,24 +345,28 @@ public static class SyncEndpoints
     }
 
     private static async Task<IResult> GetDeadLetters(
+        [FromQuery] string? skip,
+        [FromQuery] string? take,
         [FromServices] ISyncEngine syncEngine,
-        [FromServices] ILogger<ISyncEngine> logger)
+        [FromServices] ILogger<ISyncEngine> logger,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var items = await syncEngine.GetDeadLetterItemsAsync();
-            return Results.Ok(items.Select(item => new
+            if (!TryNormalizeInspectionPage(skip, take, httpContext, out var normalizedSkip, out var normalizedTake, out var failure))
             {
-                id = item.Id,
-                entityType = item.EntityType,
-                entityId = item.EntityId,
-                operationType = item.OperationType.ToString(),
-                status = item.Status.ToString(),
-                retryCount = item.RetryCount,
-                lastAttempt = item.LastAttemptAt,
-                failureType = item.FailureType?.ToString(),
-                errorMessage = item.ErrorMessage
-            }));
+                return failure!;
+            }
+
+            var page = await syncEngine.GetDeadLetterItemsAsync(normalizedSkip, normalizedTake, cancellationToken);
+            return Results.Ok(new
+            {
+                items = page.Items.Select(ToInspectionItem),
+                page.TotalCount,
+                page.Skip,
+                page.Take
+            });
         }
         catch (Exception ex)
         {
@@ -390,4 +402,46 @@ public static class SyncEndpoints
                 title: "Failed to get sync health");
         }
     }
+
+    private static bool TryNormalizeInspectionPage(
+        string? skip,
+        string? take,
+        HttpContext httpContext,
+        out int normalizedSkip,
+        out int normalizedTake,
+        out IResult? failure)
+    {
+        normalizedTake = DefaultInspectionTake;
+
+        if (!ListQueryParameterParser.TryNormalizeSkip(skip, httpContext, out normalizedSkip, out failure))
+        {
+            return false;
+        }
+
+        if (!ListQueryParameterParser.TryNormalizeTake(
+                take,
+                DefaultInspectionTake,
+                MaxInspectionTake,
+                httpContext,
+                out normalizedTake,
+                out failure))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static object ToInspectionItem(SyncQueueItemStatus item) => new
+    {
+        id = item.Id,
+        entityType = item.EntityType,
+        entityId = item.EntityId,
+        operationType = item.OperationType.ToString(),
+        status = item.Status.ToString(),
+        retryCount = item.RetryCount,
+        lastAttempt = item.LastAttemptAt,
+        failureType = item.FailureType?.ToString(),
+        errorMessage = item.ErrorMessage
+    };
 }

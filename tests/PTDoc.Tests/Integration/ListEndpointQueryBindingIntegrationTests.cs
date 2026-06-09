@@ -105,6 +105,67 @@ public sealed class ListEndpointQueryBindingIntegrationTests : IClassFixture<PtD
     }
 
     [Fact]
+    public async Task SyncQueue_WhenPaged_ReturnsBoundedPageMetadata()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var marker = Guid.NewGuid();
+        db.SyncQueueItems.AddRange(Enumerable.Range(0, 3).Select(index => new SyncQueueItem
+        {
+            EntityType = "Patient",
+            EntityId = marker,
+            Operation = SyncOperation.Update,
+            Status = SyncQueueStatus.Pending,
+            EnqueuedAt = DateTime.UtcNow.AddMinutes(index)
+        }));
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+        using var response = await client.GetAsync("/api/v1/sync/queue?skip=1&take=1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+
+        Assert.Equal(1, root.GetProperty("skip").GetInt32());
+        Assert.Equal(1, root.GetProperty("take").GetInt32());
+        Assert.True(root.GetProperty("totalCount").GetInt32() >= 3);
+        Assert.Single(root.GetProperty("items").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task SyncQueue_WhenTakeExceedsLimit_CapsPageSize()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+        using var response = await client.GetAsync("/api/v1/sync/queue?take=1000");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(200, payload.RootElement.GetProperty("take").GetInt32());
+    }
+
+    [Fact]
+    public async Task SyncQueue_WhenSkipIsMalformed_ReturnsSafeBadRequest()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+
+        using var response = await client.GetAsync("/api/v1/sync/queue?skip=abc");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var payload = JsonDocument.Parse(body);
+        var root = payload.RootElement;
+
+        Assert.Equal("The request could not be processed.", root.GetProperty("error").GetString());
+        Assert.Equal("bad_request", root.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("correlationId").GetString()));
+        Assert.DoesNotContain("Required parameter", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task NotesList_Search_DoesNotScanClinicalContentJson()
     {
         var marker = $"BodyOnly{Guid.NewGuid():N}";

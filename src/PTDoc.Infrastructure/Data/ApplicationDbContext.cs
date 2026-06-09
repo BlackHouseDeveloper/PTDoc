@@ -397,6 +397,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.Status, e.EnqueuedAt });
             entity.HasIndex(e => new { e.EntityType, e.EntityId });
             entity.HasIndex(e => e.EnqueuedAt);
 

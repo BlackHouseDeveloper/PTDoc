@@ -28,6 +28,8 @@ Enable this frontend-only setting:
 
 - Web sockets: enabled on `ptdoc-web-prod`
 
+Use `/health/live` for the Azure App Service health-check path if health checks are enabled. Reserve `/health/ready` for deployment validation and pre-QA smoke checks because readiness can exercise dependencies that cost more to probe frequently.
+
 Use `ASPNETCORE_ENVIRONMENT=Beta` on both App Services so `appsettings.Beta.json` is loaded.
 
 ## Required App Settings
@@ -59,9 +61,16 @@ Communication__Azure__EmailFromAddress=<verified ACS sender>
 Communication__Azure__SmsFromPhoneNumber=<ACS SMS number>
 AzureStorageConnectionString=<Azure Storage connection string>
 Cors__AllowedOrigins__0=https://ptdoc.bhdevsites.com
+FeatureFlags__EnableAiGeneration=false
+Ai__MaxOutputTokens=400
+Ai__RateLimits__PermitLimit=10
+Ai__RateLimits__WindowMinutes=60
+BackgroundJobs__SyncRetry__Interval=00:05:00
+BackgroundJobs__SyncRetry__MinRetryDelay=00:05:00
+BackgroundJobs__SessionCleanup__Interval=00:30:00
 ```
 
-If AI generation is enabled for beta, also set the existing Azure OpenAI settings:
+AI generation is disabled by default in Beta to control Azure OpenAI spend. If AI generation is deliberately enabled for beta, keep the rate-limit settings above and also set the existing Azure OpenAI settings:
 
 ```text
 FeatureFlags__EnableAiGeneration=true
@@ -79,6 +88,8 @@ When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, ide
 Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-of-band before starting or redeploying the API. If the database is unreachable or migrations are pending, the API logs a warning and skips Beta access seeding for that startup.
 Startup seeding is enabled only through `BetaAccess__AllowStartupSeed=true`, and is approved only while the Beta API App Service remains a controlled single-instance deployment. The seeder also acquires a SQL Server application lock before writes so an accidental overlapping startup skips seeding instead of racing duplicate inserts. If Beta is scaled beyond one instance, either disable startup seeding or keep the lock-protected path in place and verify the logs after each deployment.
 The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed. The current Beta PIN is managed in Azure settings.
+
+Keep Beta on a single App Service instance with autoscale disabled unless a release explicitly documents a different operating model. If scale-out is enabled, disable startup seeding first or verify the SQL lock behavior immediately after deployment.
 
 | Username | Email | Role |
 |----------|-------|------|
@@ -124,11 +135,13 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 
 - Open `https://ptdoc.bhdevsites.com`.
 - Open `https://api-ptdoc.bhdevsites.com/health`.
+- Confirm `https://api-ptdoc.bhdevsites.com/health/live` is healthy for frequent platform probes.
 - Confirm `http://ptdoc.bhdevsites.com` redirects to HTTPS.
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
 - Confirm the API App Service is still single-instance before relying on startup seeding.
 - Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, and `BetaAccess__SeedPin` are configured in Azure.
+- Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__PermitLimit=10` and `Ai__RateLimits__WindowMinutes=60`. The legacy key `Ai__RateLimits__RequestsPerHour` is still accepted for existing environments, but new settings should use `PermitLimit`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.
 - Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
 - Confirm a new signup receives the pending administrator approval message instead of a generic login failure.

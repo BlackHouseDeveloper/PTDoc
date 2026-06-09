@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
+using PTDoc.Tests.Security;
 using Xunit;
 
 namespace PTDoc.Tests.Integration;
@@ -259,6 +260,25 @@ public class ProductionConfigurationTests
         var autoMigrate = config.GetValue<bool?>("Database:AutoMigrate") ?? isDevelopment;
 
         Assert.True(autoMigrate);
+    }
+
+    [Fact]
+    [Trait("Category", "CoreCi")]
+    public void Production_AppSettings_Use_Conservative_Cost_Defaults()
+    {
+        var repoRoot = ConfigurationValidationTests.FindRepoRoot();
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.json"))
+            .AddJsonFile(Path.Combine(repoRoot, "src", "PTDoc.Api", "appsettings.Production.json"))
+            .Build();
+
+        Assert.False(config.GetValue<bool>("FeatureFlags:EnableAiGeneration"));
+        Assert.Equal(400, config.GetValue<int>("Ai:MaxOutputTokens"));
+        Assert.Equal(10, config.GetValue<int>("Ai:RateLimits:PermitLimit"));
+        Assert.Equal(60, config.GetValue<int>("Ai:RateLimits:WindowMinutes"));
+        Assert.Equal(TimeSpan.FromMinutes(5), config.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:Interval"));
+        Assert.Equal(TimeSpan.FromMinutes(5), config.GetValue<TimeSpan>("BackgroundJobs:SyncRetry:MinRetryDelay"));
+        Assert.Equal(TimeSpan.FromMinutes(30), config.GetValue<TimeSpan>("BackgroundJobs:SessionCleanup:Interval"));
     }
 
     // -------------------------------------------------------------------------

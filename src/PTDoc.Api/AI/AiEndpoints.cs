@@ -27,6 +27,7 @@ public static class AiEndpoints
     {
         var group = app.MapGroup("/api/v1/ai")
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
+            .RequireRateLimiting("AiGeneration")
             .WithTags("AI Generation");
 
         group.MapPost("/assessment", GenerateAssessment)

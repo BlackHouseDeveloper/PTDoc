@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR review follow-up for AI rate-limit rejection routing
+
+- **`src/PTDoc.Api/Program.cs`** — Switched AI rate-limit rejection response selection from hard-coded route matching to endpoint rate-limiting metadata. Reason: review correctly identified that future routes using the `AiGeneration` policy should inherit the structured `ai_rate_limited` response without needing to update a path list.
+
+### Fixed - PR review follow-up for AI rate-limit option naming
+
+- **`src/PTDoc.Application/AI/AiGenerationRateLimitOptions.cs`**, **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Production.json`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`tests/PTDoc.Tests/Integration/*ConfigurationTests.cs`** — Renamed the runtime-facing AI rate-limit option and new committed settings to `PermitLimit` while keeping `RequestsPerHour` as a compatibility alias for existing environment overrides. Reason: review correctly identified that `RequestsPerHour` was misleading once the fixed-window duration became configurable.
+
+### Fixed - PR review follow-up for sync inspection paging
+
+- **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`** — Added `Id` as a secondary sort key for sync queue and dead-letter inspection pages. Reason: review correctly identified that ordering only by non-unique `EnqueuedAt` could make paged inspection results unstable when rows share the same enqueue timestamp.
+
+### Fixed - PR review follow-up for AI rate-limit coverage
+
+- **`tests/PTDoc.Tests/Integration/AiEndpointErrorContractIntegrationTests.cs`** — Changed the AI endpoint rate-limit regression to enable AI and use a validation-failing request before asserting the second request returns `ai_rate_limited`. Reason: review correctly identified that the prior test only proved rate limiting after disabled-feature `403` responses instead of the enabled-AI cost-control path.
+
+### Changed - conservative beta cost controls
+
+- **`src/PTDoc.Api/Program.cs`**, **`src/PTDoc.Api/AI/*`**, **`src/PTDoc.Api/Notes/DailyNoteEndpoints.cs`**, **`src/PTDoc.Application/AI/AiGenerationRateLimitOptions.cs`**, **`src/PTDoc.Api/appsettings.Beta.json`**, **`src/PTDoc.Api/appsettings.Production.json`**, **`docs/deployment/BETA_DEPLOYMENT.md`**, **`docs/BETA_QA.md`** — Added explicit Beta/Production AI-off defaults, AI token and rate-limit settings, conservative background-job intervals, and AI generation 429 handling for both current and legacy generation routes. Reason: Beta and Production need spend guardrails before AI is enabled beyond controlled validation.
+- **`src/PTDoc.Application/Sync/ISyncEngine.cs`**, **`src/PTDoc.Infrastructure/Sync/SyncEngine.cs`**, **`src/PTDoc.Api/Sync/SyncEndpoints.cs`**, **`src/PTDoc.Api/RequestParsing/ListQueryParameterParser.cs`**, **`src/PTDoc.Infrastructure/Data/ApplicationDbContext.cs`**, **`src/PTDoc.Infrastructure.Migrations.*`** — Changed admin sync queue and dead-letter inspection endpoints to return bounded pages and added a sync queue `(Status, EnqueuedAt)` index across supported providers. Reason: operational inspection should not materialize unbounded queue rows or scan avoidable sync state during beta support.
+
 ### Added - PR 14 beta QA readiness
 
 - **`docs/BETA_QA.md`**, **`.github/ISSUE_TEMPLATE/beta-bug-report.md`**, **`docs/deployment/BETA_DEPLOYMENT.md`** — Added the beta tester checklist, seeded-account login notes, known limitations, bug reporting format, Prototype Beta Notes reference, and pass/fail gate for Admin/PT beta validation. Reason: beta testing needs a repeatable handoff that makes the unfinished scope explicit and keeps bug reports consistent.

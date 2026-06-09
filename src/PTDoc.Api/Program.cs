@@ -120,6 +120,17 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddRateLimiter(options =>
 {
+    var aiRateLimitOptions = builder.Configuration
+        .GetSection(AiGenerationRateLimitOptions.SectionName)
+        .Get<AiGenerationRateLimitOptions>()
+        ?? new AiGenerationRateLimitOptions();
+    var aiPermitLimit = aiRateLimitOptions.PermitLimit <= 0
+        ? 10
+        : aiRateLimitOptions.PermitLimit;
+    var aiWindow = aiRateLimitOptions.WindowMinutes <= 0
+        ? TimeSpan.FromHours(1)
+        : TimeSpan.FromMinutes(aiRateLimitOptions.WindowMinutes);
+
     options.AddPolicy("PasswordResetCommunication", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             GetPasswordResetRateLimitPartitionKey(
@@ -134,8 +145,21 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
+    options.AddPolicy("AiGeneration", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAiGenerationRateLimitPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = aiPermitLimit,
+                Window = aiWindow,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
     options.OnRejected = (context, cancellationToken) =>
-        new ValueTask(PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
+        new ValueTask(UsesAiGenerationRateLimitPolicy(context.HttpContext)
+            ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+            : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
 });
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
@@ -781,8 +805,8 @@ if (app.Environment.IsEnvironment("Beta"))
 app.UseForwardedHeaders();
 
 app.UseCors();
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
 app.UseAuthorization();
 
@@ -1032,6 +1056,28 @@ static string GetPasswordResetRateLimitPartitionKey(
 
     return "unknown";
 }
+
+static string GetAiGenerationRateLimitPartitionKey(HttpContext httpContext)
+{
+    var internalUserId = httpContext.User.FindFirst(PTDocClaimTypes.InternalUserId)?.Value;
+    if (!string.IsNullOrWhiteSpace(internalUserId))
+    {
+        return $"user:{internalUserId}";
+    }
+
+    var nameIdentifier = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (!string.IsNullOrWhiteSpace(nameIdentifier))
+    {
+        return $"name:{nameIdentifier}";
+    }
+
+    var remoteAddress = httpContext.Connection.RemoteIpAddress?.ToString();
+    return string.IsNullOrWhiteSpace(remoteAddress) ? "unknown" : $"ip:{remoteAddress}";
+}
+
+static bool UsesAiGenerationRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "AiGeneration", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)
