@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Dashboard authorization alerts
+
+- **`src/PTDoc.Api/Dashboard/DashboardEndpoints.cs`**, **`tests/PTDoc.Tests/Integration/DashboardApiIntegrationTests.cs`** — Added live dashboard alerts for existing patient payer/auth data, including authorization status follow-up, expiring/overdue authorization dates, re-authorization due dates, and visit-limit thresholds, with actions routed to the patient Insurance & Authorization page; visit-limit fields are accepted whether stored as JSON strings or numbers. Reason: client feedback requested Dashboard alert categories for Authorization in addition to notes/intake, and the existing UI grouping already expected authorization alert kinds.
+
+### Changed - Agent guidance captures manual responsive QA and beta seed operations
+
+- **`AGENTS.md`** — Added the documented `UI Responsive QA` workflow inputs, beta liveness-vs-readiness probe usage, the `BetaAccess__AllowStartupSeed` single-instance constraint, and the beta migration/readiness/restart verification order. Reason: agent-facing workflow notes should reflect the current manual browser QA and hosted beta operating rules without expanding unrelated guidance.
+
+### Changed - Agent guidance captures hosted beta workflows
+
+- **`AGENTS.md`** — Added the documented hosted beta QA and deployment references, beta URLs, `BetaAccess__SeedPin` handling note, manual `Deploy Beta` and `UI Responsive QA` workflow references, and the committed `Ai__RateLimits__PermitLimit`/`Ai__RateLimits__WindowMinutes` beta AI rate-limit setting names. Reason: agent-facing workflow notes should reflect the current beta operating model without forcing agents to rediscover it from the newer beta docs and workflows.
+
 ### Fixed - PR review follow-up for AI rate-limit rejection routing
 
 - **`src/PTDoc.Api/Program.cs`** — Switched AI rate-limit rejection response selection from hard-coded route matching to endpoint rate-limiting metadata. Reason: review correctly identified that future routes using the `AiGeneration` policy should inherit the structured `ai_rate_limited` response without needing to update a path list.

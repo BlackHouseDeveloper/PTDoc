@@ -127,6 +127,30 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         var cancelledPatient = CreatePatient("Casey", "Cancelled", clinician.Id, medicalRecordNumber: "ALRT-CANCELLED");
         var lockedIntakePatient = CreatePatient("Lena", "LockedIntake", clinician.Id, medicalRecordNumber: "ALRT-LOCKED");
         var submittedIntakePatient = CreatePatient("Sam", "SubmittedIntake", clinician.Id, medicalRecordNumber: "ALRT-SUBMITTED");
+        var expiringAuthorizationPatient = CreatePatient("Ari", "AuthExpiring", clinician.Id, medicalRecordNumber: "ALRT-AUTH-END");
+        expiringAuthorizationPatient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(5):yyyy-MM-dd}}"
+            }
+            """;
+        var visitLimitPatient = CreatePatient("Vera", "VisitLimit", clinician.Id, medicalRecordNumber: "ALRT-AUTH-VISIT");
+        visitLimitPatient.PayerInfoJson = """
+            {
+              "authorizationStatus": "active",
+              "visitsRemaining": 1,
+              "visitAlertThreshold": 2
+            }
+            """;
+        var futureAuthorizationPatient = CreatePatient("Fiona", "FutureAuthorization", clinician.Id, medicalRecordNumber: "ALRT-AUTH-FUTURE");
+        futureAuthorizationPatient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(60):yyyy-MM-dd}}",
+              "visitsRemaining": "9",
+              "visitAlertThreshold": "2"
+            }
+            """;
 
         var dueAppointment = CreateAppointment(duePatient.Id, clinician.Id, today.AddHours(9), AppointmentStatus.Completed);
         var signedAppointment = CreateAppointment(signedPatient.Id, clinician.Id, today.AddHours(10), AppointmentStatus.Completed);
@@ -173,7 +197,10 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             archivedPatient,
             cancelledPatient,
             lockedIntakePatient,
-            submittedIntakePatient);
+            submittedIntakePatient,
+            expiringAuthorizationPatient,
+            visitLimitPatient,
+            futureAuthorizationPatient);
         db.Appointments.AddRange(
             dueAppointment,
             signedAppointment,
@@ -223,11 +250,30 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Equal($"/intake/{submittedIntakePatient.Id:D}", reviewAlert.TargetUrl);
         Assert.Equal("Review", reviewAlert.ActionLabel);
 
+        var expiringAuthorizationAlert = Assert.Single(
+            alerts,
+            alert => alert.Id.StartsWith($"authorizationExpiration:{expiringAuthorizationPatient.Id:N}", StringComparison.Ordinal));
+        Assert.Equal("authorizationExpiration", expiringAuthorizationAlert.Kind);
+        Assert.Equal("Authorization Expiring", expiringAuthorizationAlert.Title);
+        Assert.Equal($"/patient/{expiringAuthorizationPatient.Id:D}/info", expiringAuthorizationAlert.TargetUrl);
+        Assert.Equal("Review Auth", expiringAuthorizationAlert.ActionLabel);
+        Assert.True(expiringAuthorizationAlert.IsUrgent);
+
+        var visitLimitAlert = Assert.Single(
+            alerts,
+            alert => alert.Id.StartsWith($"authorizationVisitLimit:{visitLimitPatient.Id:N}", StringComparison.Ordinal));
+        Assert.Equal("authorizationVisitLimit", visitLimitAlert.Kind);
+        Assert.Equal("Authorization Visit Limit", visitLimitAlert.Title);
+        Assert.Equal($"/patient/{visitLimitPatient.Id:D}/info", visitLimitAlert.TargetUrl);
+        Assert.Equal("Review Auth", visitLimitAlert.ActionLabel);
+        Assert.False(visitLimitAlert.IsUrgent);
+
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{signedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{unsignedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{archivedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{cancelledAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.PatientId == lockedIntakePatient.Id);
+        Assert.DoesNotContain(alerts, alert => alert.PatientId == futureAuthorizationPatient.Id);
         Assert.DoesNotContain(alerts, alert => alert.Id == $"unsignedNote:{addendum.Id:N}");
     }
 
