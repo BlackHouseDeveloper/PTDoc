@@ -245,6 +245,9 @@ public sealed class ExerciseRowV2
     public string? CptCode { get; set; }
     public string? CptDescription { get; set; }
     public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
     public bool IsCheckedSuggestedExercise { get; set; }
     public bool IsSourceBacked { get; set; }
 }
@@ -353,6 +356,13 @@ public sealed class GeneralInterventionEntryV2
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }
     public string? Notes { get; set; }
+    public string? CptCode { get; set; }
+    public string? CptDescription { get; set; }
+    public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public string? Response { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
 }
 
 public sealed class ComputedPlanOfCareV2
