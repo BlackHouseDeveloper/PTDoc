@@ -9,6 +9,10 @@ public class UtilizationVm
     public string VisitsRemaining { get; set; } = string.Empty;
     // Both fields are editable because clinics may track utilization differently by payer.
 
+    public string VisitLimitType { get; set; } = string.Empty;
+    public string VisitLimitPeriod { get; set; } = string.Empty;
+    public string TotalVisitLimit { get; set; } = string.Empty;
+
     public string DateOfFirstVisitUnderAuthorization { get; set; } = string.Empty;
     // Date values remain text-based in this VM to align with existing storage format.
 
