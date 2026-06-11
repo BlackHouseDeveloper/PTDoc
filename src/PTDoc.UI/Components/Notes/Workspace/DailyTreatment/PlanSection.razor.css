@@ -23,6 +23,27 @@
     font-size: var(--text-sm);
 }
 
+::deep .daily-plan__chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-plan__chip {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-plan__chip--active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
 ::deep .daily-plan__message {
     margin: var(--spacing-2) 0 0;
     font-size: var(--text-sm);
