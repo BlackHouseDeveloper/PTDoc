@@ -12,6 +12,8 @@ public class PatientPayerInfoVm
     public string InsuranceCompanyName { get; set; } = string.Empty;
     public string MemberIdPolicyNumber { get; set; } = string.Empty;
     public string GroupNumber { get; set; } = string.Empty;
+    public string SecondaryInsuranceCompanyName { get; set; } = string.Empty;
+    public string SecondaryMemberIdPolicyNumber { get; set; } = string.Empty;
 
     public string ProviderType { get; set; } = string.Empty;
     public string InsurancePriority { get; set; } = string.Empty;

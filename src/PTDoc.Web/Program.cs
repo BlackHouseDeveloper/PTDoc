@@ -54,6 +54,7 @@ builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocal
 builder.Services.AddTransient<DraftAutosaveService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
+builder.Services.AddScoped<IPatientChartStorageService, PatientChartStorageApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();
 builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();

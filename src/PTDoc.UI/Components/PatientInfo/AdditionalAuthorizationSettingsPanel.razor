@@ -4,6 +4,15 @@
 <PatientInfoSectionPanel Title="Additional Authorization Settings">
     <PatientInfoFormGrid>
 
+        <PatientInfoField Label="Authorization Required?" ForId="pi-auth-required" Error="@GetError("authRequired")">
+            <PatientInfoSelect Id="pi-auth-required"
+                               Value="@Model.AuthorizationRequired"
+                               ValueChanged="@(v => SetField(v, f => f.AuthorizationRequired = v))"
+                               Placeholder="Select yes or no"
+                               Options="@AuthorizationRequiredOptions"
+                               HasError="@HasError("authRequired")" />
+        </PatientInfoField>
+
         <PatientInfoField Label="Authorization Status" ForId="pi-auth-status" Error="@GetError("authStatus")">
             <PatientInfoSelect Id="pi-auth-status"
                                Value="@Model.AuthorizationStatus"
@@ -50,6 +59,11 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
     [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationRequiredOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("Yes", "Yes"),
+        new PatientInfoSelectOptionVm("No", "No"),
+    };
 
     private string GetError(string key) =>
         FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;

@@ -42,6 +42,21 @@
                                   HasError="@HasError("groupNumber")" />
         </PatientInfoField>
 
+        <PatientInfoField Label="Secondary Insurance Company" ForId="pi-secondary-insurance-name" Error="@GetError("secondaryInsuranceName")">
+            <PatientInfoTextInput Id="pi-secondary-insurance-name"
+                                  Value="@Model.SecondaryInsuranceCompanyName"
+                                  ValueChanged="@(v => SetField(v, f => f.SecondaryInsuranceCompanyName = v))"
+                                  Placeholder="e.g., Secondary plan name"
+                                  HasError="@HasError("secondaryInsuranceName")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Secondary Member ID / Policy Number" ForId="pi-secondary-member-id" Error="@GetError("secondaryMemberId")">
+            <PatientInfoTextInput Id="pi-secondary-member-id"
+                                  Value="@Model.SecondaryMemberIdPolicyNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.SecondaryMemberIdPolicyNumber = v))"
+                                  HasError="@HasError("secondaryMemberId")" />
+        </PatientInfoField>
+
         <PatientInfoField Label="Provider Type" ForId="pi-provider-type" Error="@GetError("providerType")">
             <PatientInfoSelect Id="pi-provider-type"
                                Value="@Model.ProviderType"

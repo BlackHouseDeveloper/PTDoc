@@ -181,6 +181,8 @@
                 InsuranceCompanyName = payer?.InsuranceCompanyName ?? string.Empty,
                 MemberIdPolicyNumber = payer?.MemberIdPolicyNumber ?? string.Empty,
                 GroupNumber = payer?.GroupNumber ?? string.Empty,
+                SecondaryInsuranceCompanyName = payer?.SecondaryInsuranceCompanyName ?? string.Empty,
+                SecondaryMemberIdPolicyNumber = payer?.SecondaryMemberIdPolicyNumber ?? string.Empty,
                 ProviderType = payer?.ProviderType ?? string.Empty,
                 InsurancePriority = payer?.InsurancePriority ?? string.Empty,
                 YearType = payer?.YearType ?? string.Empty,
@@ -204,12 +206,14 @@
             },
             SupportingDocs = new SupportingDocumentationVm
             {
+                PrimaryCareProviderName = payer?.PrimaryCareProviderName ?? string.Empty,
                 ReferringPhysicianName = payer?.ReferringPhysicianName ?? string.Empty,
                 PhysicianNpiNumber = payer?.PhysicianNpiNumber ?? string.Empty,
                 CaseManagerAdjusterContactInfo = payer?.CaseManagerAdjusterContactInfo ?? string.Empty,
             },
             AdditionalSettings = new AdditionalAuthorizationSettingsVm
             {
+                AuthorizationRequired = payer?.AuthorizationRequired ?? string.Empty,
                 AuthorizationStatus = payer?.AuthorizationStatus ?? string.Empty,
                 AuthorizationType = payer?.AuthorizationType ?? string.Empty,
                 ReAuthorizationDueDate = payer?.ReAuthorizationDueDate ?? string.Empty,
@@ -263,6 +267,8 @@
                 InsuranceCompanyName = Vm.PatientPayer.InsuranceCompanyName,
                 MemberIdPolicyNumber = Vm.PatientPayer.MemberIdPolicyNumber,
                 GroupNumber = Vm.PatientPayer.GroupNumber,
+                SecondaryInsuranceCompanyName = Vm.PatientPayer.SecondaryInsuranceCompanyName,
+                SecondaryMemberIdPolicyNumber = Vm.PatientPayer.SecondaryMemberIdPolicyNumber,
                 ProviderType = Vm.PatientPayer.ProviderType,
                 InsurancePriority = Vm.PatientPayer.InsurancePriority,
                 YearType = Vm.PatientPayer.YearType,
@@ -278,8 +284,10 @@
                 DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
                 NotesComments = Vm.Utilization.NotesComments,
                 CaseManagerAdjusterContactInfo = Vm.SupportingDocs.CaseManagerAdjusterContactInfo,
+                PrimaryCareProviderName = Vm.SupportingDocs.PrimaryCareProviderName,
                 ReferringPhysicianName = Vm.SupportingDocs.ReferringPhysicianName,
                 PhysicianNpiNumber = Vm.SupportingDocs.PhysicianNpiNumber,
+                AuthorizationRequired = Vm.AdditionalSettings.AuthorizationRequired,
                 AuthorizationStatus = Vm.AdditionalSettings.AuthorizationStatus,
                 AuthorizationType = Vm.AdditionalSettings.AuthorizationType,
                 ReAuthorizationDueDate = Vm.AdditionalSettings.ReAuthorizationDueDate,
@@ -338,6 +346,8 @@
         public string? InsuranceCompanyName { get; set; }
         public string? MemberIdPolicyNumber { get; set; }
         public string? GroupNumber { get; set; }
+        public string? SecondaryInsuranceCompanyName { get; set; }
+        public string? SecondaryMemberIdPolicyNumber { get; set; }
         public string? ProviderType { get; set; }
         public string? InsurancePriority { get; set; }
         public string? YearType { get; set; }
@@ -353,8 +363,10 @@
         public string? DateOfFirstVisitUnderAuthorization { get; set; }
         public string? NotesComments { get; set; }
         public string? CaseManagerAdjusterContactInfo { get; set; }
+        public string? PrimaryCareProviderName { get; set; }
         public string? ReferringPhysicianName { get; set; }
         public string? PhysicianNpiNumber { get; set; }
+        public string? AuthorizationRequired { get; set; }
         public string? AuthorizationStatus { get; set; }
         public string? AuthorizationType { get; set; }
         public string? ReAuthorizationDueDate { get; set; }
