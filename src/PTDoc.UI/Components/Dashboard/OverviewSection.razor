@@ -1,4 +1,4 @@
-@* Overview Section - Dashboard metrics grid with 7 key metrics *@
+@* Overview Section - Dashboard metrics grid *@
 @inject Microsoft.AspNetCore.Components.NavigationManager Navigation
 
 <div class="overview-section">
@@ -67,23 +67,6 @@
             </div>
         </button>
 
-        <!-- Pending Card -->
-        <button type="button" class="metric-card metric-card--action" aria-label="Open items needing attention" @onclick='() => NavigateTo("/notes?status=Needs%20Attention")'>
-            <div class="metric-card-content">
-                <div class="metric-icon-container metric-icon-pending">
-                    <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M10 5V10L13.3333 11.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </div>
-                <div class="metric-info">
-                    <p class="metric-label">Pending</p>
-                    <p class="metric-value">@Pending</p>
-                    <p class="metric-sublabel">In Progress</p>
-                </div>
-            </div>
-        </button>
-
         <!-- Drafts Card -->
         <button type="button" class="metric-card metric-card--action" aria-label="Open draft notes" @onclick='() => NavigateTo("/notes?status=Draft")'>
             <div class="metric-card-content">
@@ -145,9 +128,6 @@
     
     [Parameter]
     public int NotesDue { get; set; }
-    
-    [Parameter]
-    public int Pending { get; set; }
     
     [Parameter]
     public int Drafts { get; set; }

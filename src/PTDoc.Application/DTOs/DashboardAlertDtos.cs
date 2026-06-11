@@ -25,6 +25,7 @@ public sealed class DashboardOverviewCountsResponse
     public int AppointmentsToday { get; set; }
     public int NotesDueToday { get; set; }
     public int PendingItems { get; set; }
+    public int AuthorizationActionItems { get; set; }
     public int DraftNotes { get; set; }
     public int UnsignedNotes { get; set; }
     public int IncompleteIntakes { get; set; }

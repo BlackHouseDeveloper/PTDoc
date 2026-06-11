@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Dashboard;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -36,13 +37,15 @@ public static class DashboardEndpoints
     private static async Task<IResult> GetAlerts(
         [FromQuery] int? take,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
         var requestedTake = Math.Clamp(take.GetValueOrDefault(DefaultTake), 1, MaxTake);
         var now = DateTimeOffset.UtcNow;
         var today = now.UtcDateTime.Date;
         var tomorrow = today.AddDays(1);
-        var orderedAlerts = await BuildVisibleAlertsAsync(db, requestedTake, today, tomorrow, now, cancellationToken);
+        var visibility = BuildVisibilityContext(identityContext);
+        var orderedAlerts = await BuildVisibleAlertsAsync(db, requestedTake, today, tomorrow, now, visibility, cancellationToken);
 
         return Results.Ok(new DashboardAlertsResponse
         {
@@ -54,18 +57,28 @@ public static class DashboardEndpoints
 
     private static async Task<IResult> GetSnapshot(
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var today = now.UtcDateTime.Date;
         var tomorrow = today.AddDays(1);
+        var visibility = BuildVisibilityContext(identityContext);
 
-        var overview = await BuildOverviewCountsAsync(db, today, tomorrow, now, cancellationToken);
-        var alerts = await BuildVisibleAlertsAsync(db, DefaultTake, today, tomorrow, now, cancellationToken);
-        var urgentAlertCount = await CountUrgentAlertsAsync(db, today, now, overview.NotesDueToday, cancellationToken);
-        var recentNotes = await BuildRecentNotesAsync(db, cancellationToken);
-        var recentPlansOfCare = await BuildRecentPlansOfCareAsync(db, cancellationToken);
-        var recentActivities = await BuildRecentActivitiesAsync(db, today, tomorrow, cancellationToken);
+        var overview = await BuildOverviewCountsAsync(db, today, tomorrow, now, visibility, cancellationToken);
+        var alerts = await BuildVisibleAlertsAsync(db, DefaultTake, today, tomorrow, now, visibility, cancellationToken);
+        alerts = await EnsureAuthorizationAlertIncludedAsync(
+            db,
+            alerts,
+            today,
+            now,
+            visibility,
+            overview.AuthorizationActionItems,
+            cancellationToken);
+        var urgentAlertCount = await CountUrgentAlertsAsync(db, today, now, visibility, overview.NotesDueToday, cancellationToken);
+        var recentNotes = await BuildRecentNotesAsync(db, visibility, cancellationToken);
+        var recentPlansOfCare = await BuildRecentPlansOfCareAsync(db, visibility, cancellationToken);
+        var recentActivities = await BuildRecentActivitiesAsync(db, today, tomorrow, visibility, cancellationToken);
 
         return Results.Ok(new DashboardSnapshotResponse
         {
@@ -86,16 +99,17 @@ public static class DashboardEndpoints
         DateTime today,
         DateTime tomorrow,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
         var requestedTake = Math.Clamp(take, 1, MaxTake);
         var alerts = new List<DashboardAlertItemResponse>();
 
-        alerts.AddRange(await BuildUnsignedNoteAlertsAsync(db, today, now, cancellationToken));
-        alerts.AddRange(await BuildSubmittedIntakeReviewAlertsAsync(db, now, cancellationToken));
-        alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, cancellationToken));
-        alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, cancellationToken));
-        alerts.AddRange(await BuildAuthorizationAlertsAsync(db, today, now, cancellationToken));
+        alerts.AddRange(await BuildUnsignedNoteAlertsAsync(db, today, now, visibility, cancellationToken));
+        alerts.AddRange(await BuildSubmittedIntakeReviewAlertsAsync(db, now, visibility, cancellationToken));
+        alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, visibility, cancellationToken));
+        alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, visibility, cancellationToken));
+        alerts.AddRange(await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken));
 
         return alerts
             .OrderBy(alert => PriorityRank(alert.Priority))
@@ -106,15 +120,52 @@ public static class DashboardEndpoints
             .ToList();
     }
 
+    private static async Task<List<DashboardAlertItemResponse>> EnsureAuthorizationAlertIncludedAsync(
+        ApplicationDbContext db,
+        List<DashboardAlertItemResponse> alerts,
+        DateTime today,
+        DateTimeOffset now,
+        DashboardVisibilityContext visibility,
+        int authorizationActionItems,
+        CancellationToken cancellationToken)
+    {
+        if (authorizationActionItems <= 0 || alerts.Any(alert => IsAuthorizationAlertKind(alert.Kind)))
+        {
+            return alerts;
+        }
+
+        var authorizationAlert = (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken))
+            .OrderBy(alert => PriorityRank(alert.Priority))
+            .ThenBy(alert => KindRank(alert.Kind))
+            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
+            .ThenBy(alert => alert.Id, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        if (authorizationAlert is null)
+        {
+            return alerts;
+        }
+
+        if (alerts.Count >= DefaultTake)
+        {
+            alerts[^1] = authorizationAlert;
+            return alerts;
+        }
+
+        alerts.Add(authorizationAlert);
+        return alerts;
+    }
+
     private static async Task<DashboardOverviewCountsResponse> BuildOverviewCountsAsync(
         ApplicationDbContext db,
         DateTime today,
         DateTime tomorrow,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var appointmentRows = await db.Appointments
-            .AsNoTracking()
+        var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
+        var appointmentRows = await appointmentQuery
             .Where(appointment =>
                 appointment.StartTimeUtc >= today &&
                 appointment.StartTimeUtc < tomorrow &&
@@ -124,6 +175,7 @@ public static class DashboardEndpoints
             {
                 appointment.Id,
                 appointment.PatientId,
+                appointment.ClinicalId,
                 appointment.Status
             })
             .ToListAsync(cancellationToken);
@@ -159,8 +211,8 @@ public static class DashboardEndpoints
                 today,
                 tomorrow));
 
-        var draftNotes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var draftNotes = await noteQuery
             .CountAsync(note =>
                 !note.IsAddendum &&
                 note.NoteStatus == NoteStatus.Draft &&
@@ -168,8 +220,7 @@ public static class DashboardEndpoints
                 !note.Patient.IsArchived,
                 cancellationToken);
 
-        var unsignedNotes = await db.ClinicalNotes
-            .AsNoTracking()
+        var unsignedNotes = await noteQuery
             .CountAsync(note =>
                 !note.IsAddendum &&
                 note.NoteStatus != NoteStatus.Signed &&
@@ -177,8 +228,8 @@ public static class DashboardEndpoints
                 !note.Patient.IsArchived,
                 cancellationToken);
 
-        var incompleteIntakes = await db.IntakeForms
-            .AsNoTracking()
+        var intakeQuery = ApplyIntakeVisibility(db.IntakeForms.AsNoTracking(), db, visibility);
+        var incompleteIntakes = await intakeQuery
             .CountAsync(intake =>
                 !intake.IsLocked &&
                 intake.SubmittedAt == null &&
@@ -186,8 +237,7 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var submittedIntakesAwaitingReview = await db.IntakeForms
-            .AsNoTracking()
+        var submittedIntakesAwaitingReview = await intakeQuery
             .CountAsync(intake =>
                 intake.IsLocked &&
                 intake.SubmittedAt != null &&
@@ -196,7 +246,7 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var authorizationActionItems = await CountAuthorizationAlertsAsync(db, today, now, cancellationToken);
+        var authorizationActionItems = await CountAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken);
 
         return new DashboardOverviewCountsResponse
         {
@@ -204,6 +254,7 @@ public static class DashboardEndpoints
             AppointmentsToday = appointmentRows.Count,
             NotesDueToday = notesDueToday,
             PendingItems = notesDueToday + unsignedNotes + incompleteIntakes + submittedIntakesAwaitingReview + authorizationActionItems,
+            AuthorizationActionItems = authorizationActionItems,
             DraftNotes = draftNotes,
             UnsignedNotes = unsignedNotes,
             IncompleteIntakes = incompleteIntakes,
@@ -215,13 +266,14 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         int notesDueToday,
         CancellationToken cancellationToken)
     {
         var staleIntakeThreshold = now.UtcDateTime.AddHours(-24);
 
-        var overdueUnsignedNotes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var overdueUnsignedNotes = await noteQuery
             .CountAsync(note =>
                 !note.IsAddendum &&
                 note.NoteStatus != NoteStatus.Signed &&
@@ -230,8 +282,8 @@ public static class DashboardEndpoints
                 !note.Patient.IsArchived,
                 cancellationToken);
 
-        var staleIncompleteIntakes = await db.IntakeForms
-            .AsNoTracking()
+        var intakeQuery = ApplyIntakeVisibility(db.IntakeForms.AsNoTracking(), db, visibility);
+        var staleIncompleteIntakes = await intakeQuery
             .CountAsync(intake =>
                 !intake.IsLocked &&
                 intake.SubmittedAt == null &&
@@ -240,8 +292,7 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var staleSubmittedIntakesAwaitingReview = await db.IntakeForms
-            .AsNoTracking()
+        var staleSubmittedIntakesAwaitingReview = await intakeQuery
             .CountAsync(intake =>
                 intake.IsLocked &&
                 intake.SubmittedAt != null &&
@@ -251,7 +302,7 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var urgentAuthorizationAlerts = (await BuildAuthorizationAlertsAsync(db, today, now, cancellationToken))
+        var urgentAuthorizationAlerts = (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken))
             .Count(alert => alert.IsUrgent);
 
         return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes + staleSubmittedIntakesAwaitingReview + urgentAuthorizationAlerts;
@@ -259,10 +310,11 @@ public static class DashboardEndpoints
 
     private static async Task<IReadOnlyList<NoteListItemApiResponse>> BuildRecentNotesAsync(
         ApplicationDbContext db,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        return await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        return await noteQuery
             .Where(note => !note.IsAddendum && note.Patient != null && !note.Patient.IsArchived)
             .OrderByDescending(note => note.LastModifiedUtc)
             .ThenByDescending(note => note.DateOfService)
@@ -286,10 +338,11 @@ public static class DashboardEndpoints
 
     private static async Task<IReadOnlyList<DashboardPlanOfCareSummaryResponse>> BuildRecentPlansOfCareAsync(
         ApplicationDbContext db,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var notes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var notes = await noteQuery
             .Where(note =>
                 !note.IsAddendum &&
                 (note.NoteType == NoteType.Evaluation || note.NoteType == NoteType.ProgressNote) &&
@@ -366,10 +419,11 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTime tomorrow,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var notes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var notes = await noteQuery
             .Where(note => !note.IsAddendum && note.Patient != null && !note.Patient.IsArchived)
             .OrderByDescending(note => note.LastModifiedUtc)
             .Take(20)
@@ -386,8 +440,8 @@ public static class DashboardEndpoints
             })
             .ToListAsync(cancellationToken);
 
-        var appointments = await db.Appointments
-            .AsNoTracking()
+        var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
+        var appointments = await appointmentQuery
             .Where(appointment =>
                 appointment.StartTimeUtc >= today &&
                 appointment.StartTimeUtc < tomorrow &&
@@ -446,10 +500,11 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTime tomorrow,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var appointments = await db.Appointments
-            .AsNoTracking()
+        var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
+        var appointments = await appointmentQuery
             .Include(appointment => appointment.Patient)
             .Where(appointment =>
                 appointment.StartTimeUtc >= today &&
@@ -514,12 +569,13 @@ public static class DashboardEndpoints
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildIncompleteIntakeAlertsAsync(
         ApplicationDbContext db,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
         var staleThreshold = now.UtcDateTime.AddHours(-24);
 
-        var intakes = await db.IntakeForms
-            .AsNoTracking()
+        var intakeQuery = ApplyIntakeVisibility(db.IntakeForms.AsNoTracking(), db, visibility);
+        var intakes = await intakeQuery
             .Include(intake => intake.Patient)
             .Where(intake =>
                 !intake.IsLocked &&
@@ -561,12 +617,13 @@ public static class DashboardEndpoints
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildSubmittedIntakeReviewAlertsAsync(
         ApplicationDbContext db,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
         var staleThreshold = now.UtcDateTime.AddHours(-24);
 
-        var intakes = await db.IntakeForms
-            .AsNoTracking()
+        var intakeQuery = ApplyIntakeVisibility(db.IntakeForms.AsNoTracking(), db, visibility);
+        var intakes = await intakeQuery
             .Include(intake => intake.Patient)
             .Where(intake =>
                 intake.IsLocked &&
@@ -612,10 +669,11 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var notes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var notes = await noteQuery
             .Include(note => note.Patient)
             .Where(note =>
                 !note.IsAddendum &&
@@ -663,17 +721,19 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken) =>
-        (await BuildAuthorizationAlertsAsync(db, today, now, cancellationToken)).Count;
+        (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken)).Count;
 
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildAuthorizationAlertsAsync(
         ApplicationDbContext db,
         DateTime today,
         DateTimeOffset now,
+        DashboardVisibilityContext visibility,
         CancellationToken cancellationToken)
     {
-        var patients = await db.Patients
-            .AsNoTracking()
+        var patientQuery = ApplyPatientVisibility(db.Patients.AsNoTracking(), db, visibility);
+        var patients = await patientQuery
             .Where(patient =>
                 !patient.IsArchived &&
                 !string.IsNullOrWhiteSpace(patient.PayerInfoJson) &&
@@ -916,6 +976,106 @@ public static class DashboardEndpoints
         DashboardAlertKinds.IncompleteIntake => 7,
         _ => 8
     };
+
+    private static bool IsAuthorizationAlertKind(string kind) => kind is
+        DashboardAlertKinds.AuthorizationStatus or
+        DashboardAlertKinds.AuthorizationExpiration or
+        DashboardAlertKinds.AuthorizationReauthorizationDue or
+        DashboardAlertKinds.AuthorizationVisitLimit;
+
+    private static DashboardVisibilityContext BuildVisibilityContext(IIdentityContextAccessor identityContext) =>
+        new(identityContext.TryGetCurrentUserId(), identityContext.GetCurrentUserRole());
+
+    private static IQueryable<Appointment> ApplyAppointmentVisibility(
+        IQueryable<Appointment> query,
+        DashboardVisibilityContext visibility)
+    {
+        if (!visibility.RequiresProviderScope)
+        {
+            return query;
+        }
+
+        return visibility.CurrentUserId is { } userId
+            ? query.Where(appointment => appointment.ClinicalId == userId)
+            : query.Where(_ => false);
+    }
+
+    private static IQueryable<ClinicalNote> ApplyNoteVisibility(
+        IQueryable<ClinicalNote> query,
+        DashboardVisibilityContext visibility)
+    {
+        if (!visibility.RequiresProviderScope)
+        {
+            return query;
+        }
+
+        return visibility.CurrentUserId is { } userId
+            ? query.Where(note =>
+                note.ModifiedByUserId == userId ||
+                note.SignedByUserId == userId ||
+                note.CoSignedByUserId == userId ||
+                (note.Appointment != null && note.Appointment.ClinicalId == userId))
+            : query.Where(_ => false);
+    }
+
+    private static IQueryable<IntakeForm> ApplyIntakeVisibility(
+        IQueryable<IntakeForm> query,
+        ApplicationDbContext db,
+        DashboardVisibilityContext visibility)
+    {
+        if (!visibility.RequiresProviderScope)
+        {
+            return query;
+        }
+
+        return visibility.CurrentUserId is { } userId
+            ? query.Where(intake =>
+                intake.ModifiedByUserId == userId ||
+                db.Appointments.Any(appointment =>
+                    appointment.PatientId == intake.PatientId &&
+                    appointment.ClinicalId == userId) ||
+                db.ClinicalNotes.Any(note =>
+                    !note.IsAddendum &&
+                    note.PatientId == intake.PatientId &&
+                    (note.ModifiedByUserId == userId ||
+                     note.SignedByUserId == userId ||
+                     note.CoSignedByUserId == userId ||
+                     (note.Appointment != null && note.Appointment.ClinicalId == userId))))
+            : query.Where(_ => false);
+    }
+
+    private static IQueryable<Patient> ApplyPatientVisibility(
+        IQueryable<Patient> query,
+        ApplicationDbContext db,
+        DashboardVisibilityContext visibility)
+    {
+        if (!visibility.RequiresProviderScope)
+        {
+            return query;
+        }
+
+        return visibility.CurrentUserId is { } userId
+            ? query.Where(patient =>
+                patient.ModifiedByUserId == userId ||
+                db.Appointments.Any(appointment =>
+                    appointment.PatientId == patient.Id &&
+                    appointment.ClinicalId == userId) ||
+                db.ClinicalNotes.Any(note =>
+                    !note.IsAddendum &&
+                    note.PatientId == patient.Id &&
+                    (note.ModifiedByUserId == userId ||
+                     note.SignedByUserId == userId ||
+                     note.CoSignedByUserId == userId ||
+                     (note.Appointment != null && note.Appointment.ClinicalId == userId))))
+            : query.Where(_ => false);
+    }
+
+    private sealed record DashboardVisibilityContext(Guid? CurrentUserId, string? CurrentUserRole)
+    {
+        public bool RequiresProviderScope =>
+            string.Equals(CurrentUserRole, Roles.PT, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(CurrentUserRole, Roles.PTA, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static DateTimeOffset ToUtcOffset(DateTime value)
     {
