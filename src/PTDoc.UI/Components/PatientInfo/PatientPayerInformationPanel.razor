@@ -57,6 +57,13 @@
                                   HasError="@HasError("secondaryMemberId")" />
         </PatientInfoField>
 
+        <PatientInfoField Label="Secondary Group Number" ForId="pi-secondary-group-number" Error="@GetError("secondaryGroupNumber")">
+            <PatientInfoTextInput Id="pi-secondary-group-number"
+                                  Value="@Model.SecondaryGroupNumber"
+                                  ValueChanged="@(v => SetField(v, f => f.SecondaryGroupNumber = v))"
+                                  HasError="@HasError("secondaryGroupNumber")" />
+        </PatientInfoField>
+
         <PatientInfoField Label="Provider Type" ForId="pi-provider-type" Error="@GetError("providerType")">
             <PatientInfoSelect Id="pi-provider-type"
                                Value="@Model.ProviderType"

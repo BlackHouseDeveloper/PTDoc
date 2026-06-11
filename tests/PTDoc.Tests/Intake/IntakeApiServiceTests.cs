@@ -346,7 +346,14 @@ public sealed class IntakeApiServiceTests
             InsuranceCompanyName = "PFPT Beta PPO",
             MemberOrPolicyNumber = "BETA001",
             PayerType = "Commercial",
-            InsuranceCoverageType = "Primary"
+            InsuranceCoverageType = "Primary",
+            SecondaryInsuranceCompanyName = "Secondary Health",
+            SecondaryMemberOrPolicyNumber = "SEC-123",
+            SecondaryGroupNumber = "SEC-GRP",
+            AdjusterName = "Alex Adjuster",
+            AdjusterPhone = "555-0200",
+            AdjusterEmail = "adjuster@example.com",
+            AdjusterFax = "555-0201"
         });
 
         Assert.NotNull(createPatientRequestBody);
@@ -355,6 +362,13 @@ public sealed class IntakeApiServiceTests
         Assert.Equal("Commercial", payerJson.RootElement.GetProperty("providerType").GetString());
         Assert.Equal("BETA001", payerJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
         Assert.Equal("Primary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Secondary Health", payerJson.RootElement.GetProperty("secondaryInsuranceCompanyName").GetString());
+        Assert.Equal("SEC-123", payerJson.RootElement.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+        Assert.Equal("SEC-GRP", payerJson.RootElement.GetProperty("secondaryGroupNumber").GetString());
+        Assert.Equal("Alex Adjuster", payerJson.RootElement.GetProperty("adjusterName").GetString());
+        Assert.Equal("555-0200", payerJson.RootElement.GetProperty("adjusterPhone").GetString());
+        Assert.Equal("adjuster@example.com", payerJson.RootElement.GetProperty("adjusterEmail").GetString());
+        Assert.Equal("555-0201", payerJson.RootElement.GetProperty("adjusterFax").GetString());
     }
 
     [Fact]

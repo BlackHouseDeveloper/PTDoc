@@ -85,6 +85,7 @@
 
     private PatientInfoPageVm Vm { get; set; } = new();
     private IDisposable? _navGuard;
+    private PayerInfoStorage? loadedPayerInfo;
     private bool isPatientUnavailable;
     private string unavailableTitle = "Patient not found";
     private string unavailableMessage = "The selected patient record could not be loaded.";
@@ -170,6 +171,7 @@
             try { payer = JsonSerializer.Deserialize<PayerInfoStorage>(patient.PayerInfoJson, SerializerOptions); }
             catch { /* ignore – treat as empty */ }
         }
+        loadedPayerInfo = payer;
 
         Vm = new PatientInfoPageVm
         {
@@ -183,6 +185,7 @@
                 GroupNumber = payer?.GroupNumber ?? string.Empty,
                 SecondaryInsuranceCompanyName = payer?.SecondaryInsuranceCompanyName ?? string.Empty,
                 SecondaryMemberIdPolicyNumber = payer?.SecondaryMemberIdPolicyNumber ?? string.Empty,
+                SecondaryGroupNumber = payer?.SecondaryGroupNumber ?? string.Empty,
                 ProviderType = payer?.ProviderType ?? string.Empty,
                 InsurancePriority = payer?.InsurancePriority ?? string.Empty,
                 YearType = payer?.YearType ?? string.Empty,
@@ -209,7 +212,7 @@
                 PrimaryCareProviderName = payer?.PrimaryCareProviderName ?? string.Empty,
                 ReferringPhysicianName = payer?.ReferringPhysicianName ?? string.Empty,
                 PhysicianNpiNumber = payer?.PhysicianNpiNumber ?? string.Empty,
-                CaseManagerAdjusterContactInfo = payer?.CaseManagerAdjusterContactInfo ?? string.Empty,
+                CaseManagerAdjusterContactInfo = payer?.CaseManagerAdjusterContactInfo ?? FormatAdjusterContactInfo(payer),
             },
             AdditionalSettings = new AdditionalAuthorizationSettingsVm
             {
@@ -230,12 +233,34 @@
         isPatientUnavailable = true;
         unavailableTitle = title;
         unavailableMessage = message;
+        loadedPayerInfo = null;
         Vm = new PatientInfoPageVm { PatientDisplayName = "Patient unavailable" };
     }
 
     private void HandleBackToPatients()
     {
         Navigation.NavigateTo("/patients");
+    }
+
+    private static string FormatAdjusterContactInfo(PayerInfoStorage? payer)
+    {
+        if (payer is null)
+        {
+            return string.Empty;
+        }
+
+        var parts = new[]
+        {
+            payer.AdjusterName,
+            payer.AdjusterPhone,
+            payer.AdjusterEmail,
+            payer.AdjusterFax is null ? null : $"Fax: {payer.AdjusterFax}"
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .ToArray();
+
+        return parts.Length == 0 ? string.Empty : string.Join(" | ", parts);
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────
@@ -269,6 +294,7 @@
                 GroupNumber = Vm.PatientPayer.GroupNumber,
                 SecondaryInsuranceCompanyName = Vm.PatientPayer.SecondaryInsuranceCompanyName,
                 SecondaryMemberIdPolicyNumber = Vm.PatientPayer.SecondaryMemberIdPolicyNumber,
+                SecondaryGroupNumber = Vm.PatientPayer.SecondaryGroupNumber,
                 ProviderType = Vm.PatientPayer.ProviderType,
                 InsurancePriority = Vm.PatientPayer.InsurancePriority,
                 YearType = Vm.PatientPayer.YearType,
@@ -284,6 +310,10 @@
                 DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
                 NotesComments = Vm.Utilization.NotesComments,
                 CaseManagerAdjusterContactInfo = Vm.SupportingDocs.CaseManagerAdjusterContactInfo,
+                AdjusterName = loadedPayerInfo?.AdjusterName,
+                AdjusterPhone = loadedPayerInfo?.AdjusterPhone,
+                AdjusterEmail = loadedPayerInfo?.AdjusterEmail,
+                AdjusterFax = loadedPayerInfo?.AdjusterFax,
                 PrimaryCareProviderName = Vm.SupportingDocs.PrimaryCareProviderName,
                 ReferringPhysicianName = Vm.SupportingDocs.ReferringPhysicianName,
                 PhysicianNpiNumber = Vm.SupportingDocs.PhysicianNpiNumber,
@@ -300,6 +330,7 @@
             };
 
             await PatientService.UpdateAsync(patientGuid, updateRequest);
+            loadedPayerInfo = payerInfo;
             Vm.IsDirty = false;
             ToastService.ShowSuccess("Patient information saved.");
         }
@@ -348,6 +379,7 @@
         public string? GroupNumber { get; set; }
         public string? SecondaryInsuranceCompanyName { get; set; }
         public string? SecondaryMemberIdPolicyNumber { get; set; }
+        public string? SecondaryGroupNumber { get; set; }
         public string? ProviderType { get; set; }
         public string? InsurancePriority { get; set; }
         public string? YearType { get; set; }
@@ -363,6 +395,10 @@
         public string? DateOfFirstVisitUnderAuthorization { get; set; }
         public string? NotesComments { get; set; }
         public string? CaseManagerAdjusterContactInfo { get; set; }
+        public string? AdjusterName { get; set; }
+        public string? AdjusterPhone { get; set; }
+        public string? AdjusterEmail { get; set; }
+        public string? AdjusterFax { get; set; }
         public string? PrimaryCareProviderName { get; set; }
         public string? ReferringPhysicianName { get; set; }
         public string? PhysicianNpiNumber { get; set; }

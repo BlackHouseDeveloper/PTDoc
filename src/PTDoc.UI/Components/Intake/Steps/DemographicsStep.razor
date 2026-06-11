@@ -48,11 +48,25 @@
         GroupNumber="@State.GroupNumber"
         PayerType="@State.PayerType"
         InsuranceCoverageType="@State.InsuranceCoverageType"
+        SecondaryInsuranceCompanyName="@State.SecondaryInsuranceCompanyName"
+        SecondaryMemberOrPolicyNumber="@State.SecondaryMemberOrPolicyNumber"
+        SecondaryGroupNumber="@State.SecondaryGroupNumber"
+        AdjusterName="@State.AdjusterName"
+        AdjusterPhone="@State.AdjusterPhone"
+        AdjusterEmail="@State.AdjusterEmail"
+        AdjusterFax="@State.AdjusterFax"
         InsuranceCompanyNameChanged="OnInsuranceCompanyNameChanged"
         MemberOrPolicyNumberChanged="OnMemberOrPolicyNumberChanged"
         GroupNumberChanged="OnGroupNumberChanged"
         PayerTypeChanged="OnPayerTypeChanged"
-        InsuranceCoverageTypeChanged="OnInsuranceCoverageTypeChanged" />
+        InsuranceCoverageTypeChanged="OnInsuranceCoverageTypeChanged"
+        SecondaryInsuranceCompanyNameChanged="OnSecondaryInsuranceCompanyNameChanged"
+        SecondaryMemberOrPolicyNumberChanged="OnSecondaryMemberOrPolicyNumberChanged"
+        SecondaryGroupNumberChanged="OnSecondaryGroupNumberChanged"
+        AdjusterNameChanged="OnAdjusterNameChanged"
+        AdjusterPhoneChanged="OnAdjusterPhoneChanged"
+        AdjusterEmailChanged="OnAdjusterEmailChanged"
+        AdjusterFaxChanged="OnAdjusterFaxChanged" />
 
     <HipaaPrivacyNoticeCard
         HipaaAcknowledged="@HipaaAcknowledged"
@@ -165,6 +179,13 @@
     private Task OnGroupNumberChanged(string? value) => UpdateStateAsync(() => State.GroupNumber = value);
     private Task OnPayerTypeChanged(string? value) => UpdateStateAsync(() => State.PayerType = value);
     private Task OnInsuranceCoverageTypeChanged(string? value) => UpdateStateAsync(() => State.InsuranceCoverageType = value);
+    private Task OnSecondaryInsuranceCompanyNameChanged(string? value) => UpdateStateAsync(() => State.SecondaryInsuranceCompanyName = value);
+    private Task OnSecondaryMemberOrPolicyNumberChanged(string? value) => UpdateStateAsync(() => State.SecondaryMemberOrPolicyNumber = value);
+    private Task OnSecondaryGroupNumberChanged(string? value) => UpdateStateAsync(() => State.SecondaryGroupNumber = value);
+    private Task OnAdjusterNameChanged(string? value) => UpdateStateAsync(() => State.AdjusterName = value);
+    private Task OnAdjusterPhoneChanged(string? value) => UpdateStateAsync(() => State.AdjusterPhone = value);
+    private Task OnAdjusterEmailChanged(string? value) => UpdateStateAsync(() => State.AdjusterEmail = value);
+    private Task OnAdjusterFaxChanged(string? value) => UpdateStateAsync(() => State.AdjusterFax = value);
 
     private Task OnHipaaAcknowledgedChanged(bool value) => UpdateStateAsync(() =>
     {
