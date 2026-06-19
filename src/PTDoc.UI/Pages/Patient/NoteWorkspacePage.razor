@@ -21,6 +21,7 @@
 @using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
 @using PTDoc.UI.Components.Notes.Workspace.DischargeNote
 @using PTDoc.UI.Components.Notes.Workspace.DryNeedling
+@using PTDoc.UI.Components.Notes.Workspace.Evaluation
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.UI.Services
 
@@ -318,17 +319,31 @@ else
                                       ShortTermGoalCount="@ShortTermGoalCount"
                                       LongTermGoalCount="@LongTermGoalCount"
                                       GoalItems="@GoalItems"
-                                      GoalHints="@GoalHints" />
+                                      GoalHints="@GoalHints"
+                                      ShowInterventionAuthoring="@(!IsEvaluationNote && !IsDailyTreatment && !IsProgressNote)" />
                         break;
 
                     case SoapSection.Interventions:
-                        <InterventionsSection Vm="@_note.Plan"
-                                              DailyTreatment="@_note.DailyTreatment"
-                                              VmChanged="HandlePlanChanged"
-                                              DailyTreatmentChanged="HandleDailyTreatmentChanged"
-                                              IsReadOnly="@IsWorkspaceReadOnly"
-                                              IsDarkMode="@_isDarkMode"
-                                              SelectedBodyPart="@GetSelectedBodyPart()" />
+                        if (IsEvaluationNote)
+                        {
+                            <EvaluationInterventionsSection Objective="@_note.Objective"
+                                                            ObjectiveChanged="HandleObjectiveChanged"
+                                                            Plan="@_note.Plan"
+                                                            PlanChanged="HandlePlanChanged"
+                                                            BillingSettings="@_note.BillingSettings"
+                                                            IsReadOnly="@IsWorkspaceReadOnly"
+                                                            SelectedBodyPart="@GetSelectedBodyPart()" />
+                        }
+                        else
+                        {
+                            <InterventionsSection Vm="@_note.Plan"
+                                                  DailyTreatment="@_note.DailyTreatment"
+                                                  VmChanged="HandlePlanChanged"
+                                                  DailyTreatmentChanged="HandleDailyTreatmentChanged"
+                                                  IsReadOnly="@IsWorkspaceReadOnly"
+                                                  IsDarkMode="@_isDarkMode"
+                                                  SelectedBodyPart="@GetSelectedBodyPart()" />
+                        }
                         break;
 
                     case SoapSection.Assessment:
@@ -407,7 +422,8 @@ else
                                      AssessmentSummary="@GetAssessmentSummary()"
                                      GoalsSummary="@GetGoalsSummary()"
                                      PrecautionsSummary="@GetPrecautionsSummary()"
-                                     StructuredInputs="@GetPlanAiInputs()" />
+                                     StructuredInputs="@GetPlanAiInputs()"
+                                     ShowInterventionAuthoring="@(!IsEvaluationNote)" />
                         }
                         break;
 
@@ -529,6 +545,16 @@ else
         SoapSection.Review
     ];
 
+    private static readonly IReadOnlyList<SoapSection> EvaluationSoapSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Interventions,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
+
     private SoapNoteVm _note = new();
     private WorkspaceSubjectiveCatalogNormalizer? _subjectiveCatalogNormalizer;
     private DryNeedlingVm _dryNeedling = new();
@@ -569,13 +595,16 @@ else
     private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
+    private bool IsEvaluationNote => string.Equals(_note.NoteType, "Evaluation Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDischargeNote => string.Equals(_note.NoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDryNeedlingNote => string.Equals(_note.NoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
     private bool IsReviewSection => _note.ActiveSection == SoapSection.Review;
-    private IReadOnlyList<SoapSection> CurrentSoapSections => IsDailyTreatment || IsProgressNote
-        ? DailyProgressSoapSections
-        : DefaultSoapSections;
+    private IReadOnlyList<SoapSection> CurrentSoapSections => IsEvaluationNote
+        ? EvaluationSoapSections
+        : IsDailyTreatment || IsProgressNote
+            ? DailyProgressSoapSections
+            : DefaultSoapSections;
     private WorkspaceSubjectiveCatalogNormalizer SubjectiveCatalogNormalizer =>
         _subjectiveCatalogNormalizer ??= new WorkspaceSubjectiveCatalogNormalizer(IntakeReferenceData);
 
@@ -843,6 +872,7 @@ else
         SyncSelectedBodyPart(GetSelectedBodyPart());
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload?.Plan ?? new PlanVm();
+        _note.BillingSettings = payload?.BillingSettings ?? new BillingModifierSettingsVm();
         _note.DailyTreatment = payload?.DailyTreatment ?? new DailyTreatmentVm();
         _note.ProgressSubjective = payload?.ProgressSubjective ?? new ProgressSubjectiveVm();
         _note.DischargeSubjective = payload?.DischargeSubjective ?? new DischargeSubjectiveVm();
@@ -1080,9 +1110,9 @@ else
     }
 
     private string? GetSelectedBodyPart() =>
-        !string.IsNullOrWhiteSpace(_note.Objective.SelectedBodyPart)
-            ? _note.Objective.SelectedBodyPart
-            : _note.Subjective.SelectedBodyPart;
+        !string.IsNullOrWhiteSpace(_note.Subjective.SelectedBodyPart)
+            ? _note.Subjective.SelectedBodyPart
+            : _note.Objective.SelectedBodyPart;
 
     private Task HandleDryNeedlingChanged(DryNeedlingVm vm)
     {
@@ -1723,6 +1753,7 @@ else
             Objective = _note.Objective,
             Assessment = _note.Assessment,
             Plan = _note.Plan,
+            BillingSettings = _note.BillingSettings,
             DailyTreatment = _note.DailyTreatment,
             ProgressSubjective = _note.ProgressSubjective,
             DischargeSubjective = _note.DischargeSubjective,
@@ -1940,6 +1971,7 @@ else
         _note.Objective = payload.Objective ?? new ObjectiveVm();
         _note.Assessment = payload.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload.Plan ?? new PlanVm();
+        _note.BillingSettings = payload.BillingSettings ?? new BillingModifierSettingsVm();
         _note.DailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
         _note.ProgressSubjective = payload.ProgressSubjective ?? new ProgressSubjectiveVm();
         _note.DischargeSubjective = payload.DischargeSubjective ?? new DischargeSubjectiveVm();

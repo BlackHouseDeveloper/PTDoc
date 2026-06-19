@@ -15,6 +15,7 @@ public class ObjectiveVm
     public List<ObjectiveMetricRowEntry> Metrics { get; set; } = new();
 
     // Gait Analysis
+    public bool IsGaitUnremarkable { get; set; }
     public string? PrimaryGaitPattern { get; set; }
     public HashSet<string> GaitDeviations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? AdditionalGaitObservations { get; set; }
@@ -23,7 +24,10 @@ public class ObjectiveVm
     public List<string> RecommendedOutcomeMeasures { get; set; } = new();
     public List<OutcomeMeasureEntry> OutcomeMeasures { get; set; } = new();
     public List<SpecialTestEntry> SpecialTests { get; set; } = new();
+    public bool IsPalpationUnremarkable { get; set; }
     public HashSet<string> TenderMuscles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? PalpationComments { get; set; }
+    public bool IsPostureUnremarkable { get; set; }
     public HashSet<string> PostureFindings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? OtherPostureFinding { get; set; }
 
@@ -36,6 +40,7 @@ public class ObjectiveVm
 public sealed class ObjectiveMetricRowEntry
 {
     public string Name { get; set; } = string.Empty;
+    public string? BodyPart { get; set; }
     public MetricType MetricType { get; set; } = MetricType.Other;
     public string Value { get; set; } = string.Empty;
     public string? PreviousValue { get; set; }

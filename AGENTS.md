@@ -83,9 +83,11 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 - Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
 - Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive`
+- Run the focused patient-document upload browser check: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents`
 - Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
 - Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`.
 - Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
+- Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
 - Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>`
 - Optional viewport overlay toggle without the env var: add `?ptdocViewportDiagnostics=1` to enable it and `?ptdocViewportDiagnostics=0` to disable it on a fresh page load.
 - Browser QA artifacts are written under `tests/PTDoc.Web.UiQa/test-results/` and `tests/PTDoc.Web.UiQa/playwright-report/`; do not commit them.
@@ -119,6 +121,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
+- `PTDOC_UI_QA_PATIENT_CHART_PATH`: optional patient-chart route used by the focused patient-document upload Playwright check.
 - `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`: optional seeded note-workspace route included in the responsive browser QA matrix.
 - `PTDOC_UI_QA_CHROME_CHANNEL`: optional Chrome channel override for the browser QA Playwright project.
 - `FeatureFlags__EnableAiGeneration`: enables API-side AI draft generation.

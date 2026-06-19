@@ -182,6 +182,95 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
         };
     }
 
+    public async Task<PrognosisGenerationResult> GeneratePrognosisAsync(
+        PrognosisGenerationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.IsNoteSigned)
+        {
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "AI generation is not permitted on signed notes."
+            };
+        }
+
+        if (request.NoteId == Guid.Empty)
+        {
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Save the note before generating an AI prognosis."
+            };
+        }
+
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "Select a body part before generating AI content."
+            };
+        }
+
+        var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/ai/prognosis",
+            new AiPrognosisRequest
+            {
+                NoteId = request.NoteId,
+                Diagnosis = request.Diagnosis,
+                SelectedBodyPart = request.SelectedBodyPart,
+                AssessmentSummary = request.AssessmentSummary,
+                FindingsSummary = request.FindingsSummary,
+                SubjectiveSummary = request.SubjectiveSummary,
+                ObjectiveSummary = request.ObjectiveSummary,
+                FunctionalLimitations = request.FunctionalLimitations,
+                Goals = request.Goals,
+                Comorbidities = request.Comorbidities,
+                SupportContext = request.SupportContext,
+                Barriers = request.Barriers,
+                PriorLevelOfFunction = request.PriorLevelOfFunction,
+                CurrentLevelOfFunction = request.CurrentLevelOfFunction,
+                StructuredInputs = request.StructuredInputs
+            },
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+            };
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<GeneratedTextResponse>(SerializerOptions, cancellationToken);
+        return new PrognosisGenerationResult
+        {
+            GeneratedText = payload?.GeneratedText ?? string.Empty,
+            Confidence = payload is null ? 0 : 0.85,
+            Warnings = BuildPrognosisWarnings(request),
+            SourceInputs = request,
+            Success = payload is not null,
+            ErrorMessage = payload is null ? "AI response was empty." : null,
+            Metadata = ToPromptMetadata(payload?.Metadata)
+        };
+    }
+
     public async Task<GoalGenerationResult> GenerateGoalNarrativesAsync(
         GoalNarrativesGenerationRequest request,
         CancellationToken cancellationToken = default)
@@ -265,6 +354,27 @@ public sealed class HttpAiClinicalGenerationService(HttpClient httpClient) : IAi
         if (string.IsNullOrWhiteSpace(request.Goals))
         {
             warnings.Add("No goals provided — plan output may not reference measurable targets.");
+        }
+
+        return warnings;
+    }
+
+    private static IReadOnlyList<string> BuildPrognosisWarnings(PrognosisGenerationRequest request)
+    {
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(request.FunctionalLimitations))
+        {
+            warnings.Add("No functional limitations provided — prognosis output may be less specific.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Goals))
+        {
+            warnings.Add("No goals provided — prognosis output may not reference measurable targets.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+        {
+            warnings.Add("No prior level of function provided — prognosis output may lack baseline context.");
         }
 
         return warnings;
