@@ -662,6 +662,8 @@ public sealed class NoteWorkspacePayloadMapperTests
             },
             Plan = new PlanVm
             {
+                DischargeDocumentationMode = "Patient self-discharge",
+                IsNonBillableDischarge = true,
                 PrimaryDischargeReason = "Other",
                 OtherDischargeReasonExplanation = "Relocating out of area.",
                 DischargeRecommendations = "Continue HEP three times weekly.",
@@ -682,6 +684,8 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Mild difficulty with kneeling.", result.Discharge.RemainingDifficulty);
         Assert.Equal(90, result.Discharge.PercentImproved);
         Assert.Equal("Patient reports confidence with independent HEP.", result.Discharge.PatientReportedOutcome);
+        Assert.Equal("Patient self-discharge", result.Plan.DischargeDocumentationMode);
+        Assert.True(result.Plan.IsNonBillableDischarge);
         Assert.Equal("Other", result.Plan.PrimaryDischargeReason);
         Assert.Equal("Relocating out of area.", result.Plan.OtherDischargeReasonExplanation);
         Assert.Equal("Continue HEP three times weekly.", result.Plan.DischargeRecommendations);
@@ -705,6 +709,8 @@ public sealed class NoteWorkspacePayloadMapperTests
             },
             Plan = new WorkspacePlanV2
             {
+                DischargeDocumentationMode = "Patient unreachable",
+                IsNonBillableDischarge = true,
                 PrimaryDischargeReason = "Authorization ended",
                 DischargeRecommendations = "Continue independent program.",
                 PostDischargeInstructions = "Return to PT with functional regression.",
@@ -722,6 +728,8 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Mild balance limitation.", result.DischargeSubjective.RemainingDifficulty);
         Assert.Equal(75, result.DischargeSubjective.PercentImproved);
         Assert.Equal("Ready for independent maintenance.", result.DischargeSubjective.PatientReportedOutcome);
+        Assert.Equal("Patient unreachable", result.Plan.DischargeDocumentationMode);
+        Assert.True(result.Plan.IsNonBillableDischarge);
         Assert.Equal("Authorization ended", result.Plan.PrimaryDischargeReason);
         Assert.Equal("Continue independent program.", result.Plan.DischargeRecommendations);
         Assert.Equal("Return to PT with functional regression.", result.Plan.PostDischargeInstructions);
@@ -738,6 +746,7 @@ public sealed class NoteWorkspacePayloadMapperTests
             DryNeedling = new DryNeedlingVm
             {
                 DateOfTreatment = new DateTime(2026, 4, 16),
+                BillingDesignation = "Non-billable",
                 Location = "Gluteal region",
                 NeedlingType = "Deep dry needling",
                 PainBefore = 7,
@@ -750,6 +759,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         var result = _mapper.MapToV2Payload(payload, NoteType.Daily);
 
         Assert.NotNull(result.DryNeedling);
+        Assert.Equal("Non-billable", result.DryNeedling!.BillingDesignation);
         Assert.Equal("Gluteal region", result.DryNeedling!.Location);
         Assert.Equal("Deep dry needling", result.DryNeedling.NeedlingType);
         Assert.Equal(7, result.DryNeedling.PainBefore);
@@ -766,6 +776,7 @@ public sealed class NoteWorkspacePayloadMapperTests
             DryNeedling = new WorkspaceDryNeedlingV2
             {
                 DateOfTreatment = new DateTime(2026, 4, 16),
+                BillingDesignation = "Non-billable",
                 Location = "Gluteal region",
                 NeedlingType = "Deep dry needling",
                 PainBefore = 7,
@@ -778,6 +789,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         var result = _mapper.MapToUiPayload(payload);
 
         Assert.Equal("Dry Needling Note", result.WorkspaceNoteType);
+        Assert.Equal("Non-billable", result.DryNeedling.BillingDesignation);
         Assert.Equal("Gluteal region", result.DryNeedling.Location);
         Assert.Equal("Deep dry needling", result.DryNeedling.NeedlingType);
         Assert.Equal(7, result.DryNeedling.PainBefore);

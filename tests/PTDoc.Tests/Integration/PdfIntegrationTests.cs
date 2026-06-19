@@ -506,6 +506,7 @@ public class PdfIntegrationTests : IAsyncDisposable
                 DryNeedling = new WorkspaceDryNeedlingV2
                 {
                     DateOfTreatment = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+                    BillingDesignation = "Non-billable",
                     Location = "Gluteal region",
                     NeedlingType = "Deep dry needling",
                     PainBefore = 6,
@@ -536,15 +537,19 @@ public class PdfIntegrationTests : IAsyncDisposable
             IncludeMedicareCompliance = true
         };
 
+        var hierarchy = _hierarchyBuilder.Build(noteData);
         var result = await _renderer.ExportNoteToPdfAsync(noteData);
         var pdfText = ExtractPdfText(result.PdfBytes);
 
+        AssertNodeValueContains(hierarchy.Root, "Billing Designation", "Non-billable");
         Assert.Contains("Physical Therapy Dry Needling Note", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Non-billable", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Gluteal region", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Deep dry needling", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("6/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("3/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Monitor soreness for 24 hours", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Charges & Reporting", pdfText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -620,6 +625,44 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.NotEmpty(result.PdfBytes);
         AssertNodeValueContains(hierarchy.Root, "Reason For Discharge", "Goals met");
         AssertNodeValueContains(hierarchy.Root, "Final Functional Changes Narrative", "independent community ambulation");
+    }
+
+    [Fact]
+    public void Hierarchy_Export_DischargeWorkspace_IncludesNonBillableModeAndReason()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Discharge,
+            NoteStatus = NoteStatus.Signed,
+            DateOfService = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Discharge Summary",
+            ExportStatusLabel = "Signed",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Discharge,
+                Plan = new WorkspacePlanV2
+                {
+                    DischargeDocumentationMode = "Patient unreachable",
+                    IsNonBillableDischarge = true,
+                    PrimaryDischargeReason = "Other",
+                    OtherDischargeReasonExplanation = "Patient could not be reached after repeated follow-up attempts.",
+                    DischargeRecommendations = "Continue last issued home program as tolerated."
+                }
+            }),
+            PatientFirstName = "Discharge",
+            PatientLastName = "Workspace",
+            PatientDiagnosisCodesJson = """[{"icdCode":"R26.2","description":"Difficulty in walking","isPrimary":true}]""",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+
+        AssertNodeValueContains(hierarchy.Root, "Documentation Mode", "Patient unreachable");
+        AssertNodeValueContains(hierarchy.Root, "Billing Status", "Non-billable - Patient unreachable");
+        AssertNodeValueContains(hierarchy.Root, "Reason For Discharge", "Patient could not be reached");
+        Assert.DoesNotContain("Charges & Reporting", FlattenNodeText(hierarchy.Root), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -847,6 +890,22 @@ public class PdfIntegrationTests : IAsyncDisposable
         }
 
         return null;
+    }
+
+    private static string FlattenNodeText(ClinicalDocumentNode node)
+    {
+        var values = new List<string>
+        {
+            node.Title,
+            node.Value ?? string.Empty
+        };
+
+        foreach (var child in node.Children)
+        {
+            values.Add(FlattenNodeText(child));
+        }
+
+        return string.Join(" ", values);
     }
 
     public async ValueTask DisposeAsync()

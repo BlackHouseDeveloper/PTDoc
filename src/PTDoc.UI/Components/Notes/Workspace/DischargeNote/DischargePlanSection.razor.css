@@ -104,6 +104,26 @@
     color: var(--foreground);
 }
 
+::deep .discharge-plan__billing-note {
+    display: grid;
+    gap: var(--spacing-1);
+    padding: var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--warning);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--warning) 12%, var(--card));
+}
+
+::deep .discharge-plan__billing-note strong {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+}
+
+::deep .discharge-plan__billing-note p {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
 ::deep .discharge-plan__empty-state,
 ::deep .discharge-plan__note {
     display: grid;

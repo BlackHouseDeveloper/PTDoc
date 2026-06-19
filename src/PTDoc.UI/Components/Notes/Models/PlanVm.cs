@@ -30,6 +30,8 @@ public class PlanVm
     public string? ClinicalSummary { get; set; }
 
     // Discharge-specific fields
+    public string DischargeDocumentationMode { get; set; } = "Standard billable discharge";
+    public bool IsNonBillableDischarge { get; set; }
     public string? FullDischargeSummary { get; set; }
     public string? PostDischargeInstructions { get; set; }
     public string? PrimaryDischargeReason { get; set; }

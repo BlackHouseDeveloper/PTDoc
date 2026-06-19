@@ -12,6 +12,8 @@
     <DryNeedlingTreatmentDetails IsReadOnly="@IsReadOnly"
                                  DateOfTreatment="@Vm.DateOfTreatment"
                                  DateOfTreatmentChanged="HandleDateChanged"
+                                 BillingDesignation="@Vm.BillingDesignation"
+                                 BillingDesignationChanged="HandleBillingDesignationChanged"
                                  Location="@Vm.Location"
                                  LocationChanged="HandleLocationChanged"
                                  NeedlingType="@Vm.NeedlingType"
@@ -65,6 +67,12 @@
     private Task HandleDateChanged(DateTime? value)
     {
         Vm.DateOfTreatment = value;
+        return HandleChanged();
+    }
+
+    private Task HandleBillingDesignationChanged(string value)
+    {
+        Vm.BillingDesignation = string.IsNullOrWhiteSpace(value) ? "Billable" : value;
         return HandleChanged();
     }
 

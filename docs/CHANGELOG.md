@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Non-billable discharge and dry needling billing designation
+
+- **`src/PTDoc.Application/Notes/Workspace/WorkspaceContracts.cs`**, **`src/PTDoc.UI/Components/Notes/Models/*`**, **`src/PTDoc.UI/Components/Notes/Workspace/DischargeNote/*`**, **`src/PTDoc.UI/Components/Notes/Workspace/DryNeedling/*`**, **`src/PTDoc.UI/Services/NoteWorkspacePayloadMapper.cs`**, **`src/PTDoc.UI/Components/Notes/SoapReviewPage.razor`**, **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Api/Pdf/PdfEndpoints.cs`**, **`tests/PTDoc.Tests/UI/Notes/*`**, **`tests/PTDoc.Tests/Notes/Workspace/NoteWorkspacePayloadMapperTests.cs`**, **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`** — Added discharge documentation modes for standard billable, patient unreachable, patient self-discharge, and MD/provider-initiated discharge; persisted the non-billable discharge flag through the workspace payload; surfaced the selected mode/status in Review and export hierarchy/PDF; added a dry needling Billable/Non-billable selector with persistence and export rendering; and kept billing metadata from making clinically empty notes exportable. Reason: client feedback requires non-billable discharge documentation to live inside the existing Discharge Note workflow and dry needling notes to carry an explicit billing designation.
+- **`tests/PTDoc.Tests/UI/Patients/PatientClinicalInfoCardEditableTests.cs`** — Added a communication-log reopen regression proving a newly logged communication remains visible after the patient chart component is rendered again against the same storage source. Reason: the Patient Chart communication workflow needed save/reload-style coverage before branch acceptance.
+
 ### Changed - Agent guidance captures focused patient document QA
 
 - **`AGENTS.md`** — Added the focused Playwright patient-document upload command (`npm run test:patient-documents`) and the optional `PTDOC_UI_QA_PATIENT_CHART_PATH` override used to target a different seeded patient chart. Reason: agent-facing QA guidance should include the documented browser workflow that verifies document uploads end to end without forcing rediscovery from the separate Playwright README.

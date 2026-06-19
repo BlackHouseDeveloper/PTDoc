@@ -96,6 +96,28 @@ public sealed class DischargeDocumentationComponentsTests : TestContext
     }
 
     [Fact]
+    public void DischargePlanSection_NonBillableModeMarksPlanAndShowsCallout()
+    {
+        var plan = new PlanVm();
+
+        var cut = RenderComponent<DischargePlanSection>(parameters => parameters
+            .Add(component => component.Vm, plan)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => plan = updated))
+            .Add(component => component.LinkedHepItems, Array.Empty<string>())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("#discharge-documentation-mode").Change("Patient self-discharge");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Patient self-discharge", plan.DischargeDocumentationMode);
+            Assert.True(plan.IsNonBillableDischarge);
+            Assert.Contains("Non-billable discharge", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Clinical subjective, objective, assessment, and plan documentation remains available.", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void DischargeSummaryCards_RenderBoundDataInsteadOfHardCodedExamples()
     {
         var outcomes = RenderComponent<FinalOutcomesSummaryCard>(parameters => parameters

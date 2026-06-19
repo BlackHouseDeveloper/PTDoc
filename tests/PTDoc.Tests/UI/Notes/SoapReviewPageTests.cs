@@ -132,6 +132,8 @@ public sealed class SoapReviewPageTests : TestContext
             },
             Plan = new PlanVm
             {
+                DischargeDocumentationMode = "MD/provider-initiated discharge",
+                IsNonBillableDischarge = true,
                 PrimaryDischargeReason = "Reached goals",
                 DischargeRecommendations = "Continue HEP three times weekly.",
                 PostDischargeInstructions = "Return to PT if function declines.",
@@ -155,6 +157,9 @@ public sealed class SoapReviewPageTests : TestContext
         Assert.Contains("Discharge Status", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("90% improved", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Mild soreness after prolonged walking.", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Documentation Mode", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("MD/provider-initiated discharge", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Non-billable - MD/provider-initiated discharge", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Discharge Reason", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Reached goals", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Continue HEP three times weekly.", cut.Markup, StringComparison.Ordinal);

@@ -101,6 +101,7 @@ public sealed class WorkspaceDischargeV2
 public sealed class WorkspaceDryNeedlingV2
 {
     public DateTime? DateOfTreatment { get; set; }
+    public string BillingDesignation { get; set; } = "Billable";
     public string Location { get; set; } = string.Empty;
     public string NeedlingType { get; set; } = string.Empty;
     public int? PainBefore { get; set; }
@@ -360,6 +361,8 @@ public sealed class WorkspacePlanV2
     public string? DischargePlanningNotes { get; set; }
     public string? FollowUpInstructions { get; set; }
     public string? ClinicalSummary { get; set; }
+    public string DischargeDocumentationMode { get; set; } = "Standard billable discharge";
+    public bool IsNonBillableDischarge { get; set; }
     public string? FullDischargeSummary { get; set; }
     public string? PostDischargeInstructions { get; set; }
     public string? PrimaryDischargeReason { get; set; }
