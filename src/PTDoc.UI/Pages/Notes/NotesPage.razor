@@ -64,6 +64,9 @@
 
                 <NotesRecentSection
                     Items="regularRecentNotes"
+                    HasMore="@_hasMoreNotes"
+                    IsLoadingMore="@_isLoadingMore"
+                    OnLoadMore="LoadMoreNotesAsync"
                     OnView="HandleViewNote"
                     OnEdit="HandleEditNote"
                     OnDownloadPdf="HandleDownloadPdf"
@@ -74,6 +77,7 @@
 </div>
 
 @code {
+    private const int NotesPageSize = 50;
     private readonly NotesFilterState filterState = new();
     private readonly HeaderConfiguration pageHeaderConfiguration = new()
     {
@@ -94,6 +98,9 @@
     private CancellationTokenSource? _filterDebounceCts;
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
     private bool _isLoading = true;
+    private bool _isLoadingMore;
+    private bool _hasMoreNotes;
+    private int _nextSkip;
     private string? _loadErrorMessage;
 
     protected override async Task OnInitializedAsync()
@@ -106,27 +113,37 @@
         ApplyFilters();
     }
 
-    private async Task LoadNotesAsync(CancellationToken cancellationToken)
+    private async Task LoadNotesAsync(CancellationToken cancellationToken, bool append = false)
     {
-        _isLoading = true;
+        _isLoading = !append;
+        _isLoadingMore = append;
         _loadErrorMessage = null;
         StateHasChanged();
 
         try
         {
             var dateRange = ResolveDateRange(filterState.DateRange);
+            var effectiveSearch = ResolveServerSearch();
             var result = await NoteService.GetNotesAsync(
                 patientId: null,
                 noteType: NormalizeAllFilterValue(filterState.NoteType),
                 status: NormalizeAllFilterValue(filterState.Status),
-                take: 200,
+                take: NotesPageSize + 1,
                 cancellationToken: cancellationToken,
-                search: NormalizeAllFilterValue(filterState.SearchQuery),
+                search: effectiveSearch,
                 dateRangeStart: dateRange.Start,
-                dateRangeEnd: dateRange.End);
+                dateRangeEnd: dateRange.End,
+                skip: append ? _nextSkip : 0);
 
-            notes.Clear();
-            notes.AddRange(result.Select(ToVm));
+            var pageItems = result.Take(NotesPageSize).Select(ToVm).ToList();
+            if (!append)
+            {
+                notes.Clear();
+            }
+
+            notes.AddRange(pageItems);
+            _hasMoreNotes = result.Count > NotesPageSize;
+            _nextSkip = notes.Count;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -134,14 +151,19 @@
         }
         catch (Exception ex)
         {
-            notes.Clear();
-            _loadErrorMessage = "Notes could not be retrieved. Retry when the connection is available.";
+            if (!append)
+            {
+                notes.Clear();
+                _loadErrorMessage = "Notes could not be retrieved. Retry when the connection is available.";
+            }
+
             Logger.LogError(ex, "Failed to load clinical notes.");
             ToastService.ShowError("Failed to load notes. Retry when the connection is available.");
         }
         finally
         {
             _isLoading = false;
+            _isLoadingMore = false;
         }
     }
 
@@ -149,6 +171,18 @@
     {
         ResetLoadCancellation();
         await LoadNotesAsync(_cts.Token);
+        BuildFilterOptions();
+        ApplyFilters();
+    }
+
+    private async Task LoadMoreNotesAsync()
+    {
+        if (_isLoading || _isLoadingMore || !_hasMoreNotes)
+        {
+            return;
+        }
+
+        await LoadNotesAsync(_cts.Token, append: true);
         BuildFilterOptions();
         ApplyFilters();
     }
@@ -428,6 +462,17 @@
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, "all", StringComparison.OrdinalIgnoreCase)
             ? null
             : value.Trim();
+    }
+
+    private string? ResolveServerSearch()
+    {
+        var search = NormalizeAllFilterValue(filterState.SearchQuery);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            return search;
+        }
+
+        return NormalizeAllFilterValue(filterState.Patient);
     }
 
     private void ApplyQueryFilters()

@@ -324,6 +324,7 @@ public sealed class AppointmentComponentsTests : TestContext
         var cut = RenderComponent<ClinicianScheduler>(parameters => parameters
             .Add(component => component.SelectedDate, selectedDate)
             .Add(component => component.View, AppointmentsView.Week)
+            .Add(component => component.WeekGrouping, AppointmentsWeekGrouping.Day)
             .Add(component => component.Clinicians, new List<ClinicianSchedule>
             {
                 new() { Name = "Dr. Taylor", AppointmentCount = 1 }

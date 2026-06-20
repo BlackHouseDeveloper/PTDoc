@@ -36,8 +36,8 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         cut.Find("button[aria-label=\"Open appointments\"]").Click();
         Assert.EndsWith("/appointments", navigation.Uri, StringComparison.Ordinal);
 
-        cut.Find("button[aria-label=\"Open notes due today\"]").Click();
-        Assert.EndsWith("/notes?status=Unsigned&dateRange=today", navigation.Uri, StringComparison.Ordinal);
+        cut.Find("button[aria-label=\"Open appointments needing notes today\"]").Click();
+        Assert.EndsWith("/appointments?needsNote=true&dateRange=today", navigation.Uri, StringComparison.Ordinal);
 
         cut.Find("button[aria-label=\"Open draft notes\"]").Click();
         Assert.EndsWith("/notes?status=Draft", navigation.Uri, StringComparison.Ordinal);

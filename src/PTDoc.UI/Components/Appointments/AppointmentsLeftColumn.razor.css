@@ -61,3 +61,36 @@
 .filters-button .chevron.open {
     transform: rotate(180deg);
 }
+
+.week-grouping-control {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-1);
+    padding: var(--spacing-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+}
+
+.week-grouping-control__button {
+    min-height: 36px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.week-grouping-control__button.selected {
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--shadow-sm);
+}
+
+.week-grouping-control__button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}

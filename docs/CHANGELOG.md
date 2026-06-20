@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Live audit UI remediation
+
+- **`src/PTDoc.UI/Pages/*`**, **`src/PTDoc.UI/Components/Appointments/*`**, **`src/PTDoc.UI/Components/Dashboard/OverviewSection.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/*`**, **`src/PTDoc.UI/Components/Notes/NotesRecentSection.*`**, **`src/PTDoc.Infrastructure/Services/IntakeDemographicsValidationService.cs`**, **`tests/PTDoc.Tests/*`**, **`tests/PTDoc.Web.UiQa/*`** — Added the protected `/dashboard` route alias and auth-aware catch-all behavior, inline login validation, actionable Dashboard Notes Due routing, Appointments `needsNote`/`dateRange`/`groupBy` handling with clinician-first week grouping, explicit intake pain-severity validation, keyboard-safe body-map selection, bounded global notes pagination, audit-name demographics validation, CPT/intervention/HEP draft serialization coverage, and focused Playwright audit-remediation coverage. Reason: live UI/UX audit findings identified broken logout route protection, fragile login/intake/global-notes flows, weak week-schedule grouping, and missing browser coverage for PT-role documentation persistence.
+
 ### Fixed - Dark tablet Daily/Progress intervention layout
 
 - **`src/PTDoc.UI/Components/Notes/Workspace/DailyTreatment/InterventionsSection.razor.css`** — Added scoped Daily/Progress Interventions styling so treatment-focus chips, Add Intervention, row-level CPT/minutes/assistance/cueing/response controls, HEP linkage, and row actions use theme tokens and wrap into a tablet-friendly layout in dark mode. Reason: localhost tablet dark-mode QA showed the Interventions section was falling back to native light form controls and a cramped horizontal row because the existing styles were scoped to the separate Plan section.

@@ -23,11 +23,26 @@
                 />
             }
         </div>
+
+        @if (HasMore)
+        {
+            <div class="notes-recent-pagination">
+                <button type="button"
+                        class="notes-recent-load-more"
+                        disabled="@IsLoadingMore"
+                        @onclick="OnLoadMore">
+                    @(IsLoadingMore ? "Loading..." : "Load more")
+                </button>
+            </div>
+        }
     }
 </section>
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<NoteListItemVm> Items { get; set; } = Array.Empty<NoteListItemVm>();
+    [Parameter] public bool HasMore { get; set; }
+    [Parameter] public bool IsLoadingMore { get; set; }
+    [Parameter] public EventCallback OnLoadMore { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnView { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnEdit { get; set; }
     [Parameter] public EventCallback<NoteListItemVm> OnDownloadPdf { get; set; }

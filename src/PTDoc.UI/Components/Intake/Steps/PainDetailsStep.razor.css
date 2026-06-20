@@ -31,6 +31,12 @@
     padding: var(--spacing-4);
 }
 
+.intake-step-shell__validation {
+    color: var(--destructive);
+    font-size: var(--text-sm);
+    justify-self: center;
+}
+
 .intake-step-shell__panel h3 {
     font-size: var(--text-base);
     margin: 0 0 var(--spacing-2);

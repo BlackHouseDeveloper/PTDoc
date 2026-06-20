@@ -70,7 +70,7 @@ public sealed class WebStaticAssetIntegrationTests
     [Theory]
     [InlineData("/unknown-route-with-extension.pdf")]
     [InlineData("/_content/Other.Package/not-real.js")]
-    public async Task UnknownExtensionRoutes_AreNotShortCircuitedAsStaticAssets(string path)
+    public async Task UnknownExtensionRoutes_UseAuthAwareFallbackInsteadOfStaticAssetShortCircuit(string path)
     {
         await using var factory = new PTDocWebFactory("Development");
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -80,10 +80,12 @@ public sealed class WebStaticAssetIntegrationTests
         });
 
         using var response = await client.GetAsync(path);
-        var body = await response.Content.ReadAsStringAsync();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Page not found", body, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+        var redirectUri = response.Headers.Location!;
+        Assert.Equal("/login", redirectUri.AbsolutePath);
+        Assert.Contains($"ReturnUrl={Uri.EscapeDataString(path)}", redirectUri.Query, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class PTDocWebFactory : WebApplicationFactory<PTDoc.Web.Components.App>
