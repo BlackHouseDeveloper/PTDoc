@@ -192,6 +192,59 @@ public sealed class AppointmentsPageTests : TestContext
         });
     }
 
+    [Fact]
+    public void AppointmentsPage_WeekViewClickFromToday_UsesRouteBackedFallback()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Week Click Patient",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = localStart.ToUniversalTime(),
+                    EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = "Scheduled",
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".tab-button");
+
+        var weekTab = cut.FindAll(".tab-button")
+            .First(tab => tab.TextContent.Contains("Week View", StringComparison.Ordinal));
+
+        Assert.Equal("/appointments?dateRange=week", weekTab.GetAttribute("href"));
+
+        weekTab.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("week-grouping-control", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("week-grouping-clinician", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
     [Theory]
     [InlineData("Follow Up", "Daily%20Treatment%20Note", true)]
     [InlineData("Initial Evaluation", "Evaluation%20Note", false)]

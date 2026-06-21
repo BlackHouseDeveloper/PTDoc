@@ -53,6 +53,27 @@ public sealed class PatientsPageTests : TestContext
     }
 
     [Fact]
+    public void AddPatientRouteAction_OpensAddPatientModal()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+
+        RegisterServices(patientService.Object, includePatientWrite: true);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
+
+        var cut = RenderComponent<PatientsPage>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Add New Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.NotEmpty(cut.FindAll("#firstName"));
+        });
+    }
+
+    [Fact]
     public void LoadFailure_ShowsInlineRetryWithoutRawExceptionText()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

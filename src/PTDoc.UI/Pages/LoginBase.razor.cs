@@ -554,6 +554,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         if (authMode == AuthMode.Login)
         {
             ResetLoginModel();
+            ApplyLoginValidationStateFromUri(uri);
             _pendingLoginFieldReset = true;
         }
         else if (authMode == AuthMode.ForgotPassword)
@@ -567,6 +568,58 @@ public abstract class LoginBase : ComponentBase, IDisposable
         loginModel.Username = string.Empty;
         loginModel.Pin = string.Empty;
         loginFieldErrors.Clear();
+    }
+
+    private void ApplyLoginValidationStateFromUri(string uri)
+    {
+        if (!TryGetQueryParameter(uri, "loginValidation", out var validationValue))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        foreach (var code in validationValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (string.Equals(code, "usernameRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Username)] = "Username or email is required.";
+            }
+            else if (string.Equals(code, "pinRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN is required.";
+            }
+            else if (string.Equals(code, "pinFormat", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+            }
+        }
+    }
+
+    private static bool TryGetQueryParameter(string uri, string key, out string value)
+    {
+        value = string.Empty;
+        var queryStart = uri.IndexOf('?', StringComparison.Ordinal);
+        if (queryStart < 0 || queryStart == uri.Length - 1)
+        {
+            return false;
+        }
+
+        var query = uri[(queryStart + 1)..];
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0 || !string.Equals(Uri.UnescapeDataString(parts[0]), key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            value = parts.Length > 1
+                ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal))
+                : string.Empty;
+            return true;
+        }
+
+        return false;
     }
 
     private void ResetSignUpModel()
