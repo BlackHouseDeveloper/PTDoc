@@ -172,8 +172,8 @@
 
         <div class="soap-review-page__section-grid">
             <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Chief Complaint</span>
-                <span class="soap-review-page__field-value">@GetChiefComplaint()</span>
+                <span class="soap-review-page__field-label">@(IsDischargeNote ? "Discharge Status" : "Chief Complaint")</span>
+                <span class="soap-review-page__field-value">@(IsDischargeNote ? GetDischargeStatusSummary() : GetChiefComplaint())</span>
             </div>
 
             <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
@@ -194,13 +194,13 @@
             </div>
 
             <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Pain Description</span>
-                <span class="soap-review-page__field-value">@GetPainDescription()</span>
+                <span class="soap-review-page__field-label">@(IsDischargeNote ? "Patient Report" : "Pain Description")</span>
+                <span class="soap-review-page__field-value">@(IsDischargeNote ? GetDischargePatientReport() : GetPainDescription())</span>
             </div>
 
             <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Functional Limitations</span>
-                <span class="soap-review-page__field-value">@GetFunctionalLimitations()</span>
+                <span class="soap-review-page__field-label">@(IsDischargeNote ? "Remaining Difficulty" : "Functional Limitations")</span>
+                <span class="soap-review-page__field-value">@(IsDischargeNote ? DisplayOrEmpty(Note.DischargeSubjective.RemainingDifficulty) : GetFunctionalLimitations())</span>
             </div>
         </div>
     </section>
@@ -284,64 +284,74 @@
         </div>
 
         <div class="soap-review-page__section-grid">
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Diagnosis</span>
-                <span class="soap-review-page__field-value">@GetDiagnosis()</span>
-            </div>
-
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Prognosis</span>
-                <span class="soap-review-page__field-value">@GetPrognosis()</span>
-            </div>
-
-            <section class="soap-review-page__subcard soap-review-page__subcard--ai">
-                <div class="soap-review-page__card-header">
-                    <div class="soap-review-page__title-group">
-                        <span class="soap-review-page__icon" aria-hidden="true">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M9 2.25L10.3295 5.67052L13.75 7L10.3295 8.32948L9 11.75L7.67052 8.32948L4.25 7L7.67052 5.67052L9 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                        </span>
-                        <div class="soap-review-page__title-stack">
-                            <h3>AI-Suggested Treatment Goals</h3>
-                            <span class="soap-review-page__badge">AI-generated</span>
-                        </div>
-                    </div>
-
-                    @if (!IsReadOnly)
-                    {
-                        <button type="button"
-                                class="soap-review-page__text-action"
-                                disabled="@IsRegeneratingGoals"
-                                @onclick="() => OnRegenerateGoals.InvokeAsync()">
-                            @if (IsRegeneratingGoals)
-                            {
-                                <span class="soap-review-page__spinner" aria-hidden="true"></span>
-                                <span>Regenerating…</span>
-                            }
-                            else
-                            {
-                                <span>Regenerate</span>
-                            }
-                        </button>
-                    }
+            @if (IsDailyOrProgressNote)
+            {
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Additional Notes</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Assessment.AssessmentNarrative)</span>
+                </div>
+            }
+            else
+            {
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Diagnosis</span>
+                    <span class="soap-review-page__field-value">@GetDiagnosis()</span>
                 </div>
 
-                <ul class="soap-review-page__goal-list">
-                    @foreach (var goal in GetGoalItems())
-                    {
-                        <li>
-                            <span class="soap-review-page__goal-icon" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2" />
-                                    <path d="M5.25 8L7.08333 9.83333L10.75 6.16667" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Prognosis</span>
+                    <span class="soap-review-page__field-value">@GetPrognosis()</span>
+                </div>
+
+                <section class="soap-review-page__subcard soap-review-page__subcard--ai">
+                    <div class="soap-review-page__card-header">
+                        <div class="soap-review-page__title-group">
+                            <span class="soap-review-page__icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 2.25L10.3295 5.67052L13.75 7L10.3295 8.32948L9 11.75L7.67052 8.32948L4.25 7L7.67052 5.67052L9 2.25Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
                             </span>
-                            <span>@goal</span>
-                        </li>
-                    }
-                </ul>
-            </section>
+                            <div class="soap-review-page__title-stack">
+                                <h3>AI-Suggested Treatment Goals</h3>
+                                <span class="soap-review-page__badge">AI-generated</span>
+                            </div>
+                        </div>
+
+                        @if (!IsReadOnly)
+                        {
+                            <button type="button"
+                                    class="soap-review-page__text-action"
+                                    disabled="@IsRegeneratingGoals"
+                                    @onclick="() => OnRegenerateGoals.InvokeAsync()">
+                                @if (IsRegeneratingGoals)
+                                {
+                                    <span class="soap-review-page__spinner" aria-hidden="true"></span>
+                                    <span>Regenerating…</span>
+                                }
+                                else
+                                {
+                                    <span>Regenerate</span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    <ul class="soap-review-page__goal-list">
+                        @foreach (var goal in GetGoalItems())
+                        {
+                            <li>
+                                <span class="soap-review-page__goal-icon" aria-hidden="true">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2" />
+                                        <path d="M5.25 8L7.08333 9.83333L10.75 6.16667" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </span>
+                                <span>@goal</span>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
         </div>
     </section>
 
@@ -373,42 +383,80 @@
         </div>
 
         <div class="soap-review-page__section-grid">
-            <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
+            @if (IsDischargeNote)
+            {
                 <div class="soap-review-page__field-panel">
-                    <span class="soap-review-page__field-label">Frequency</span>
-                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentFrequency)</span>
+                    <span class="soap-review-page__field-label">Discharge Reason</span>
+                    <span class="soap-review-page__field-value">@GetDischargeReason()</span>
                 </div>
 
                 <div class="soap-review-page__field-panel">
-                    <span class="soap-review-page__field-label">Duration</span>
-                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentDuration)</span>
+                    <span class="soap-review-page__field-label">Discharge Recommendations</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.DischargeRecommendations)</span>
                 </div>
-            </div>
 
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Home Exercise Program</span>
-                <span class="soap-review-page__field-value">@GetHomeExerciseProgram()</span>
-            </div>
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Post-Discharge Instructions</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.PostDischargeInstructions)</span>
+                </div>
 
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Treatment Focuses</span>
-                <span class="soap-review-page__field-value">@GetTreatmentFocuses()</span>
-            </div>
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Home Exercise Program</span>
+                    <span class="soap-review-page__field-value">@GetHomeExerciseProgram()</span>
+                </div>
 
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">General Interventions</span>
-                <span class="soap-review-page__field-value">@GetGeneralInterventions()</span>
-            </div>
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">End-of-Care Checklist</span>
+                    <span class="soap-review-page__field-value">@GetDischargeChecklistSummary()</span>
+                </div>
 
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Response to Treatment</span>
-                <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.DailyTreatment.ResponseToTreatment)</span>
-            </div>
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Discharge Summary</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.FullDischargeSummary)</span>
+                </div>
+            }
+            else
+            {
+                @if (!IsDailyOrProgressNote)
+                {
+                    <div class="soap-review-page__field-grid soap-review-page__field-grid--split">
+                        <div class="soap-review-page__field-panel">
+                            <span class="soap-review-page__field-label">Frequency</span>
+                            <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentFrequency)</span>
+                        </div>
 
-            <div class="soap-review-page__field-panel">
-                <span class="soap-review-page__field-label">Follow-Up</span>
-                <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.FollowUpInstructions)</span>
-            </div>
+                        <div class="soap-review-page__field-panel">
+                            <span class="soap-review-page__field-label">Duration</span>
+                            <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.TreatmentDuration)</span>
+                        </div>
+                    </div>
+                }
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Home Exercise Program</span>
+                    <span class="soap-review-page__field-value">@GetHomeExerciseProgram()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Treatment Focuses</span>
+                    <span class="soap-review-page__field-value">@GetTreatmentFocuses()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">General Interventions</span>
+                    <span class="soap-review-page__field-value">@GetGeneralInterventions()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Response to Treatment</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.DailyTreatment.ResponseToTreatment)</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">@(IsDailyOrProgressNote ? "Plan for next visit" : "Follow-Up")</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.FollowUpInstructions)</span>
+                </div>
+            }
         </div>
     </section>
 
@@ -498,6 +546,11 @@
     [Parameter, EditorRequired] public EventCallback OnExportPdf { get; set; }
     [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
 
+    private bool IsDischargeNote => string.Equals(Note.NoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
+    private bool IsDailyOrProgressNote =>
+        string.Equals(Note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
+
     private string GetPatientName() => DisplayOrEmpty(Note.PatientName);
 
     private string GetPatientId() => DisplayOrEmpty(Note.PatientId);
@@ -546,6 +599,56 @@
         }
 
         return details.Count == 0 ? EmptyState : string.Join(" • ", details);
+    }
+
+    private string GetDischargeStatusSummary()
+    {
+        var values = new List<string>();
+        if (Note.DischargeSubjective.PercentImproved.HasValue)
+        {
+            values.Add($"{Note.DischargeSubjective.PercentImproved.Value}% improved");
+        }
+
+        AddIfPresent(values, Note.DischargeSubjective.GoalsMetStatus, "Goals");
+        return values.Count == 0 ? EmptyState : string.Join(" • ", values);
+    }
+
+    private string GetDischargePatientReport()
+    {
+        var values = new List<string>();
+        AddIfPresent(values, Note.DischargeSubjective.PatientReportedOutcome);
+        if (HasPainScore())
+        {
+            values.Add($"Pain current {Math.Clamp(Note.Subjective.CurrentPainScore, 0, 10)}/10, best {Math.Clamp(Note.Subjective.BestPainScore, 0, 10)}/10, worst {Math.Clamp(Note.Subjective.WorstPainScore, 0, 10)}/10");
+        }
+
+        return values.Count == 0 ? EmptyState : string.Join(" • ", values);
+    }
+
+    private string GetDischargeReason()
+    {
+        if (string.IsNullOrWhiteSpace(Note.Plan.PrimaryDischargeReason))
+        {
+            return EmptyState;
+        }
+
+        if (string.Equals(Note.Plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(Note.Plan.OtherDischargeReasonExplanation))
+        {
+            return $"Other: {Note.Plan.OtherDischargeReasonExplanation.Trim()}";
+        }
+
+        return Note.Plan.PrimaryDischargeReason.Trim();
+    }
+
+    private string GetDischargeChecklistSummary()
+    {
+        if (Note.Plan.CompletedDischargeChecklistItems.Count == 0)
+        {
+            return EmptyState;
+        }
+
+        return string.Join(" • ", Note.Plan.CompletedDischargeChecklistItems);
     }
 
     private string GetFunctionalLimitations() =>

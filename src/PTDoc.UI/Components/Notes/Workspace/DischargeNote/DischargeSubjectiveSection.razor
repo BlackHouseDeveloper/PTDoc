@@ -1,0 +1,226 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="discharge-subjective" data-testid="discharge-subjective-section" role="tabpanel" aria-label="Discharge subjective section">
+    <header class="discharge-subjective__header">
+        <div>
+            <h2 class="discharge-subjective__title">Discharge Subjective</h2>
+            <p class="discharge-subjective__subtitle">Document the patient's end-of-care report, progress, remaining limitations, and discharge reason.</p>
+        </div>
+    </header>
+
+    <article class="discharge-subjective__card">
+        <h3 class="discharge-subjective__card-title">Pain and Current Status</h3>
+        <div class="discharge-subjective__grid">
+            <label class="discharge-subjective__field" for="discharge-current-pain">
+                <span>Current pain level (0-10)</span>
+                <input id="discharge-current-pain"
+                       class="discharge-subjective__input"
+                       type="number"
+                       min="0"
+                       max="10"
+                       value="@Vm.CurrentPainScore"
+                       disabled="@IsReadOnly"
+                       @oninput="HandleCurrentPainChanged"
+                       @onchange="HandleCurrentPainChanged" />
+            </label>
+
+            <label class="discharge-subjective__field" for="discharge-best-pain">
+                <span>Best pain level (0-10)</span>
+                <input id="discharge-best-pain"
+                       class="discharge-subjective__input"
+                       type="number"
+                       min="0"
+                       max="10"
+                       value="@Vm.BestPainScore"
+                       disabled="@IsReadOnly"
+                       @oninput="HandleBestPainChanged"
+                       @onchange="HandleBestPainChanged" />
+            </label>
+
+            <label class="discharge-subjective__field" for="discharge-worst-pain">
+                <span>Worst pain level (0-10)</span>
+                <input id="discharge-worst-pain"
+                       class="discharge-subjective__input"
+                       type="number"
+                       min="0"
+                       max="10"
+                       value="@Vm.WorstPainScore"
+                       disabled="@IsReadOnly"
+                       @oninput="HandleWorstPainChanged"
+                       @onchange="HandleWorstPainChanged" />
+            </label>
+
+            <label class="discharge-subjective__field" for="discharge-percent-improved">
+                <span>Percent improved</span>
+                <input id="discharge-percent-improved"
+                       class="discharge-subjective__input"
+                       type="number"
+                       min="0"
+                       max="100"
+                       value="@FormatPercentImproved()"
+                       disabled="@IsReadOnly"
+                       @oninput="HandlePercentImprovedChanged"
+                       @onchange="HandlePercentImprovedChanged" />
+            </label>
+        </div>
+
+        <label class="discharge-subjective__field" for="discharge-patient-outcome">
+            <span>Patient-reported outcome at discharge</span>
+            <textarea id="discharge-patient-outcome"
+                      class="discharge-subjective__textarea"
+                      rows="3"
+                      disabled="@IsReadOnly"
+                      value="@DischargeSubjective.PatientReportedOutcome"
+                      @oninput="HandlePatientOutcomeChanged"
+                      @onchange="HandlePatientOutcomeChanged"
+                      placeholder="Patient report of current symptoms, function, confidence with self-management, and response to care..."></textarea>
+        </label>
+    </article>
+
+    <article class="discharge-subjective__card">
+        <h3 class="discharge-subjective__card-title">Goals and Remaining Difficulty</h3>
+        <label class="discharge-subjective__field" for="discharge-goals-met">
+            <span>Which goals were met or partially met?</span>
+            <textarea id="discharge-goals-met"
+                      class="discharge-subjective__textarea"
+                      rows="3"
+                      disabled="@IsReadOnly"
+                      value="@DischargeSubjective.GoalsMetStatus"
+                      @oninput="HandleGoalsMetChanged"
+                      @onchange="HandleGoalsMetChanged"
+                      placeholder="Summarize goals met, partially met, not met, or deferred at discharge..."></textarea>
+        </label>
+
+        <label class="discharge-subjective__field" for="discharge-remaining-difficulty">
+            <span>What remaining difficulty does the patient report?</span>
+            <textarea id="discharge-remaining-difficulty"
+                      class="discharge-subjective__textarea"
+                      rows="3"
+                      disabled="@IsReadOnly"
+                      value="@DischargeSubjective.RemainingDifficulty"
+                      @oninput="HandleRemainingDifficultyChanged"
+                      @onchange="HandleRemainingDifficultyChanged"
+                      placeholder="Document remaining ADL, work, recreational, mobility, strength, pain, or safety limitations..."></textarea>
+        </label>
+    </article>
+
+    <article class="discharge-subjective__card">
+        <h3 class="discharge-subjective__card-title">Reason for Discharge</h3>
+        <label class="discharge-subjective__field" for="discharge-reason">
+            <span>Reason for discharge</span>
+            <select id="discharge-reason"
+                    class="discharge-subjective__select"
+                    disabled="@IsReadOnly"
+                    value="@Plan.PrimaryDischargeReason"
+                    @onchange="HandleDischargeReasonChanged">
+                <option value="">Select discharge reason...</option>
+                @foreach (var reason in DischargeDocumentationOptions.DischargeReasonOptions)
+                {
+                    <option value="@reason" selected="@string.Equals(Plan.PrimaryDischargeReason, reason, StringComparison.OrdinalIgnoreCase)">@reason</option>
+                }
+            </select>
+        </label>
+
+        @if (IsOtherReason)
+        {
+            <label class="discharge-subjective__field" for="discharge-other-reason">
+                <span>Other discharge reason explanation</span>
+                <textarea id="discharge-other-reason"
+                          class="discharge-subjective__textarea"
+                          rows="2"
+                          disabled="@IsReadOnly"
+                          value="@Plan.OtherDischargeReasonExplanation"
+                          @oninput="HandleOtherReasonChanged"
+                          @onchange="HandleOtherReasonChanged"
+                          placeholder="Explain the discharge reason when Other is selected..."></textarea>
+            </label>
+        }
+    </article>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter, EditorRequired] public DischargeSubjectiveVm DischargeSubjective { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<DischargeSubjectiveVm> DischargeSubjectiveChanged { get; set; }
+    [Parameter, EditorRequired] public PlanVm Plan { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<PlanVm> PlanChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+
+    private bool IsOtherReason => string.Equals(Plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase);
+
+    private string FormatPercentImproved() => DischargeSubjective.PercentImproved?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private Task HandleCurrentPainChanged(ChangeEventArgs args)
+    {
+        Vm.CurrentPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
+        Vm.IsPainScoreDocumented = true;
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task HandleBestPainChanged(ChangeEventArgs args)
+    {
+        Vm.BestPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
+        Vm.IsPainScoreDocumented = true;
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task HandleWorstPainChanged(ChangeEventArgs args)
+    {
+        Vm.WorstPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
+        Vm.IsPainScoreDocumented = true;
+        return VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task HandlePercentImprovedChanged(ChangeEventArgs args)
+    {
+        DischargeSubjective.PercentImproved = ParseBoundedInt(args.Value, 0, 100);
+        return DischargeSubjectiveChanged.InvokeAsync(DischargeSubjective);
+    }
+
+    private Task HandlePatientOutcomeChanged(ChangeEventArgs args)
+    {
+        DischargeSubjective.PatientReportedOutcome = args.Value?.ToString();
+        return DischargeSubjectiveChanged.InvokeAsync(DischargeSubjective);
+    }
+
+    private Task HandleGoalsMetChanged(ChangeEventArgs args)
+    {
+        DischargeSubjective.GoalsMetStatus = args.Value?.ToString();
+        return DischargeSubjectiveChanged.InvokeAsync(DischargeSubjective);
+    }
+
+    private Task HandleRemainingDifficultyChanged(ChangeEventArgs args)
+    {
+        DischargeSubjective.RemainingDifficulty = args.Value?.ToString();
+        return DischargeSubjectiveChanged.InvokeAsync(DischargeSubjective);
+    }
+
+    private Task HandleDischargeReasonChanged(ChangeEventArgs args)
+    {
+        Plan.PrimaryDischargeReason = args.Value?.ToString();
+        if (!IsOtherReason)
+        {
+            Plan.OtherDischargeReasonExplanation = null;
+        }
+
+        return PlanChanged.InvokeAsync(Plan);
+    }
+
+    private Task HandleOtherReasonChanged(ChangeEventArgs args)
+    {
+        Plan.OtherDischargeReasonExplanation = args.Value?.ToString();
+        return PlanChanged.InvokeAsync(Plan);
+    }
+
+    private static int? ParseBoundedInt(object? value, int min, int max)
+    {
+        if (!int.TryParse(value?.ToString(), out var parsed))
+        {
+            return null;
+        }
+
+        return Math.Clamp(parsed, min, max);
+    }
+}

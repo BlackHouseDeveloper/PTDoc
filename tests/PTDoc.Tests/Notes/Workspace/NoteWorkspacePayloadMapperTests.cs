@@ -539,6 +539,95 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToV2Payload_PersistsDischargeSpecificSubjectiveAndPlanFields()
+    {
+        var payload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Discharge Note",
+            Subjective = new SubjectiveVm
+            {
+                CurrentPainScore = 2,
+                BestPainScore = 0,
+                WorstPainScore = 4,
+                IsPainScoreDocumented = true
+            },
+            DischargeSubjective = new DischargeSubjectiveVm
+            {
+                GoalsMetStatus = "Walking and stairs goals met.",
+                RemainingDifficulty = "Mild difficulty with kneeling.",
+                PercentImproved = 90,
+                PatientReportedOutcome = "Patient reports confidence with independent HEP."
+            },
+            Plan = new PlanVm
+            {
+                PrimaryDischargeReason = "Other",
+                OtherDischargeReasonExplanation = "Relocating out of area.",
+                DischargeRecommendations = "Continue HEP three times weekly.",
+                PostDischargeInstructions = "Follow up with PCP for new symptoms.",
+                FullDischargeSummary = "Discharged to independent self-management.",
+                CompletedDischargeChecklistItems =
+                [
+                    "All goals reviewed and final status documented",
+                    "Home Exercise Program provided to patient"
+                ]
+            }
+        };
+
+        var result = _mapper.MapToV2Payload(payload, NoteType.Discharge);
+
+        Assert.Equal(NoteType.Discharge, result.NoteType);
+        Assert.Equal("Walking and stairs goals met.", result.Discharge.GoalsMetStatus);
+        Assert.Equal("Mild difficulty with kneeling.", result.Discharge.RemainingDifficulty);
+        Assert.Equal(90, result.Discharge.PercentImproved);
+        Assert.Equal("Patient reports confidence with independent HEP.", result.Discharge.PatientReportedOutcome);
+        Assert.Equal("Other", result.Plan.PrimaryDischargeReason);
+        Assert.Equal("Relocating out of area.", result.Plan.OtherDischargeReasonExplanation);
+        Assert.Equal("Continue HEP three times weekly.", result.Plan.DischargeRecommendations);
+        Assert.Equal("Follow up with PCP for new symptoms.", result.Plan.PostDischargeInstructions);
+        Assert.Equal("Discharged to independent self-management.", result.Plan.FullDischargeSummary);
+        Assert.Equal(2, result.Plan.CompletedDischargeChecklistItems.Count);
+    }
+
+    [Fact]
+    public void MapToUiPayload_RestoresDischargeSpecificSubjectiveAndPlanFields()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Discharge,
+            Discharge = new WorkspaceDischargeV2
+            {
+                GoalsMetStatus = "Transfers goal met.",
+                RemainingDifficulty = "Mild balance limitation.",
+                PercentImproved = 75,
+                PatientReportedOutcome = "Ready for independent maintenance."
+            },
+            Plan = new WorkspacePlanV2
+            {
+                PrimaryDischargeReason = "Authorization ended",
+                DischargeRecommendations = "Continue independent program.",
+                PostDischargeInstructions = "Return to PT with functional regression.",
+                FullDischargeSummary = "Discharged with HEP.",
+                CompletedDischargeChecklistItems =
+                [
+                    "Discharge reason and recommendations documented"
+                ]
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal("Transfers goal met.", result.DischargeSubjective.GoalsMetStatus);
+        Assert.Equal("Mild balance limitation.", result.DischargeSubjective.RemainingDifficulty);
+        Assert.Equal(75, result.DischargeSubjective.PercentImproved);
+        Assert.Equal("Ready for independent maintenance.", result.DischargeSubjective.PatientReportedOutcome);
+        Assert.Equal("Authorization ended", result.Plan.PrimaryDischargeReason);
+        Assert.Equal("Continue independent program.", result.Plan.DischargeRecommendations);
+        Assert.Equal("Return to PT with functional regression.", result.Plan.PostDischargeInstructions);
+        Assert.Equal("Discharged with HEP.", result.Plan.FullDischargeSummary);
+        Assert.Equal("Discharge reason and recommendations documented", Assert.Single(result.Plan.CompletedDischargeChecklistItems));
+    }
+
+    [Fact]
     public void MapToV2Payload_DryNeedlingWorkspace_PopulatesCanonicalDryNeedlingBlock()
     {
         var payload = new NoteWorkspacePayload
@@ -630,5 +719,55 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Prior visit included gait training.", result.DailyTreatment.PreviousTreatment);
         Assert.Contains("Stiffness", result.DailyTreatment.AssociatedSymptoms);
         Assert.Equal("Responded well to manual therapy.", result.DailyTreatment.ResponseToTreatment);
+    }
+
+    [Fact]
+    public void ProgressQuestionnaire_RoundTripsThroughWorkspaceMapper()
+    {
+        var payload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Progress Note",
+            Subjective = new SubjectiveVm
+            {
+                CurrentPainScore = 4,
+                BestPainScore = 2,
+                WorstPainScore = 7,
+                PainFrequency = "Intermittent",
+                IsPainScoreDocumented = true
+            },
+            ProgressSubjective = new ProgressSubjectiveVm
+            {
+                OverallCondition = "Improved slightly",
+                GoalProgress = "Somewhat",
+                PainChange = "Decreased",
+                DailyActivityEase = "More ease",
+                ImprovedActivities = ["Walking"],
+                SameActivities = ["Stairs"],
+                WorseActivities = ["Lifting"],
+                NewDifficultyActivities = ["Household chores"],
+                ImpactedAreas = ["Work"],
+                ReturnedToActivities = "Yes - Partially",
+                HepAdherence = "A few times per week",
+                HepResponse = "Helpful",
+                HasSetbacksOrNewSymptoms = true,
+                SetbackDetails = "Brief symptom flare after travel.",
+                HasMedicalChanges = false,
+                AdditionalInformation = "Patient wants to review lifting mechanics."
+            }
+        };
+
+        var v2 = _mapper.MapToV2Payload(payload, NoteType.ProgressNote);
+        var result = _mapper.MapToUiPayload(v2);
+
+        Assert.Equal("Improved slightly", v2.ProgressQuestionnaire.OverallCondition);
+        Assert.Contains("Walking", v2.ProgressQuestionnaire.ImprovedActivities);
+        Assert.Contains("Stairs", v2.ProgressQuestionnaire.SameActivities);
+        Assert.Contains("Lifting", v2.ProgressQuestionnaire.WorseActivities);
+        Assert.Contains("Household chores", v2.ProgressQuestionnaire.NewDifficultyActivities);
+        Assert.Equal("Patient wants to review lifting mechanics.", v2.ProgressQuestionnaire.AdditionalInformation);
+        Assert.Equal(4, result.Subjective.CurrentPainScore);
+        Assert.Equal("Improved slightly", result.ProgressSubjective.OverallCondition);
+        Assert.Contains("Work", result.ProgressSubjective.ImpactedAreas);
+        Assert.Equal(false, result.ProgressSubjective.HasMedicalChanges);
     }
 }

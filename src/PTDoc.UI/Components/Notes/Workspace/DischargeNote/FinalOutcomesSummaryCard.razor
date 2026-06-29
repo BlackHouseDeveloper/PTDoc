@@ -1,49 +1,95 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
+@using System.Globalization
+@using PTDoc.UI.Components.Notes.Models
 
 <section class="discharge-summary-card" data-testid="final-outcomes-summary-card" aria-label="Final outcomes summary">
     <header class="discharge-summary-card__header">
         <div>
             <h3 class="discharge-summary-card__title">Final Outcomes Summary</h3>
-            <p class="discharge-summary-card__subtitle">Patient status at discharge (@_dischargeDate)</p>
+            <p class="discharge-summary-card__subtitle">Patient status at discharge based on documented subjective and objective data</p>
         </div>
-        <span class="discharge-summary-card__badge">100% Improved</span>
+        @if (DischargeSubjective.PercentImproved.HasValue)
+        {
+            <span class="discharge-summary-card__badge">@DischargeSubjective.PercentImproved.Value% Improved</span>
+        }
     </header>
 
-    <div class="discharge-summary-card__list">
-        @foreach (var item in _outcomes)
-        {
-            <article class="discharge-summary-card__item">
-                <div class="discharge-summary-card__item-head">
-                    <h4 class="discharge-summary-card__item-title">@item.Measure</h4>
-                    <span class="discharge-summary-card__item-change">@item.Change</span>
-                </div>
-                <div class="discharge-summary-card__values">
-                    <span>Initial: @item.InitialValue</span>
-                    <span aria-hidden="true">→</span>
-                    <span>Final: @item.FinalValue</span>
-                </div>
-                <p class="discharge-summary-card__note">@item.Note</p>
-            </article>
-        }
-    </div>
-
-    <div class="discharge-summary-card__footer" role="status" aria-live="polite">
-        <strong>Excellent functional progress achieved.</strong>
-        <p>Patient demonstrated significant improvement across 5 of 5 key outcome measures. Patient is well-prepared for independent management and community reintegration.</p>
-    </div>
+    @if (OutcomeRows.Count == 0)
+    {
+        <div class="discharge-summary-card__empty-state" role="status">
+            <strong>No final outcomes documented yet.</strong>
+            <p>Document final pain, outcome measures, ROM, strength, function, or remaining difficulty before signing the discharge note.</p>
+        </div>
+    }
+    else
+    {
+        <div class="discharge-summary-card__list">
+            @foreach (var item in OutcomeRows)
+            {
+                <article class="discharge-summary-card__item">
+                    <div class="discharge-summary-card__item-head">
+                        <h4 class="discharge-summary-card__item-title">@item.Label</h4>
+                        @if (!string.IsNullOrWhiteSpace(item.Detail))
+                        {
+                            <span class="discharge-summary-card__item-change">@item.Detail</span>
+                        }
+                    </div>
+                    <p class="discharge-summary-card__note">@item.Value</p>
+                </article>
+            }
+        </div>
+    }
 </section>
 
 @code {
-    private readonly string _dischargeDate = DateTime.Now.ToString("M/d/yyyy");
+    [Parameter, EditorRequired] public SubjectiveVm Subjective { get; set; } = new();
+    [Parameter, EditorRequired] public DischargeSubjectiveVm DischargeSubjective { get; set; } = new();
+    [Parameter, EditorRequired] public ObjectiveVm Objective { get; set; } = new();
 
-    private readonly IReadOnlyList<OutcomeRow> _outcomes =
-    [
-        new("Knee Flexion ROM", "100°", "135°", "Improved 35°", "Exceeds functional goal of 120°"),
-        new("Quadriceps Strength (MMT)", "4/5", "5/5", "Full strength restored", "Normal grade achieved"),
-        new("Oswestry Disability Index", "40%", "12%", "Reduced 28%", "Minimal disability category"),
-        new("Pain Level (at worst)", "7/10", "5/10", "Reduced 2 points", "Minimal pain during ADLs"),
-        new("Functional Gait Distance", "100 ft", "0.5 miles", "Significant improvement", "Community ambulation restored")
-    ];
+    private IReadOnlyList<OutcomeRow> OutcomeRows
+    {
+        get
+        {
+            var rows = new List<OutcomeRow>();
 
-    private sealed record OutcomeRow(string Measure, string InitialValue, string FinalValue, string Change, string Note);
+            if (Subjective.IsPainScoreDocumented ||
+                Subjective.CurrentPainScore > 0 ||
+                Subjective.BestPainScore > 0 ||
+                Subjective.WorstPainScore > 0)
+            {
+                rows.Add(new OutcomeRow(
+                    "Pain at discharge",
+                    $"Current {Subjective.CurrentPainScore}/10; best {Subjective.BestPainScore}/10; worst {Subjective.WorstPainScore}/10",
+                    null));
+            }
+
+            if (!string.IsNullOrWhiteSpace(DischargeSubjective.PatientReportedOutcome))
+            {
+                rows.Add(new OutcomeRow("Patient-reported outcome", DischargeSubjective.PatientReportedOutcome.Trim(), null));
+            }
+
+            if (!string.IsNullOrWhiteSpace(DischargeSubjective.RemainingDifficulty))
+            {
+                rows.Add(new OutcomeRow("Remaining difficulty", DischargeSubjective.RemainingDifficulty.Trim(), null));
+            }
+
+            rows.AddRange(Objective.OutcomeMeasures
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+                .Select(entry => new OutcomeRow(
+                    entry.Name.Trim(),
+                    string.IsNullOrWhiteSpace(entry.Score) ? "Score not documented" : entry.Score.Trim(),
+                    entry.Date is null || entry.Date == default ? null : entry.Date.Value.ToString("M/d/yyyy", CultureInfo.InvariantCulture))));
+
+            rows.AddRange(Objective.Metrics
+                .Where(metric => !string.IsNullOrWhiteSpace(metric.Name) && !string.IsNullOrWhiteSpace(metric.Value))
+                .Select(metric => new OutcomeRow(
+                    metric.Name.Trim(),
+                    metric.Value.Trim(),
+                    string.IsNullOrWhiteSpace(metric.PreviousValue) ? null : $"Previous {metric.PreviousValue.Trim()}")));
+
+            return rows;
+        }
+    }
+
+    private sealed record OutcomeRow(string Label, string Value, string? Detail);
 }

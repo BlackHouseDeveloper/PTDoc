@@ -33,16 +33,21 @@
             <h3 id="progress-pain-title" class="progress-subjective__card-title">Pain/Symptom Changes</h3>
 
             <div class="progress-subjective__question-block">
-                <label class="progress-subjective__question">3. How would you rate your current pain level (0-10)?</label>
-                <InputRadioGroup TValue="int" @bind-Value="_vm.CurrentPainScore" @bind-Value:after="NotifyChanged" Name="current-pain" class="progress-subjective__scale-grid">
-                    @for (var i = 0; i <= 10; i++)
-                    {
-                        <label class="progress-subjective__scale-cell">
-                            <InputRadio TValue="int" Value="@i" disabled="@IsReadOnly" />
-                            <span>@i</span>
-                        </label>
-                    }
-                </InputRadioGroup>
+                <label class="progress-subjective__question" for="progress-current-pain">3. How would you rate your current pain level (0-10)?</label>
+                <input id="progress-current-pain"
+                       class="progress-subjective__range"
+                       type="range"
+                       min="0"
+                       max="10"
+                       disabled="@IsReadOnly"
+                       @bind="_vm.CurrentPainScore"
+                       @bind:event="oninput"
+                       @bind:after="NotifyChanged" />
+                <div class="progress-subjective__range-legend">
+                    <span>No Pain (0)</span>
+                    <strong>@_vm.CurrentPainScore</strong>
+                    <span>Severe (10)</span>
+                </div>
 
                 <div class="progress-subjective__two-col">
                     <label class="progress-subjective__field">
@@ -95,6 +100,45 @@
                     {
                         <label class="progress-subjective__check-item">
                             <input type="checkbox" checked="@_improvedAreas.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_improvedAreas, option, e)" />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">Which activities have stayed the same?</label>
+                <div class="progress-subjective__check-grid">
+                    @foreach (var option in _activityStateOptions)
+                    {
+                        <label class="progress-subjective__check-item">
+                            <input type="checkbox" checked="@_sameActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_sameActivities, option, e)" />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">Which activities have gotten worse?</label>
+                <div class="progress-subjective__check-grid">
+                    @foreach (var option in _activityStateOptions)
+                    {
+                        <label class="progress-subjective__check-item">
+                            <input type="checkbox" checked="@_worseActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_worseActivities, option, e)" />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question">Which activities are newly difficult?</label>
+                <div class="progress-subjective__check-grid">
+                    @foreach (var option in _activityStateOptions)
+                    {
+                        <label class="progress-subjective__check-item">
+                            <input type="checkbox" checked="@_newDifficultyActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_newDifficultyActivities, option, e)" />
                             <span>@option</span>
                         </label>
                     }
@@ -172,15 +216,30 @@
                     <label class="progress-subjective__choice"><InputRadio Value="@("No")" disabled="@IsReadOnly" />No</label>
                 </InputRadioGroup>
             </div>
+
+            <div class="progress-subjective__question-block">
+                <label class="progress-subjective__question" for="progress-additional-information">Additional information for your therapist</label>
+                <textarea id="progress-additional-information"
+                          class="progress-subjective__textarea"
+                          rows="4"
+                          disabled="@IsReadOnly"
+                          placeholder="Share anything else you want your therapist to know before this progress note visit."
+                          @bind="_additionalInformation"
+                          @bind:event="oninput"
+                          @bind:after="NotifyChanged"></textarea>
+            </div>
         </article>
     </div>
 </section>
 
 @code {
     private SubjectiveVm _vm = new();
+    private ProgressSubjectiveVm _progress = new();
 
     [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
+    [Parameter] public ProgressSubjectiveVm ProgressSubjective { get; set; } = new();
+    [Parameter] public EventCallback<ProgressSubjectiveVm> ProgressSubjectiveChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private string _overallCondition = string.Empty;
@@ -192,8 +251,13 @@
     private string _hepResponse = string.Empty;
     private string _hasSetbacks = string.Empty;
     private string _hasMedicalChanges = string.Empty;
+    private string _additionalInformation = string.Empty;
+    private bool _hasLoadedProgressState;
 
     private readonly HashSet<string> _improvedAreas = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _sameActivities = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _worseActivities = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _newDifficultyActivities = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _impactAreas = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly string[] _improvedOptions =
@@ -219,10 +283,30 @@
         "Not applicable"
     ];
 
+    private static readonly string[] _activityStateOptions =
+    [
+        "Walking",
+        "Stairs",
+        "Transfers (e.g., sit-to-stand)",
+        "Reaching",
+        "Lifting",
+        "Balance",
+        "Endurance",
+        "Self-care",
+        "Work tasks",
+        "Household chores"
+    ];
+
     protected override void OnParametersSet()
     {
         // Parent supplies the latest persisted VM snapshot for this section.
         _vm = Vm;
+        if (!_hasLoadedProgressState || !ReferenceEquals(_progress, ProgressSubjective))
+        {
+            _progress = ProgressSubjective ?? new ProgressSubjectiveVm();
+            LoadProgressState();
+            _hasLoadedProgressState = true;
+        }
     }
 
     private void ToggleSetItem(HashSet<string> set, string value, ChangeEventArgs args)
@@ -244,7 +328,70 @@
 
     private async Task NotifyChanged()
     {
+        _vm.IsPainScoreDocumented = true;
+        _progress.OverallCondition = _overallCondition;
+        _progress.GoalProgress = _goalProgress;
+        _progress.PainChange = _painChange;
+        _progress.DailyActivityEase = _dailyActivityEase;
+        _progress.ImprovedActivities = new HashSet<string>(_improvedAreas, StringComparer.OrdinalIgnoreCase);
+        _progress.SameActivities = new HashSet<string>(_sameActivities, StringComparer.OrdinalIgnoreCase);
+        _progress.WorseActivities = new HashSet<string>(_worseActivities, StringComparer.OrdinalIgnoreCase);
+        _progress.NewDifficultyActivities = new HashSet<string>(_newDifficultyActivities, StringComparer.OrdinalIgnoreCase);
+        _progress.ImpactedAreas = new HashSet<string>(_impactAreas, StringComparer.OrdinalIgnoreCase);
+        _progress.ReturnedToActivities = _returnedActivities;
+        _progress.HepAdherence = _hepAdherence;
+        _progress.HepResponse = _hepResponse;
+        _progress.HasSetbacksOrNewSymptoms = ToNullableBool(_hasSetbacks);
+        _progress.HasMedicalChanges = ToNullableBool(_hasMedicalChanges);
+        _progress.AdditionalInformation = _additionalInformation;
+
         // Persist is handled by the parent note workspace save flow.
         await VmChanged.InvokeAsync(_vm);
+        await ProgressSubjectiveChanged.InvokeAsync(_progress);
     }
+
+    private void LoadProgressState()
+    {
+        _overallCondition = _progress.OverallCondition;
+        _goalProgress = _progress.GoalProgress;
+        _painChange = _progress.PainChange;
+        _dailyActivityEase = _progress.DailyActivityEase;
+        ReplaceSet(_improvedAreas, _progress.ImprovedActivities);
+        ReplaceSet(_sameActivities, _progress.SameActivities);
+        ReplaceSet(_worseActivities, _progress.WorseActivities);
+        ReplaceSet(_newDifficultyActivities, _progress.NewDifficultyActivities);
+        ReplaceSet(_impactAreas, _progress.ImpactedAreas);
+        _returnedActivities = _progress.ReturnedToActivities;
+        _hepAdherence = _progress.HepAdherence;
+        _hepResponse = _progress.HepResponse;
+        _hasSetbacks = FromNullableBool(_progress.HasSetbacksOrNewSymptoms);
+        _hasMedicalChanges = FromNullableBool(_progress.HasMedicalChanges);
+        _additionalInformation = _progress.AdditionalInformation ?? string.Empty;
+    }
+
+    private static void ReplaceSet(HashSet<string> target, IEnumerable<string>? source)
+    {
+        target.Clear();
+        foreach (var value in source ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                target.Add(value);
+            }
+        }
+    }
+
+    private static bool? ToNullableBool(string value) => value switch
+    {
+        "Yes" => true,
+        "No" => false,
+        _ => null
+    };
+
+    private static string FromNullableBool(bool? value) => value switch
+    {
+        true => "Yes",
+        false => "No",
+        _ => string.Empty
+    };
 }
