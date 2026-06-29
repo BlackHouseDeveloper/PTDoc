@@ -528,6 +528,13 @@ public sealed class IntakeServiceTests : IDisposable
             MemberOrPolicyNumber = "BETA001",
             PayerType = "Commercial",
             InsuranceCoverageType = "Primary",
+            SecondaryInsuranceCompanyName = "Secondary Health",
+            SecondaryMemberOrPolicyNumber = "SEC-123",
+            SecondaryGroupNumber = "SEC-GRP",
+            AdjusterName = "Alex Adjuster",
+            AdjusterPhone = "555-0200",
+            AdjusterEmail = "adjuster@example.com",
+            AdjusterFax = "555-0201",
             CurrentLevelOfFunction = "Independent in home, limited in community walking endurance.",
             FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             PainSeverityProvided = false
@@ -561,6 +568,13 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal("Commercial", payerInfoJson.RootElement.GetProperty("providerType").GetString());
         Assert.Equal("BETA001", payerInfoJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
         Assert.Equal("Primary", payerInfoJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Secondary Health", payerInfoJson.RootElement.GetProperty("secondaryInsuranceCompanyName").GetString());
+        Assert.Equal("SEC-123", payerInfoJson.RootElement.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+        Assert.Equal("SEC-GRP", payerInfoJson.RootElement.GetProperty("secondaryGroupNumber").GetString());
+        Assert.Equal("Alex Adjuster", payerInfoJson.RootElement.GetProperty("adjusterName").GetString());
+        Assert.Equal("555-0200", payerInfoJson.RootElement.GetProperty("adjusterPhone").GetString());
+        Assert.Equal("adjuster@example.com", payerInfoJson.RootElement.GetProperty("adjusterEmail").GetString());
+        Assert.Equal("555-0201", payerInfoJson.RootElement.GetProperty("adjusterFax").GetString());
     }
 
     [Fact]
@@ -617,6 +631,11 @@ public sealed class IntakeServiceTests : IDisposable
             InsuranceCompanyName = "Existing Plan",
             MemberOrPolicyNumber = "EXISTING-001",
             GroupNumber = "GROUP-42",
+            SecondaryInsuranceCompanyName = "Existing Secondary",
+            SecondaryMemberOrPolicyNumber = "EXISTING-SEC",
+            SecondaryGroupNumber = "SEC-GROUP-42",
+            AdjusterName = "Existing Adjuster",
+            AdjusterPhone = "555-4444",
             CoverageType = "Secondary",
             YearType = "Calendar",
             EffectiveStartDate = "2026-01-01",
@@ -661,6 +680,12 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal("GROUP-42", GetJsonPropertyString(payerJson.RootElement, "groupNumber", "GroupNumber"));
         Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "coverageType", "CoverageType"));
         Assert.Equal("Secondary", GetJsonPropertyString(payerJson.RootElement, "insurancePriority", "InsurancePriority"));
+        Assert.Equal("Existing Secondary", GetJsonPropertyString(payerJson.RootElement, "secondaryInsuranceCompanyName", "SecondaryInsuranceCompanyName"));
+        Assert.Equal("EXISTING-SEC", GetJsonPropertyString(payerJson.RootElement, "secondaryMemberOrPolicyNumber", "SecondaryMemberOrPolicyNumber"));
+        Assert.Equal("EXISTING-SEC", GetJsonPropertyString(payerJson.RootElement, "secondaryMemberIdPolicyNumber", "SecondaryMemberIdPolicyNumber"));
+        Assert.Equal("SEC-GROUP-42", GetJsonPropertyString(payerJson.RootElement, "secondaryGroupNumber", "SecondaryGroupNumber"));
+        Assert.Equal("Existing Adjuster", GetJsonPropertyString(payerJson.RootElement, "adjusterName", "AdjusterName"));
+        Assert.Equal("555-4444", GetJsonPropertyString(payerJson.RootElement, "adjusterPhone", "AdjusterPhone"));
         Assert.Equal("Calendar", GetJsonPropertyString(payerJson.RootElement, "YearType"));
         Assert.Equal("2026-01-01", GetJsonPropertyString(payerJson.RootElement, "EffectiveStartDate"));
         Assert.Equal("AUTH-123", GetJsonPropertyString(payerJson.RootElement, "AuthorizationNumber"));

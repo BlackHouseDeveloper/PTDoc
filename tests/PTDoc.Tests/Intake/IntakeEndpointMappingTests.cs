@@ -77,6 +77,13 @@ public sealed class IntakeEndpointMappingTests
                 MemberOrPolicyNumber = "BETA001",
                 PayerType = "Commercial",
                 InsuranceCoverageType = "Primary",
+                SecondaryInsuranceCompanyName = "Secondary Health",
+                SecondaryMemberOrPolicyNumber = "SEC-123",
+                SecondaryGroupNumber = "SEC-GRP",
+                AdjusterName = "Alex Adjuster",
+                AdjusterPhone = "555-0200",
+                AdjusterEmail = "adjuster@example.com",
+                AdjusterFax = "555-0201",
                 PrimaryDoctorName = "Dr. Primary",
                 FunctionalLimitations = "Difficulty with stairs."
             }, JsonOptions),
@@ -106,6 +113,13 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal("Commercial", payerInfoJson.RootElement.GetProperty("providerType").GetString());
         Assert.Equal("BETA001", payerInfoJson.RootElement.GetProperty("memberIdPolicyNumber").GetString());
         Assert.Equal("Primary", payerInfoJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Secondary Health", payerInfoJson.RootElement.GetProperty("secondaryInsuranceCompanyName").GetString());
+        Assert.Equal("SEC-123", payerInfoJson.RootElement.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+        Assert.Equal("SEC-GRP", payerInfoJson.RootElement.GetProperty("secondaryGroupNumber").GetString());
+        Assert.Equal("Alex Adjuster", payerInfoJson.RootElement.GetProperty("adjusterName").GetString());
+        Assert.Equal("555-0200", payerInfoJson.RootElement.GetProperty("adjusterPhone").GetString());
+        Assert.Equal("adjuster@example.com", payerInfoJson.RootElement.GetProperty("adjusterEmail").GetString());
+        Assert.Equal("555-0201", payerInfoJson.RootElement.GetProperty("adjusterFax").GetString());
         Assert.DoesNotContain("Dr. Primary", patient.PayerInfoJson, StringComparison.Ordinal);
         Assert.DoesNotContain("Difficulty with stairs.", patient.PayerInfoJson, StringComparison.Ordinal);
         Assert.Equal(intake.ModifiedByUserId, patient.ModifiedByUserId);
@@ -165,6 +179,11 @@ public sealed class IntakeEndpointMappingTests
             InsuranceCompanyName = "Existing Plan",
             MemberOrPolicyNumber = "EXISTING-001",
             GroupNumber = "GROUP-42",
+            SecondaryInsuranceCompanyName = "Existing Secondary",
+            SecondaryMemberOrPolicyNumber = "EXISTING-SEC",
+            SecondaryGroupNumber = "SEC-GROUP-42",
+            AdjusterName = "Existing Adjuster",
+            AdjusterPhone = "555-4444",
             CoverageType = "Secondary",
             YearType = "Calendar",
             EffectiveStartDate = "2026-01-01",
@@ -206,6 +225,12 @@ public sealed class IntakeEndpointMappingTests
         Assert.Equal("GROUP-42", payerJson.RootElement.GetProperty("groupNumber").GetString());
         Assert.Equal("Secondary", payerJson.RootElement.GetProperty("coverageType").GetString());
         Assert.Equal("Secondary", payerJson.RootElement.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Existing Secondary", payerJson.RootElement.GetProperty("secondaryInsuranceCompanyName").GetString());
+        Assert.Equal("EXISTING-SEC", payerJson.RootElement.GetProperty("secondaryMemberOrPolicyNumber").GetString());
+        Assert.Equal("EXISTING-SEC", payerJson.RootElement.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+        Assert.Equal("SEC-GROUP-42", payerJson.RootElement.GetProperty("secondaryGroupNumber").GetString());
+        Assert.Equal("Existing Adjuster", payerJson.RootElement.GetProperty("adjusterName").GetString());
+        Assert.Equal("555-4444", payerJson.RootElement.GetProperty("adjusterPhone").GetString());
         Assert.Equal("Calendar", payerJson.RootElement.GetProperty("yearType").GetString());
         Assert.Equal("2026-01-01", payerJson.RootElement.GetProperty("effectiveStartDate").GetString());
         Assert.Equal("AUTH-123", payerJson.RootElement.GetProperty("authorizationNumber").GetString());

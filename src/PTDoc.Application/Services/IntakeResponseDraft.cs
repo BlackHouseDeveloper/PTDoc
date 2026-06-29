@@ -49,6 +49,13 @@ public sealed class IntakeResponseDraft
     public string? GroupNumber { get; set; }
     public string? PayerType { get; set; }
     public string? InsuranceCoverageType { get; set; }
+    public string? SecondaryInsuranceCompanyName { get; set; }
+    public string? SecondaryMemberOrPolicyNumber { get; set; }
+    public string? SecondaryGroupNumber { get; set; }
+    public string? AdjusterName { get; set; }
+    public string? AdjusterPhone { get; set; }
+    public string? AdjusterEmail { get; set; }
+    public string? AdjusterFax { get; set; }
 
     public bool HasCurrentMedications { get; set; }
     public bool HasOtherMedicalConditions { get; set; }

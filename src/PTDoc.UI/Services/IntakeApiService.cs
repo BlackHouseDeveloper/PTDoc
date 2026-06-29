@@ -499,7 +499,15 @@ public sealed class IntakeApiService(
             MemberIdPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
             CoverageType = state.InsuranceCoverageType,
-            InsurancePriority = state.InsuranceCoverageType
+            InsurancePriority = state.InsuranceCoverageType,
+            SecondaryInsuranceCompanyName = state.SecondaryInsuranceCompanyName,
+            SecondaryMemberOrPolicyNumber = state.SecondaryMemberOrPolicyNumber,
+            SecondaryMemberIdPolicyNumber = state.SecondaryMemberOrPolicyNumber,
+            SecondaryGroupNumber = state.SecondaryGroupNumber,
+            AdjusterName = state.AdjusterName,
+            AdjusterPhone = state.AdjusterPhone,
+            AdjusterEmail = state.AdjusterEmail,
+            AdjusterFax = state.AdjusterFax
         }, SerializerOptions);
     }
 
