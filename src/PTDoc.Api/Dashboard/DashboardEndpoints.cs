@@ -16,6 +16,7 @@ public static class DashboardEndpoints
 {
     private const int DefaultTake = 10;
     private const int MaxTake = 50;
+    private const int MaxAuthorizationAlertCandidates = MaxTake * 20;
     private const int AuthorizationAlertWindowDays = 30;
     private const int AuthorizationUrgentWindowDays = 7;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -747,6 +748,9 @@ public static class DashboardEndpoints
                  EF.Functions.Like(patient.PayerInfoJson, "%reAuthorizationDueDate%") ||
                  EF.Functions.Like(patient.PayerInfoJson, "%visitsRemaining%") ||
                  EF.Functions.Like(patient.PayerInfoJson, "%visitAlertThreshold%")))
+            .OrderByDescending(patient => patient.LastModifiedUtc)
+            .ThenBy(patient => patient.Id)
+            .Take(MaxAuthorizationAlertCandidates)
             .Select(patient => new PatientAuthorizationAlertCandidate(
                 patient.Id,
                 patient.FirstName,

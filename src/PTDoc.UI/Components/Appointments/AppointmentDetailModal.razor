@@ -85,7 +85,7 @@
                         <div class="appointment-detail-modal__info-item">
                             <p class="appointment-detail-modal__field-label">Intake Status</p>
                             <span class="@GetStatusBadgeClass(Appointment.IntakeStatus)">
-                                @Appointment.IntakeStatus
+                                @GetIntakeStatusLabel()
                             </span>
                         </div>
                     </div>
@@ -413,6 +413,11 @@
         string.IsNullOrWhiteSpace(Appointment?.CopayActionUnavailableReason)
             ? "Copay collection is not configured for this appointment."
             : Appointment.CopayActionUnavailableReason;
+
+    private string GetIntakeStatusLabel() =>
+        string.IsNullOrWhiteSpace(Appointment?.IntakeStatus)
+            ? "Pending"
+            : Appointment.IntakeStatus;
 
     private string GetCopayBadgeClass() =>
         "appointment-detail-modal__status-badge appointment-detail-modal__status-badge--neutral";

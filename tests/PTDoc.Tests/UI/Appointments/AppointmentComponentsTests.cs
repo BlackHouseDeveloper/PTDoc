@@ -445,7 +445,7 @@ public sealed class AppointmentComponentsTests : TestContext
             AppointmentType = "Follow Up",
             AppointmentStatus = status,
             VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
-            IntakeStatus = intakeStatus!,
+            IntakeStatus = intakeStatus,
             CanRecordCopay = canRecordCopay,
             CopayStatusLabel = copayStatusLabel,
             Notes = "Shoulder mobility follow-up."
