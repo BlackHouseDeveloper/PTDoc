@@ -1,10 +1,14 @@
 # PTDoc - AI Coding Assistant Instructions
 
+## Relationship To AGENTS.md
+
+[`AGENTS.md`](../AGENTS.md) is the shared repository instruction entrypoint for coding agents. Use it for the working agreement, documentation order, verification policy, release branching rules, and the current command/env-var surface. This file adds Copilot-specific detail and quick references; when guidance overlaps, keep it consistent with `AGENTS.md` and the source docs it names.
+
 ## Working Agreement
 
 **Before starting any task:**
 1. **Restate the task** in 1-2 lines to confirm understanding
-2. **Identify 0-3 relevant docs** from the Doc Map below (only if needed for the task)
+2. **Check `AGENTS.md` first** for the current repo-wide agent rules, then identify 0-3 relevant docs from the Doc Map below only if needed for the task
 3. **Use existing patterns** - prefer reusing over inventing new approaches
 4. **Small commits** - implement changes incrementally
 5. **Don't refactor unrelated code** unless explicitly required
@@ -24,12 +28,12 @@
 - Consult docs only when they directly affect your current work
 - Trust your knowledge of .NET/Blazor for standard patterns
 
-**Documentation Authority Hierarchy (Highest → Lowest)**
+**Documentation Authority Hierarchy (Highest -> Lowest)**
 1. **Primary architecture & system design**
-  - [PTDocs+ Branch-Specific Database Blueprint and Phased Plan for UI Completion](../docs/PTDocs+%20Branch-Specific%20Database%20Blueprint%20and%20Phased%20Plan%20for%20UI-Completiondeep-research-report.md)
   - [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
-  - [docs/SYNC_ENGINE.md](../docs/SYNC_ENGINE.md)
+  - Other system-design specs named by `AGENTS.md`
 2. **Repository workflow & guardrails**
+  - [AGENTS.md](../AGENTS.md)
   - This file ([.github/copilot-instructions.md](copilot-instructions.md))
   - [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)
   - [docs/CI.md](../docs/CI.md)
@@ -234,7 +238,7 @@ PTDoc.UI           → Shared Blazor components
 ./PTDoc-Foundry.sh --seed              # Seed dev data
 ```
 
-**Path Resolution:** `PFP_DB_PATH` env → `appsettings` → fallback `PTDoc.db`
+**Path Resolution:** `PFP_DB_PATH` overrides the SQLite path used by `PTDoc-Foundry.sh`; `PTDoc_DB_PATH` overrides the SQLite path used by `src/PTDoc.Api`.
 
 **Provider Selection (CI / design-time):**
 - `EF_PROVIDER=sqlite` (default) – SQLite / SQLCipher
@@ -422,10 +426,10 @@ PTDoc.UI/          → Shared Blazor components (reusable)
 
 ```bash
 # First-time dev secrets setup (REQUIRED after cloning)
-./setup-dev-secrets.sh          # macOS/Linux: generate & store JWT + IntakeInvite keys
+./setup-dev-secrets.sh          # macOS/Linux: generate dev JWT, IntakeInvite, and communication salts
 .\setup-dev-secrets.ps1         # Windows PowerShell equivalent
 
-# Setup & Build
+# Setup & Build (reference only; do not run build/test commands automatically)
 ./PTDoc-Foundry.sh              # Environment setup
 ./cleanbuild-ptdoc.sh           # Clean build
 dotnet build PTDoc.sln          # Build all
@@ -433,7 +437,7 @@ dotnet build PTDoc.sln          # Build all
 # Run
 ./run-ptdoc.sh                  # Interactive launcher
 dotnet run --project src/PTDoc.Api --urls http://localhost:5170   # API
-dotnet run --project src/PTDoc.Web                                # Web
+dotnet run --project src/PTDoc.Web --urls http://localhost:5145   # Web
 
 # Database (multi-provider - Sprint B; production deployment - Sprint E)
 ./PTDoc-Foundry.sh --create-migration --seed   # Setup SQLite DB (default)
@@ -460,6 +464,20 @@ EF_PROVIDER=sqlite dotnet ef database update \
 dotnet test                     # All tests
 dotnet test --filter "Category=Unit"   # Unit tests only
 ```
+
+### Browser QA Commands
+
+```bash
+cd tests/PTDoc.Web.UiQa
+npm install
+npm run install:browsers
+
+PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive
+PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents
+PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:audit-remediation
+```
+
+Useful optional overrides from `AGENTS.md`: `PTDOC_UI_QA_STORAGE_STATE`, `PTDOC_UI_QA_PATIENT_CHART_PATH`, `PTDOC_UI_QA_PT_USERNAME`, `PTDOC_UI_QA_PT_PIN`, `PTDOC_UI_QA_INTAKE_PATH`, `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`, `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH`, and `PTDOC_UI_QA_CHROME_CHANNEL`.
 
 ---
 

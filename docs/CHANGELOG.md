@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Copilot instructions align with agent guidance
+
+- **`.github/copilot-instructions.md`** — Added an explicit relationship to `AGENTS.md`, aligned the documentation authority order with the agent notes, corrected local API/Web and SQLite path guidance, and added the current Playwright browser QA commands plus optional overrides. Reason: Copilot guidance should reinforce the repo-wide agent contract instead of drifting into conflicting command or documentation priorities.
+
+### Changed - Agent guidance captures audit-remediation browser QA
+
+- **`AGENTS.md`** — Added the documented Playwright `npm run test:audit-remediation` workflow plus the related `PTDOC_UI_QA_PT_USERNAME`, `PTDOC_UI_QA_PT_PIN`, `PTDOC_UI_QA_INTAKE_PATH`, and `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH` overrides from the current UI QA project README. Reason: keep agent-facing browser workflow notes aligned with the repo’s newer focused audit-remediation suite without widening unrelated guidance.
+
+### Added - Updated live audit evidence
+
+- **`docs/audits/ptdoc-live-audit-2026-06-21.md`**, **`docs/audits/evidence/2026-06-21-live-audit/*`** — Added a localhost live UI/UX audit report and screenshot evidence covering remaining functional fragility, broken/non-responsive UI, UX friction, and architectural interaction gaps against the source-of-truth audit and client feedback analysis. Reason: the app changed significantly after the original audit documents, so the remaining verified client-comment work needed a current evidence-backed baseline.
+
 ### Changed - Live audit UI remediation
 
 - **`src/PTDoc.UI/Pages/*`**, **`src/PTDoc.UI/Components/Appointments/*`**, **`src/PTDoc.UI/Components/Dashboard/OverviewSection.razor`**, **`src/PTDoc.UI/Components/Intake/Steps/*`**, **`src/PTDoc.UI/Components/Notes/NotesRecentSection.*`**, **`src/PTDoc.Infrastructure/Services/IntakeDemographicsValidationService.cs`**, **`tests/PTDoc.Tests/*`**, **`tests/PTDoc.Web.UiQa/*`** — Added the protected `/dashboard` route alias and auth-aware catch-all behavior, inline login validation, actionable Dashboard Notes Due routing, Appointments `needsNote`/`dateRange`/`groupBy` handling with clinician-first week grouping, explicit intake pain-severity validation, keyboard-safe body-map selection, bounded global notes pagination, audit-name demographics validation, CPT/intervention/HEP draft serialization coverage, and focused Playwright audit-remediation coverage. Reason: live UI/UX audit findings identified broken logout route protection, fragile login/intake/global-notes flows, weak week-schedule grouping, and missing browser coverage for PT-role documentation persistence.
