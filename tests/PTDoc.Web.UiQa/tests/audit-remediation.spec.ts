@@ -77,7 +77,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.goto('/patients');
     await page.waitForLoadState('domcontentloaded');
 
-    const addPatient = page.getByRole('button', { name: /^Add Patient$/ });
+    const addPatient = page.getByRole('link', { name: /^Add Patient$/ });
     await expect(addPatient).toHaveAttribute('href', '/patients?action=add');
     await addPatient.click();
 

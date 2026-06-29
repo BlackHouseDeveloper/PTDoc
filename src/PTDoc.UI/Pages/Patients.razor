@@ -20,9 +20,7 @@
         <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
             <Authorized>
                 <a href="/patients?action=add"
-                   class="global-page-header-primary-action"
-                   role="button"
-                   @onclick="OpenAddPatientModal">
+                   class="global-page-header-primary-action">
                     <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -228,11 +226,6 @@
 
     private Task RetryLoadPatientsAsync()
         => LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
-
-    private void OpenAddPatientModal()
-    {
-        isAddPatientModalOpen = true;
-    }
 
     private void ApplyRouteAction()
     {
