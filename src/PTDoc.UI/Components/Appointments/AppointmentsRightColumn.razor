@@ -25,6 +25,7 @@
                            Clinicians="@Clinicians"
                            Appointments="@Appointments"
                            View="@View"
+                           WeekGrouping="@WeekGrouping"
                            Filter="@Filter"
                            OnAppointmentSelected="@OnAppointmentSelected"
                            AppointmentStatusOverrides="@AppointmentStatusOverrides" />
@@ -46,6 +47,9 @@
 
     [Parameter]
     public AppointmentsView View { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public AppointmentsWeekGrouping WeekGrouping { get; set; } = AppointmentsWeekGrouping.Clinician;
 
     [Parameter]
     public AppointmentsFilter? Filter { get; set; }

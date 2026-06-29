@@ -4,13 +4,13 @@
 @* Clinician Scheduler Component *@
 
 <div class="clinician-scheduler">
-    <p id="scheduler-scroll-hint" class="scheduler-scroll-hint">Scroll sideways to view more clinicians.</p>
+    <p id="scheduler-scroll-hint" class="scheduler-scroll-hint">@ScrollHint</p>
     <div class="scheduler-viewport"
          tabindex="0"
          role="region"
          aria-label="Appointment schedule"
          aria-describedby="scheduler-scroll-hint">
-        <div class="scheduler-grid @(View == AppointmentsView.Week ? "week-view" : "")">
+        <div class="@BuildSchedulerGridClass()">
             @* Time Column *@
             <div class="time-column">
                 <div class="time-header">
@@ -80,7 +80,7 @@
                     }
                 }
             }
-            else
+            else if (WeekGrouping == AppointmentsWeekGrouping.Day)
             {
                 @* Week View - Day Columns *@
                 @foreach (var day in GetWeekDays())
@@ -131,6 +131,61 @@
                     </div>
                 }
             }
+            else
+            {
+                @* Week View - Clinician/day columns, ordered by clinician first. *@
+                @if (Clinicians != null)
+                {
+                    @foreach (var clinician in Clinicians)
+                    {
+                        @foreach (var day in GetWeekDays())
+                        {
+                            <div class="clinician-column week-clinician-column">
+                                <div class="clinician-header">
+                                    <div class="clinician-info">
+                                        <h3>@clinician.Name</h3>
+                                        <p>@day.DayName @day.Date.ToString("MMM d")</p>
+                                    </div>
+                                </div>
+
+                                <div class="appointments-container">
+                                    <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                                        @for (int i = 0; i < SlotCount; i++)
+                                        {
+                                            <div class="appointment-slot"></div>
+                                        }
+                                    </div>
+
+                                    @foreach (var appt in GetAppointmentsForClinicianOnDay(clinician.Name, day.Date))
+                                    {
+                                        var effectiveBlockStatus = GetEffectiveBlockStatus(appt, day.Date);
+                                        <button type="button"
+                                                class="appointment-block @GetAppointmentClass(effectiveBlockStatus) @GetAppointmentDensityClass(appt)"
+                                                title="@($"{appt.Time} - {appt.PatientName}")"
+                                                aria-label="@GetAppointmentAriaLabel(appt, day.Date)"
+                                                style="@GetAppointmentStyle(appt)"
+                                                @onclick="@(() => OpenAppointmentDetailsAsync(appt, day.Date))">
+                                            <div class="appointment-content">
+                                                <div class="appointment-time">
+                                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+                                                        <path d="M6 3V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                                    </svg>
+                                                    <span>@appt.Time</span>
+                                                </div>
+                                                <div class="appointment-patient">@appt.PatientName</div>
+                                                <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
+                                                    @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
+                                                </span>
+                                            </div>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                }
+            }
         </div>
     </div>
 </div>
@@ -147,6 +202,9 @@
 
     [Parameter]
     public AppointmentsView View { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public AppointmentsWeekGrouping WeekGrouping { get; set; } = AppointmentsWeekGrouping.Clinician;
 
     [Parameter]
     public AppointmentsFilter? Filter { get; set; }
@@ -178,6 +236,13 @@
     private int TotalCalendarMinutes { get; set; }
     private IReadOnlyList<string> TimeSlots { get; set; } = Array.Empty<string>();
 
+    private string ScrollHint => View switch
+    {
+        AppointmentsView.Week when WeekGrouping == AppointmentsWeekGrouping.Day => "Scroll sideways to view more days.",
+        AppointmentsView.Week => "Scroll sideways to view more clinicians and days.",
+        _ => "Scroll sideways to view more clinicians."
+    };
+
     protected override void OnParametersSet()
     {
         // Reinitialize scheduler geometry whenever date/view/settings change so time slots
@@ -199,6 +264,18 @@
     }
 
     private string GetSlotGridStyle() => $"grid-template-rows: repeat({SlotCount}, minmax(0, 1fr));";
+
+    private string BuildSchedulerGridClass()
+    {
+        if (View != AppointmentsView.Week)
+        {
+            return "scheduler-grid";
+        }
+
+        return WeekGrouping == AppointmentsWeekGrouping.Day
+            ? "scheduler-grid week-view week-grouping-day"
+            : "scheduler-grid week-view week-grouping-clinician";
+    }
 
     private List<WeekDay> GetWeekDays()
     {
@@ -249,6 +326,22 @@
 
         return Appointments
             .Where(appointment => ToLocalTime(appointment.StartTimeUtc).Date == date.Date)
+            .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
+            .Select(BuildSchedulerAppointment)
+            .ToList();
+    }
+
+    private List<SchedulerAppointmentItem> GetAppointmentsForClinicianOnDay(string clinicianName, DateTime date)
+    {
+        if (Appointments is null)
+        {
+            return new List<SchedulerAppointmentItem>();
+        }
+
+        return Appointments
+            .Where(appointment =>
+                string.Equals(GetEffectiveClinicianName(appointment), clinicianName, StringComparison.OrdinalIgnoreCase)
+                && ToLocalTime(appointment.StartTimeUtc).Date == date.Date)
             .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
             .Select(BuildSchedulerAppointment)
             .ToList();

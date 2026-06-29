@@ -1,8 +1,10 @@
 @using Microsoft.AspNetCore.Components.Web
 @using PTDoc.Core.Models
 @using System.Globalization
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
-<section class="body-svg-selector" data-testid="body-svg-selector">
+<section class="body-svg-selector" data-testid="body-svg-selector" @ref="_root">
     <div class="body-svg-selector__canvas">
         <svg viewBox="0 0 748.79999 711.59998" class="body-svg-selector__svg" xmlns="http://www.w3.org/2000/svg" aria-label="Body pain region selector">
             @foreach (var region in RegionsForView)
@@ -33,6 +35,8 @@
     [Parameter] public EventCallback<HashSet<BodyRegion>> SelectedRegionsChanged { get; set; }
 
     private HashSet<BodyRegion> _selectedRegions = new();
+    private ElementReference _root;
+    private IJSObjectReference? _keyboardModule;
 
     private IReadOnlyDictionary<BodyRegion, string> RegionPaths => BodySvgPathProvider.GetPathsForView(View);
 
@@ -42,6 +46,25 @@
     protected override void OnParametersSet()
     {
         _selectedRegions = SelectedRegions.ToHashSet();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/body-svg-selector.js");
+            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // The Blazor key handler still supports keyboard selection if the progressive
+            // Space/Enter scroll guard is unavailable during prerender, tests, or teardown.
+        }
     }
 
     private async Task ToggleRegionAsync(BodyRegion region)
@@ -100,5 +123,23 @@
         }
 
         return $"{titleContent} – {side}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore interop disposal failures during circuit teardown.
+        }
     }
 }

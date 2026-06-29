@@ -33,7 +33,7 @@ public sealed class NotesPageTests : TestContext
                 null,
                 null,
                 null,
-                200,
+                51,
                 null,
                 null,
                 It.IsAny<CancellationToken>(),
@@ -88,7 +88,7 @@ public sealed class NotesPageTests : TestContext
                 null,
                 null,
                 null,
-                200,
+                51,
                 null,
                 null,
                 It.IsAny<CancellationToken>(),
@@ -136,6 +136,108 @@ public sealed class NotesPageTests : TestContext
     }
 
     [Fact]
+    public void LoadMore_AppendsNextNotesPage()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddLogging();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IToastService>(new CapturingToastService());
+
+        var patientId = Guid.NewGuid();
+        var firstPage = Enumerable.Range(1, 51)
+            .Select(index => new NoteListItemApiResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PatientName = $"Patient {index:00}",
+                NoteType = NoteType.ProgressNote.ToString(),
+                NoteStatus = NoteStatus.Draft,
+                IsSigned = false,
+                DateOfService = DateTime.UtcNow.Date.AddMinutes(-index),
+                LastModifiedUtc = DateTime.UtcNow.Date.AddMinutes(-index),
+                CptCodesJson = "[]"
+            })
+            .ToArray();
+
+        var secondPage = new[]
+        {
+            new NoteListItemApiResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                PatientName = "Patient 52",
+                NoteType = NoteType.ProgressNote.ToString(),
+                NoteStatus = NoteStatus.Draft,
+                IsSigned = false,
+                DateOfService = DateTime.UtcNow.Date.AddMinutes(-52),
+                LastModifiedUtc = DateTime.UtcNow.Date.AddMinutes(-52),
+                CptCodesJson = "[]"
+            }
+        };
+
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        noteService
+            .Setup(service => service.GetNotesAsync(
+                null,
+                null,
+                null,
+                51,
+                null,
+                null,
+                It.IsAny<CancellationToken>(),
+                null,
+                null,
+                null,
+                0))
+            .ReturnsAsync(firstPage);
+        noteService
+            .Setup(service => service.GetNotesAsync(
+                null,
+                null,
+                null,
+                51,
+                null,
+                null,
+                It.IsAny<CancellationToken>(),
+                null,
+                null,
+                null,
+                50))
+            .ReturnsAsync(secondPage);
+        Services.AddSingleton(noteService.Object);
+
+        var authStateTask = Services
+            .GetRequiredService<AuthenticationStateProvider>()
+            .GetAuthenticationStateAsync();
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<CascadingValue<Task<AuthenticationState>>>(0);
+            builder.AddAttribute(1, "Value", authStateTask);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent<NotesPage>(3);
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        root.WaitForElement(".notes-recent-load-more");
+        Assert.Contains("Patient 50", root.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Patient 51", root.Markup, StringComparison.Ordinal);
+
+        root.Find(".notes-recent-load-more").Click();
+
+        root.WaitForAssertion(() =>
+        {
+            Assert.Contains("Patient 52", root.Markup, StringComparison.Ordinal);
+            Assert.Empty(root.FindAll(".notes-recent-load-more"));
+        });
+    }
+
+    [Fact]
     public void QueryFilters_AreAppliedToInitialNotesLoad()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -154,7 +256,7 @@ public sealed class NotesPageTests : TestContext
                 null,
                 null,
                 "Unsigned",
-                200,
+                51,
                 null,
                 null,
                 It.IsAny<CancellationToken>(),
@@ -226,7 +328,7 @@ public sealed class NotesPageTests : TestContext
                 null,
                 null,
                 null,
-                200,
+                51,
                 null,
                 null,
                 It.IsAny<CancellationToken>(),

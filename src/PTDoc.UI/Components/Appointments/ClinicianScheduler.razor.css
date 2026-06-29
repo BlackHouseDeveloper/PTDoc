@@ -86,6 +86,10 @@
     width: 200px;
 }
 
+.clinician-column.week-clinician-column {
+    width: 180px;
+}
+
 .scheduler-grid:not(.week-view) .clinician-column {
     width: auto;
     min-width: 16rem;
@@ -249,6 +253,10 @@
     display: block;
     flex: 0 1 auto;
     max-width: 4.75rem;
+}
+
+.week-grouping-clinician .appointment-clinician {
+    display: none;
 }
 
 .appointment-workflow-status {
