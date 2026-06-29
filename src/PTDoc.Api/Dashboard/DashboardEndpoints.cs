@@ -7,6 +7,7 @@ using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Globalization;
 using System.Text.Json;
 
 namespace PTDoc.Api.Dashboard;
@@ -111,11 +112,7 @@ public static class DashboardEndpoints
         alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, visibility, cancellationToken));
         alerts.AddRange(await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken));
 
-        return alerts
-            .OrderBy(alert => PriorityRank(alert.Priority))
-            .ThenBy(alert => KindRank(alert.Kind))
-            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
-            .ThenBy(alert => alert.Id, StringComparer.Ordinal)
+        return OrderAlerts(alerts)
             .Take(requestedTake)
             .ToList();
     }
@@ -149,11 +146,15 @@ public static class DashboardEndpoints
         if (alerts.Count >= DefaultTake)
         {
             alerts[^1] = authorizationAlert;
-            return alerts;
+            return OrderAlerts(alerts)
+                .Take(DefaultTake)
+                .ToList();
         }
 
         alerts.Add(authorizationAlert);
-        return alerts;
+        return OrderAlerts(alerts)
+            .Take(DefaultTake)
+            .ToList();
     }
 
     private static async Task<DashboardOverviewCountsResponse> BuildOverviewCountsAsync(
@@ -737,7 +738,12 @@ public static class DashboardEndpoints
             .Where(patient =>
                 !patient.IsArchived &&
                 !string.IsNullOrWhiteSpace(patient.PayerInfoJson) &&
-                patient.PayerInfoJson != "{}")
+                patient.PayerInfoJson != "{}" &&
+                (EF.Functions.Like(patient.PayerInfoJson, "%authorizationStatus%") ||
+                 EF.Functions.Like(patient.PayerInfoJson, "%authorizationEndDate%") ||
+                 EF.Functions.Like(patient.PayerInfoJson, "%reAuthorizationDueDate%") ||
+                 EF.Functions.Like(patient.PayerInfoJson, "%visitsRemaining%") ||
+                 EF.Functions.Like(patient.PayerInfoJson, "%visitAlertThreshold%")))
             .Select(patient => new PatientAuthorizationAlertCandidate(
                 patient.Id,
                 patient.FirstName,
@@ -963,6 +969,13 @@ public static class DashboardEndpoints
         DashboardAlertPriorities.Medium => 1,
         _ => 2
     };
+
+    private static IOrderedEnumerable<DashboardAlertItemResponse> OrderAlerts(IEnumerable<DashboardAlertItemResponse> alerts) =>
+        alerts
+            .OrderBy(alert => PriorityRank(alert.Priority))
+            .ThenBy(alert => KindRank(alert.Kind))
+            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
+            .ThenBy(alert => alert.Id, StringComparer.Ordinal);
 
     private static int KindRank(string kind) => kind switch
     {
@@ -1220,7 +1233,27 @@ public static class DashboardEndpoints
     private static bool TryParseDate(string? rawDate, out DateTime value)
     {
         value = default;
-        if (string.IsNullOrWhiteSpace(rawDate) || !DateTime.TryParse(rawDate.Trim(), out var parsed))
+        if (string.IsNullOrWhiteSpace(rawDate))
+        {
+            return false;
+        }
+
+        var trimmed = rawDate.Trim();
+        if (DateTimeOffset.TryParse(
+                trimmed,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsedOffset))
+        {
+            value = parsedOffset.UtcDateTime.Date;
+            return true;
+        }
+
+        if (!DateTime.TryParse(
+                trimmed,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
         {
             return false;
         }
@@ -1242,12 +1275,13 @@ public static class DashboardEndpoints
             return false;
         }
 
-        if (int.TryParse(rawValue.Trim(), out value))
+        var trimmed = rawValue.Trim();
+        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
         {
             return true;
         }
 
-        if (decimal.TryParse(rawValue.Trim(), out var decimalValue))
+        if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
         {
             value = (int)Math.Floor(decimalValue);
             return true;

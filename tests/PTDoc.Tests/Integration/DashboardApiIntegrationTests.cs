@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.DTOs;
@@ -393,7 +394,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         authorizationPatient.PayerInfoJson = $$"""
             {
               "authorizationStatus": "active",
-              "authorizationEndDate": "{{today.AddDays(14):yyyy-MM-dd}}"
+              "authorizationEndDate": "{{today.AddDays(5):yyyy-MM-dd}}"
             }
             """;
 
@@ -409,6 +410,61 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.NotNull(snapshot);
         Assert.True(snapshot!.Overview.AuthorizationActionItems >= 1);
         Assert.Contains(snapshot.Alerts, alert => alert.Kind == "authorizationExpiration");
+        Assert.Equal("authorizationExpiration", snapshot.Alerts[0].Kind);
+    }
+
+    [Fact]
+    public async Task DashboardAlerts_ParseAuthorizationJsonScalars_WithInvariantCulture()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+
+        var today = DateTime.UtcNow.Date;
+        var patient = CreatePatient(
+            "Invariant",
+            "AuthJson",
+            clinician.Id,
+            medicalRecordNumber: "AUTH-INVARIANT");
+        patient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(5):yyyy-MM-dd}}",
+              "visitsRemaining": "1.5",
+              "visitAlertThreshold": "2.0"
+            }
+            """;
+
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync();
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            var nonInvariantCulture = CultureInfo.GetCultureInfo("fr-FR");
+            CultureInfo.CurrentCulture = nonInvariantCulture;
+            CultureInfo.CurrentUICulture = nonInvariantCulture;
+
+            using var client = _factory.CreateClientWithRole(Roles.Admin);
+            using var response = await client.GetAsync("/api/v1/dashboard/alerts?take=50");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<DashboardAlertsResponse>();
+
+            Assert.NotNull(body);
+            Assert.Contains(
+                body!.Alerts,
+                alert => alert.Id.StartsWith($"authorizationExpiration:{patient.Id:N}", StringComparison.Ordinal));
+            Assert.Contains(
+                body.Alerts,
+                alert => alert.Id.StartsWith($"authorizationVisitLimit:{patient.Id:N}:1:2", StringComparison.Ordinal));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     [Fact]
