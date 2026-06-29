@@ -82,7 +82,7 @@ public sealed class AppointmentsPageTests : TestContext
             EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
             AppointmentType = appointmentType,
             AppointmentStatus = "Checked In",
-            IntakeStatus = "Complete"
+            IntakeStatus = "Completed"
         };
 
         RegisterServices(new AppointmentsOverviewResponse
@@ -144,7 +144,7 @@ public sealed class AppointmentsPageTests : TestContext
                     AppointmentStatus = "Checked In",
                     VisitWorkflowStatus = "Note Started",
                     VisitNoteId = noteId,
-                    IntakeStatus = "Complete"
+                    IntakeStatus = "Completed"
                 }
             ],
             Clinicians =
@@ -199,7 +199,7 @@ public sealed class AppointmentsPageTests : TestContext
                         AppointmentType = "Follow-up",
                         AppointmentStatus = "Scheduled",
                         VisitWorkflowStatus = "Scheduled",
-                        IntakeStatus = "Complete",
+                        IntakeStatus = "Completed",
                         Notes = "Change visit type if needed."
                     }
                 ],
@@ -261,7 +261,7 @@ public sealed class AppointmentsPageTests : TestContext
                         AppointmentType = "Follow Up",
                         AppointmentStatus = "Scheduled",
                         VisitWorkflowStatus = "Scheduled",
-                        IntakeStatus = "Complete"
+                        IntakeStatus = "Completed"
                     }
                 ],
                 Clinicians =
