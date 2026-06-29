@@ -387,7 +387,7 @@
 
             <div class="soap-review-page__field-panel">
                 <span class="soap-review-page__field-label">Home Exercise Program</span>
-                <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Plan.HomeExerciseProgramNotes)</span>
+                <span class="soap-review-page__field-value">@GetHomeExerciseProgram()</span>
             </div>
 
             <div class="soap-review-page__field-panel">
@@ -632,7 +632,7 @@
         }
 
         var exercises = Note.Objective.ExerciseRows
-            .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed)
+            .Select(FormatExerciseRow)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -671,18 +671,89 @@
     {
         var values = Note.Plan.GeneralInterventions
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .Select(entry =>
-            {
-                if (string.IsNullOrWhiteSpace(entry.Category))
-                {
-                    return entry.Name.Trim();
-                }
-
-                return $"{entry.Name.Trim()} ({entry.Category.Trim()})";
-            })
+            .Select(FormatGeneralIntervention)
             .ToList();
 
         return values.Count == 0 ? EmptyState : string.Join(" • ", values);
+    }
+
+    private string GetHomeExerciseProgram()
+    {
+        var values = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Note.Plan.HomeExerciseProgramNotes))
+        {
+            values.Add(Note.Plan.HomeExerciseProgramNotes.Trim());
+        }
+
+        values.AddRange(Note.Objective.ExerciseRows
+            .Where(row => row.IncludeInHomeExerciseProgram)
+            .Select(FormatExerciseRow)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => $"HEP: {value}"));
+
+        values.AddRange(Note.Plan.GeneralInterventions
+            .Where(entry => entry.IncludeInHomeExerciseProgram && !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => $"HEP: {FormatGeneralIntervention(entry)}"));
+
+        return values.Count == 0 ? EmptyState : string.Join(" • ", values.Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static string FormatExerciseRow(ExerciseRowEntry row)
+    {
+        var values = new List<string>();
+        AddIfPresent(values, string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed);
+        AddIfPresent(values, row.SetsRepsDuration, "Dosage");
+        AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
+        AddIfPresent(values, row.CptCode, "CPT");
+        AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        AddIfPresent(values, row.AssistanceLevel, "Assistance");
+        AddIfPresent(values, row.Cueing, "Cueing");
+        if (row.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
+
+        return string.Join("; ", values);
+    }
+
+    private static string FormatGeneralIntervention(GeneralInterventionEntry entry)
+    {
+        var values = new List<string>();
+        if (!string.IsNullOrWhiteSpace(entry.Name))
+        {
+            values.Add(string.IsNullOrWhiteSpace(entry.Category)
+                ? entry.Name.Trim()
+                : $"{entry.Name.Trim()} ({entry.Category.Trim()})");
+        }
+        else
+        {
+            AddIfPresent(values, entry.Category, "Category");
+        }
+
+        AddIfPresent(values, entry.CptCode, "CPT");
+        AddIfPresent(values, entry.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        AddIfPresent(values, entry.AssistanceLevel, "Assistance");
+        AddIfPresent(values, entry.Cueing, "Cueing");
+        AddIfPresent(values, entry.Response, "Response");
+        if (entry.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
+
+        AddIfPresent(values, entry.Notes, "Notes");
+        return string.Join("; ", values);
+    }
+
+    private static void AddIfPresent(List<string> values, string? value, string? label = null)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        values.Add(string.IsNullOrWhiteSpace(label)
+            ? value.Trim()
+            : $"{label}: {value.Trim()}");
     }
 
     private IReadOnlyList<string> GetGoalItems()

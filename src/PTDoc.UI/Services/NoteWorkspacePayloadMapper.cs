@@ -160,6 +160,9 @@ public sealed class NoteWorkspacePayloadMapper
                         CptCode = row.CptCode,
                         CptDescription = row.CptDescription,
                         TimeMinutes = row.TimeMinutes,
+                        AssistanceLevel = row.AssistanceLevel,
+                        Cueing = row.Cueing,
+                        IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                         IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                         IsSourceBacked = row.IsSourceBacked
                     })
@@ -240,7 +243,14 @@ public sealed class NoteWorkspacePayloadMapper
                         Name = entry.Name,
                         Category = entry.Category,
                         IsSourceBacked = entry.IsSourceBacked,
-                        Notes = entry.Notes
+                        Notes = entry.Notes,
+                        CptCode = entry.CptCode,
+                        CptDescription = entry.CptDescription,
+                        TimeMinutes = entry.TimeMinutes,
+                        AssistanceLevel = entry.AssistanceLevel,
+                        Cueing = entry.Cueing,
+                        Response = entry.Response,
+                        IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
                     })
                     .ToList(),
                 HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes,
@@ -403,7 +413,7 @@ public sealed class NoteWorkspacePayloadMapper
             []);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
-            payload.Plan.SelectedCptCodes);
+            BuildVisibleCptCodes(payload.Plan, payload.Objective));
         preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
@@ -652,6 +662,9 @@ public sealed class NoteWorkspacePayloadMapper
                 CptCode = string.IsNullOrWhiteSpace(row.CptCode) ? null : row.CptCode.Trim(),
                 CptDescription = string.IsNullOrWhiteSpace(row.CptDescription) ? null : row.CptDescription.Trim(),
                 TimeMinutes = row.TimeMinutes,
+                AssistanceLevel = string.IsNullOrWhiteSpace(row.AssistanceLevel) ? null : row.AssistanceLevel.Trim(),
+                Cueing = string.IsNullOrWhiteSpace(row.Cueing) ? null : row.Cueing.Trim(),
+                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                 IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                 IsSourceBacked = row.IsSourceBacked
             })
@@ -673,6 +686,9 @@ public sealed class NoteWorkspacePayloadMapper
                 CptCode = row.CptCode,
                 CptDescription = row.CptDescription,
                 TimeMinutes = row.TimeMinutes,
+                AssistanceLevel = row.AssistanceLevel,
+                Cueing = row.Cueing,
+                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                 IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                 IsSourceBacked = row.IsSourceBacked
             })
@@ -861,7 +877,14 @@ public sealed class NoteWorkspacePayloadMapper
                 Name = entry.Name.Trim(),
                 Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
                 IsSourceBacked = entry.IsSourceBacked,
-                Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim()
+                Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim(),
+                CptCode = string.IsNullOrWhiteSpace(entry.CptCode) ? null : entry.CptCode.Trim(),
+                CptDescription = string.IsNullOrWhiteSpace(entry.CptDescription) ? null : entry.CptDescription.Trim(),
+                TimeMinutes = entry.TimeMinutes,
+                AssistanceLevel = string.IsNullOrWhiteSpace(entry.AssistanceLevel) ? null : entry.AssistanceLevel.Trim(),
+                Cueing = string.IsNullOrWhiteSpace(entry.Cueing) ? null : entry.Cueing.Trim(),
+                Response = string.IsNullOrWhiteSpace(entry.Response) ? null : entry.Response.Trim(),
+                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
             })
             .ToList();
 
@@ -877,7 +900,14 @@ public sealed class NoteWorkspacePayloadMapper
                 Name = entry.Name,
                 Category = entry.Category,
                 IsSourceBacked = entry.IsSourceBacked,
-                Notes = entry.Notes
+                Notes = entry.Notes,
+                CptCode = entry.CptCode,
+                CptDescription = entry.CptDescription,
+                TimeMinutes = entry.TimeMinutes,
+                AssistanceLevel = entry.AssistanceLevel,
+                Cueing = entry.Cueing,
+                Response = entry.Response,
+                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
             })
             .ToList();
 
@@ -894,6 +924,74 @@ public sealed class NoteWorkspacePayloadMapper
                 Category = "Manual"
             })
             .ToList();
+    }
+
+    private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective)
+    {
+        var selected = plan.SelectedCptCodes
+            .Select(code => CloneUiCptCode(code))
+            .ToList();
+
+        foreach (var row in objective.ExerciseRows)
+        {
+            AddRowCptCode(
+                selected,
+                row.CptCode,
+                row.CptDescription,
+                row.TimeMinutes);
+        }
+
+        foreach (var intervention in plan.GeneralInterventions)
+        {
+            AddRowCptCode(
+                selected,
+                intervention.CptCode,
+                intervention.CptDescription,
+                intervention.TimeMinutes);
+        }
+
+        return selected;
+    }
+
+    private static UiCptCodeEntry CloneUiCptCode(UiCptCodeEntry code) => new()
+    {
+        Code = code.Code,
+        Description = code.Description,
+        Units = code.Units,
+        Minutes = code.Minutes,
+        Modifiers = [.. code.Modifiers],
+        ModifierOptions = [.. code.ModifierOptions],
+        SuggestedModifiers = [.. code.SuggestedModifiers],
+        ModifierSource = code.ModifierSource
+    };
+
+    private static void AddRowCptCode(List<UiCptCodeEntry> selected, string? code, string? description, int? minutes)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        var existing = selected.FirstOrDefault(entry =>
+            string.Equals(entry.Code?.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.Minutes ??= minutes;
+            if (string.IsNullOrWhiteSpace(existing.Description) && !string.IsNullOrWhiteSpace(description))
+            {
+                existing.Description = description.Trim();
+            }
+
+            return;
+        }
+
+        selected.Add(new UiCptCodeEntry
+        {
+            Code = code.Trim(),
+            Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim(),
+            Units = minutes.HasValue && minutes.Value > 0 ? Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m)) : 1,
+            Minutes = minutes
+        });
     }
 
     private static bool? DeriveAppearsMotivated(string? motivationLevel)

@@ -1446,6 +1446,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
         AddIfPresent(values, row.CptCode, "CPT");
         AddIfPresent(values, row.CptDescription, "Description");
+        AddIfPresent(values, row.AssistanceLevel, "Assistance");
+        AddIfPresent(values, row.Cueing, "Cueing");
+        if (row.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
         return string.Join("; ", values);
     }
 
@@ -1460,6 +1466,16 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     {
         var values = new List<string>();
         AddIfPresent(values, entry.Category, "Category");
+        AddIfPresent(values, entry.CptCode, "CPT");
+        AddIfPresent(values, entry.CptDescription, "Description");
+        AddIfPresent(values, entry.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        AddIfPresent(values, entry.AssistanceLevel, "Assistance");
+        AddIfPresent(values, entry.Cueing, "Cueing");
+        AddIfPresent(values, entry.Response, "Response");
+        if (entry.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
         AddIfPresent(values, entry.Notes, "Notes");
         return string.Join("; ", values);
     }
@@ -1471,6 +1487,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         AddIfPresent(values, row.SetsRepsDuration, "Dosage");
         AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
         AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
+        AddIfPresent(values, row.AssistanceLevel, "Assistance");
+        AddIfPresent(values, row.Cueing, "Cueing");
+        if (row.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
         return string.Join("; ", values);
     }
 

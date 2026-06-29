@@ -40,7 +40,7 @@
 
 ::deep .daily-plan__intervention-row {
     display: grid;
-    grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 2fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--spacing-3);
     align-items: end;
     padding: var(--spacing-3);
@@ -59,7 +59,8 @@
 }
 
 ::deep .daily-plan__intervention-row input,
-::deep .daily-plan__intervention-row textarea {
+::deep .daily-plan__intervention-row textarea,
+::deep .daily-plan__intervention-row select {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -67,6 +68,19 @@
     color: var(--foreground);
     padding: var(--spacing-2) var(--spacing-3);
     font: inherit;
+}
+
+::deep .daily-plan__checkbox-row {
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: var(--touch-target-desktop);
+}
+
+::deep .daily-plan__checkbox-row input {
+    width: var(--spacing-4);
+    min-width: var(--spacing-4);
+    accent-color: var(--primary);
 }
 
 ::deep .daily-plan__intervention-row button {

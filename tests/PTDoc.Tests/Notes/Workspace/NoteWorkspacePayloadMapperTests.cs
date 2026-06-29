@@ -429,6 +429,11 @@ public sealed class NoteWorkspacePayloadMapperTests
                         ActualExercisePerformed = "Heel slides",
                         SetsRepsDuration = "2x10",
                         CptCode = "97110",
+                        CptDescription = "Exercise",
+                        TimeMinutes = 15,
+                        AssistanceLevel = "Min Assist",
+                        Cueing = "Verbal cueing",
+                        IncludeInHomeExerciseProgram = true,
                         IsSourceBacked = true
                     }
                 ]
@@ -456,7 +461,14 @@ public sealed class NoteWorkspacePayloadMapperTests
                         Name = "Joint mobilization",
                         Category = "Manual therapy",
                         IsSourceBacked = true,
-                        Notes = "Grade III"
+                        Notes = "Grade III",
+                        CptCode = "97140",
+                        CptDescription = "Manual Therapy",
+                        TimeMinutes = 12,
+                        AssistanceLevel = "Contact Guard",
+                        Cueing = "Tactile cueing",
+                        Response = "Improved mobility",
+                        IncludeInHomeExerciseProgram = true
                     }
                 ],
                 SelectedCptCodes =
@@ -496,14 +508,23 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Ibuprofen", result.Subjective.Medications[0].Name);
         Assert.Single(result.Objective.ExerciseRows);
         Assert.Equal("Heel slides", result.Objective.ExerciseRows[0].SuggestedExercise);
+        Assert.Equal("97110", result.Objective.ExerciseRows[0].CptCode);
+        Assert.Equal("Min Assist", result.Objective.ExerciseRows[0].AssistanceLevel);
+        Assert.Equal("Verbal cueing", result.Objective.ExerciseRows[0].Cueing);
+        Assert.True(result.Objective.ExerciseRows[0].IncludeInHomeExerciseProgram);
         Assert.Single(result.Assessment.DiagnosisCodes);
         Assert.Equal("M25.561", result.Assessment.DiagnosisCodes[0].Code);
         Assert.Equal([2], result.Plan.TreatmentFrequencyDaysPerWeek);
         Assert.Equal([6], result.Plan.TreatmentDurationWeeks);
         Assert.Single(result.Plan.GeneralInterventions);
         Assert.Equal("Joint mobilization", result.Plan.GeneralInterventions[0].Name);
-        Assert.Single(result.Plan.SelectedCptCodes);
-        Assert.Equal("97110", result.Plan.SelectedCptCodes[0].Code);
+        Assert.Equal("97140", result.Plan.GeneralInterventions[0].CptCode);
+        Assert.Equal("Contact Guard", result.Plan.GeneralInterventions[0].AssistanceLevel);
+        Assert.Equal("Tactile cueing", result.Plan.GeneralInterventions[0].Cueing);
+        Assert.Equal("Improved mobility", result.Plan.GeneralInterventions[0].Response);
+        Assert.True(result.Plan.GeneralInterventions[0].IncludeInHomeExerciseProgram);
+        Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97110");
+        Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97140");
         Assert.Equal("Reports easier stair negotiation.", result.DailyTreatment.ChangesSinceLastVisit);
         Assert.Equal("Pain decreased from 6/10 to 3/10.", result.DailyTreatment.PainLevelChanges);
         Assert.Equal("Mild soreness after last visit resolved within a day.", result.DailyTreatment.SubjectiveUpdate);
