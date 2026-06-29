@@ -386,6 +386,16 @@
             @if (IsDischargeNote)
             {
                 <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Documentation Mode</span>
+                    <span class="soap-review-page__field-value">@GetDischargeDocumentationMode()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Billing Status</span>
+                    <span class="soap-review-page__field-value">@GetDischargeBillingStatus()</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
                     <span class="soap-review-page__field-label">Discharge Reason</span>
                     <span class="soap-review-page__field-value">@GetDischargeReason()</span>
                 </div>
@@ -640,6 +650,17 @@
 
         return Note.Plan.PrimaryDischargeReason.Trim();
     }
+
+    private string GetDischargeDocumentationMode() =>
+        string.IsNullOrWhiteSpace(Note.Plan.DischargeDocumentationMode)
+            ? "Standard billable discharge"
+            : Note.Plan.DischargeDocumentationMode.Trim();
+
+    private string GetDischargeBillingStatus() =>
+        Note.Plan.IsNonBillableDischarge
+            || !string.Equals(GetDischargeDocumentationMode(), "Standard billable discharge", StringComparison.OrdinalIgnoreCase)
+                ? $"Non-billable - {GetDischargeDocumentationMode()}"
+                : "Billable";
 
     private string GetDischargeChecklistSummary()
     {

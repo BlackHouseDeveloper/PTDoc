@@ -55,6 +55,7 @@ public sealed class NoteWorkspacePayloadMapper
                 : new DryNeedlingVm
                 {
                     DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                    BillingDesignation = NormalizeBillingDesignation(payload.DryNeedling.BillingDesignation),
                     Location = payload.DryNeedling.Location,
                     NeedlingType = payload.DryNeedling.NeedlingType,
                     PainBefore = payload.DryNeedling.PainBefore,
@@ -264,6 +265,10 @@ public sealed class NoteWorkspacePayloadMapper
                 DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
                 FollowUpInstructions = payload.Plan.FollowUpInstructions,
                 ClinicalSummary = payload.Plan.ClinicalSummary,
+                DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode),
+                IsNonBillableDischarge = ResolveIsNonBillableDischarge(
+                    payload.Plan.DischargeDocumentationMode,
+                    payload.Plan.IsNonBillableDischarge),
                 FullDischargeSummary = payload.Plan.FullDischargeSummary,
                 PostDischargeInstructions = payload.Plan.PostDischargeInstructions,
                 PrimaryDischargeReason = payload.Plan.PrimaryDischargeReason,
@@ -459,6 +464,10 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
         preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+        preservedPayload.Plan.DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode);
+        preservedPayload.Plan.IsNonBillableDischarge = ResolveIsNonBillableDischarge(
+            preservedPayload.Plan.DischargeDocumentationMode,
+            payload.Plan.IsNonBillableDischarge);
         preservedPayload.Plan.FullDischargeSummary = TrimToNull(payload.Plan.FullDischargeSummary);
         preservedPayload.Plan.PostDischargeInstructions = TrimToNull(payload.Plan.PostDischargeInstructions);
         preservedPayload.Plan.PrimaryDischargeReason = TrimToNull(payload.Plan.PrimaryDischargeReason);
@@ -517,6 +526,7 @@ public sealed class NoteWorkspacePayloadMapper
             ? new WorkspaceDryNeedlingV2
             {
                 DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                BillingDesignation = NormalizeBillingDesignation(payload.DryNeedling.BillingDesignation),
                 Location = payload.DryNeedling.Location?.Trim() ?? string.Empty,
                 NeedlingType = payload.DryNeedling.NeedlingType?.Trim() ?? string.Empty,
                 PainBefore = payload.DryNeedling.PainBefore,
@@ -1332,6 +1342,35 @@ public sealed class NoteWorkspacePayloadMapper
             ? parsed
             : BodyPart.Other;
     }
+
+    private static string NormalizeDischargeDocumentationMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Standard billable discharge";
+        }
+
+        return value.Trim() switch
+        {
+            "Patient unreachable" => "Patient unreachable",
+            "Patient self-discharge" => "Patient self-discharge",
+            "MD/provider-initiated discharge" => "MD/provider-initiated discharge",
+            "Standard billable discharge" => "Standard billable discharge",
+            _ => value.Trim()
+        };
+    }
+
+    private static bool ResolveIsNonBillableDischarge(string? mode, bool explicitFlag)
+    {
+        var normalizedMode = NormalizeDischargeDocumentationMode(mode);
+        return explicitFlag
+            || !string.Equals(normalizedMode, "Standard billable discharge", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBillingDesignation(string? value) =>
+        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
+            ? "Non-billable"
+            : "Billable";
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -231,6 +231,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             BuildHeaderSection(noteData, "Physical Therapy Dry Needling Note"),
             Section("Dry Needling Treatment", ClinicalDocumentSourceKind.Note,
                 Field("Date Of Treatment", FormatDate(FirstNonNull(dryNeedling?.DateOfTreatment, noteData.DateOfService))),
+                Field("Billing Designation", NormalizeBillingDesignation(dryNeedling?.BillingDesignation)),
                 Field("Location", dryNeedling?.Location),
                 Field("Needling Type", dryNeedling?.NeedlingType),
                 Field("Pain Before", FormatPainScore(dryNeedling?.PainBefore)),
@@ -249,7 +250,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     workspace?.Plan.HomeExerciseProgramNotes,
                     dryNeedling?.AdditionalNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
-            noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
+            ShouldIncludeCharges(noteData, context) ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
 
     private static ClinicalDocumentHierarchy BuildDischargeSummary(NoteExportDto noteData, ExportDocumentContext context)
@@ -286,18 +287,19 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     discharge?.ProgressSummary))),
             BuildGoalsSection(context),
             Section("Discharge Plan Of Care", ClinicalDocumentSourceKind.Note,
-                Field("Reason For Discharge", FirstNonEmpty(
-                    discharge?.ReasonForDischarge,
-                    workspace?.Plan.ClinicalSummary,
-                    BuildLegacyJsonValue(noteData.ContentJson, "reasonForDischarge"))),
+                Field("Documentation Mode", GetDischargeDocumentationMode(workspace?.Plan)),
+                Field("Billing Status", GetDischargeBillingStatus(workspace?.Plan)),
+                Field("Reason For Discharge", BuildDischargeReason(workspace?.Plan, discharge, noteData.ContentJson)),
                 Field("Discharge Prognosis", workspace?.Assessment.OverallPrognosis),
                 Paragraph("Discharge Instructions", FirstNonEmpty(
                     discharge?.FollowUpRecommendations,
                     discharge?.HepRecommendations,
+                    workspace?.Plan.DischargeRecommendations,
+                    workspace?.Plan.PostDischargeInstructions,
                     workspace?.Plan.FollowUpInstructions,
                     workspace?.Plan.DischargePlanningNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
-            noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
+            ShouldIncludeCharges(noteData, context) ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
 
     private static ClinicalDocumentHierarchy BuildFallbackDocument(NoteExportDto noteData, ExportDocumentContext context)
@@ -1495,6 +1497,71 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
         return string.Join("; ", values);
     }
+
+    private static bool ShouldIncludeCharges(NoteExportDto noteData, ExportDocumentContext context)
+    {
+        if (!noteData.IncludeMedicareCompliance)
+        {
+            return false;
+        }
+
+        if (noteData.NoteType == NoteType.Discharge
+            && IsNonBillableDischarge(context.WorkspacePayload?.Plan))
+        {
+            return false;
+        }
+
+        if (context.WorkspacePayload?.DryNeedling is { } dryNeedling
+            && string.Equals(NormalizeBillingDesignation(dryNeedling.BillingDesignation), "Non-billable", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string GetDischargeDocumentationMode(WorkspacePlanV2? plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan?.DischargeDocumentationMode))
+        {
+            return "Standard billable discharge";
+        }
+
+        return plan.DischargeDocumentationMode.Trim();
+    }
+
+    private static string GetDischargeBillingStatus(WorkspacePlanV2? plan) =>
+        IsNonBillableDischarge(plan)
+            ? $"Non-billable - {GetDischargeDocumentationMode(plan)}"
+            : "Billable";
+
+    private static string BuildDischargeReason(WorkspacePlanV2? plan, DischargeContent? discharge, string? contentJson)
+    {
+        if (!string.IsNullOrWhiteSpace(plan?.PrimaryDischargeReason))
+        {
+            if (string.Equals(plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(plan.OtherDischargeReasonExplanation))
+            {
+                return $"Other: {plan.OtherDischargeReasonExplanation.Trim()}";
+            }
+
+            return plan.PrimaryDischargeReason.Trim();
+        }
+
+        return FirstNonEmpty(
+            discharge?.ReasonForDischarge,
+            BuildLegacyJsonValue(contentJson ?? string.Empty, "reasonForDischarge"));
+    }
+
+    private static bool IsNonBillableDischarge(WorkspacePlanV2? plan) =>
+        plan is not null
+        && (plan.IsNonBillableDischarge
+            || !string.Equals(GetDischargeDocumentationMode(plan), "Standard billable discharge", StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeBillingDesignation(string? value) =>
+        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
+            ? "Non-billable"
+            : "Billable";
 
     private static string FormatPainScore(int? value)
         => value.HasValue ? $"{value.Value}/10" : string.Empty;
