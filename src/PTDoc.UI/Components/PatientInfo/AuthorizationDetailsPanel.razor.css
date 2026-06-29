@@ -1,5 +1,19 @@
 /* AuthorizationDetailsPanel — date range error message */
 
+.pi-auth-details-empty {
+    background: color-mix(in srgb, var(--muted) 72%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+}
+
+.pi-auth-details-empty p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+    margin: 0;
+}
+
 .pi-auth-date-range-error {
     margin: var(--spacing-4) var(--spacing-6) 0 var(--spacing-6);
     font-family: var(--font-family-base);

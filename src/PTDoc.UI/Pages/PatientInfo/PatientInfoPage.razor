@@ -42,10 +42,26 @@
                 FieldErrors="@GetPanelErrors("payer")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
+            <AdditionalAuthorizationSettingsPanel
+                Model="@Vm.AdditionalSettings"
+                ModelChanged="@(m => { Vm.AdditionalSettings = m; })"
+                AuthorizationStatusOptions="@AuthorizationStatusOptions"
+                AuthorizationTypeOptions="@AuthorizationTypeOptions"
+                FieldErrors="@GetPanelErrors("additionalSettings")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
             <AuthorizationDetailsPanel
                 Model="@Vm.Authorization"
                 ModelChanged="@(m => { Vm.Authorization = m; })"
+                AuthorizationRequired="@Vm.AdditionalSettings.AuthorizationRequired"
                 FieldErrors="@GetPanelErrors("auth")"
+                OnAnyFieldChanged="HandleFieldChanged" />
+
+            <AuthorizationReferralHistoryPanel
+                Model="@Vm.AuthorizationReferralHistory"
+                ModelChanged="@(m => { Vm.AuthorizationReferralHistory = m; })"
+                FieldErrors="@GetPanelErrors("authHistory")"
+                ValidationMessage="@AuthorizationHistoryValidationMessage"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
             <VisitTrackingUtilizationPanel
@@ -58,14 +74,6 @@
                 Model="@Vm.SupportingDocs"
                 ModelChanged="@(m => { Vm.SupportingDocs = m; })"
                 FieldErrors="@GetPanelErrors("supportingDocs")"
-                OnAnyFieldChanged="HandleFieldChanged" />
-
-            <AdditionalAuthorizationSettingsPanel
-                Model="@Vm.AdditionalSettings"
-                ModelChanged="@(m => { Vm.AdditionalSettings = m; })"
-                AuthorizationStatusOptions="@AuthorizationStatusOptions"
-                AuthorizationTypeOptions="@AuthorizationTypeOptions"
-                FieldErrors="@GetPanelErrors("additionalSettings")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
         </div>
@@ -105,6 +113,8 @@
         new PatientInfoSelectOptionVm("medicaid", "Medicaid"),
         new PatientInfoSelectOptionVm("tricare", "TRICARE"),
         new PatientInfoSelectOptionVm("workers_comp", "Workers' Compensation"),
+        new PatientInfoSelectOptionVm("motor_vehicle", "Motor Vehicle"),
+        new PatientInfoSelectOptionVm("liability", "Liability"),
         new PatientInfoSelectOptionVm("self_pay", "Self-Pay"),
     };
 
@@ -133,6 +143,10 @@
         new PatientInfoSelectOptionVm("initial", "Initial Authorization"),
         new PatientInfoSelectOptionVm("re_auth", "Re-Authorization"),
         new PatientInfoSelectOptionVm("continuing", "Continuing Care"),
+        new PatientInfoSelectOptionVm("pcp_referral", "PCP Referral"),
+        new PatientInfoSelectOptionVm("prescription", "Prescription"),
+        new PatientInfoSelectOptionVm("plan_of_care", "Plan of Care"),
+        new PatientInfoSelectOptionVm("other", "Other"),
     };
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -186,6 +200,12 @@
                 SecondaryInsuranceCompanyName = payer?.SecondaryInsuranceCompanyName ?? string.Empty,
                 SecondaryMemberIdPolicyNumber = payer?.SecondaryMemberIdPolicyNumber ?? string.Empty,
                 SecondaryGroupNumber = payer?.SecondaryGroupNumber ?? string.Empty,
+                DeductibleAmount = payer?.DeductibleAmount ?? string.Empty,
+                DeductibleMet = payer?.DeductibleMet ?? string.Empty,
+                OutOfPocketMaximum = payer?.OutOfPocketMaximum ?? string.Empty,
+                OutOfPocketMet = payer?.OutOfPocketMet ?? string.Empty,
+                CopayAmount = payer?.CopayAmount ?? string.Empty,
+                CoinsurancePercent = payer?.CoinsurancePercent ?? string.Empty,
                 ProviderType = payer?.ProviderType ?? string.Empty,
                 InsurancePriority = payer?.InsurancePriority ?? string.Empty,
                 YearType = payer?.YearType ?? string.Empty,
@@ -200,10 +220,14 @@
                 AuthorizationEndDate = payer?.AuthorizationEndDate ?? string.Empty,
                 NumberOfVisitsOrUnitsAuthorized = payer?.NumberOfVisitsOrUnitsAuthorized ?? string.Empty,
             },
+            AuthorizationReferralHistory = CloneAuthorizationReferralHistory(payer?.AuthorizationReferralHistory),
             Utilization = new UtilizationVm
             {
                 VisitsUsed = payer?.VisitsUsed ?? string.Empty,
                 VisitsRemaining = payer?.VisitsRemaining ?? string.Empty,
+                VisitLimitType = payer?.VisitLimitType ?? string.Empty,
+                VisitLimitPeriod = payer?.VisitLimitPeriod ?? string.Empty,
+                TotalVisitLimit = payer?.TotalVisitLimit ?? string.Empty,
                 DateOfFirstVisitUnderAuthorization = payer?.DateOfFirstVisitUnderAuthorization ?? string.Empty,
                 NotesComments = payer?.NotesComments ?? string.Empty,
             },
@@ -263,6 +287,29 @@
         return parts.Length == 0 ? string.Empty : string.Join(" | ", parts);
     }
 
+    private static List<AuthorizationReferralHistoryEntryVm> CloneAuthorizationReferralHistory(
+        IEnumerable<AuthorizationReferralHistoryEntryVm>? entries)
+    {
+        if (entries is null)
+        {
+            return new List<AuthorizationReferralHistoryEntryVm>();
+        }
+
+        return entries
+            .Select(entry => new AuthorizationReferralHistoryEntryVm
+            {
+                EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId,
+                RecordType = entry.RecordType ?? string.Empty,
+                ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
+                Status = entry.Status ?? string.Empty,
+                StartDate = entry.StartDate ?? string.Empty,
+                EndDate = entry.EndDate ?? string.Empty,
+                VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized ?? string.Empty,
+                Notes = entry.Notes ?? string.Empty
+            })
+            .ToList();
+    }
+
     // ── Event handlers ───────────────────────────────────────────────────────
 
     private void HandleFieldChanged()
@@ -295,6 +342,12 @@
                 SecondaryInsuranceCompanyName = Vm.PatientPayer.SecondaryInsuranceCompanyName,
                 SecondaryMemberIdPolicyNumber = Vm.PatientPayer.SecondaryMemberIdPolicyNumber,
                 SecondaryGroupNumber = Vm.PatientPayer.SecondaryGroupNumber,
+                DeductibleAmount = Vm.PatientPayer.DeductibleAmount,
+                DeductibleMet = Vm.PatientPayer.DeductibleMet,
+                OutOfPocketMaximum = Vm.PatientPayer.OutOfPocketMaximum,
+                OutOfPocketMet = Vm.PatientPayer.OutOfPocketMet,
+                CopayAmount = Vm.PatientPayer.CopayAmount,
+                CoinsurancePercent = Vm.PatientPayer.CoinsurancePercent,
                 ProviderType = Vm.PatientPayer.ProviderType,
                 InsurancePriority = Vm.PatientPayer.InsurancePriority,
                 YearType = Vm.PatientPayer.YearType,
@@ -305,8 +358,12 @@
                 AuthorizationStartDate = Vm.Authorization.AuthorizationStartDate,
                 AuthorizationEndDate = Vm.Authorization.AuthorizationEndDate,
                 NumberOfVisitsOrUnitsAuthorized = Vm.Authorization.NumberOfVisitsOrUnitsAuthorized,
+                AuthorizationReferralHistory = CloneAuthorizationReferralHistory(Vm.AuthorizationReferralHistory),
                 VisitsUsed = Vm.Utilization.VisitsUsed,
                 VisitsRemaining = Vm.Utilization.VisitsRemaining,
+                VisitLimitType = Vm.Utilization.VisitLimitType,
+                VisitLimitPeriod = Vm.Utilization.VisitLimitPeriod,
+                TotalVisitLimit = Vm.Utilization.TotalVisitLimit,
                 DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
                 NotesComments = Vm.Utilization.NotesComments,
                 CaseManagerAdjusterContactInfo = Vm.SupportingDocs.CaseManagerAdjusterContactInfo,
@@ -380,6 +437,12 @@
         public string? SecondaryInsuranceCompanyName { get; set; }
         public string? SecondaryMemberIdPolicyNumber { get; set; }
         public string? SecondaryGroupNumber { get; set; }
+        public string? DeductibleAmount { get; set; }
+        public string? DeductibleMet { get; set; }
+        public string? OutOfPocketMaximum { get; set; }
+        public string? OutOfPocketMet { get; set; }
+        public string? CopayAmount { get; set; }
+        public string? CoinsurancePercent { get; set; }
         public string? ProviderType { get; set; }
         public string? InsurancePriority { get; set; }
         public string? YearType { get; set; }
@@ -390,8 +453,12 @@
         public string? AuthorizationStartDate { get; set; }
         public string? AuthorizationEndDate { get; set; }
         public string? NumberOfVisitsOrUnitsAuthorized { get; set; }
+        public List<AuthorizationReferralHistoryEntryVm>? AuthorizationReferralHistory { get; set; }
         public string? VisitsUsed { get; set; }
         public string? VisitsRemaining { get; set; }
+        public string? VisitLimitType { get; set; }
+        public string? VisitLimitPeriod { get; set; }
+        public string? TotalVisitLimit { get; set; }
         public string? DateOfFirstVisitUnderAuthorization { get; set; }
         public string? NotesComments { get; set; }
         public string? CaseManagerAdjusterContactInfo { get; set; }
@@ -415,6 +482,11 @@
     // Server-side validation errors are shown via ToastService.ShowError in HandleSave.
 
     private bool HasPageErrors => Vm.FieldErrors.Count > 0;
+    private string AuthorizationHistoryValidationMessage =>
+        Vm.FieldErrors.Keys.Any(key => key.StartsWith("authHistory[", StringComparison.Ordinal))
+            ? "Authorization / PCP referral history has date or numeric issues to correct before saving."
+            : string.Empty;
+
     private Dictionary<string, string> GetPanelErrors(string panel)
     {
         // Return a subset of FieldErrors keyed for that panel, filtering by prefix.
@@ -427,8 +499,16 @@
         Vm.FieldErrors.Clear();
         ValidateNumericField("visitsUsed", Vm.Utilization.VisitsUsed);
         ValidateNumericField("visitsRemaining", Vm.Utilization.VisitsRemaining);
+        ValidateNumericField("totalVisitLimit", Vm.Utilization.TotalVisitLimit);
         ValidateNumericField("authUnits", Vm.Authorization.NumberOfVisitsOrUnitsAuthorized);
         ValidateNumericField("alertThreshold", Vm.AdditionalSettings.VisitAlertThreshold);
+        ValidateNumericField("deductibleAmount", Vm.PatientPayer.DeductibleAmount);
+        ValidateNumericField("deductibleMet", Vm.PatientPayer.DeductibleMet);
+        ValidateNumericField("oopMax", Vm.PatientPayer.OutOfPocketMaximum);
+        ValidateNumericField("oopMet", Vm.PatientPayer.OutOfPocketMet);
+        ValidateNumericField("copayAmount", Vm.PatientPayer.CopayAmount);
+        ValidateNumericField("coinsurancePercent", Vm.PatientPayer.CoinsurancePercent);
+        ValidateAuthorizationReferralHistory();
         ValidateNpi("npi", Vm.SupportingDocs.PhysicianNpiNumber);
     }
 
@@ -448,6 +528,58 @@
         if (value.Trim().Length != 10 || !value.Trim().All(char.IsDigit))
         {
             Vm.FieldErrors[key] = "NPI must be exactly 10 digits.";
+        }
+    }
+
+    private void ValidateAuthorizationReferralHistory()
+    {
+        var parsedRanges = new List<(int Index, DateTime Start, DateTime End)>();
+
+        for (var index = 0; index < Vm.AuthorizationReferralHistory.Count; index++)
+        {
+            var entry = Vm.AuthorizationReferralHistory[index];
+            ValidateNumericField($"authHistory[{index}].units", entry.VisitsOrUnitsAuthorized);
+
+            var hasStart = !string.IsNullOrWhiteSpace(entry.StartDate);
+            var hasEnd = !string.IsNullOrWhiteSpace(entry.EndDate);
+            var startParsed = DateTime.TryParse(entry.StartDate, out var start);
+            var endParsed = DateTime.TryParse(entry.EndDate, out var end);
+
+            if (hasStart && !startParsed)
+            {
+                Vm.FieldErrors[$"authHistory[{index}].start"] = "Use a valid date.";
+            }
+
+            if (hasEnd && !endParsed)
+            {
+                Vm.FieldErrors[$"authHistory[{index}].end"] = "Use a valid date.";
+            }
+
+            if (startParsed && endParsed)
+            {
+                if (start > end)
+                {
+                    Vm.FieldErrors[$"authHistory[{index}].start"] = "Start date must be on or before end date.";
+                    Vm.FieldErrors[$"authHistory[{index}].end"] = "End date must be on or after start date.";
+                    continue;
+                }
+
+                parsedRanges.Add((index, start.Date, end.Date));
+            }
+        }
+
+        for (var left = 0; left < parsedRanges.Count; left++)
+        {
+            for (var right = left + 1; right < parsedRanges.Count; right++)
+            {
+                var first = parsedRanges[left];
+                var second = parsedRanges[right];
+                if (first.Start <= second.End && second.Start <= first.End)
+                {
+                    Vm.FieldErrors[$"authHistory[{first.Index}].start"] = "History date ranges cannot overlap.";
+                    Vm.FieldErrors[$"authHistory[{second.Index}].start"] = "History date ranges cannot overlap.";
+                }
+            }
         }
     }
 }

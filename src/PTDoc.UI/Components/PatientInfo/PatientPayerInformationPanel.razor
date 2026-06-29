@@ -64,6 +64,59 @@
                                   HasError="@HasError("secondaryGroupNumber")" />
         </PatientInfoField>
 
+        <div class="pi-payer-section-heading">
+            <h3>Cost Sharing</h3>
+            <p>Track deductible, out-of-pocket, copay, and co-insurance details for front-desk and billing review.</p>
+        </div>
+
+        <PatientInfoField Label="Deductible Amount" ForId="pi-deductible-amount" Error="@GetError("deductibleAmount")">
+            <PatientInfoTextInput Id="pi-deductible-amount"
+                                  Value="@Model.DeductibleAmount"
+                                  ValueChanged="@(v => SetField(v, f => f.DeductibleAmount = v))"
+                                  Placeholder="e.g., 1500"
+                                  HasError="@HasError("deductibleAmount")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Deductible Met" ForId="pi-deductible-met" Error="@GetError("deductibleMet")">
+            <PatientInfoTextInput Id="pi-deductible-met"
+                                  Value="@Model.DeductibleMet"
+                                  ValueChanged="@(v => SetField(v, f => f.DeductibleMet = v))"
+                                  Placeholder="e.g., 250"
+                                  HasError="@HasError("deductibleMet")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Out-of-Pocket Maximum" ForId="pi-oop-max" Error="@GetError("oopMax")">
+            <PatientInfoTextInput Id="pi-oop-max"
+                                  Value="@Model.OutOfPocketMaximum"
+                                  ValueChanged="@(v => SetField(v, f => f.OutOfPocketMaximum = v))"
+                                  Placeholder="e.g., 6000"
+                                  HasError="@HasError("oopMax")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Out-of-Pocket Met" ForId="pi-oop-met" Error="@GetError("oopMet")">
+            <PatientInfoTextInput Id="pi-oop-met"
+                                  Value="@Model.OutOfPocketMet"
+                                  ValueChanged="@(v => SetField(v, f => f.OutOfPocketMet = v))"
+                                  Placeholder="e.g., 750"
+                                  HasError="@HasError("oopMet")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Copay Amount" ForId="pi-copay-amount" Error="@GetError("copayAmount")">
+            <PatientInfoTextInput Id="pi-copay-amount"
+                                  Value="@Model.CopayAmount"
+                                  ValueChanged="@(v => SetField(v, f => f.CopayAmount = v))"
+                                  Placeholder="e.g., 35"
+                                  HasError="@HasError("copayAmount")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Co-insurance Percent" ForId="pi-coinsurance-percent" Error="@GetError("coinsurancePercent")">
+            <PatientInfoTextInput Id="pi-coinsurance-percent"
+                                  Value="@Model.CoinsurancePercent"
+                                  ValueChanged="@(v => SetField(v, f => f.CoinsurancePercent = v))"
+                                  Placeholder="e.g., 20"
+                                  HasError="@HasError("coinsurancePercent")" />
+        </PatientInfoField>
+
         <PatientInfoField Label="Provider Type" ForId="pi-provider-type" Error="@GetError("providerType")">
             <PatientInfoSelect Id="pi-provider-type"
                                Value="@Model.ProviderType"
