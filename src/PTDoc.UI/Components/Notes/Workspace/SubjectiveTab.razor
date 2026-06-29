@@ -86,6 +86,34 @@
         </div>
     </div>
 
+    <div class="subjective-tab__question" data-testid="subjective-pain-descriptors">
+        <p class="subjective-tab__question-label">2a. How would you describe the symptoms? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
+            @foreach (var descriptor in PainDescriptorOptions)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="pain-descriptors"
+                           checked="@_vm.PainDescriptors.Contains(descriptor)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.PainDescriptors, descriptor, (bool)e.Value!)" />
+                    @descriptor
+                </label>
+            }
+        </div>
+        @if (_vm.PainDescriptors.Contains("Other"))
+        {
+            <div class="subjective-tab__other-row">
+                <label class="subjective-tab__other-label" for="pain-descriptor-other">Other:</label>
+                <input id="pain-descriptor-other" type="text" class="subjective-tab__text-input"
+                       placeholder="Describe symptom quality"
+                       value="@_vm.OtherPainDescriptor"
+                       disabled="@IsReadOnly"
+                       @onchange="e => SetAndNotify(v => v.OtherPainDescriptor = e.Value?.ToString())" />
+            </div>
+        }
+    </div>
+
     <div class="subjective-tab__question">
         <p class="subjective-tab__question-label">3. How would you rate your symptoms on a scale of 0–10?</p>
         <div class="subjective-tab__pain-scale-row">
@@ -117,7 +145,7 @@
     </div>
 
     <div class="subjective-tab__question">
-        <p class="subjective-tab__question-label">3a. Frequency of pain:</p>
+        <p class="subjective-tab__question-label">3a. Overall symptom frequency:</p>
         @foreach (var freq in _frequencies)
         {
             <label class="subjective-tab__radio-item">
@@ -130,6 +158,45 @@
                 @freq
             </label>
         }
+    </div>
+
+    @if (SelectedProblemLabels.Count > 0)
+    {
+        <div class="subjective-tab__question" data-testid="subjective-contextual-frequency">
+            <p class="subjective-tab__question-label">3b. Frequency by selected symptom/problem:</p>
+            @foreach (var problem in SelectedProblemLabels)
+            {
+                <label class="subjective-tab__field-label" for="@GetProblemFrequencyId(problem)">@problem</label>
+                <select id="@GetProblemFrequencyId(problem)"
+                        class="subjective-tab__select"
+                        disabled="@IsReadOnly"
+                        value="@GetProblemFrequency(problem)"
+                        @onchange="e => SetProblemFrequency(problem, e.Value?.ToString())">
+                    <option value="">Use overall frequency</option>
+                    @foreach (var freq in _frequencies)
+                    {
+                        <option value="@freq" selected="@string.Equals(GetProblemFrequency(problem), freq, StringComparison.OrdinalIgnoreCase)">@freq</option>
+                    }
+                </select>
+            }
+        </div>
+    }
+
+    <div class="subjective-tab__question" data-testid="subjective-symptom-timing">
+        <p class="subjective-tab__question-label">3c. When are symptoms most noticeable? (Check all that apply)</p>
+        <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
+            @foreach (var timing in SymptomTimingOptions)
+            {
+                <label class="subjective-tab__checkbox-item">
+                    <input type="checkbox"
+                           name="symptom-timing"
+                           checked="@_vm.SymptomTimeOfDay.Contains(timing)"
+                           disabled="@IsReadOnly"
+                           @onchange="e => ToggleSet(_vm.SymptomTimeOfDay, timing, (bool)e.Value!)" />
+                    @timing
+                </label>
+            }
+        </div>
     </div>
 
     <div class="subjective-tab__question">
@@ -276,6 +343,42 @@
                        @onchange="_ => SetAndNotify(v => v.HasImaging = false)" /> No
             </label>
         </div>
+        @if (_vm.HasImaging == true)
+        {
+            <div class="subjective-tab__field-group" data-testid="subjective-imaging-details">
+                <p class="subjective-tab__field-label">Imaging type</p>
+                <div class="subjective-tab__checkbox-grid subjective-tab__checkbox-grid--2col">
+                    @foreach (var modality in ImagingModalityOptions)
+                    {
+                        <label class="subjective-tab__checkbox-item">
+                            <input type="checkbox"
+                                   name="imaging-modalities"
+                                   checked="@_vm.ImagingModalities.Contains(modality)"
+                                   disabled="@IsReadOnly"
+                                   @onchange="e => ToggleSet(_vm.ImagingModalities, modality, (bool)e.Value!)" />
+                            @modality
+                        </label>
+                    }
+                </div>
+                @if (_vm.ImagingModalities.Contains("Other"))
+                {
+                    <label class="subjective-tab__field-label" for="imaging-other">Other imaging type</label>
+                    <input id="imaging-other"
+                           class="subjective-tab__text-input"
+                           value="@_vm.OtherImagingModality"
+                           disabled="@IsReadOnly"
+                           @onchange="e => SetAndNotify(v => v.OtherImagingModality = e.Value?.ToString())" />
+                }
+                <label class="subjective-tab__field-label" for="imaging-findings">Results / findings</label>
+                <textarea id="imaging-findings"
+                          class="subjective-tab__textarea"
+                          rows="2"
+                          placeholder="Summarize relevant imaging results or patient-reported findings..."
+                          disabled="@IsReadOnly"
+                          value="@_vm.ImagingFindings"
+                          @onchange="e => SetAndNotify(v => v.ImagingFindings = e.Value?.ToString())"></textarea>
+            </div>
+        }
     </div>
 
     <div class="subjective-tab__question">
@@ -643,6 +746,21 @@
         "Constant", "Intermittent", "Only with specific activities", "Resolved"
     ];
 
+    private static readonly string[] PainDescriptorOptions =
+    [
+        "Achy", "Sharp", "Dull", "Burning", "Throbbing", "Numbness/Tingling", "Other"
+    ];
+
+    private static readonly string[] SymptomTimingOptions =
+    [
+        "Morning", "Afternoon", "Evening", "Night", "Varies"
+    ];
+
+    private static readonly string[] ImagingModalityOptions =
+    [
+        "X-ray", "MRI", "CT", "Ultrasound", "Other"
+    ];
+
     private static readonly string[] _functionalLevels =
     [
         "Independent",
@@ -655,7 +773,7 @@
     private static readonly string[] _employmentStatuses =
     [
         "Employed full-time", "Employed part-time", "Self-employed",
-        "Unemployed – seeking work", "Unable to work due to disability",
+        "Unemployed – seeking work", "Difficulty with work due to disability",
         "Retired", "Student", "Homemaker"
     ];
 
@@ -676,6 +794,24 @@
             .OrderBy(entry => entry.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => entry.Description, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    private List<string> SelectedProblemLabels
+    {
+        get
+        {
+            var labels = _vm.Problems
+                .Where(problem => !string.Equals(problem, "Other", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(problem => problem, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(_vm.OtherProblem))
+            {
+                labels.Add(_vm.OtherProblem.Trim());
+            }
+
+            return labels;
+        }
+    }
 
     private async Task EnsureCatalogAsync()
     {
@@ -788,6 +924,26 @@
 
         return VmChanged.InvokeAsync(_vm);
     }
+
+    private string GetProblemFrequency(string problem) =>
+        _vm.SymptomFrequencies.TryGetValue(problem, out var value) ? value : string.Empty;
+
+    private Task SetProblemFrequency(string problem, string? frequency)
+    {
+        if (string.IsNullOrWhiteSpace(frequency))
+        {
+            _vm.SymptomFrequencies.Remove(problem);
+        }
+        else
+        {
+            _vm.SymptomFrequencies[problem] = frequency.Trim();
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private static string GetProblemFrequencyId(string problem) =>
+        $"symptom-frequency-{new string(problem.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant()}";
 
     private Task ToggleCatalogSelectionAsync(HashSet<string> set, string item)
     {

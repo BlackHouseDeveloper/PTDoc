@@ -303,6 +303,16 @@
                     <span class="soap-review-page__field-value">@GetPrognosis()</span>
                 </div>
 
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Prognosis Narrative</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Assessment.PrognosisNarrative)</span>
+                </div>
+
+                <div class="soap-review-page__field-panel">
+                    <span class="soap-review-page__field-label">Findings Summary</span>
+                    <span class="soap-review-page__field-value">@DisplayOrEmpty(Note.Assessment.FindingsSummary)</span>
+                </div>
+
                 <section class="soap-review-page__subcard soap-review-page__subcard--ai">
                     <div class="soap-review-page__card-header">
                         <div class="soap-review-page__title-group">

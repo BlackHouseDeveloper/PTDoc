@@ -194,7 +194,7 @@ public sealed class ClinicalPromptBuilder
             result = result.Replace(token, string.Empty, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Collapse any resulting double whitespace
-        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
+        // Collapse and trim any whitespace exposed by stripped tokens.
+        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ").Trim();
     }
 }

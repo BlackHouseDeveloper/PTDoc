@@ -74,6 +74,29 @@ public class AiServiceTests
     }
 
     [Fact]
+    public async Task GeneratePrognosis_WithValidRequest_ReturnsSuccess()
+    {
+        var request = new AiPrognosisRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
+            FunctionalLimitations = "Lifting and prolonged sitting",
+            Goals = "Return to work duties",
+            SupportContext = "Family support available"
+        };
+
+        var result = await _aiService.GeneratePrognosisAsync(request);
+
+        Assert.True(result.Success);
+        Assert.NotEmpty(result.GeneratedText);
+        Assert.Contains("PROGNOSIS", result.GeneratedText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PLAN OF CARE", result.GeneratedText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("v1", result.Metadata.TemplateVersion);
+        Assert.Equal("gpt-4", result.Metadata.Model);
+    }
+
+    [Fact]
     public async Task GenerateAssessment_WithMinimalRequest_ReturnsSuccess()
     {
         // Arrange
@@ -154,6 +177,25 @@ public class AiServiceTests
     }
 
     [Fact]
+    public async Task GeneratePrognosis_MetadataContainsNoPhiFields()
+    {
+        var request = new AiPrognosisRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Rotator cuff tendinopathy",
+            SelectedBodyPart = "Shoulder",
+            Barriers = "Limited sleep tolerance"
+        };
+
+        var result = await _aiService.GeneratePrognosisAsync(request);
+
+        Assert.NotNull(result.Metadata);
+        Assert.NotEmpty(result.Metadata.TemplateVersion);
+        Assert.NotEmpty(result.Metadata.Model);
+        Assert.NotEqual(default(DateTime), result.Metadata.GeneratedAtUtc);
+    }
+
+    [Fact]
     public async Task GenerateAssessment_NullRequest_ThrowsArgumentNullException()
     {
         // Act & Assert
@@ -167,6 +209,13 @@ public class AiServiceTests
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             _aiService.GeneratePlanAsync(null!));
+    }
+
+    [Fact]
+    public async Task GeneratePrognosis_NullRequest_ThrowsArgumentNullException()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            _aiService.GeneratePrognosisAsync(null!));
     }
 
     [Fact]

@@ -23,6 +23,14 @@ public interface IAiService
     Task<AiResult> GeneratePlanAsync(AiPlanRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Generates prognosis text based on clinical presentation and recovery factors.
+    /// </summary>
+    /// <param name="request">Structured prognosis request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>AI-generated prognosis with metadata</returns>
+    Task<AiResult> GeneratePrognosisAsync(AiPrognosisRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Generates functional goal narratives based on diagnosis and limitations.
     /// </summary>
     /// <param name="request">Structured goals request</param>
@@ -121,6 +129,88 @@ public sealed record AiPlanRequest
 
     /// <summary>
     /// Body-part-scoped Assessment/Plan fields to include in the prompt.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
+}
+
+/// <summary>
+/// Request for AI-generated prognosis.
+/// </summary>
+public sealed record AiPrognosisRequest
+{
+    /// <summary>
+    /// Identity of the note being authored. Used by API endpoints to verify signing state
+    /// server-side before calling the AI provider.
+    /// </summary>
+    public required Guid NoteId { get; init; }
+
+    /// <summary>
+    /// Patient's diagnosis or condition.
+    /// </summary>
+    public required string Diagnosis { get; init; }
+
+    /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
+    /// Assessment summary or clinical impression.
+    /// </summary>
+    public string? AssessmentSummary { get; init; }
+
+    /// <summary>
+    /// Summary of examination findings that support prognosis.
+    /// </summary>
+    public string? FindingsSummary { get; init; }
+
+    /// <summary>
+    /// Current subjective presentation or symptom summary.
+    /// </summary>
+    public string? SubjectiveSummary { get; init; }
+
+    /// <summary>
+    /// Objective examination summary.
+    /// </summary>
+    public string? ObjectiveSummary { get; init; }
+
+    /// <summary>
+    /// Functional limitations affecting prognosis.
+    /// </summary>
+    public string? FunctionalLimitations { get; init; }
+
+    /// <summary>
+    /// Patient goals or expected outcomes.
+    /// </summary>
+    public string? Goals { get; init; }
+
+    /// <summary>
+    /// Comorbidities or clinical factors relevant to recovery.
+    /// </summary>
+    public string? Comorbidities { get; init; }
+
+    /// <summary>
+    /// Patient support context relevant to prognosis.
+    /// </summary>
+    public string? SupportContext { get; init; }
+
+    /// <summary>
+    /// Barriers or precautions relevant to recovery expectations.
+    /// </summary>
+    public string? Barriers { get; init; }
+
+    /// <summary>
+    /// Prior level of function before injury or illness.
+    /// </summary>
+    public string? PriorLevelOfFunction { get; init; }
+
+    /// <summary>
+    /// Current level of function at the time of generation.
+    /// </summary>
+    public string? CurrentLevelOfFunction { get; init; }
+
+    /// <summary>
+    /// Body-part-scoped fields to include in the prompt.
     /// </summary>
     public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
 }
