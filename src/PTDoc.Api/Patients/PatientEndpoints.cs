@@ -782,18 +782,18 @@ public static class PatientEndpoints
 
     private static PatientCommunicationLogEntryResponse ToPatientCommunicationLogEntryResponse(
         PatientCommunicationLogEntry entry) => new()
-    {
-        Id = entry.Id,
-        PatientId = entry.PatientId,
-        Channel = entry.Channel,
-        Direction = entry.Direction,
-        Summary = entry.Summary,
-        Details = entry.Details,
-        ContactName = entry.ContactName,
-        OccurredAtUtc = entry.OccurredAtUtc,
-        CreatedAtUtc = entry.CreatedAtUtc,
-        CreatedByUserId = entry.CreatedByUserId
-    };
+        {
+            Id = entry.Id,
+            PatientId = entry.PatientId,
+            Channel = entry.Channel,
+            Direction = entry.Direction,
+            Summary = entry.Summary,
+            Details = entry.Details,
+            ContactName = entry.ContactName,
+            OccurredAtUtc = entry.OccurredAtUtc,
+            CreatedAtUtc = entry.CreatedAtUtc,
+            CreatedByUserId = entry.CreatedByUserId
+        };
 
     private static NoteResponse NoteToResponse(ClinicalNote n) => new()
     {
