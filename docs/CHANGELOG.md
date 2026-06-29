@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Patient chart document and communication storage
+
+- **Patient chart storage** — Added patient document and communication-log entities, DTOs, API endpoints, UI service wiring, upload/log controls, provider migrations, and migration snapshot synchronization across SQLite, SQL Server, and PostgreSQL. Reason: split the schema-bearing patient chart storage and migration validation work into its own reviewable PR.
+
 ### Changed - Patient payer and authorization intake workflows
 
 - **Patient payer, intake, and authorization screens** — Added secondary-insurance and adjuster capture, expanded Patient & Payer Information with cost-sharing and visit-limit fields, and added editable authorization/referral history with validation coverage. Reason: split the client-feedback payer and authorization workflow remediation into a focused reviewable PR.

@@ -2,6 +2,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using PTDoc.UI.Components;
+using System.Text.Json;
 
 namespace PTDoc.Tests.UI;
 
@@ -226,6 +227,84 @@ public sealed class AddPatientModalTests : TestContext
         {
             Assert.Equal(AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake, submittedIntent);
         });
+    }
+
+    [Fact]
+    public void Submit_WithPayerReferralAndAuthorizationDetails_SubmitsPatientContext()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        AddPatientModal.PatientFormData? submitted = null;
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, formData =>
+            {
+                submitted = formData;
+                return Task.FromResult(true);
+            }));
+
+        cut.Find("#firstName").Change("Alex");
+        cut.Find("#lastName").Change("Patient");
+        cut.Find("#email").Change("alex.patient@example.com");
+        cut.Find("#dob").Change("1990-01-01");
+        cut.Find("#primaryInsuranceCompany").Change("PT Beta PPO");
+        cut.Find("#primaryMemberId").Change("MEM-100");
+        cut.Find("#secondaryInsuranceCompany").Change("Secondary Health");
+        cut.Find("#secondaryMemberId").Change("SEC-200");
+        cut.Find("#primaryCareProvider").Change("Dr. Primary");
+        cut.Find("#referringPhysician").Change("Dr. Referral");
+        cut.Find("#physicianNpi").Change("1234567890");
+        cut.Find("#authorizationRequired").Change("Yes");
+        cut.Find("#authorizationNumber").Change("AUTH-123");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(submitted);
+            Assert.Equal("PT Beta PPO", submitted!.PrimaryInsuranceCompany);
+            Assert.Equal("Secondary Health", submitted.SecondaryInsuranceCompany);
+            Assert.Equal("Dr. Primary", submitted.PrimaryCareProvider);
+            Assert.Equal("Dr. Referral", submitted.ReferringPhysician);
+            Assert.Equal("1234567890", submitted.PhysicianNpi);
+            Assert.Equal("AUTH-123", submitted.AuthorizationNumber);
+
+            using var payer = JsonDocument.Parse(submitted.PayerInfoJson);
+            Assert.Equal("PT Beta PPO", payer.RootElement.GetProperty("insuranceCompanyName").GetString());
+            Assert.Equal("MEM-100", payer.RootElement.GetProperty("memberIdPolicyNumber").GetString());
+            Assert.Equal("Secondary Health", payer.RootElement.GetProperty("secondaryInsuranceCompanyName").GetString());
+            Assert.Equal("SEC-200", payer.RootElement.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+            Assert.Equal("Dr. Primary", payer.RootElement.GetProperty("primaryCareProviderName").GetString());
+            Assert.Equal("Dr. Referral", payer.RootElement.GetProperty("referringPhysicianName").GetString());
+            Assert.Equal("1234567890", payer.RootElement.GetProperty("physicianNpiNumber").GetString());
+            Assert.Equal("Yes", payer.RootElement.GetProperty("authorizationRequired").GetString());
+            Assert.Equal("pending", payer.RootElement.GetProperty("authorizationStatus").GetString());
+        });
+    }
+
+    [Fact]
+    public void Submit_WithInvalidPhysicianNpi_ShowsValidationAndDoesNotCallSubmit()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var submitCalled = false;
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, _ =>
+            {
+                submitCalled = true;
+                return Task.FromResult(true);
+            }));
+
+        cut.Find("#firstName").Change("Alex");
+        cut.Find("#lastName").Change("Patient");
+        cut.Find("#email").Change("alex.patient@example.com");
+        cut.Find("#dob").Change("1990-01-01");
+        cut.Find("#physicianNpi").Change("123");
+        cut.Find("form").Submit();
+
+        Assert.False(submitCalled);
+        Assert.Contains("Physician NPI must be exactly 10 digits.", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("true", cut.Find("#physicianNpi").GetAttribute("aria-invalid"));
     }
 
     [Fact]

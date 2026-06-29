@@ -23,6 +23,21 @@ npm run test:responsive
 
 `PTDOC_WEB_BASE_URL` defaults to `http://localhost:5145`.
 
+## Patient Document Upload QA
+
+Run the focused patient document upload check with:
+
+```bash
+PTDOC_WEB_BASE_URL=http://localhost:5145 \
+PTDOC_UI_QA_USERNAME=<dev-or-beta-user> \
+PTDOC_UI_QA_PIN=<pin> \
+npm run test:patient-documents
+```
+
+The upload test creates a synthetic non-PHI text file in Playwright's per-test output directory, uploads it through the patient chart Documents tab, verifies the uploaded row, reloads the patient chart, and verifies the row still renders from storage.
+
+By default, the test opens `/patient/f9c2cb68-4ab4-4f57-a1db-73ed8e2da789`. Override this with `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
+
 ## Authentication
 
 The tests support either:
