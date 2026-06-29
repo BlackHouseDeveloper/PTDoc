@@ -19,6 +19,34 @@
                                   HasError="@HasError("visitsRemaining")" />
         </PatientInfoField>
 
+        <PatientInfoField Label="Visit Limit Type" ForId="pi-visit-limit-type" Error="@GetError("visitLimitType")">
+            <PatientInfoSelect Id="pi-visit-limit-type"
+                               Value="@Model.VisitLimitType"
+                               ValueChanged="@(v => SetField(v, f => f.VisitLimitType = v))"
+                               Placeholder="Select limit type"
+                               Options="@VisitLimitTypeOptions"
+                               HasError="@HasError("visitLimitType")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Visit Limit Period" ForId="pi-visit-limit-period" Error="@GetError("visitLimitPeriod")">
+            <PatientInfoSelect Id="pi-visit-limit-period"
+                               Value="@Model.VisitLimitPeriod"
+                               ValueChanged="@(v => SetField(v, f => f.VisitLimitPeriod = v))"
+                               Placeholder="Select limit period"
+                               Options="@VisitLimitPeriodOptions"
+                               HasError="@HasError("visitLimitPeriod")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Total Visit Limit" ForId="pi-total-visit-limit" Error="@GetError("totalVisitLimit")">
+            <PatientInfoTextInput Id="pi-total-visit-limit"
+                                  Value="@Model.TotalVisitLimit"
+                                  ValueChanged="@(v => SetField(v, f => f.TotalVisitLimit = v))"
+                                  Placeholder="e.g., 20"
+                                  HasError="@HasError("totalVisitLimit")" />
+        </PatientInfoField>
+
+        <div class="pi-form-grid-spacer" aria-hidden="true"></div>
+
         @* Full-width row: spans both grid columns *@
         <PatientInfoField Label="Date of First Visit Under Authorization"
                           ForId="pi-first-visit-date"
@@ -54,6 +82,23 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
     [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> VisitLimitTypeOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("visits", "Visits"),
+        new PatientInfoSelectOptionVm("units", "Units"),
+        new PatientInfoSelectOptionVm("combined", "Combined visits / units"),
+        new PatientInfoSelectOptionVm("none", "No limit"),
+        new PatientInfoSelectOptionVm("unknown", "Unknown / Verify"),
+    };
+
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> VisitLimitPeriodOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("authorization_period", "Authorization period"),
+        new PatientInfoSelectOptionVm("calendar_year", "Calendar year"),
+        new PatientInfoSelectOptionVm("plan_year", "Plan year"),
+        new PatientInfoSelectOptionVm("episode", "Episode of care"),
+        new PatientInfoSelectOptionVm("lifetime", "Lifetime"),
+    };
 
     private string GetError(string key) =>
         FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
