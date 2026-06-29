@@ -4,6 +4,7 @@ public enum SoapSection
 {
     Subjective,
     Objective,
+    Interventions,
     Assessment,
     Plan,
     Review

@@ -29,4 +29,24 @@ public sealed class SoapTabNavTests : TestContext
 
         Assert.Equal(SoapSection.Objective, selectedSection);
     }
+
+    [Fact]
+    public void Tabs_UseProvidedNoteSpecificSections()
+    {
+        var cut = RenderComponent<SoapTabNav>(parameters => parameters
+            .Add(component => component.ActiveSection, SoapSection.Interventions)
+            .Add(component => component.Sections, new[]
+            {
+                SoapSection.Subjective,
+                SoapSection.Objective,
+                SoapSection.Interventions,
+                SoapSection.Assessment,
+                SoapSection.Plan,
+                SoapSection.Review
+            })
+            .Add(component => component.ActiveSectionChanged, EventCallback.Factory.Create<SoapSection>(this, _ => { })));
+
+        Assert.Single(cut.FindAll("[data-testid='soap-tab-interventions']"));
+        Assert.Contains("Interventions", cut.Markup, StringComparison.Ordinal);
+    }
 }

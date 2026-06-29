@@ -33,6 +33,7 @@ public class PlanVm
     public string? FullDischargeSummary { get; set; }
     public string? PostDischargeInstructions { get; set; }
     public string? PrimaryDischargeReason { get; set; }
+    public string? OtherDischargeReasonExplanation { get; set; }
     public string? DischargeRecommendations { get; set; }
     public List<string> CompletedDischargeChecklistItems { get; set; } = new();
 }

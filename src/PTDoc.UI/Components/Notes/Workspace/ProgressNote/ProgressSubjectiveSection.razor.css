@@ -141,6 +141,19 @@
     margin: 0;
 }
 
+::deep .progress-subjective__range {
+    width: 100%;
+    accent-color: var(--primary);
+}
+
+::deep .progress-subjective__range-legend {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
 ::deep .progress-subjective__two-col {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -161,6 +174,17 @@
     background: var(--input-background);
     color: var(--foreground);
     padding: 0 var(--spacing-3);
+}
+
+::deep .progress-subjective__textarea {
+    width: 100%;
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    padding: var(--spacing-3);
+    font: inherit;
+    resize: vertical;
 }
 
 ::deep .progress-subjective__check-grid {

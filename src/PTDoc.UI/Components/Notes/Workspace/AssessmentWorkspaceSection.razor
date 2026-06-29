@@ -224,6 +224,8 @@
         }
     </div>
 
+    @if (ShowMotivationAndSupport)
+    {
     <!-- 5. Patient Motivation & Goals -->
     <div class="aws-card" data-testid="motivation-card">
         <div class="aws-card__header">
@@ -372,6 +374,7 @@
                       @onchange="e => SetAndNotify(vm => vm.SupportAdditionalNotes = e.Value?.ToString())"></textarea>
         </div>
     </div>
+    }
 
     <!-- 7. Prognosis -->
     <div class="aws-card" data-testid="prognosis-card">
@@ -433,6 +436,7 @@
     [Parameter, EditorRequired] public Guid NoteId { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool ShowSmartGoals { get; set; } = true;
+    [Parameter] public bool ShowMotivationAndSupport { get; set; } = true;
     [Parameter] public string? ChiefComplaint { get; set; }
     [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? ExaminationFindings { get; set; }

@@ -1,0 +1,455 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-progress-interventions-section">
+    <div class="daily-grid">
+        <div class="daily-col-12">
+            <FormSection Title="Treatment Focus 1" Subtitle="What was generally worked on during this visit">
+                <div class="daily-plan__chip-grid" data-testid="intervention-treatment-focus-1">
+                    @foreach (var option in GeneralTreatmentFocusOptions)
+                    {
+                        var isSelected = _vm.TreatmentFocuses.Contains(option);
+                        <button type="button"
+                                class="daily-plan__chip @(isSelected ? "daily-plan__chip--active" : string.Empty)"
+                                disabled="@IsReadOnly"
+                                aria-pressed="@(isSelected ? "true" : "false")"
+                                @onclick="() => ToggleTreatmentFocus(option)">
+                            @option
+                        </button>
+                    }
+                </div>
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Treatment Focus 2" Subtitle="Why the selected intervention work was clinically relevant">
+                <div class="daily-plan__chip-grid" data-testid="intervention-treatment-focus-2">
+                    @foreach (var option in TreatmentRationaleOptions)
+                    {
+                        var isSelected = _vm.TreatmentFocuses.Contains(option);
+                        <button type="button"
+                                class="daily-plan__chip @(isSelected ? "daily-plan__chip--active" : string.Empty)"
+                                disabled="@IsReadOnly"
+                                aria-pressed="@(isSelected ? "true" : "false")"
+                                @onclick="() => ToggleTreatmentFocus(option)">
+                            @option
+                        </button>
+                    }
+                </div>
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Interventions" Subtitle="Document skilled interventions performed today">
+                <div class="daily-plan__summary-header">
+                    @if (!IsReadOnly)
+                    {
+                        <button type="button" @onclick="AddIntervention">Add Intervention</button>
+                    }
+                </div>
+
+                @if (_vm.GeneralInterventions.Count == 0)
+                {
+                    <p class="daily-plan__message" role="note">No interventions documented yet.</p>
+                }
+                else
+                {
+                    <div class="daily-plan__intervention-list" data-testid="daily-progress-interventions">
+                        @for (var i = 0; i < _vm.GeneralInterventions.Count; i++)
+                        {
+                            var index = i;
+                            var intervention = _vm.GeneralInterventions[index];
+                            <div class="daily-plan__intervention-row">
+                                <label>
+                                    <span>Intervention</span>
+                                    <input type="text"
+                                           value="@intervention.Name"
+                                           disabled="@IsReadOnly"
+                                           @oninput="e => UpdateInterventionName(index, e.Value?.ToString())" />
+                                </label>
+                                <label>
+                                    <span>Notes</span>
+                                    <textarea rows="2"
+                                              value="@intervention.Notes"
+                                              disabled="@IsReadOnly"
+                                              @oninput="e => UpdateInterventionNotes(index, e.Value?.ToString())"></textarea>
+                                </label>
+                                <label>
+                                    <span>CPT</span>
+                                    <select value="@NormalizeCode(intervention.CptCode)"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateInterventionCpt(index, e.Value?.ToString())"
+                                            data-testid="daily-progress-intervention-cpt">
+                                        <option value="">Select CPT</option>
+                                        @foreach (var option in InterventionCptOptions)
+                                        {
+                                            <option value="@option.Code" selected="@CodesMatch(intervention.CptCode, option.Code)">
+                                                @option.Code - @option.Label
+                                            </option>
+                                        }
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Minutes</span>
+                                    <input type="number"
+                                           min="0"
+                                           step="1"
+                                           value="@(intervention.TimeMinutes?.ToString() ?? string.Empty)"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateInterventionMinutes(index, e.Value)"
+                                           data-testid="daily-progress-intervention-minutes" />
+                                </label>
+                                <label>
+                                    <span>Assistance</span>
+                                    <select value="@intervention.AssistanceLevel"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateInterventionAssistance(index, e.Value?.ToString())"
+                                            data-testid="daily-progress-intervention-assistance">
+                                        <option value="">None documented</option>
+                                        @foreach (var option in AssistanceLevelOptions)
+                                        {
+                                            <option value="@option" selected="@string.Equals(intervention.AssistanceLevel, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Cueing</span>
+                                    <select value="@intervention.Cueing"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateInterventionCueing(index, e.Value?.ToString())"
+                                            data-testid="daily-progress-intervention-cueing">
+                                        <option value="">None documented</option>
+                                        @foreach (var option in CueingOptions)
+                                        {
+                                            <option value="@option" selected="@string.Equals(intervention.Cueing, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Response</span>
+                                    <input type="text"
+                                           value="@intervention.Response"
+                                           disabled="@IsReadOnly"
+                                           @oninput="e => UpdateInterventionResponse(index, e.Value?.ToString())"
+                                           data-testid="daily-progress-intervention-response" />
+                                </label>
+                                <label class="daily-plan__checkbox-row">
+                                    <input type="checkbox"
+                                           checked="@intervention.IncludeInHomeExerciseProgram"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateInterventionHepLink(index, (bool)e.Value!)"
+                                           data-testid="daily-progress-intervention-hep-link" />
+                                    Link to HEP
+                                </label>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" @onclick="() => RemoveIntervention(index)">Remove</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Home Exercise Program" Subtitle="HEP items are linked from selected interventions">
+                @if (LinkedHepInterventions.Count > 0)
+                {
+                    <p class="daily-plan__message" data-testid="daily-progress-linked-hep">
+                        Linked HEP activities: @string.Join("; ", LinkedHepInterventions)
+                    </p>
+                }
+
+                <EditableTextArea Label="HEP Notes"
+                                  Value="@(_vm.HomeExerciseProgramNotes ?? string.Empty)"
+                                  ValueChanged="UpdateHepNotes"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document home exercises, frequency, precautions, and patient education."
+                                  Rows="4" />
+            </FormSection>
+        </div>
+
+        <div class="daily-col-12">
+            <FormSection Title="Response to Treatment">
+                <EditableTextArea Label="Response to Treatment"
+                                  Id="daily-response-to-treatment"
+                                  Value="@_dailyTreatment.ResponseToTreatment"
+                                  ValueChanged="UpdateResponseToTreatment"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document tolerance, symptom response, performance quality, and safety response."
+                                  Rows="4" />
+            </FormSection>
+        </div>
+    </div>
+</section>
+
+@code {
+    private PlanVm _vm = new();
+    private DailyTreatmentVm _dailyTreatment = new();
+    private record InterventionCptOption(string Code, string Label);
+
+    private static readonly string[] GeneralTreatmentFocusOptions =
+    [
+        "Mobility",
+        "Strength",
+        "Neuromuscular control",
+        "Balance",
+        "Functional activity",
+        "Gait",
+        "Pain modulation",
+        "Patient education"
+    ];
+
+    private static readonly string[] TreatmentRationaleOptions =
+    [
+        "Improve joint arthrokinematics",
+        "Improve tissue extensibility",
+        "Improve motor control",
+        "Improve activity tolerance",
+        "Reduce symptom irritability",
+        "Improve safety",
+        "Improve independence"
+    ];
+
+    private static readonly InterventionCptOption[] InterventionCptOptions =
+    [
+        new("97110", "Exercise"),
+        new("97112", "Neuromuscular re-ed"),
+        new("97530", "Functional activities"),
+        new("97116", "Gait training"),
+        new("97535", "Self-care / ADL training"),
+        new("97140", "Manual therapy")
+    ];
+
+    private static readonly string[] AssistanceLevelOptions =
+    [
+        "Min Assist",
+        "Mod Assist",
+        "Max Assist",
+        "Contact Guard",
+        "Standby Assist",
+        "Independent"
+    ];
+
+    private static readonly string[] CueingOptions =
+    [
+        "Verbal cueing",
+        "Tactile cueing",
+        "Visual cueing",
+        "Verbal + tactile cueing",
+        "Verbal + visual cueing",
+        "Tactile + visual cueing"
+    ];
+
+    [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter] public DailyTreatmentVm DailyTreatment { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+    [Parameter] public string? SelectedBodyPart { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _vm = Vm;
+        _dailyTreatment = DailyTreatment;
+    }
+
+    private List<string> LinkedHepInterventions => _vm.GeneralInterventions
+        .Where(entry => entry.IncludeInHomeExerciseProgram && !string.IsNullOrWhiteSpace(entry.Name))
+        .Select(FormatInterventionForHep)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
+    private Task NotifyDailyChangedAsync() => DailyTreatmentChanged.InvokeAsync(_dailyTreatment);
+
+    private Task ToggleTreatmentFocus(string option)
+    {
+        if (!_vm.TreatmentFocuses.Add(option))
+        {
+            _vm.TreatmentFocuses.Remove(option);
+        }
+
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateHepNotes(string value)
+    {
+        _vm.HomeExerciseProgramNotes = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateResponseToTreatment(string value)
+    {
+        _dailyTreatment.ResponseToTreatment = value;
+        return NotifyDailyChangedAsync();
+    }
+
+    private Task AddIntervention()
+    {
+        _vm.GeneralInterventions.Add(new GeneralInterventionEntry
+        {
+            Name = "Skilled intervention"
+        });
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionName(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Name = value ?? string.Empty;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionNotes(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Notes = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionCpt(int index, string? code)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        var option = InterventionCptOptions.FirstOrDefault(item => CodesMatch(item.Code, code));
+        _vm.GeneralInterventions[index].CptCode = option?.Code;
+        _vm.GeneralInterventions[index].CptDescription = option?.Label;
+        if (option is not null && !_vm.SelectedCptCodes.Any(entry => CodesMatch(entry.Code, option.Code)))
+        {
+            _vm.SelectedCptCodes.Add(new PTDoc.UI.Components.Notes.Models.CptCodeEntry
+            {
+                Code = option.Code,
+                Description = option.Label,
+                Units = 1,
+                Minutes = _vm.GeneralInterventions[index].TimeMinutes
+            });
+        }
+
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionMinutes(int index, object? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].TimeMinutes = int.TryParse(value?.ToString(), out var minutes)
+            ? Math.Max(0, minutes)
+            : null;
+
+        var code = _vm.GeneralInterventions[index].CptCode;
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            var selected = _vm.SelectedCptCodes.FirstOrDefault(entry => CodesMatch(entry.Code, code));
+            if (selected is not null)
+            {
+                selected.Minutes = _vm.GeneralInterventions[index].TimeMinutes;
+                selected.Units = CalculateUnits(_vm.GeneralInterventions[index].TimeMinutes);
+            }
+        }
+
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionAssistance(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].AssistanceLevel = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionCueing(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Cueing = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionResponse(int index, string? value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].Response = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task UpdateInterventionHepLink(int index, bool value)
+    {
+        if (index < 0 || index >= _vm.GeneralInterventions.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _vm.GeneralInterventions[index].IncludeInHomeExerciseProgram = value;
+        return NotifyChangedAsync();
+    }
+
+    private Task RemoveIntervention(int index)
+    {
+        if (index >= 0 && index < _vm.GeneralInterventions.Count)
+        {
+            _vm.GeneralInterventions.RemoveAt(index);
+        }
+
+        return NotifyChangedAsync();
+    }
+
+    private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
+
+    private static bool CodesMatch(string? left, string? right) =>
+        string.Equals(NormalizeCode(left), NormalizeCode(right), StringComparison.OrdinalIgnoreCase);
+
+    private static int CalculateUnits(int? minutes)
+    {
+        if (!minutes.HasValue || minutes.Value <= 0)
+        {
+            return 1;
+        }
+
+        return Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m));
+    }
+
+    private static string FormatInterventionForHep(GeneralInterventionEntry entry)
+    {
+        var parts = new List<string> { entry.Name.Trim() };
+        if (!string.IsNullOrWhiteSpace(entry.CptCode))
+        {
+            parts.Add(entry.CptCode.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.Notes))
+        {
+            parts.Add(entry.Notes.Trim());
+        }
+
+        return string.Join(" - ", parts);
+    }
+}
