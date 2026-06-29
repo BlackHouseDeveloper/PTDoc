@@ -2075,6 +2075,64 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public void DailyReviewNavigation_SaveCancellation_ShowsHandledWorkspaceAlert()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Audit",
+                LastName = "Daily",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException("save canceled"));
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Daily Treatment Note"));
+
+        cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-review']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var alert = cut.Find("[data-testid='note-workspace-alert']");
+            Assert.Contains("Unable to open that note section right now. Please retry.", alert.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("soap-review-page", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()), Times.Once);
+        patientService.VerifyAll();
+    }
+
+    [Fact]
     public void GetUserFacingMessage_TrimsHttpRequestMessages()
     {
         var message = GetNoteWorkspaceUserFacingMessage(
