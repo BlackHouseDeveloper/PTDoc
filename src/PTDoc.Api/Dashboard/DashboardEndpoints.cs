@@ -72,7 +72,6 @@ public static class DashboardEndpoints
             db,
             today,
             tomorrow,
-            now,
             visibility,
             authorizationAlerts.Count,
             cancellationToken);
@@ -177,7 +176,6 @@ public static class DashboardEndpoints
         ApplicationDbContext db,
         DateTime today,
         DateTime tomorrow,
-        DateTimeOffset now,
         DashboardVisibilityContext visibility,
         int authorizationActionItems,
         CancellationToken cancellationToken)

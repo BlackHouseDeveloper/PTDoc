@@ -61,7 +61,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal("Note Started", appointmentsByPatient[pendingNote.PatientName].VisitWorkflowStatus);
         Assert.Equal(pendingNote.NoteId, appointmentsByPatient[pendingNote.PatientName].VisitNoteId);
         Assert.Equal("Completed", appointmentsByPatient[signedNote.PatientName].VisitWorkflowStatus);
-        Assert.Null(appointmentsByPatient[signedNote.PatientName].VisitNoteId);
+        Assert.Equal(signedNote.NoteId, appointmentsByPatient[signedNote.PatientName].VisitNoteId);
         Assert.Equal("Completed", appointmentsByPatient[completed.PatientName].VisitWorkflowStatus);
         Assert.Null(appointmentsByPatient[completed.PatientName].VisitNoteId);
         Assert.Equal("Cancelled", appointmentsByPatient[cancelledWithDraft.PatientName].VisitWorkflowStatus);

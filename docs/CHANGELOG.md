@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - Dashboard alerts and appointment detail readiness
 
-- **Dashboard and appointments** — Added role-scoped dashboard alert data with authorization alert support, bounded/single-pass authorization alert reuse for dashboard snapshots, updated Dashboard alert grouping, and added appointment detail readiness indicators for billing, intake, clinical documents, disabled copay availability, clinician labels, and week-view date context. Reason: split the live-audit/client-feedback remediation into a focused reviewable PR for dashboard and appointment UX.
+- **Dashboard and appointments** — Added role-scoped dashboard alert data with authorization alert support, bounded/single-pass authorization alert reuse for dashboard snapshots, updated Dashboard alert grouping, and added appointment detail readiness indicators for billing, intake, clinical documents backed by visit-note ids, disabled copay availability, clinician labels, and week-view date context. Reason: split the live-audit/client-feedback remediation into a focused reviewable PR for dashboard and appointment UX.
 
 ### Fixed - PR review follow-up for AI rate-limit rejection routing
 

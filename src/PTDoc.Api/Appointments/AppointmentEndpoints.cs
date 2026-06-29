@@ -459,8 +459,8 @@ public static class AppointmentEndpoints
                 {
                     HasCompletedNote = group.Any(note => note.IsCompleted),
                     VisitNoteId = group
-                        .Where(note => !note.IsCompleted)
-                        .OrderByDescending(note => note.LastModifiedUtc)
+                        .OrderByDescending(note => note.IsCompleted)
+                        .ThenByDescending(note => note.LastModifiedUtc)
                         .ThenByDescending(note => note.CreatedUtc)
                         .Select(note => (Guid?)note.NoteId)
                         .FirstOrDefault()
@@ -672,13 +672,17 @@ public static class AppointmentEndpoints
             AppointmentType = MapAppointmentType(row.AppointmentType),
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
             VisitWorkflowStatus = visitWorkflowStatus,
-            VisitNoteId = string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+            VisitNoteId = IsVisitNoteWorkflowStatus(visitWorkflowStatus)
                 ? row.VisitNoteId
                 : null,
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty
         };
     }
+
+    private static bool IsVisitNoteWorkflowStatus(string visitWorkflowStatus) =>
+        string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(visitWorkflowStatus, "Completed", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildClinicianName(string? firstName, string? lastName)
     {
