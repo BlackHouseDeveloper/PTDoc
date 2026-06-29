@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Live audit route, intake, notes, and accessibility hardening
+
+- **Live audit remediation** — Added route-backed `/dashboard` and protected fallback behavior, inline login validation, appointments needs-note/week grouping controls, intake pain severity/body-map accessibility, notes pagination, route-backed patient actions, ARIA link cleanup, and sanitized route-derived note logging. Reason: split the live UI audit remediation and PR review follow-up fixes into a focused reviewable PR.
+
 ### Fixed - AI prognosis PR review follow-up
 
 - **`src/PTDoc.UI/Components/Notes/Workspace/AssessmentWorkspaceSection.razor`**, **`src/PTDoc.Api/AI/AiEndpoints.cs`**, **`src/PTDoc.AI/Services/OpenAiService.cs`**, **`src/PTDoc.AI/Services/ClinicalGenerationService.cs`**, **`tests/PTDoc.Tests/UI/Notes/AssessmentWorkspaceSectionPrognosisTests.cs`** — Routed prognosis-generation failures to the Prognosis card, mapped prior/current functional-level inputs into prognosis requests, made prognosis endpoint metadata handling null-safe, returned a nonblank metadata template fallback, and removed stale hard-coded prognosis template wording from logs and mock output. Reason: validated Copilot review feedback identified misplaced errors, incorrect prognosis source fields, brittle AI response handling, inconsistent metadata fallbacks, and stale/awkward log or mock text.
