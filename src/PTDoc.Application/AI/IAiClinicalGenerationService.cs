@@ -23,6 +23,13 @@ public interface IAiClinicalGenerationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Generates a prognosis narrative from structured clinical inputs.
+    /// </summary>
+    Task<PrognosisGenerationResult> GeneratePrognosisAsync(
+        PrognosisGenerationRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Generates goal narratives from structured functional limitation inputs.
     /// </summary>
     Task<GoalGenerationResult> GenerateGoalNarrativesAsync(
@@ -133,6 +140,92 @@ public sealed record PlanOfCareGenerationRequest
 
     /// <summary>
     /// Sanitized, body-part-scoped Assessment/Plan fields supplied by the note workspace.
+    /// </summary>
+    public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
+
+    /// <summary>
+    /// Safety guard: generation is rejected when true.
+    /// </summary>
+    public bool IsNoteSigned { get; init; } = false;
+}
+
+/// <summary>
+/// Request for AI-generated prognosis narrative.
+/// </summary>
+public sealed record PrognosisGenerationRequest
+{
+    /// <summary>
+    /// Identity of the note being authored (used for safety audit only, not passed to AI prompt).
+    /// </summary>
+    public required Guid NoteId { get; init; }
+
+    /// <summary>
+    /// Clinical diagnosis or condition.
+    /// </summary>
+    public required string Diagnosis { get; init; }
+
+    /// <summary>
+    /// Concrete body part selected in the note workspace. Required for beta AI generation.
+    /// </summary>
+    public string? SelectedBodyPart { get; init; }
+
+    /// <summary>
+    /// Assessment summary or clinical impression.
+    /// </summary>
+    public string? AssessmentSummary { get; init; }
+
+    /// <summary>
+    /// Summary of examination findings that support prognosis.
+    /// </summary>
+    public string? FindingsSummary { get; init; }
+
+    /// <summary>
+    /// Current subjective presentation or symptom summary.
+    /// </summary>
+    public string? SubjectiveSummary { get; init; }
+
+    /// <summary>
+    /// Objective examination summary.
+    /// </summary>
+    public string? ObjectiveSummary { get; init; }
+
+    /// <summary>
+    /// Functional limitations affecting prognosis.
+    /// </summary>
+    public string? FunctionalLimitations { get; init; }
+
+    /// <summary>
+    /// Patient goals or expected outcomes.
+    /// </summary>
+    public string? Goals { get; init; }
+
+    /// <summary>
+    /// Comorbidities or clinical factors relevant to recovery.
+    /// </summary>
+    public string? Comorbidities { get; init; }
+
+    /// <summary>
+    /// Patient support context relevant to prognosis.
+    /// </summary>
+    public string? SupportContext { get; init; }
+
+    /// <summary>
+    /// Barriers or precautions relevant to recovery expectations.
+    /// </summary>
+    public string? Barriers { get; init; }
+
+    /// <summary>
+    /// Prior level of function before injury or illness.
+    /// </summary>
+    public string? PriorLevelOfFunction { get; init; }
+
+    /// <summary>
+    /// Current level of function at the time of generation.
+    /// </summary>
+    public string? CurrentLevelOfFunction { get; init; }
+
+    /// <summary>
+    /// Sanitized, body-part-scoped fields supplied by the note workspace.
     /// </summary>
     public IReadOnlyList<AiStructuredInput> StructuredInputs { get; init; } = Array.Empty<AiStructuredInput>();
 
@@ -294,6 +387,33 @@ public sealed record PlanGenerationResult
 
     /// <summary>The structured inputs that produced this result.</summary>
     public required PlanOfCareGenerationRequest SourceInputs { get; init; }
+
+    /// <summary>Whether generation succeeded.</summary>
+    public bool Success { get; init; }
+
+    /// <summary>Error description when Success is false.</summary>
+    public string? ErrorMessage { get; init; }
+
+    /// <summary>Prompt and model metadata (NO PHI).</summary>
+    public AiPromptMetadata? Metadata { get; init; }
+}
+
+/// <summary>
+/// Result from AI-generated prognosis narrative.
+/// </summary>
+public sealed record PrognosisGenerationResult
+{
+    /// <summary>AI-generated narrative text, empty on failure.</summary>
+    public required string GeneratedText { get; init; }
+
+    /// <summary>Confidence score 0.0–1.0.</summary>
+    public required double Confidence { get; init; }
+
+    /// <summary>Non-blocking warnings.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+
+    /// <summary>The structured inputs that produced this result.</summary>
+    public required PrognosisGenerationRequest SourceInputs { get; init; }
 
     /// <summary>Whether generation succeeded.</summary>
     public bool Success { get; init; }

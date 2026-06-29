@@ -11,6 +11,7 @@ public class AssessmentWorkspaceVm
 {
     // Clinical Assessment Summary (rendered by AssessmentTab sub-component)
     public string AssessmentNarrative { get; set; } = string.Empty;
+    public string? FindingsSummary { get; set; }
     public string FunctionalLimitations { get; set; } = string.Empty;
 
     // Deficits & Impairments
@@ -38,6 +39,7 @@ public class AssessmentWorkspaceVm
 
     // Prognosis
     public string? OverallPrognosis { get; set; }
+    public string? PrognosisNarrative { get; set; }
 
     /// <summary>
     /// Adds an ICD-10 code when the max-count rule allows it.

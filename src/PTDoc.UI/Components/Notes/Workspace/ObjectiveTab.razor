@@ -77,7 +77,20 @@
                                 </div>
                                 <div class="objective-tab__editor-grid">
                                     <label>
-                                        <span>Measured value</span>
+                                        <span>Body part</span>
+                                        <select class="objective-tab__select"
+                                                value="@(metric.BodyPart ?? _vm.SelectedBodyPart ?? string.Empty)"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
+                                            <option value="">Use primary body part</option>
+                                            @foreach (var option in _bodyPartOptions)
+                                            {
+                                                <option value="@option" selected="@string.Equals(metric.BodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Current value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.Value"
                                                disabled="@IsReadOnly"
@@ -87,15 +100,13 @@
                                         <span>Normal value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
-                                               disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                               disabled="true" />
                                     </label>
                                     <label>
                                         <span>Previous value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.PreviousValue"
-                                               disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
+                                               disabled="true" />
                                     </label>
                                     <label class="objective-tab__checkbox-item">
                                         <input type="checkbox"
@@ -132,6 +143,19 @@
                             <div class="objective-tab__editor-row" data-testid="objective-mmt-row">
                                 <div class="objective-tab__editor-grid">
                                     <label>
+                                        <span>Body part</span>
+                                        <select class="objective-tab__select"
+                                                value="@(metric.BodyPart ?? _vm.SelectedBodyPart ?? string.Empty)"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
+                                            <option value="">Use primary body part</option>
+                                            @foreach (var option in _bodyPartOptions)
+                                            {
+                                                <option value="@option" selected="@string.Equals(metric.BodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>
                                         <span>Measurement</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.Name"
@@ -155,8 +179,13 @@
                                         <span>Normal value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
-                                               disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                               disabled="true" />
+                                    </label>
+                                    <label>
+                                        <span>Previous value</span>
+                                        <input class="objective-tab__text-input"
+                                               value="@metric.PreviousValue"
+                                               disabled="true" />
                                     </label>
                                     @if (!IsReadOnly)
                                     {
@@ -257,6 +286,13 @@
 
             <div class="objective-tab__section" data-testid="objective-tender-muscles-section">
                 <h3 class="objective-tab__section-heading">Tender Muscles / Palpation</h3>
+                <label class="objective-tab__checkbox-item">
+                    <input type="checkbox"
+                           checked="@_vm.IsPalpationUnremarkable"
+                           disabled="@IsReadOnly"
+                           @onchange="e => SetAndNotify(v => v.IsPalpationUnremarkable = (bool)e.Value!)" />
+                    Unremarkable
+                </label>
                 @if (TenderMuscleOptions.Count == 0)
                 {
                     <p class="objective-tab__helper">No source-backed tender-muscle catalog is available for the selected body part.</p>
@@ -277,23 +313,59 @@
                         }
                     </div>
                 }
+                <label class="objective-tab__field">
+                    <span class="objective-tab__sub-heading">Palpation comments</span>
+                    <textarea class="objective-tab__textarea"
+                              rows="2"
+                              placeholder="Add palpation details or comments..."
+                              disabled="@IsReadOnly"
+                              value="@_vm.PalpationComments"
+                              @onchange="e => SetAndNotify(v => v.PalpationComments = e.Value?.ToString())"></textarea>
+                </label>
             </div>
 
             <div class="objective-tab__section" data-testid="objective-posture-section">
                 <h3 class="objective-tab__section-heading">Posture / Additional Measurements</h3>
+                <label class="objective-tab__checkbox-item">
+                    <input type="checkbox"
+                           checked="@_vm.IsPostureUnremarkable"
+                           disabled="@IsReadOnly"
+                           @onchange="e => SetAndNotify(v => v.IsPostureUnremarkable = (bool)e.Value!)" />
+                    Unremarkable
+                </label>
+                <div class="objective-tab__option-grid" data-testid="objective-posture-options">
+                    @foreach (var posture in PostureFindingOptions)
+                    {
+                        var isSelected = _vm.PostureFindings.Contains(posture);
+                        <label class="objective-tab__checkbox-chip">
+                            <input type="checkbox"
+                                   checked="@isSelected"
+                                   disabled="@IsReadOnly"
+                                   @onchange="e => TogglePostureFinding(posture, (bool)e.Value!)" />
+                            @posture
+                        </label>
+                    }
+                </div>
                 <label class="objective-tab__field">
-                    <span class="objective-tab__sub-heading">Postural findings</span>
+                    <span class="objective-tab__sub-heading">Posture comments</span>
                     <textarea class="objective-tab__textarea"
                               rows="2"
-                              placeholder="Enter posture findings separated by commas"
+                              placeholder="Add posture details not covered by the chips..."
                               disabled="@IsReadOnly"
-                              value="@JoinDelimitedValues(_vm.PostureFindings, _vm.OtherPostureFinding)"
-                              @onchange="HandlePostureFindingsChanged"></textarea>
+                              value="@_vm.OtherPostureFinding"
+                              @onchange="e => SetAndNotify(v => v.OtherPostureFinding = e.Value?.ToString())"></textarea>
                 </label>
             </div>
 
             <div class="objective-tab__section" data-testid="gait-analysis-section">
                 <h3 class="objective-tab__section-heading">Gait Analysis</h3>
+                <label class="objective-tab__checkbox-item">
+                    <input type="checkbox"
+                           checked="@_vm.IsGaitUnremarkable"
+                           disabled="@IsReadOnly"
+                           @onchange="e => SetAndNotify(v => v.IsGaitUnremarkable = (bool)e.Value!)" />
+                    Unremarkable
+                </label>
 
                 <p class="objective-tab__sub-heading">Primary Gait Pattern:</p>
                 <div class="objective-tab__radio-list">
@@ -340,6 +412,8 @@
                           @onchange="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
             </div>
 
+            @if (ShowInterventionAuthoring)
+            {
             <div class="objective-tab__section" data-testid="objective-exercises-section">
                 <div class="objective-tab__section-header">
                     <h3 class="objective-tab__section-heading">Interventions / Activities Performed</h3>
@@ -477,6 +551,7 @@
                     </div>
                 }
             </div>
+            }
 
             <div class="objective-tab__section">
                 <h3 class="objective-tab__section-heading">Clinical Observation Notes</h3>
@@ -518,6 +593,7 @@
     [Parameter] public int LongTermGoalCount { get; set; }
     [Parameter] public IReadOnlyList<PatientGoalItem> GoalItems { get; set; } = Array.Empty<PatientGoalItem>();
     [Parameter] public IReadOnlyList<string> GoalHints { get; set; } = Array.Empty<string>();
+    [Parameter] public bool ShowInterventionAuthoring { get; set; } = true;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -567,6 +643,18 @@
         "Verbal + tactile cueing",
         "Verbal + visual cueing",
         "Tactile + visual cueing"
+    ];
+
+    private static readonly string[] PostureFindingOptions =
+    [
+        "Forward head",
+        "Rounded shoulders",
+        "Kyphotic posture",
+        "Increased lordosis",
+        "Decreased lordosis",
+        "Scoliosis",
+        "Asymmetry",
+        "Guarded posture"
     ];
 
     private static readonly GaitPatternOption[] _gaitPatterns =
@@ -677,7 +765,9 @@
             _vm.Metrics.Add(new ObjectiveMetricRowEntry
             {
                 Name = name,
-                MetricType = metricType
+                BodyPart = _vm.SelectedBodyPart,
+                MetricType = metricType,
+                NormValue = ResolveNormalValue(name, metricType)
             });
         }
 
@@ -688,7 +778,9 @@
     {
         _vm.Metrics.Add(new ObjectiveMetricRowEntry
         {
-            MetricType = MetricType.MMT
+            BodyPart = _vm.SelectedBodyPart,
+            MetricType = MetricType.MMT,
+            NormValue = "5/5"
         });
 
         return VmChanged.InvokeAsync(_vm);
@@ -754,6 +846,20 @@
         else
         {
             _vm.TenderMuscles.Remove(name);
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task TogglePostureFinding(string name, bool add)
+    {
+        if (add)
+        {
+            _vm.PostureFindings.Add(name);
+        }
+        else
+        {
+            _vm.PostureFindings.Remove(name);
         }
 
         return VmChanged.InvokeAsync(_vm);
@@ -870,6 +976,20 @@
 
     private static BodyPart ParseBodyPart(string? value) =>
         Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
+
+    private static string? ResolveNormalValue(string name, MetricType metricType)
+    {
+        if (metricType == MetricType.MMT)
+        {
+            return "5/5";
+        }
+
+        var lastToken = name
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault();
+
+        return lastToken?.Any(char.IsDigit) == true ? lastToken : null;
+    }
 
     private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
 
