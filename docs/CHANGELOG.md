@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - AI prognosis generation
+
+- **AI prognosis generation** — Added a dedicated prognosis prompt, clinical generation service contract, API endpoint support, UI client integration, and assessment-workspace generation controls with focused tests. Reason: split AI-assisted prognosis drafting into its own reviewable feature PR.
+
 ### Changed - SOAP workspace interventions and export summaries
 
 - **SOAP workspace and PDF export** — Added row-level intervention CPT, assistance, cueing, response, and HEP linkage; expanded daily/progress/discharge/dry-needling documentation sections; and hardened export hierarchy/PDF summaries for those clinical fields. Reason: split documentation-workspace and export semantics into a focused reviewable PR.
