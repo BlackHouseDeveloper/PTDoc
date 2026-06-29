@@ -59,6 +59,192 @@ public sealed class AppointmentsPageTests : TestContext
         });
     }
 
+    [Fact]
+    public void AppointmentsPage_NeedsNoteQuery_FiltersToActionableAppointments()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var today = DateTime.Today;
+        var dueStart = DateTime.SpecifyKind(today.AddHours(9), DateTimeKind.Local);
+        var scheduledStart = DateTime.SpecifyKind(today.AddHours(10), DateTimeKind.Local);
+        var startedStart = DateTime.SpecifyKind(today.AddHours(11), DateTimeKind.Local);
+
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Needs Note",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = dueStart.ToUniversalTime(),
+                    EndTimeUtc = dueStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Checked In",
+                    VisitWorkflowStatus = "Checked In",
+                    IntakeStatus = "Complete"
+                },
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Scheduled Only",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = scheduledStart.ToUniversalTime(),
+                    EndTimeUtc = scheduledStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = "Scheduled",
+                    IntakeStatus = "Complete"
+                },
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Started Note",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = startedStart.ToUniversalTime(),
+                    EndTimeUtc = startedStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Checked In",
+                    VisitWorkflowStatus = "Note Started",
+                    VisitNoteId = Guid.NewGuid(),
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?needsNote=true&dateRange=today");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Needs Note", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Scheduled Only", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Started Note", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void AppointmentsPage_WeekView_DefaultsToClinicianGroupingAndCanSwitchToDay()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Week Grouping Patient",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = localStart.ToUniversalTime(),
+                    EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = "Scheduled",
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?dateRange=week");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("week-grouping-clinician", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Week grouping", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.FindAll(".week-grouping-control__button")
+            .First(button => button.TextContent.Contains("Day", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("week-grouping-day", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void AppointmentsPage_WeekViewClickFromToday_UsesRouteBackedFallback()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Week Click Patient",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = localStart.ToUniversalTime(),
+                    EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = "Scheduled",
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".tab-button");
+
+        var weekTab = cut.FindAll(".tab-button")
+            .First(tab => tab.TextContent.Contains("Week View", StringComparison.Ordinal));
+
+        Assert.Equal("/appointments?dateRange=week", weekTab.GetAttribute("href"));
+
+        weekTab.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("week-grouping-control", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("week-grouping-clinician", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
     [Theory]
     [InlineData("Follow Up", "Daily%20Treatment%20Note", true)]
     [InlineData("Initial Evaluation", "Evaluation%20Note", false)]

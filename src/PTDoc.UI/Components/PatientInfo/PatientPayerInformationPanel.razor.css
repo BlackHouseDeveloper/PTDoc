@@ -1,2 +1,24 @@
-/* PatientPayerInformationPanel — no extra styles beyond shared tokens */
-/* All layout is handled by PatientInfoFormGrid and PatientInfoField */
+.pi-payer-section-heading {
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: var(--spacing-1);
+    grid-column: 1 / -1;
+    padding-top: var(--spacing-4);
+}
+
+.pi-payer-section-heading h3,
+.pi-payer-section-heading p {
+    margin: 0;
+}
+
+.pi-payer-section-heading h3 {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.pi-payer-section-heading p {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}

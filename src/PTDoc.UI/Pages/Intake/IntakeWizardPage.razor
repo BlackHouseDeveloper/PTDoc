@@ -453,6 +453,12 @@
             return;
         }
 
+        if (!State.PainSeverityProvided)
+        {
+            _validationMessage = "Select a pain severity score before continuing.";
+            return;
+        }
+
         State.CurrentStep = IntakeStep.OutcomeMeasures;
 
         await SaveDraftIfPossibleAsync();
@@ -528,6 +534,12 @@
         if (State.PatientId is null)
         {
             _validationMessage = "Please complete demographics first to create an intake draft.";
+            return;
+        }
+
+        if (!State.PainSeverityProvided)
+        {
+            _validationMessage = "Select a pain severity score before submitting.";
             return;
         }
 
@@ -780,6 +792,13 @@
             GroupNumber = state.GroupNumber,
             PayerType = state.PayerType,
             InsuranceCoverageType = state.InsuranceCoverageType,
+            SecondaryInsuranceCompanyName = state.SecondaryInsuranceCompanyName,
+            SecondaryMemberOrPolicyNumber = state.SecondaryMemberOrPolicyNumber,
+            SecondaryGroupNumber = state.SecondaryGroupNumber,
+            AdjusterName = state.AdjusterName,
+            AdjusterPhone = state.AdjusterPhone,
+            AdjusterEmail = state.AdjusterEmail,
+            AdjusterFax = state.AdjusterFax,
             HasCurrentMedications = state.HasCurrentMedications,
             HasOtherMedicalConditions = state.HasOtherMedicalConditions,
             UsesAssistiveDevices = state.UsesAssistiveDevices,
@@ -898,6 +917,13 @@
             GroupNumber = hydratedDraft.GroupNumber,
             PayerType = hydratedDraft.PayerType,
             InsuranceCoverageType = hydratedDraft.InsuranceCoverageType,
+            SecondaryInsuranceCompanyName = hydratedDraft.SecondaryInsuranceCompanyName,
+            SecondaryMemberOrPolicyNumber = hydratedDraft.SecondaryMemberOrPolicyNumber,
+            SecondaryGroupNumber = hydratedDraft.SecondaryGroupNumber,
+            AdjusterName = hydratedDraft.AdjusterName,
+            AdjusterPhone = hydratedDraft.AdjusterPhone,
+            AdjusterEmail = hydratedDraft.AdjusterEmail,
+            AdjusterFax = hydratedDraft.AdjusterFax,
             HasCurrentMedications = hydratedDraft.HasCurrentMedications,
             HasOtherMedicalConditions = hydratedDraft.HasOtherMedicalConditions,
             UsesAssistiveDevices = hydratedDraft.UsesAssistiveDevices,

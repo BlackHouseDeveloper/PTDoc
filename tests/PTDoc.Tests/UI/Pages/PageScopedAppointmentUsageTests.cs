@@ -176,11 +176,15 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         Services.AddSingleton(appointmentService.Object);
         Services.AddSingleton(intakeService.Object);
         Services.AddSingleton(toastService.Object);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()
+            .NavigateTo($"/patient/{patientId:D}?action=new-note");
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
         cut.WaitForElement("[data-testid='patient-primary-action']");
 
-        cut.Find("[data-testid='patient-primary-action']").Click();
+        Assert.Equal(
+            $"/patient/{patientId:D}?action=new-note",
+            cut.Find("[data-testid='patient-primary-action']").GetAttribute("href"));
         cut.WaitForElement("[data-testid='patient-note-type-chooser']");
         cut.FindAll("button")
             .Single(button => button.TextContent.Contains("Daily Treatment Note", StringComparison.Ordinal))
@@ -191,6 +195,60 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             $"/patient/{patientId:D}/new-note?noteType=Daily%20Treatment%20Note",
             navigation.Uri,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PatientProfile_NewNoteRouteAction_OpensNoteTypeChooser()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        var toastService = new Mock<IToastService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Alex",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteService
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
+            .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
+
+        appointmentService
+            .Setup(service => service.GetByPatientAsync(
+                patientId,
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
+
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeResponseDraft?)null);
+
+        RegisterCommonServices();
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(intakeService.Object);
+        Services.AddSingleton(toastService.Object);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()
+            .NavigateTo($"/patient/{patientId:D}?action=new-note");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Choose Note Type", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Evaluation Note", cut.Markup, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -292,5 +350,53 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             .Returns(new HeaderConfiguration());
 
         Services.AddSingleton(headerConfigurationService.Object);
+        Services.AddSingleton<IPatientChartStorageService>(new FakePatientChartStorageService());
+    }
+
+    private sealed class FakePatientChartStorageService : IPatientChartStorageService
+    {
+        public Task<IReadOnlyList<PatientDocumentResponse>> ListDocumentsAsync(
+            Guid patientId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PatientDocumentResponse>>(Array.Empty<PatientDocumentResponse>());
+
+        public Task<PatientDocumentResponse> UploadDocumentAsync(
+            Guid patientId,
+            Microsoft.AspNetCore.Components.Forms.IBrowserFile file,
+            string documentType,
+            string? notes,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PatientDocumentResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                DocumentType = documentType,
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                SizeBytes = file.Size,
+                UploadedAtUtc = DateTime.UtcNow
+            });
+
+        public Task<IReadOnlyList<PatientCommunicationLogEntryResponse>> ListCommunicationLogEntriesAsync(
+            Guid patientId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PatientCommunicationLogEntryResponse>>(Array.Empty<PatientCommunicationLogEntryResponse>());
+
+        public Task<PatientCommunicationLogEntryResponse> CreateCommunicationLogEntryAsync(
+            Guid patientId,
+            CreatePatientCommunicationLogEntryRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PatientCommunicationLogEntryResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                Channel = request.Channel,
+                Direction = request.Direction,
+                Summary = request.Summary,
+                Details = request.Details,
+                ContactName = request.ContactName,
+                OccurredAtUtc = request.OccurredAtUtc ?? DateTime.UtcNow,
+                CreatedAtUtc = DateTime.UtcNow
+            });
     }
 }

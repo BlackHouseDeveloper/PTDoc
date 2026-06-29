@@ -85,6 +85,41 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void PainDetailsStep_RequiresExplicitPainSeverityBeforeContinue()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var continued = false;
+        var state = new IntakeWizardState
+        {
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "knee"
+                    }
+                ]
+            }
+        };
+
+        var cut = RenderComponent<PainDetailsStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.OnContinue, EventCallback.Factory.Create(this, () => continued = true)));
+
+        cut.Find("[data-testid='continue-button']").Click();
+
+        Assert.False(continued);
+        Assert.Contains("Select a pain severity score before continuing.", cut.Markup, StringComparison.Ordinal);
+
+        cut.Find("input[type='range']").Input("0");
+        cut.Find("[data-testid='continue-button']").Click();
+
+        Assert.True(continued);
+    }
+
+    [Fact]
     public void CareTeamCard_UpdatesDoctorFields()
     {
         string? primaryDoctorName = null;
@@ -103,6 +138,45 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.Equal("Dr. Primary", primaryDoctorName);
         Assert.Equal("Dr. Referral", referringDoctorName);
         Assert.Equal("1234567890", referringDoctorNpi);
+    }
+
+    [Fact]
+    public void InsurancePayerCard_UpdatesSecondaryInsuranceAndAdjusterFields()
+    {
+        string? secondaryInsuranceCompanyName = null;
+        string? secondaryMemberOrPolicyNumber = null;
+        string? secondaryGroupNumber = null;
+        string? adjusterName = null;
+        string? adjusterPhone = null;
+        string? adjusterEmail = null;
+        string? adjusterFax = null;
+
+        var cut = RenderComponent<InsurancePayerCard>(parameters => parameters
+            .Add(component => component.PayerType, "Workers' Compensation")
+            .Add(component => component.SecondaryInsuranceCompanyNameChanged, EventCallback.Factory.Create<string?>(this, value => secondaryInsuranceCompanyName = value))
+            .Add(component => component.SecondaryMemberOrPolicyNumberChanged, EventCallback.Factory.Create<string?>(this, value => secondaryMemberOrPolicyNumber = value))
+            .Add(component => component.SecondaryGroupNumberChanged, EventCallback.Factory.Create<string?>(this, value => secondaryGroupNumber = value))
+            .Add(component => component.AdjusterNameChanged, EventCallback.Factory.Create<string?>(this, value => adjusterName = value))
+            .Add(component => component.AdjusterPhoneChanged, EventCallback.Factory.Create<string?>(this, value => adjusterPhone = value))
+            .Add(component => component.AdjusterEmailChanged, EventCallback.Factory.Create<string?>(this, value => adjusterEmail = value))
+            .Add(component => component.AdjusterFaxChanged, EventCallback.Factory.Create<string?>(this, value => adjusterFax = value)));
+
+        cut.Find("#intake-secondary-insurance-company").Input("Secondary Health");
+        cut.Find("#intake-secondary-member-id").Input("SEC-123");
+        cut.Find("#intake-secondary-group-number").Input("SEC-GRP");
+        cut.Find("#intake-adjuster-name").Input("Alex Adjuster");
+        cut.Find("#intake-adjuster-phone").Input("555-0200");
+        cut.Find("#intake-adjuster-email").Input("adjuster@example.com");
+        cut.Find("#intake-adjuster-fax").Input("555-0201");
+
+        Assert.Contains("Adjuster Contact", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("Secondary Health", secondaryInsuranceCompanyName);
+        Assert.Equal("SEC-123", secondaryMemberOrPolicyNumber);
+        Assert.Equal("SEC-GRP", secondaryGroupNumber);
+        Assert.Equal("Alex Adjuster", adjusterName);
+        Assert.Equal("555-0200", adjusterPhone);
+        Assert.Equal("adjuster@example.com", adjusterEmail);
+        Assert.Equal("555-0201", adjusterFax);
     }
 
     [Fact]
@@ -461,6 +535,13 @@ public sealed class StructuredIntakeComponentsTests : TestContext
             MemberOrPolicyNumber = "BETA001",
             PayerType = "Commercial",
             InsuranceCoverageType = "Primary",
+            SecondaryInsuranceCompanyName = "Secondary Health",
+            SecondaryMemberOrPolicyNumber = "SEC-123",
+            SecondaryGroupNumber = "SEC-GRP",
+            AdjusterName = "Alex Adjuster",
+            AdjusterPhone = "555-0200",
+            AdjusterEmail = "adjuster@example.com",
+            AdjusterFax = "555-0201",
             FunctionalLimitations = "Difficulty walking longer than 10 minutes.",
             AssignedOutcomeMeasures =
             [
@@ -491,6 +572,13 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.Contains("Dr. Primary", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Dr. Referral", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("PFPT Beta PPO", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Secondary Health", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("SEC-123", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("SEC-GRP", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Alex Adjuster", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("555-0200", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("adjuster@example.com", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("555-0201", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Difficulty walking longer than 10 minutes.", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Knee: LEFS", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("42/80", cut.Markup, StringComparison.Ordinal);

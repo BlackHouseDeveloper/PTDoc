@@ -14,6 +14,16 @@ public class NoteWorkspacePayload
     public ObjectiveVm Objective { get; set; } = new();
     public AssessmentWorkspaceVm Assessment { get; set; } = new();
     public PlanVm Plan { get; set; } = new();
+    public BillingModifierSettingsVm BillingSettings { get; set; } = new();
     public DailyTreatmentVm DailyTreatment { get; set; } = new();
+    public ProgressSubjectiveVm ProgressSubjective { get; set; } = new();
+    public DischargeSubjectiveVm DischargeSubjective { get; set; } = new();
     public DryNeedlingVm DryNeedling { get; set; } = new();
+}
+
+public sealed class BillingModifierSettingsVm
+{
+    public bool ModifierWorkflowEnabled { get; set; } = true;
+    public bool AutoApplySuggestedModifiers { get; set; } = true;
+    public bool RequireSuggestedModifierReview { get; set; } = true;
 }

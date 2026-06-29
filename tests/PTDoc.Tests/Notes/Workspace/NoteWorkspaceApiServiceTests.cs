@@ -858,7 +858,13 @@ public sealed class NoteWorkspaceApiServiceTests
                         new ExerciseRowEntry
                         {
                             SuggestedExercise = "Heel slides",
-                            ActualExercisePerformed = "Heel slides"
+                            ActualExercisePerformed = "Heel slides",
+                            CptCode = "97110",
+                            CptDescription = "Therapeutic exercise",
+                            TimeMinutes = 12,
+                            AssistanceLevel = "Standby assist",
+                            Cueing = "Verbal cueing",
+                            IncludeInHomeExerciseProgram = true
                         }
                     ]
                 },
@@ -870,7 +876,14 @@ public sealed class NoteWorkspaceApiServiceTests
                         new GeneralInterventionEntry
                         {
                             Name = "Manual therapy",
-                            Category = "Manual"
+                            Category = "Manual",
+                            CptCode = "97140",
+                            CptDescription = "Manual therapy",
+                            TimeMinutes = 10,
+                            AssistanceLevel = "Contact guard assist",
+                            Cueing = "Tactile cueing",
+                            Response = "Improved mobility",
+                            IncludeInHomeExerciseProgram = true
                         }
                     ]
                 }
@@ -887,8 +900,21 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.Single(exerciseRows.EnumerateArray());
         Assert.Equal("Heel slides", exerciseRows[0].GetProperty("actualExercisePerformed").GetString());
+        Assert.Equal("97110", exerciseRows[0].GetProperty("cptCode").GetString());
+        Assert.Equal("Therapeutic exercise", exerciseRows[0].GetProperty("cptDescription").GetString());
+        Assert.Equal(12, exerciseRows[0].GetProperty("timeMinutes").GetInt32());
+        Assert.Equal("Standby assist", exerciseRows[0].GetProperty("assistanceLevel").GetString());
+        Assert.Equal("Verbal cueing", exerciseRows[0].GetProperty("cueing").GetString());
+        Assert.True(exerciseRows[0].GetProperty("includeInHomeExerciseProgram").GetBoolean());
         Assert.Single(interventions.EnumerateArray());
         Assert.Equal("Manual therapy", interventions[0].GetProperty("name").GetString());
+        Assert.Equal("97140", interventions[0].GetProperty("cptCode").GetString());
+        Assert.Equal("Manual therapy", interventions[0].GetProperty("cptDescription").GetString());
+        Assert.Equal(10, interventions[0].GetProperty("timeMinutes").GetInt32());
+        Assert.Equal("Contact guard assist", interventions[0].GetProperty("assistanceLevel").GetString());
+        Assert.Equal("Tactile cueing", interventions[0].GetProperty("cueing").GetString());
+        Assert.Equal("Improved mobility", interventions[0].GetProperty("response").GetString());
+        Assert.True(interventions[0].GetProperty("includeInHomeExerciseProgram").GetBoolean());
     }
 
     [Fact]

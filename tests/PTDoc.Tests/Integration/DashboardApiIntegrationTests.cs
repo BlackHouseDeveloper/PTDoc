@@ -86,9 +86,10 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var frontDeskUser = await db.Users.SingleAsync(user => user.Username == "integration-frontdesk");
 
-        var unlockedPatient = CreatePatient("Una", "Unlocked", frontDeskUser.Id);
-        var newPatient = CreatePatient("Nora", "New", frontDeskUser.Id);
-        var lockedOnlyPatient = CreatePatient("Lara", "Locked", frontDeskUser.Id);
+        var marker = $"ELIG-{Guid.NewGuid():N}";
+        var unlockedPatient = CreatePatient("Una", "Unlocked", frontDeskUser.Id, medicalRecordNumber: $"{marker}-UNLOCKED");
+        var newPatient = CreatePatient("Nora", "New", frontDeskUser.Id, medicalRecordNumber: $"{marker}-NEW");
+        var lockedOnlyPatient = CreatePatient("Lara", "Locked", frontDeskUser.Id, medicalRecordNumber: $"{marker}-LOCKED");
 
         db.Patients.AddRange(unlockedPatient, newPatient, lockedOnlyPatient);
         db.IntakeForms.AddRange(
@@ -98,7 +99,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         await db.SaveChangesAsync();
 
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
-        using var response = await client.GetAsync("/api/v1/intake/patients/eligible?take=20");
+        using var response = await client.GetAsync($"/api/v1/intake/patients/eligible?query={Uri.EscapeDataString(marker)}&take=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -127,6 +128,30 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         var cancelledPatient = CreatePatient("Casey", "Cancelled", clinician.Id, medicalRecordNumber: "ALRT-CANCELLED");
         var lockedIntakePatient = CreatePatient("Lena", "LockedIntake", clinician.Id, medicalRecordNumber: "ALRT-LOCKED");
         var submittedIntakePatient = CreatePatient("Sam", "SubmittedIntake", clinician.Id, medicalRecordNumber: "ALRT-SUBMITTED");
+        var expiringAuthorizationPatient = CreatePatient("Ari", "AuthExpiring", clinician.Id, medicalRecordNumber: "ALRT-AUTH-END");
+        expiringAuthorizationPatient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(5):yyyy-MM-dd}}"
+            }
+            """;
+        var visitLimitPatient = CreatePatient("Vera", "VisitLimit", clinician.Id, medicalRecordNumber: "ALRT-AUTH-VISIT");
+        visitLimitPatient.PayerInfoJson = """
+            {
+              "authorizationStatus": "active",
+              "visitsRemaining": 1,
+              "visitAlertThreshold": 2
+            }
+            """;
+        var futureAuthorizationPatient = CreatePatient("Fiona", "FutureAuthorization", clinician.Id, medicalRecordNumber: "ALRT-AUTH-FUTURE");
+        futureAuthorizationPatient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(60):yyyy-MM-dd}}",
+              "visitsRemaining": "9",
+              "visitAlertThreshold": "2"
+            }
+            """;
 
         var dueAppointment = CreateAppointment(duePatient.Id, clinician.Id, today.AddHours(9), AppointmentStatus.Completed);
         var signedAppointment = CreateAppointment(signedPatient.Id, clinician.Id, today.AddHours(10), AppointmentStatus.Completed);
@@ -173,7 +198,10 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             archivedPatient,
             cancelledPatient,
             lockedIntakePatient,
-            submittedIntakePatient);
+            submittedIntakePatient,
+            expiringAuthorizationPatient,
+            visitLimitPatient,
+            futureAuthorizationPatient);
         db.Appointments.AddRange(
             dueAppointment,
             signedAppointment,
@@ -188,7 +216,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         await db.SaveChangesAsync();
 
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
         using var response = await client.GetAsync("/api/v1/dashboard/alerts?take=50");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -223,18 +251,37 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Equal($"/intake/{submittedIntakePatient.Id:D}", reviewAlert.TargetUrl);
         Assert.Equal("Review", reviewAlert.ActionLabel);
 
+        var expiringAuthorizationAlert = Assert.Single(
+            alerts,
+            alert => alert.Id.StartsWith($"authorizationExpiration:{expiringAuthorizationPatient.Id:N}", StringComparison.Ordinal));
+        Assert.Equal("authorizationExpiration", expiringAuthorizationAlert.Kind);
+        Assert.Equal("Authorization Expiring", expiringAuthorizationAlert.Title);
+        Assert.Equal($"/patient/{expiringAuthorizationPatient.Id:D}/info", expiringAuthorizationAlert.TargetUrl);
+        Assert.Equal("Review Auth", expiringAuthorizationAlert.ActionLabel);
+        Assert.True(expiringAuthorizationAlert.IsUrgent);
+
+        var visitLimitAlert = Assert.Single(
+            alerts,
+            alert => alert.Id.StartsWith($"authorizationVisitLimit:{visitLimitPatient.Id:N}", StringComparison.Ordinal));
+        Assert.Equal("authorizationVisitLimit", visitLimitAlert.Kind);
+        Assert.Equal("Authorization Visit Limit", visitLimitAlert.Title);
+        Assert.Equal($"/patient/{visitLimitPatient.Id:D}/info", visitLimitAlert.TargetUrl);
+        Assert.Equal("Review Auth", visitLimitAlert.ActionLabel);
+        Assert.False(visitLimitAlert.IsUrgent);
+
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{signedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{unsignedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{archivedAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.Id == $"notesDueToday:{cancelledAppointment.Id:N}");
         Assert.DoesNotContain(alerts, alert => alert.PatientId == lockedIntakePatient.Id);
+        Assert.DoesNotContain(alerts, alert => alert.PatientId == futureAuthorizationPatient.Id);
         Assert.DoesNotContain(alerts, alert => alert.Id == $"unsignedNote:{addendum.Id:N}");
     }
 
     [Fact]
     public async Task DashboardSnapshot_Returns_ClinicalSnapshotShape()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
         using var response = await client.GetAsync("/api/v1/dashboard/snapshot");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -246,6 +293,122 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.True(snapshot.UrgentAlertCount >= snapshot.Alerts.Count(alert => alert.IsUrgent));
         Assert.True(snapshot.RecentNotes.Count <= 5);
         Assert.True(snapshot.Alerts.Count <= 10);
+    }
+
+    [Fact]
+    public async Task DashboardSnapshot_AdminSeesClinicWideCounts_ClinicianSeesAssignedCounts()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ptUserId = GetTestUserIdForRole(Roles.PT);
+        var ptaUserId = GetTestUserIdForRole(Roles.PTA);
+
+        var today = DateTime.UtcNow.Date;
+        var ownAppointmentPatient = CreatePatient("RoleScope", "PtAppointment", ptUserId, medicalRecordNumber: "ROLE-PT-APPT");
+        var otherAppointmentPatient = CreatePatient("RoleScope", "PtaAppointment", ptaUserId, medicalRecordNumber: "ROLE-PTA-APPT");
+        var ownNotePatient = CreatePatient("RoleScope", "PtNote", ptUserId, medicalRecordNumber: "ROLE-PT-NOTE");
+        var otherNotePatient = CreatePatient("RoleScope", "PtaNote", ptaUserId, medicalRecordNumber: "ROLE-PTA-NOTE");
+
+        var ownAppointment = CreateAppointment(ownAppointmentPatient.Id, ptUserId, today.AddHours(8), AppointmentStatus.Completed);
+        var otherAppointment = CreateAppointment(otherAppointmentPatient.Id, ptaUserId, today.AddHours(9), AppointmentStatus.Completed);
+        var ownDraft = CreateClinicalNote(
+            ownNotePatient.Id,
+            ptUserId,
+            null,
+            NoteStatus.Draft,
+            today.AddDays(-1),
+            today.AddYears(5));
+        var otherDraft = CreateClinicalNote(
+            otherNotePatient.Id,
+            ptaUserId,
+            null,
+            NoteStatus.Draft,
+            today.AddDays(-1),
+            today.AddYears(5).AddMinutes(1));
+
+        db.Patients.AddRange(ownAppointmentPatient, otherAppointmentPatient, ownNotePatient, otherNotePatient);
+        db.Appointments.AddRange(ownAppointment, otherAppointment);
+        db.ClinicalNotes.AddRange(ownDraft, otherDraft);
+        await db.SaveChangesAsync();
+
+        using var adminClient = _factory.CreateClientWithRole(Roles.Admin);
+        using var ptClient = _factory.CreateClientWithRole(Roles.PT);
+        using var adminResponse = await adminClient.GetAsync("/api/v1/dashboard/snapshot");
+        using var ptResponse = await ptClient.GetAsync("/api/v1/dashboard/snapshot");
+
+        Assert.Equal(HttpStatusCode.OK, adminResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, ptResponse.StatusCode);
+
+        var adminSnapshot = await adminResponse.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+        var ptSnapshot = await ptResponse.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+        Assert.NotNull(adminSnapshot);
+        Assert.NotNull(ptSnapshot);
+
+        Assert.True(ptSnapshot!.Overview.PatientsToday >= 1);
+        Assert.True(ptSnapshot.Overview.AppointmentsToday >= 1);
+        Assert.True(ptSnapshot.Overview.NotesDueToday >= 1);
+        Assert.True(ptSnapshot.Overview.DraftNotes >= 1);
+        Assert.True(ptSnapshot.Overview.UnsignedNotes >= 1);
+
+        Assert.True(adminSnapshot!.Overview.PatientsToday >= ptSnapshot.Overview.PatientsToday + 1);
+        Assert.True(adminSnapshot.Overview.AppointmentsToday >= ptSnapshot.Overview.AppointmentsToday + 1);
+        Assert.True(adminSnapshot.Overview.NotesDueToday >= ptSnapshot.Overview.NotesDueToday + 1);
+        Assert.True(adminSnapshot.Overview.DraftNotes >= ptSnapshot.Overview.DraftNotes + 1);
+        Assert.True(adminSnapshot.Overview.UnsignedNotes >= ptSnapshot.Overview.UnsignedNotes + 1);
+        Assert.Contains(ptSnapshot.RecentNotes, note => note.Id == ownDraft.Id);
+        Assert.DoesNotContain(ptSnapshot.RecentNotes, note => note.Id == otherDraft.Id);
+    }
+
+    [Fact]
+    public async Task DashboardSnapshot_IncludesAuthorizationAlert_WhenAuthorizationTileHasActionItems()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+
+        var today = DateTime.UtcNow.Date;
+        for (var index = 0; index < 12; index++)
+        {
+            var notePatient = CreatePatient(
+                "Snapshot",
+                $"Unsigned{index}",
+                clinician.Id,
+                medicalRecordNumber: $"SNAP-UNSIGNED-{index}");
+
+            db.Patients.Add(notePatient);
+            db.ClinicalNotes.Add(CreateClinicalNote(
+                notePatient.Id,
+                clinician.Id,
+                null,
+                NoteStatus.Draft,
+                today.AddDays(-(index + 1)),
+                today.AddHours(index)));
+        }
+
+        var authorizationPatient = CreatePatient(
+            "Snapshot",
+            "AuthDue",
+            clinician.Id,
+            medicalRecordNumber: "SNAP-AUTH-DUE");
+        authorizationPatient.PayerInfoJson = $$"""
+            {
+              "authorizationStatus": "active",
+              "authorizationEndDate": "{{today.AddDays(14):yyyy-MM-dd}}"
+            }
+            """;
+
+        db.Patients.Add(authorizationPatient);
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+        using var response = await client.GetAsync("/api/v1/dashboard/snapshot");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var snapshot = await response.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+
+        Assert.NotNull(snapshot);
+        Assert.True(snapshot!.Overview.AuthorizationActionItems >= 1);
+        Assert.Contains(snapshot.Alerts, alert => alert.Kind == "authorizationExpiration");
     }
 
     [Fact]
@@ -348,7 +511,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         await db.SaveChangesAsync();
 
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
         using var response = await client.GetAsync("/api/v1/dashboard/snapshot");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -559,4 +722,13 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             SignedUtc = status == NoteStatus.Signed ? lastModifiedUtc : null,
             SignedByUserId = status == NoteStatus.Signed ? modifiedByUserId : null
         };
+
+    private static Guid GetTestUserIdForRole(string role) => role switch
+    {
+        Roles.PT => new Guid("00000000-0000-0000-0001-000000000001"),
+        Roles.PTA => new Guid("00000000-0000-0000-0001-000000000002"),
+        Roles.Admin => new Guid("00000000-0000-0000-0001-000000000003"),
+        Roles.Owner => new Guid("00000000-0000-0000-0001-000000000004"),
+        _ => Guid.NewGuid()
+    };
 }

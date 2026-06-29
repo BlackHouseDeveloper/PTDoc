@@ -150,105 +150,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.CommunicationDeliveryLog", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<Guid?>("ClinicId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("CorrelationId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<long>("CreatedAtUnixSeconds")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("ErrorCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid?>("PatientId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ProviderMessageId")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Purpose")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("RecipientHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SafeErrorMessage")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTimeOffset>("SentAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClinicId")
-                        .HasFilter("ClinicId IS NOT NULL");
-
-                    b.HasIndex("CorrelationId")
-                        .HasFilter("CorrelationId IS NOT NULL");
-
-                    b.HasIndex("PatientId")
-                        .HasFilter("PatientId IS NOT NULL");
-
-                    b.HasIndex("RecipientHash");
-
-                    b.HasIndex("UserId")
-                        .HasFilter("UserId IS NOT NULL");
-
-                    b.HasIndex("PatientId", "Purpose", "CreatedAtUtc")
-                        .HasFilter("PatientId IS NOT NULL");
-
-                    b.HasIndex("PatientId", "Purpose", "CreatedAtUnixSeconds")
-                        .HasFilter("PatientId IS NOT NULL");
-
-                    b.HasIndex("Purpose", "Channel", "CreatedAtUtc");
-
-                    b.HasIndex("Purpose", "Channel", "CreatedAtUnixSeconds");
-
-                    b.HasIndex("RecipientHash", "Purpose", "CreatedAtUnixSeconds");
-
-                    b.ToTable("CommunicationDeliveryLogs");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
                 {
                     b.Property<Guid>("Id")
@@ -390,6 +291,105 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("SignedUtc");
 
                     b.ToTable("ClinicalNotes");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.CommunicationDeliveryLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("CreatedAtUnixSeconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SafeErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("CorrelationId IS NOT NULL");
+
+                    b.HasIndex("PatientId")
+                        .HasFilter("PatientId IS NOT NULL");
+
+                    b.HasIndex("RecipientHash");
+
+                    b.HasIndex("UserId")
+                        .HasFilter("UserId IS NOT NULL");
+
+                    b.HasIndex("PatientId", "Purpose", "CreatedAtUnixSeconds")
+                        .HasFilter("PatientId IS NOT NULL");
+
+                    b.HasIndex("PatientId", "Purpose", "CreatedAtUtc")
+                        .HasFilter("PatientId IS NOT NULL");
+
+                    b.HasIndex("Purpose", "Channel", "CreatedAtUnixSeconds");
+
+                    b.HasIndex("Purpose", "Channel", "CreatedAtUtc");
+
+                    b.HasIndex("RecipientHash", "Purpose", "CreatedAtUnixSeconds");
+
+                    b.ToTable("CommunicationDeliveryLogs");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ComplianceSettings", b =>
@@ -595,29 +595,77 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.IntakeOtpChallenge", b =>
                 {
-                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uniqueidentifier");
-                    b.Property<string>("Channel").IsRequired().HasMaxLength(20).HasColumnType("nvarchar(20)");
-                    b.Property<Guid?>("ClinicId").HasColumnType("uniqueidentifier");
-                    b.Property<string>("ContactHash").IsRequired().HasMaxLength(128).HasColumnType("nvarchar(128)");
-                    b.Property<DateTimeOffset?>("ConsumedAtUtc").HasColumnType("datetimeoffset");
-                    b.Property<string>("CorrelationId").HasMaxLength(100).HasColumnType("nvarchar(100)");
-                    b.Property<DateTimeOffset>("CreatedAtUtc").HasColumnType("datetimeoffset");
-                    b.Property<DateTimeOffset>("ExpiresAtUtc").HasColumnType("datetimeoffset");
-                    b.Property<int>("FailedVerifyCount").HasColumnType("int");
-                    b.Property<Guid>("IntakeId").HasColumnType("uniqueidentifier");
-                    b.Property<DateTimeOffset?>("LastFailedVerifyAtUtc").HasColumnType("datetimeoffset");
-                    b.Property<string>("OtpHash").IsRequired().HasMaxLength(128).HasColumnType("nvarchar(128)");
-                    b.Property<Guid>("PatientId").HasColumnType("uniqueidentifier");
-                    b.Property<int>("SendCount").HasColumnType("int");
-                    b.Property<DateTimeOffset>("UpdatedAtUtc").HasColumnType("datetimeoffset");
-                    b.Property<DateTimeOffset>("WindowStartUtc").HasColumnType("datetimeoffset");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ConsumedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ContactHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("FailedVerifyCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("IntakeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LastFailedVerifyAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SendCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("WindowStartUtc")
+                        .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
-                    b.HasIndex("ClinicId").HasFilter("ClinicId IS NOT NULL");
-                    b.HasIndex("CorrelationId").HasFilter("CorrelationId IS NOT NULL");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("CorrelationId IS NOT NULL");
+
                     b.HasIndex("ExpiresAtUtc");
-                    b.HasIndex("IntakeId", "Channel", "ContactHash").IsUnique();
+
+                    b.HasIndex("IntakeId", "Channel", "ContactHash")
+                        .IsUnique();
+
                     b.HasIndex("PatientId", "Channel", "UpdatedAtUtc");
+
                     b.ToTable("IntakeOtpChallenges");
                 });
 
@@ -796,6 +844,65 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("OutcomeMeasureResults");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RecipientHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTimeOffset?>("UsedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrelationId")
+                        .HasFilter("CorrelationId IS NOT NULL");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientHash", "CreatedAtUtc");
+
+                    b.HasIndex("UserId", "ExpiresAtUtc");
+
+                    b.ToTable("PasswordResetTokens");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -915,6 +1022,129 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("Patients");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.PatientCommunicationLogEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("PatientId", "OccurredAtUtc");
+
+                    b.HasIndex("PatientId", "Channel", "OccurredAtUtc");
+
+                    b.ToTable("PatientCommunicationLogEntries");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ContentBytes")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("ContentHashSha256");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("PatientId", "UploadedAtUtc");
+
+                    b.HasIndex("PatientId", "DocumentType", "UploadedAtUtc");
+
+                    b.ToTable("PatientDocuments");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -992,65 +1222,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("PatientGoals");
                 });
 
-            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("CorrelationId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("ExpiresAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("RecipientHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTimeOffset?>("RevokedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("RevocationReason")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTimeOffset?>("UsedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CorrelationId")
-                        .HasFilter("CorrelationId IS NOT NULL");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("RecipientHash", "CreatedAtUtc");
-
-                    b.HasIndex("UserId", "ExpiresAtUtc");
-
-                    b.ToTable("PasswordResetTokens");
-                });
-
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1082,7 +1253,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("NoteId")
-                        .HasFilter("[NoteId] IS NOT NULL");
+                        .HasFilter("NoteId IS NOT NULL");
 
                     b.HasIndex("TimestampUtc");
 
@@ -1356,9 +1527,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("Status", "EnqueuedAt");
-
                     b.HasIndex("EntityType", "EntityId");
+
+                    b.HasIndex("Status", "EnqueuedAt");
 
                     b.ToTable("SyncQueueItems");
                 });
@@ -1375,12 +1546,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("DateOfBirth")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Email")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("DateOfBirth")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -1409,11 +1580,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
 
-                    b.Property<string>("PinHash")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
                     b.Property<string>("NormalizedPhoneNumber")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -1421,6 +1587,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("PinHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1601,8 +1772,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany()
                         .HasForeignKey("InternalPatientId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Patient");
                 });
@@ -1672,6 +1842,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -1680,6 +1861,42 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientCommunicationLogEntry", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany("CommunicationLogEntries")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientDocument", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany("Documents")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.PatientGoal", b =>
@@ -1735,17 +1952,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("PTDoc.Core.Models.PasswordResetToken", b =>
-                {
-                    b.HasOne("PTDoc.Core.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("User");
                 });
@@ -1839,6 +2045,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Appointments");
 
                     b.Navigation("ClinicalNotes");
+
+                    b.Navigation("CommunicationLogEntries");
+
+                    b.Navigation("Documents");
 
                     b.Navigation("IntakeForms");
                 });

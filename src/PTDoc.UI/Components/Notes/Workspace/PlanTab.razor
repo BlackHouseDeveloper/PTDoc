@@ -23,6 +23,8 @@
         <p class="pt-card__poc-placeholder" role="alert">@_errorMessage</p>
     }
 
+    @if (ShowInterventionAuthoring)
+    {
     <!-- 1. CPT Codes -->
     <div class="pt-card" data-testid="cpt-codes-card">
         <div class="pt-card__header">
@@ -205,6 +207,7 @@
             </ul>
         }
     </div>
+    }
 
     <!-- 2. Treatment Plan -->
     <div class="pt-card" data-testid="treatment-plan-card">
@@ -277,6 +280,8 @@
             <h3 class="pt-card__title">Additional Planning</h3>
         </div>
 
+        @if (ShowInterventionAuthoring)
+        {
         <div class="pt-card__field">
             <label class="pt-card__field-label">Treatment Focuses</label>
             @if (!string.IsNullOrWhiteSpace(_catalogError))
@@ -365,7 +370,78 @@
                                            disabled="@IsReadOnly"
                                            @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Notes = e.Value?.ToString())" />
                                 </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">CPT for this intervention</span>
+                                    <select class="pt-card__select"
+                                            value="@NormalizeCode(intervention.CptCode)"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateInterventionCpt(intervention, e.Value?.ToString())"
+                                            data-testid="plan-intervention-cpt">
+                                        <option value="">Select CPT ↓</option>
+                                        @foreach (var option in _quickPickCptCodes)
+                                        {
+                                            <option value="@option.Code" selected="@CodesMatch(intervention.CptCode, option.Code)">
+                                                @option.Code - @option.ShortName
+                                            </option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Minutes</span>
+                                    <input class="pt-card__search-input"
+                                           type="number"
+                                           min="0"
+                                           step="1"
+                                           value="@(intervention.TimeMinutes?.ToString() ?? string.Empty)"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateInterventionMinutes(intervention, e.Value)"
+                                           data-testid="plan-intervention-minutes" />
+                                </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Assistance</span>
+                                    <select class="pt-card__select"
+                                            value="@intervention.AssistanceLevel"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.AssistanceLevel = e.Value?.ToString())"
+                                            data-testid="plan-intervention-assistance">
+                                        <option value="">None documented</option>
+                                        @foreach (var option in AssistanceLevelOptions)
+                                        {
+                                            <option value="@option" selected="@string.Equals(intervention.AssistanceLevel, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Cueing</span>
+                                    <select class="pt-card__select"
+                                            value="@intervention.Cueing"
+                                            disabled="@IsReadOnly"
+                                            @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Cueing = e.Value?.ToString())"
+                                            data-testid="plan-intervention-cueing">
+                                        <option value="">None documented</option>
+                                        @foreach (var option in CueingOptions)
+                                        {
+                                            <option value="@option" selected="@string.Equals(intervention.Cueing, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Response</span>
+                                    <input class="pt-card__search-input"
+                                           value="@intervention.Response"
+                                           disabled="@IsReadOnly"
+                                           @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Response = e.Value?.ToString())"
+                                           data-testid="plan-intervention-response" />
+                                </label>
                             </div>
+                            <label class="pt-card__checkbox-row">
+                                <input type="checkbox"
+                                       checked="@intervention.IncludeInHomeExerciseProgram"
+                                       disabled="@IsReadOnly"
+                                       @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.IncludeInHomeExerciseProgram = (bool)e.Value!)"
+                                       data-testid="plan-intervention-hep-link" />
+                                Link this intervention to HEP
+                            </label>
                         </div>
                     }
                 </div>
@@ -375,12 +451,19 @@
         <!-- Home Exercise Program -->
         <div class="pt-card__field">
             <label class="pt-card__field-label" for="hep-notes">Home Exercise Program (HEP)</label>
+            @if (LinkedHepInterventions.Count > 0)
+            {
+                <div class="pt-card__advisory-list" role="status" aria-live="polite" data-testid="plan-hep-linked-interventions">
+                    <p class="pt-card__advisory-item">Linked HEP activities: @string.Join("; ", LinkedHepInterventions)</p>
+                </div>
+            }
             <textarea id="hep-notes" class="pt-card__textarea" rows="3"
                       placeholder="Describe home exercises, frequency, precautions, and patient education..."
                       disabled="@IsReadOnly"
                       value="@Vm.HomeExerciseProgramNotes"
                       @onchange="e => SetAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
         </div>
+        }
 
         <!-- Discharge Planning -->
         <div class="pt-card__field">
@@ -411,7 +494,7 @@
         <!-- Follow-up Instructions -->
         <div class="pt-card__field">
             <div class="pt-card__field-header">
-                <p class="pt-card__field-label">Follow-up Instructions</p>
+                <p class="pt-card__field-label">Next Visit / Follow-up Plan</p>
                 @if (!IsReadOnly)
                 {
                     <AiGenerateButton ButtonLabel="AI Suggest"
@@ -479,6 +562,7 @@
     [Parameter] public string? GoalsSummary { get; set; }
     [Parameter] public string? PrecautionsSummary { get; set; }
     [Parameter] public IReadOnlyList<AiStructuredInput> StructuredInputs { get; set; } = Array.Empty<AiStructuredInput>();
+    [Parameter] public bool ShowInterventionAuthoring { get; set; } = true;
 
     internal bool TreatAiReviewBoxAsUnavailable { get; set; }
 
@@ -519,11 +603,31 @@
     private static readonly QuickPickCptCode[] _quickPickCptCodes =
     [
         new("97140", "Manual Therapy",           2),
-        new("97110", "Therapeutic Exercise",      2),
+        new("97110", "Exercise",                  2),
         new("97112", "Neuromuscular Re-ed",       2),
-        new("97530", "Therapeutic Activities",    2),
+        new("97530", "Functional Activities",     2),
         new("97116", "Gait Training",             2),
         new("97535", "Self-care/ADL Training",    2),
+    ];
+
+    private static readonly string[] AssistanceLevelOptions =
+    [
+        "Min Assist",
+        "Mod Assist",
+        "Max Assist",
+        "Contact Guard",
+        "Standby Assist",
+        "Independent"
+    ];
+
+    private static readonly string[] CueingOptions =
+    [
+        "Verbal cueing",
+        "Tactile cueing",
+        "Visual cueing",
+        "Verbal + tactile cueing",
+        "Verbal + visual cueing",
+        "Tactile + visual cueing"
     ];
 
     private static readonly string[] _frequencyOptions =
@@ -550,6 +654,13 @@
     private List<string> InterventionOptions => _catalog?.TreatmentInterventionOptions
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
         .ToList() ?? [];
+
+    private List<string> LinkedHepInterventions => Vm.GeneralInterventions
+        .Where(entry => entry.IncludeInHomeExerciseProgram && !string.IsNullOrWhiteSpace(entry.Name))
+        .Select(entry => FormatInterventionForHep(entry))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     // ── Helpers ────────────────────────────────────────────────────
 
@@ -628,6 +739,8 @@
             {
                 existing.Modifiers = [.. result.SuggestedModifiers];
             }
+            _cptResults = [];
+            _cptSearchQuery = string.Empty;
             await VmChanged.InvokeAsync(Vm);
             return;
         }
@@ -642,6 +755,8 @@
             SuggestedModifiers = [.. result.SuggestedModifiers],
             ModifierSource = result.ModifierSource
         });
+        _cptResults = [];
+        _cptSearchQuery = string.Empty;
         await VmChanged.InvokeAsync(Vm);
     }
 
@@ -847,6 +962,27 @@
         return VmChanged.InvokeAsync(Vm);
     }
 
+    private async Task UpdateInterventionCpt(GeneralInterventionEntry intervention, string? code)
+    {
+        var option = _quickPickCptCodes.FirstOrDefault(item => CodesMatch(item.Code, code));
+        intervention.CptCode = option?.Code;
+        intervention.CptDescription = option?.ShortName;
+        if (option is not null && !Vm.SelectedCptCodes.Any(entry => CodesMatch(entry.Code, option.Code)))
+        {
+            Vm.SelectedCptCodes.Add(await BuildCptEntryAsync(option.Code, option.ShortName, option.DefaultUnits));
+        }
+
+        await VmChanged.InvokeAsync(Vm);
+    }
+
+    private Task UpdateInterventionMinutes(GeneralInterventionEntry intervention, object? value)
+    {
+        intervention.TimeMinutes = int.TryParse(value?.ToString(), out var minutes)
+            ? Math.Max(0, minutes)
+            : null;
+        return VmChanged.InvokeAsync(Vm);
+    }
+
     private Task AddManualIntervention()
     {
         Vm.GeneralInterventions.Add(new GeneralInterventionEntry());
@@ -863,6 +999,27 @@
     {
         update(intervention);
         return VmChanged.InvokeAsync(Vm);
+    }
+
+    private static string FormatInterventionForHep(GeneralInterventionEntry entry)
+    {
+        var parts = new List<string> { entry.Name.Trim() };
+        if (!string.IsNullOrWhiteSpace(entry.CptCode))
+        {
+            parts.Add($"CPT {entry.CptCode.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.AssistanceLevel))
+        {
+            parts.Add(entry.AssistanceLevel.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.Cueing))
+        {
+            parts.Add(entry.Cueing.Trim());
+        }
+
+        return string.Join(" - ", parts);
     }
 
     private async Task HandleAiSuggestDischargeAsync()
@@ -1153,6 +1310,12 @@
         {
             intervention.Name,
             intervention.Category,
+            intervention.CptCode is null ? null : $"CPT {intervention.CptCode}",
+            intervention.TimeMinutes.HasValue ? $"{intervention.TimeMinutes.Value} min" : null,
+            intervention.AssistanceLevel,
+            intervention.Cueing,
+            intervention.Response,
+            intervention.IncludeInHomeExerciseProgram ? "HEP linked" : null,
             intervention.Notes
         }.Where(value => !string.IsNullOrWhiteSpace(value));
 

@@ -1,4 +1,5 @@
 @page "/"
+@page "/dashboard"
 @attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
 @using PTDoc.Application.Services
 @using PTDoc.Application.Dashboard
@@ -112,7 +113,6 @@
                 <OverviewSection PatientsToday="@_patientsToday"
                                  Appointments="@_appointmentsToday"
                                  NotesDue="@_notesDue"
-                                 Pending="@_pendingItems"
                                  Drafts="@_draftNotes"
                                  Unsigned="@_unsignedNotesNeedingSignature"
                                  Intakes="@_incompleteIntakes" />
@@ -165,7 +165,6 @@
     private int _patientsToday;
     private int _appointmentsToday;
     private int _notesDue;
-    private int _pendingItems;
     private int _draftNotes;
     private int _unsignedNotesNeedingSignature;
     private int _incompleteIntakes;
@@ -178,7 +177,6 @@
         _patientsToday > 0 ||
         _appointmentsToday > 0 ||
         _notesDue > 0 ||
-        _pendingItems > 0 ||
         _draftNotes > 0 ||
         _unsignedNotesNeedingSignature > 0 ||
         _incompleteIntakes > 0 ||
@@ -341,7 +339,11 @@
                 LastName = formData.LastName,
                 DateOfBirth = formData.DateOfBirth.Value,
                 Email = formData.Email,
-                Phone = formData.PhoneNumber
+                Phone = formData.PhoneNumber,
+                PayerInfoJson = formData.PayerInfoJson,
+                ReferringPhysician = formData.ReferringPhysician,
+                PhysicianNpi = string.IsNullOrWhiteSpace(formData.PhysicianNpi) ? null : formData.PhysicianNpi,
+                AuthorizationNumber = formData.AuthorizationNumber
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
@@ -414,7 +416,6 @@
         _patientsToday = snapshot.Overview.PatientsToday;
         _appointmentsToday = snapshot.Overview.AppointmentsToday;
         _notesDue = snapshot.Overview.NotesDueToday;
-        _pendingItems = snapshot.Overview.PendingItems;
         _draftNotes = snapshot.Overview.DraftNotes;
         _unsignedNotesNeedingSignature = snapshot.Overview.UnsignedNotes;
         _incompleteIntakes = snapshot.Overview.IncompleteIntakes;

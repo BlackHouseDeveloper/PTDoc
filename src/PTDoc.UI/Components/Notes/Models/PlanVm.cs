@@ -30,9 +30,12 @@ public class PlanVm
     public string? ClinicalSummary { get; set; }
 
     // Discharge-specific fields
+    public string DischargeDocumentationMode { get; set; } = "Standard billable discharge";
+    public bool IsNonBillableDischarge { get; set; }
     public string? FullDischargeSummary { get; set; }
     public string? PostDischargeInstructions { get; set; }
     public string? PrimaryDischargeReason { get; set; }
+    public string? OtherDischargeReasonExplanation { get; set; }
     public string? DischargeRecommendations { get; set; }
     public List<string> CompletedDischargeChecklistItems { get; set; } = new();
 }
@@ -43,6 +46,13 @@ public sealed class GeneralInterventionEntry
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }
     public string? Notes { get; set; }
+    public string? CptCode { get; set; }
+    public string? CptDescription { get; set; }
+    public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public string? Response { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
 }
 
 public class CptCodeEntry

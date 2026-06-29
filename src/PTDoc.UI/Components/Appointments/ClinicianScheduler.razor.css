@@ -86,6 +86,10 @@
     width: 200px;
 }
 
+.clinician-column.week-clinician-column {
+    width: 180px;
+}
+
 .scheduler-grid:not(.week-view) .clinician-column {
     width: auto;
     min-width: 16rem;
@@ -230,6 +234,29 @@
     white-space: nowrap;
     flex: 1;
     min-width: 0;
+}
+
+.appointment-clinician {
+    display: none;
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: 0.625rem;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.week-view .appointment-clinician {
+    display: block;
+    flex: 0 1 auto;
+    max-width: 4.75rem;
+}
+
+.week-grouping-clinician .appointment-clinician {
+    display: none;
 }
 
 .appointment-workflow-status {

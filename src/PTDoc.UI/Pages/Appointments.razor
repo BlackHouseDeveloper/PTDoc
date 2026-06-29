@@ -34,6 +34,8 @@
         <div class="appointments-content" aria-busy="@isLoadingAppointments">
             <AppointmentsLeftColumn SelectedView="@selectedView"
                                    OnViewChanged="HandleViewChanged"
+                                   WeekGrouping="@weekGrouping"
+                                   OnWeekGroupingChanged="HandleWeekGroupingChanged"
                                    SelectedDate="@selectedDate"
                                    OnPrevDay="HandlePrevDay"
                                    OnNextDay="HandleNextDay"
@@ -52,6 +54,7 @@
                                     Clinicians="@schedulerClinicians"
                                     Appointments="@visibleAppointments"
                                     View="@selectedView"
+                                    WeekGrouping="@weekGrouping"
                                     Filter="@currentFilter"
                                     OnAppointmentSelected="@HandleAppointmentSelected"
                                     AppointmentStatusOverrides="@appointmentStatusOverrides"
@@ -82,6 +85,7 @@
 
 @code {
     private AppointmentsView selectedView = AppointmentsView.Today;
+    private AppointmentsWeekGrouping weekGrouping = AppointmentsWeekGrouping.Clinician;
     private DateTime selectedDate = DateTime.Today;
     private bool isFiltersOpen = false;
     private AppointmentsFilter currentFilter = new();
@@ -102,6 +106,8 @@
     private bool isLoadingAppointments = true;
     private string? appointmentLoadError;
     private bool shouldNormalizeRouteAction;
+    private bool showNeedsNoteOnly;
+    private string? lastAppliedRouteQuery;
     private IJSObjectReference? navigationModule;
 
     private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen;
@@ -115,12 +121,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyRouteQuery();
         await LoadPatientsAsync();
         await LoadAppointmentsAsync();
     }
 
     protected override void OnParametersSet()
     {
+        ApplyRouteQuery();
         HandleRouteAction();
     }
 
@@ -150,15 +158,20 @@
         await LoadAppointmentsAsync();
     }
 
+    private void HandleWeekGroupingChanged(AppointmentsWeekGrouping grouping)
+    {
+        weekGrouping = grouping;
+    }
+
     private async Task HandlePrevDay()
     {
-        selectedDate = selectedDate.AddDays(-1);
+        selectedDate = selectedDate.AddDays(selectedView == AppointmentsView.Week ? -7 : -1);
         await LoadAppointmentsAsync();
     }
 
     private async Task HandleNextDay()
     {
-        selectedDate = selectedDate.AddDays(1);
+        selectedDate = selectedDate.AddDays(selectedView == AppointmentsView.Week ? 7 : 1);
         await LoadAppointmentsAsync();
     }
 
@@ -319,7 +332,14 @@
 
     private string GetViewLabel()
     {
-        return selectedView == AppointmentsView.Today ? "Today's Appointments" : "Week Appointments";
+        if (selectedView == AppointmentsView.Today)
+        {
+            return selectedDate.Date == DateTime.Today.Date
+                ? "Today's Appointments"
+                : $"Appointments for {selectedDate:MMM d, yyyy}";
+        }
+
+        return $"Week of {FormatWeekRange(selectedDate)}";
     }
 
     private void HandleRouteAction()
@@ -333,6 +353,58 @@
 
         HandleNewAppointment();
         shouldNormalizeRouteAction = true;
+    }
+
+    private void ApplyRouteQuery()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (string.Equals(lastAppliedRouteQuery, uri.Query, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastAppliedRouteQuery = uri.Query;
+        showNeedsNoteOnly = TryGetQueryParameter(uri.Query, "needsNote", out var needsNote)
+            && string.Equals(needsNote, "true", StringComparison.OrdinalIgnoreCase);
+
+        if (TryGetQueryParameter(uri.Query, "dateRange", out var dateRange))
+        {
+            ApplyDateRangeQuery(dateRange);
+        }
+
+        if (TryGetQueryParameter(uri.Query, "groupBy", out var groupBy))
+        {
+            if (string.Equals(groupBy, "day", StringComparison.OrdinalIgnoreCase))
+            {
+                selectedView = AppointmentsView.Week;
+                weekGrouping = AppointmentsWeekGrouping.Day;
+            }
+            else if (string.Equals(groupBy, "clinician", StringComparison.OrdinalIgnoreCase))
+            {
+                selectedView = AppointmentsView.Week;
+                weekGrouping = AppointmentsWeekGrouping.Clinician;
+            }
+        }
+
+        RebuildSchedulerState();
+    }
+
+    private void ApplyDateRangeQuery(string dateRange)
+    {
+        if (string.Equals(dateRange, "today", StringComparison.OrdinalIgnoreCase))
+        {
+            selectedView = AppointmentsView.Today;
+            selectedDate = DateTime.Today;
+            return;
+        }
+
+        if (string.Equals(dateRange, "week", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dateRange, "month", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dateRange, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            selectedView = AppointmentsView.Week;
+            selectedDate = DateTime.Today;
+        }
     }
 
     private string GetAppointmentsPageAriaHidden() => IsAnyModalOpen ? "true" : "false";
@@ -672,8 +744,36 @@
         return appointmentDirectory.Where(appointment =>
         {
             var localDate = ToLocalTime(appointment.StartTimeUtc).Date;
-            return localDate >= startDate && localDate <= endDate && MatchesFilter(appointment);
+            return localDate >= startDate
+                && localDate <= endDate
+                && MatchesFilter(appointment)
+                && MatchesNotesDueQueue(appointment);
         });
+    }
+
+    private bool MatchesNotesDueQueue(AppointmentListItemResponse appointment)
+    {
+        if (!showNeedsNoteOnly)
+        {
+            return true;
+        }
+
+        if (appointment.VisitNoteId.HasValue)
+        {
+            return false;
+        }
+
+        var appointmentStatus = appointment.AppointmentStatus;
+        var workflowStatus = GetEffectiveAppointmentStatus(appointment);
+        if (string.Equals(workflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(workflowStatus, "Completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.Equals(appointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(appointmentStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(appointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesFilter(AppointmentListItemResponse appointment)
@@ -705,23 +805,29 @@
     private void ClearFilters()
     {
         currentFilter = new AppointmentsFilter();
+        showNeedsNoteOnly = false;
         RebuildSchedulerState();
     }
 
     private bool HasActiveFilters =>
         currentFilter.SelectedAppointmentTypes.Count > 0
         || currentFilter.SelectedAppointmentStatuses.Count > 0
-        || currentFilter.SelectedIntakeStatuses.Count > 0;
+        || currentFilter.SelectedIntakeStatuses.Count > 0
+        || showNeedsNoteOnly;
 
     private string GetEmptyStateTitle() =>
-        HasActiveFilters
+        showNeedsNoteOnly
+            ? "No appointments need notes for this period"
+            : HasActiveFilters
             ? "No appointments match the current filters"
             : selectedView == AppointmentsView.Today
                 ? "No appointments scheduled for this day"
                 : "No appointments scheduled for this week";
 
     private string GetEmptyStateDescription() =>
-        HasActiveFilters
+        showNeedsNoteOnly
+            ? "Checked-in and in-progress appointments already have note activity, or no visits have reached note-due status."
+            : HasActiveFilters
             ? "Clear filters or adjust the selected date to view appointments."
             : "Use New Appointment to add a scheduled visit for this period.";
 
@@ -834,6 +940,24 @@
     {
         var daysFromSunday = (int)date.DayOfWeek;
         return date.Date.AddDays(-daysFromSunday);
+    }
+
+    private static string FormatWeekRange(DateTime selectedDate)
+    {
+        var startOfWeek = GetStartOfWeek(selectedDate);
+        var endOfWeek = startOfWeek.AddDays(6);
+
+        if (startOfWeek.Year != endOfWeek.Year)
+        {
+            return $"{startOfWeek:MMM d, yyyy} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        if (startOfWeek.Month != endOfWeek.Month)
+        {
+            return $"{startOfWeek:MMM d} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        return $"{startOfWeek:MMMM d} - {endOfWeek:d, yyyy}";
     }
 
     public async ValueTask DisposeAsync()

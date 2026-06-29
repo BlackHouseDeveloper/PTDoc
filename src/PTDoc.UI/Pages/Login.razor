@@ -66,7 +66,14 @@
 
     @if (authMode == AuthMode.Login)
     {
-      <form method="post" action="/auth/login" class="auth-form" aria-busy="@isLoading" data-testid="login-form">
+      <form method="post"
+            action="/auth/login"
+            class="auth-form"
+            aria-busy="@isLoading"
+            data-testid="login-form"
+            novalidate
+            @onsubmit="HandleLoginSubmitAsync"
+            @onsubmit:preventDefault="true">
         <input type="hidden" name="returnUrl" value="@LoginReturnUrl" />
         @if (supportsExternalIdentityLogin)
         {
@@ -84,13 +91,20 @@
           <input id="username"
                  name="username"
                  type="text"
-                 class="auth-input"
+                 class="@BuildLoginInputClass(nameof(loginModel.Username))"
                  placeholder="Enter your username or email"
                  autocomplete="username"
                  autocapitalize="none"
                  autocorrect="off"
                  spellcheck="false"
-                 required />
+                 aria-invalid="@HasLoginFieldError(nameof(loginModel.Username))"
+                 aria-describedby="@(HasLoginFieldError(nameof(loginModel.Username)) ? "username-validation" : null)"
+                 @bind="loginModel.Username"
+                 @bind:event="oninput" />
+          @if (GetLoginFieldError(nameof(loginModel.Username)) is { } usernameError)
+          {
+            <p id="username-validation" class="auth-validation" role="alert">@usernameError</p>
+          }
         </div>
 
         <div class="auth-field">
@@ -98,13 +112,20 @@
           <input id="pin"
                  name="pin"
                  type="password"
-                 class="auth-input"
+                 class="@BuildLoginInputClass(nameof(loginModel.Pin))"
                  placeholder="Enter 4-digit PIN"
                  autocomplete="current-password"
                  inputmode="numeric"
                  pattern="[0-9]{4}"
                  maxlength="4"
-                 required />
+                 aria-invalid="@HasLoginFieldError(nameof(loginModel.Pin))"
+                 aria-describedby="@(HasLoginFieldError(nameof(loginModel.Pin)) ? "pin-validation" : null)"
+                 @bind="loginModel.Pin"
+                 @bind:event="oninput" />
+          @if (GetLoginFieldError(nameof(loginModel.Pin)) is { } pinError)
+          {
+            <p id="pin-validation" class="auth-validation" role="alert">@pinError</p>
+          }
         </div>
 
         <div class="auth-actions">

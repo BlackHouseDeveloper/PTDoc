@@ -10,13 +10,15 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: var(--modal-overlay-bg);
+    background: color-mix(in srgb, var(--modal-overlay-bg) 88%, var(--background) 12%);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: var(--z-modal-backdrop);
     padding: var(--spacing-4);
     animation: fadeIn var(--transition-fast);
+    isolation: isolate;
 }
 
 @keyframes fadeIn {
@@ -31,17 +33,20 @@
 /* Modal Container */
 .modal-container {
     position: relative;
-    background: var(--card);
+    background: var(--popover);
+    color: var(--popover-foreground);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-xl);
     width: 100%;
     max-width: var(--modal-max-width);
     max-height: calc(100vh - (var(--spacing-4) * 2));
     overflow-y: auto;
     padding: var(--modal-padding);
     animation: slideUp var(--transition-normal);
-    z-index: var(--z-modal);
+    z-index: calc(var(--z-modal) + 1);
+    isolation: isolate;
+    opacity: 1;
 }
 
 @keyframes slideUp {
@@ -126,6 +131,42 @@
 
 .form-label .required {
     color: var(--destructive);
+}
+
+.form-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.form-section-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.form-section-header h3,
+.form-section-header p {
+    margin: 0;
+}
+
+.form-section-header h3 {
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+}
+
+.form-section-header p {
+    color: var(--muted-foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
 }
 
 /* Form Input */

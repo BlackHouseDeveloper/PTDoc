@@ -6,9 +6,9 @@
      aria-label="SOAP note sections"
      aria-readonly="@(IsReadOnly ? "true" : "false")"
      data-testid="soap-tab-nav">
-    @for (var index = 0; index < _sections.Length; index++)
+    @for (var index = 0; index < ActiveSections.Count; index++)
     {
-        var soapSection = _sections[index];
+        var soapSection = ActiveSections[index];
         var isActive = soapSection == ActiveSection;
         var isCompleted = index < ActiveIndex;
 
@@ -38,11 +38,35 @@
 </nav>
 
 @code {
-    private static readonly SoapSection[] _sections = Enum.GetValues<SoapSection>();
-    private int ActiveIndex => Array.IndexOf(_sections, ActiveSection);
+    private static readonly IReadOnlyList<SoapSection> DefaultSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
+
+    private IReadOnlyList<SoapSection> ActiveSections => Sections is { Count: > 0 } ? Sections : DefaultSections;
+    private int ActiveIndex
+    {
+        get
+        {
+            for (var i = 0; i < ActiveSections.Count; i++)
+            {
+                if (ActiveSections[i] == ActiveSection)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+    }
 
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
+    [Parameter] public IReadOnlyList<SoapSection>? Sections { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private Task HandleTabClickAsync(SoapSection section) =>

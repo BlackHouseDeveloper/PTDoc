@@ -21,6 +21,7 @@
 @using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
 @using PTDoc.UI.Components.Notes.Workspace.DischargeNote
 @using PTDoc.UI.Components.Notes.Workspace.DryNeedling
+@using PTDoc.UI.Components.Notes.Workspace.Evaluation
 @using PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.UI.Services
 
@@ -245,8 +246,8 @@ else
                                  AllowSubmitWhenReadOnly="@CanSubmitCurrentNote"
                                  Vm="@_dryNeedling"
                                  VmChanged="HandleDryNeedlingChanged"
-                                 OnSave="HandleSaveAsync"
-                                 OnSubmit="HandleSubmitAsync" />
+                                 OnSave="HandleSaveSafelyAsync"
+                                 OnSubmit="HandleSubmitSafelyAsync" />
         }
         else
         {
@@ -262,7 +263,8 @@ else
 
             <SoapTabNav ActiveSection="@_note.ActiveSection"
                         IsReadOnly="@IsWorkspaceReadOnly"
-                        ActiveSectionChanged="HandleSectionChanged" />
+                        Sections="@CurrentSoapSections"
+                        ActiveSectionChanged="HandleSectionChangedSafelyAsync" />
 
             <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
                 @switch (_note.ActiveSection)
@@ -271,10 +273,22 @@ else
                         if (IsProgressNote)
                         {
                             <ProgressSubjectiveSection Vm="@_note.Subjective"
+                                                      ProgressSubjective="@_note.ProgressSubjective"
                                                       VmChanged="HandleSubjectiveChanged"
+                                                      ProgressSubjectiveChanged="HandleProgressSubjectiveChanged"
                                                       IsReadOnly="@IsWorkspaceReadOnly" />
                         }
-                        else if (IsDailyTreatment || IsDischargeNote)
+                        else if (IsDischargeNote)
+                        {
+                            <DischargeSubjectiveSection Vm="@_note.Subjective"
+                                                        VmChanged="HandleSubjectiveChanged"
+                                                        DischargeSubjective="@_note.DischargeSubjective"
+                                                        DischargeSubjectiveChanged="HandleDischargeSubjectiveChanged"
+                                                        Plan="@_note.Plan"
+                                                        PlanChanged="HandlePlanChanged"
+                                                        IsReadOnly="@IsWorkspaceReadOnly" />
+                        }
+                        else if (IsDailyTreatment)
                         {
                             <SubjectiveSection Vm="@_note.Subjective"
                                                DailyTreatment="@_note.DailyTreatment"
@@ -305,32 +319,53 @@ else
                                       ShortTermGoalCount="@ShortTermGoalCount"
                                       LongTermGoalCount="@LongTermGoalCount"
                                       GoalItems="@GoalItems"
-                                      GoalHints="@GoalHints" />
+                                      GoalHints="@GoalHints"
+                                      ShowInterventionAuthoring="@(!IsEvaluationNote && !IsDailyTreatment && !IsProgressNote)" />
+                        break;
+
+                    case SoapSection.Interventions:
+                        if (IsEvaluationNote)
+                        {
+                            <EvaluationInterventionsSection Objective="@_note.Objective"
+                                                            ObjectiveChanged="HandleObjectiveChanged"
+                                                            Plan="@_note.Plan"
+                                                            PlanChanged="HandlePlanChanged"
+                                                            BillingSettings="@_note.BillingSettings"
+                                                            IsReadOnly="@IsWorkspaceReadOnly"
+                                                            SelectedBodyPart="@GetSelectedBodyPart()" />
+                        }
+                        else
+                        {
+                            <InterventionsSection Vm="@_note.Plan"
+                                                  DailyTreatment="@_note.DailyTreatment"
+                                                  VmChanged="HandlePlanChanged"
+                                                  DailyTreatmentChanged="HandleDailyTreatmentChanged"
+                                                  IsReadOnly="@IsWorkspaceReadOnly"
+                                                  IsDarkMode="@_isDarkMode"
+                                                  SelectedBodyPart="@GetSelectedBodyPart()" />
+                        }
                         break;
 
                     case SoapSection.Assessment:
                         if (IsDailyTreatment || IsProgressNote)
                         {
-                            <AssessmentSection Vm="@_note.Assessment"
-                                               VmChanged="HandleAssessmentChanged"
-                                               IsReadOnly="@IsWorkspaceReadOnly"
-                                               IsDarkMode="@_isDarkMode"
-                                               NoteId="@(_note.NoteId ?? Guid.Empty)"
-                                               ChiefComplaint="@GetChiefComplaintText()"
-                                               SelectedBodyPart="@GetSelectedBodyPart()"
-                                               SubjectiveInputs="@GetAssessmentSubjectiveAiInputs()"
-                                               ObjectiveInputs="@GetAssessmentObjectiveAiInputs()"
-                                               ExaminationFindings="@GetExaminationFindingsText()" />
+                            <SimpleAssessmentSection Vm="@_note.Assessment"
+                                                     VmChanged="HandleAssessmentChanged"
+                                                     IsReadOnly="@IsWorkspaceReadOnly"
+                                                     IsDarkMode="@_isDarkMode" />
                         }
                         else if (IsDischargeNote)
                         {
-                            <FinalOutcomesSummaryCard />
-                            <GoalAchievementSummaryCard />
+                            <FinalOutcomesSummaryCard Subjective="@_note.Subjective"
+                                                      DischargeSubjective="@_note.DischargeSubjective"
+                                                      Objective="@_note.Objective" />
+                            <GoalAchievementSummaryCard Goals="@_note.Assessment.Goals" />
                             <AssessmentWorkspaceSection NoteId="@(_note.NoteId ?? Guid.Empty)"
                                                         Vm="@_note.Assessment"
                                                         VmChanged="HandleAssessmentChanged"
                                                         IsReadOnly="@IsWorkspaceReadOnly"
                                                         ShowSmartGoals="false"
+                                                        ShowMotivationAndSupport="false"
                                                         ChiefComplaint="@GetChiefComplaintText()"
                                                         SelectedBodyPart="@GetSelectedBodyPart()"
                                                         SubjectiveInputs="@GetAssessmentSubjectiveAiInputs()"
@@ -352,7 +387,7 @@ else
                         break;
 
                     case SoapSection.Plan:
-                        if (IsDailyTreatment)
+                        if (IsDailyTreatment || IsProgressNote)
                         {
                             <PlanSection Vm="@_note.Plan"
                                          DailyTreatment="@_note.DailyTreatment"
@@ -372,6 +407,7 @@ else
                         {
                             <DischargePlanSection Vm="@_note.Plan"
                                                   VmChanged="HandlePlanChanged"
+                                                  LinkedHepItems="@GetLinkedHepItems()"
                                                   IsReadOnly="@IsWorkspaceReadOnly" />
                         }
                         else
@@ -386,7 +422,8 @@ else
                                      AssessmentSummary="@GetAssessmentSummary()"
                                      GoalsSummary="@GetGoalsSummary()"
                                      PrecautionsSummary="@GetPrecautionsSummary()"
-                                     StructuredInputs="@GetPlanAiInputs()" />
+                                     StructuredInputs="@GetPlanAiInputs()"
+                                     ShowInterventionAuthoring="@(!IsEvaluationNote)" />
                         }
                         break;
 
@@ -410,7 +447,7 @@ else
                                         OnDiscardPendingSummary="HandleDiscardPendingSummaryAsync"
                                         OnRegenerateGoals="HandleRegenerateGoalsAsync"
                                         OnExportPdf="HandleExportPdfAsync"
-                                        OnSubmit="HandleSubmitAsync" />
+                                        OnSubmit="HandleSubmitSafelyAsync" />
                         break;
                 }
             </div>
@@ -420,6 +457,7 @@ else
                 <SoapStickyFooter NoteType="@_note.NoteType"
                                   ActiveSection="@_note.ActiveSection"
                                   SaveState="@_note.SaveState"
+                                  Sections="@CurrentSoapSections"
                                   IsReadOnly="@IsWorkspaceReadOnly"
                                   DisableSave="@DisableSaveAction"
                                   DisableSubmit="@DisableSubmitAction"
@@ -429,8 +467,8 @@ else
                                   OnNextSection="HandleNextSection"
                                   OnGoalsClick="HandleGoalsClick"
                                   OnReviewClick="HandleReviewClick"
-                                  OnSave="HandleSaveAsync"
-                                  OnSubmit="HandleSubmitAsync" />
+                                  OnSave="HandleSaveSafelyAsync"
+                                  OnSubmit="HandleSubmitSafelyAsync" />
             }
         }
     </div>
@@ -488,6 +526,34 @@ else
     ];
 
     private readonly SemaphoreSlim _persistGate = new(1, 1);
+    private static readonly IReadOnlyList<SoapSection> DefaultSoapSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
+
+    private static readonly IReadOnlyList<SoapSection> DailyProgressSoapSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Interventions,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
+
+    private static readonly IReadOnlyList<SoapSection> EvaluationSoapSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Interventions,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
 
     private SoapNoteVm _note = new();
     private WorkspaceSubjectiveCatalogNormalizer? _subjectiveCatalogNormalizer;
@@ -529,10 +595,16 @@ else
     private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
+    private bool IsEvaluationNote => string.Equals(_note.NoteType, "Evaluation Note", StringComparison.OrdinalIgnoreCase);
     private bool IsProgressNote => string.Equals(_note.NoteType, "Progress Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDischargeNote => string.Equals(_note.NoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDryNeedlingNote => string.Equals(_note.NoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
     private bool IsReviewSection => _note.ActiveSection == SoapSection.Review;
+    private IReadOnlyList<SoapSection> CurrentSoapSections => IsEvaluationNote
+        ? EvaluationSoapSections
+        : IsDailyTreatment || IsProgressNote
+            ? DailyProgressSoapSections
+            : DefaultSoapSections;
     private WorkspaceSubjectiveCatalogNormalizer SubjectiveCatalogNormalizer =>
         _subjectiveCatalogNormalizer ??= new WorkspaceSubjectiveCatalogNormalizer(IntakeReferenceData);
 
@@ -591,6 +663,27 @@ else
             "Update goal status when the patient has clearly met or deferred a target.",
             "Document measurable changes that support your assessment and plan."
         };
+
+    private IReadOnlyList<string> GetLinkedHepItems()
+    {
+        var objectiveItems = _note.Objective.ExerciseRows
+            .Where(row => row.IncludeInHomeExerciseProgram)
+            .Select(row => string.IsNullOrWhiteSpace(row.ActualExercisePerformed)
+                ? row.SuggestedExercise
+                : row.ActualExercisePerformed);
+
+        var planItems = _note.Plan.GeneralInterventions
+            .Where(entry => entry.IncludeInHomeExerciseProgram)
+            .Select(entry => entry.Name);
+
+        return objectiveItems
+            .Concat(planItems)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     private int GoalCount => GoalItems.Count;
     private int GoalsMetPercent => GoalCount == 0 ? 0 : (int)Math.Round((double)GoalItems.Count(goal => goal.Status == GoalStatus.Met) / GoalCount * 100);
@@ -779,10 +872,18 @@ else
         SyncSelectedBodyPart(GetSelectedBodyPart());
         _note.Assessment = payload?.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload?.Plan ?? new PlanVm();
+        _note.BillingSettings = payload?.BillingSettings ?? new BillingModifierSettingsVm();
         _note.DailyTreatment = payload?.DailyTreatment ?? new DailyTreatmentVm();
+        _note.ProgressSubjective = payload?.ProgressSubjective ?? new ProgressSubjectiveVm();
+        _note.DischargeSubjective = payload?.DischargeSubjective ?? new DischargeSubjectiveVm();
         _note.StructuredWorkspacePayload = payload?.StructuredPayload;
         _dryNeedling = payload?.DryNeedling ?? new DryNeedlingVm();
         _note.Status = status;
+        if (!CurrentSoapSections.Contains(_note.ActiveSection))
+        {
+            _note.MoveTo(SoapSection.Subjective);
+            _lastEditableSection = SoapSection.Subjective;
+        }
         _note.IsDirty = false;
         _note.MarkSaved();
         _pendingClinicalSummary = null;
@@ -800,6 +901,11 @@ else
     {
         var requestedSection = ResolveRequestedSection(RequestedSection);
         if (!requestedSection.HasValue || requestedSection.Value == _note.ActiveSection)
+        {
+            return;
+        }
+
+        if (!CurrentSoapSections.Contains(requestedSection.Value))
         {
             return;
         }
@@ -830,6 +936,7 @@ else
     {
         "subjective" => SoapSection.Subjective,
         "objective" => SoapSection.Objective,
+        "interventions" => SoapSection.Interventions,
         "assessment" => SoapSection.Assessment,
         "plan" => SoapSection.Plan,
         "review" => SoapSection.Review,
@@ -859,6 +966,10 @@ else
             : null;
     }
 
+    private static string SanitizeForLog(object? value)
+        => value?.ToString()?.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal) ?? string.Empty;
+
     private async Task HandleSectionChanged(SoapSection next)
     {
         if (next == SoapSection.Review && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
@@ -880,6 +991,23 @@ else
 
         _note.MoveTo(next);
         ClearStatusMessage();
+    }
+
+    private async Task HandleSectionChangedSafelyAsync(SoapSection next)
+    {
+        try
+        {
+            await HandleSectionChanged(next);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}", SanitizeForLog(PatientId), _note.NoteId, next);
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to open that note section right now. Please retry."),
+                "error",
+                showToast: true,
+                toastTitle: "Section unavailable");
+        }
     }
 
     private async Task HandleNoteTypeChanged(string value)
@@ -909,6 +1037,11 @@ else
             && !_attemptedCarryForwardSeedNoteTypes.Contains(value);
 
         _note.NoteType = value;
+        if (!CurrentSoapSections.Contains(_note.ActiveSection))
+        {
+            _note.MoveTo(SoapSection.Subjective);
+            _lastEditableSection = SoapSection.Subjective;
+        }
 
         if (shouldTryEvaluationSeed)
         {
@@ -972,6 +1105,20 @@ else
         return Task.CompletedTask;
     }
 
+    private Task HandleProgressSubjectiveChanged(ProgressSubjectiveVm vm)
+    {
+        _note.ProgressSubjective = vm;
+        MarkUnsaved();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDischargeSubjectiveChanged(DischargeSubjectiveVm vm)
+    {
+        _note.DischargeSubjective = vm;
+        MarkUnsaved();
+        return Task.CompletedTask;
+    }
+
     private void SyncSelectedBodyPart(string? bodyPart)
     {
         if (string.IsNullOrWhiteSpace(bodyPart))
@@ -984,9 +1131,9 @@ else
     }
 
     private string? GetSelectedBodyPart() =>
-        !string.IsNullOrWhiteSpace(_note.Objective.SelectedBodyPart)
-            ? _note.Objective.SelectedBodyPart
-            : _note.Subjective.SelectedBodyPart;
+        !string.IsNullOrWhiteSpace(_note.Subjective.SelectedBodyPart)
+            ? _note.Subjective.SelectedBodyPart
+            : _note.Objective.SelectedBodyPart;
 
     private Task HandleDryNeedlingChanged(DryNeedlingVm vm)
     {
@@ -1005,7 +1152,7 @@ else
         var previous = GetAdjacentSection(-1);
         if (previous.HasValue)
         {
-            await HandleSectionChanged(previous.Value);
+            await HandleSectionChangedSafelyAsync(previous.Value);
         }
     }
 
@@ -1014,16 +1161,30 @@ else
         var next = GetAdjacentSection(1);
         if (next.HasValue)
         {
-            await HandleSectionChanged(next.Value);
+            await HandleSectionChangedSafelyAsync(next.Value);
         }
     }
 
     private SoapSection? GetAdjacentSection(int direction)
     {
-        var sections = Enum.GetValues<SoapSection>();
-        var index = Array.IndexOf(sections, _note.ActiveSection);
+        var sections = CurrentSoapSections;
+        var index = -1;
+        for (var i = 0; i < sections.Count; i++)
+        {
+            if (sections[i] == _note.ActiveSection)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            return null;
+        }
+
         var nextIndex = index + direction;
-        if (nextIndex < 0 || nextIndex >= sections.Length)
+        if (nextIndex < 0 || nextIndex >= sections.Count)
         {
             return null;
         }
@@ -1040,7 +1201,7 @@ else
 
     private async Task HandleReviewClick()
     {
-        await HandleSectionChanged(SoapSection.Review);
+        await HandleSectionChangedSafelyAsync(SoapSection.Review);
     }
 
     private Task HandleBackToEdit()
@@ -1289,6 +1450,24 @@ else
         }
     }
 
+    private async Task HandleSaveSafelyAsync()
+    {
+        try
+        {
+            await HandleSaveAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Manual draft save failed for patient {PatientId}, note {NoteId}", SanitizeForLog(PatientId), _note.NoteId);
+            _note.MarkSaveError();
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."),
+                "error",
+                showToast: true,
+                toastTitle: "Save failed");
+        }
+    }
+
     private async Task<DraftAutosaveSaveResult> AutosaveSaveAsync(CancellationToken cancellationToken)
     {
         var saved = await PersistDraftAsync(showFeedback: false, cancellationToken);
@@ -1526,6 +1705,24 @@ else
         _showSignatureConsent = true;
     }
 
+    private async Task HandleSubmitSafelyAsync()
+    {
+        try
+        {
+            await HandleSubmitAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Note submit action failed for patient {PatientId}, note {NoteId}", SanitizeForLog(PatientId), _note.NoteId);
+            _note.MarkSaveError();
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to submit note."),
+                "error",
+                showToast: true,
+                toastTitle: "Submit failed");
+        }
+    }
+
     private Task HandleConsentCancelAsync()
     {
         _showSignatureConsent = false;
@@ -1613,7 +1810,10 @@ else
             Objective = _note.Objective,
             Assessment = _note.Assessment,
             Plan = _note.Plan,
+            BillingSettings = _note.BillingSettings,
             DailyTreatment = _note.DailyTreatment,
+            ProgressSubjective = _note.ProgressSubjective,
+            DischargeSubjective = _note.DischargeSubjective,
             DryNeedling = _dryNeedling
         };
 
@@ -1828,6 +2028,10 @@ else
         _note.Objective = payload.Objective ?? new ObjectiveVm();
         _note.Assessment = payload.Assessment ?? new AssessmentWorkspaceVm();
         _note.Plan = payload.Plan ?? new PlanVm();
+        _note.BillingSettings = payload.BillingSettings ?? new BillingModifierSettingsVm();
+        _note.DailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
+        _note.ProgressSubjective = payload.ProgressSubjective ?? new ProgressSubjectiveVm();
+        _note.DischargeSubjective = payload.DischargeSubjective ?? new DischargeSubjectiveVm();
         _note.StructuredWorkspacePayload = payload.StructuredPayload;
         _note.MarkDirty();
         DraftAutosaveService.Reset();

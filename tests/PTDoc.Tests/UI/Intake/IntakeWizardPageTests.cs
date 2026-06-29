@@ -365,6 +365,8 @@ public sealed class IntakeWizardPageTests : TestContext
             CurrentStep = (int)IntakeStep.Review,
             FullName = "Submit Ready",
             DateOfBirth = new DateTime(1988, 1, 1),
+            PainSeverityScore = 4,
+            PainSeverityProvided = true,
             TermsOfServiceAccepted = true,
             AccuracyConfirmed = true,
             HipaaAcknowledged = true,

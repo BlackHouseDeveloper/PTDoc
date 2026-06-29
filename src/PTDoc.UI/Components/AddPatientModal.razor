@@ -1,5 +1,6 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
+@using System.Text.Json
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -126,6 +127,115 @@
                     }
                 </div>
 
+                <section class="form-section" aria-labelledby="patient-payer-section-title">
+                    <div class="form-section-header">
+                        <h3 id="patient-payer-section-title">Insurance</h3>
+                        <p>Optional payer details can be completed now or updated later in Patient &amp; Payer Information.</p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="primaryInsuranceCompany" class="form-label">Primary Insurance</label>
+                            <input id="primaryInsuranceCompany"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="Insurance company"
+                                   @bind="PrimaryInsuranceCompany" />
+                        </div>
+                        <div class="form-field">
+                            <label for="primaryMemberId" class="form-label">Primary Member ID / Policy #</label>
+                            <input id="primaryMemberId"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="Member or policy number"
+                                   @bind="PrimaryMemberId" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="secondaryInsuranceCompany" class="form-label">Secondary Insurance</label>
+                            <input id="secondaryInsuranceCompany"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="Insurance company"
+                                   @bind="SecondaryInsuranceCompany" />
+                        </div>
+                        <div class="form-field">
+                            <label for="secondaryMemberId" class="form-label">Secondary Member ID / Policy #</label>
+                            <input id="secondaryMemberId"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="Member or policy number"
+                                   @bind="SecondaryMemberId" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="form-section" aria-labelledby="patient-referral-section-title">
+                    <div class="form-section-header">
+                        <h3 id="patient-referral-section-title">Referral &amp; Authorization</h3>
+                        <p>Optional PCP, referring physician, and authorization details for the chart.</p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="primaryCareProvider" class="form-label">Primary Care Provider</label>
+                            <input id="primaryCareProvider"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="PCP name"
+                                   @bind="PrimaryCareProvider" />
+                        </div>
+                        <div class="form-field">
+                            <label for="referringPhysician" class="form-label">Referring Physician</label>
+                            <input id="referringPhysician"
+                                   type="text"
+                                   class="form-input"
+                                   placeholder="Referring physician name"
+                                   @bind="ReferringPhysician" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="physicianNpi" class="form-label">Physician NPI</label>
+                            <input id="physicianNpi"
+                                   type="text"
+                                   inputmode="numeric"
+                                   maxlength="10"
+                                   class="form-input"
+                                   placeholder="10-digit NPI"
+                                   @bind="PhysicianNpi"
+                                   aria-invalid="@AriaInvalid(nameof(PhysicianNpi))"
+                                   aria-describedby="@GetFieldDescribedBy(nameof(PhysicianNpi))" />
+                            @if (TryGetFieldError(nameof(PhysicianNpi), out var physicianNpiError))
+                            {
+                                <p id="@GetFieldErrorId(nameof(PhysicianNpi))" class="field-error" role="alert">@physicianNpiError</p>
+                            }
+                        </div>
+                        <div class="form-field">
+                            <label for="authorizationRequired" class="form-label">Authorization Required?</label>
+                            <select id="authorizationRequired"
+                                    class="form-input"
+                                    @bind="AuthorizationRequired">
+                                <option value="">Unknown</option>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="authorizationNumber" class="form-label">Authorization Number</label>
+                        <input id="authorizationNumber"
+                               type="text"
+                               class="form-input"
+                               placeholder="Authorization number"
+                               @bind="AuthorizationNumber" />
+                    </div>
+                </section>
+
                 @if (!string.IsNullOrWhiteSpace(SubmitError))
                 {
                     <div class="form-error" role="alert">@SubmitError</div>
@@ -192,11 +302,24 @@
     private string PhoneNumber { get; set; } = string.Empty;
     private string DateOfBirthInput { get; set; } = string.Empty;
     private DateTime? DateOfBirth { get; set; }
+    private string PrimaryInsuranceCompany { get; set; } = string.Empty;
+    private string PrimaryMemberId { get; set; } = string.Empty;
+    private string SecondaryInsuranceCompany { get; set; } = string.Empty;
+    private string SecondaryMemberId { get; set; } = string.Empty;
+    private string PrimaryCareProvider { get; set; } = string.Empty;
+    private string ReferringPhysician { get; set; } = string.Empty;
+    private string PhysicianNpi { get; set; } = string.Empty;
+    private string AuthorizationRequired { get; set; } = string.Empty;
+    private string AuthorizationNumber { get; set; } = string.Empty;
     private string? SubmitError { get; set; }
     private bool IsSubmitting { get; set; }
     private PatientSubmitIntent? ActiveSubmitIntent { get; set; }
     private Dictionary<string, string> ValidationErrors { get; } = new(StringComparer.Ordinal);
     private static readonly EmailAddressAttribute EmailValidator = new();
+    private static readonly JsonSerializerOptions PayerJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -286,6 +409,15 @@
         PhoneNumber = string.Empty;
         DateOfBirthInput = string.Empty;
         DateOfBirth = null;
+        PrimaryInsuranceCompany = string.Empty;
+        PrimaryMemberId = string.Empty;
+        SecondaryInsuranceCompany = string.Empty;
+        SecondaryMemberId = string.Empty;
+        PrimaryCareProvider = string.Empty;
+        ReferringPhysician = string.Empty;
+        PhysicianNpi = string.Empty;
+        AuthorizationRequired = string.Empty;
+        AuthorizationNumber = string.Empty;
         SubmitError = null;
         ValidationErrors.Clear();
     }
@@ -321,6 +453,16 @@
             Email = Email.Trim(),
             PhoneNumber = PhoneNumber.Trim(),
             DateOfBirth = DateOfBirth,
+            PrimaryInsuranceCompany = PrimaryInsuranceCompany.Trim(),
+            PrimaryMemberId = PrimaryMemberId.Trim(),
+            SecondaryInsuranceCompany = SecondaryInsuranceCompany.Trim(),
+            SecondaryMemberId = SecondaryMemberId.Trim(),
+            PrimaryCareProvider = PrimaryCareProvider.Trim(),
+            ReferringPhysician = ReferringPhysician.Trim(),
+            PhysicianNpi = PhysicianNpi.Trim(),
+            AuthorizationRequired = AuthorizationRequired.Trim(),
+            AuthorizationNumber = AuthorizationNumber.Trim(),
+            PayerInfoJson = BuildPayerInfoJson(),
             SubmitIntent = submitIntent
         };
 
@@ -390,7 +532,55 @@
         {
             ValidationErrors[nameof(DateOfBirth)] = "Enter a valid date of birth.";
         }
+
+        var trimmedNpi = PhysicianNpi.Trim();
+        if (!string.IsNullOrWhiteSpace(trimmedNpi) && (trimmedNpi.Length != 10 || !trimmedNpi.All(char.IsDigit)))
+        {
+            ValidationErrors[nameof(PhysicianNpi)] = "Physician NPI must be exactly 10 digits.";
+        }
     }
+
+    private string BuildPayerInfoJson()
+    {
+        var hasPayerInfo =
+            HasValue(PrimaryInsuranceCompany) ||
+            HasValue(PrimaryMemberId) ||
+            HasValue(SecondaryInsuranceCompany) ||
+            HasValue(SecondaryMemberId) ||
+            HasValue(PrimaryCareProvider) ||
+            HasValue(ReferringPhysician) ||
+            HasValue(PhysicianNpi) ||
+            HasValue(AuthorizationRequired) ||
+            HasValue(AuthorizationNumber);
+
+        if (!hasPayerInfo)
+        {
+            return "{}";
+        }
+
+        var payload = new
+        {
+            InsuranceCompanyName = TrimOrNull(PrimaryInsuranceCompany),
+            MemberOrPolicyNumber = TrimOrNull(PrimaryMemberId),
+            MemberIdPolicyNumber = TrimOrNull(PrimaryMemberId),
+            InsurancePriority = HasValue(PrimaryInsuranceCompany) || HasValue(PrimaryMemberId) ? "primary" : null,
+            SecondaryInsuranceCompanyName = TrimOrNull(SecondaryInsuranceCompany),
+            SecondaryMemberIdPolicyNumber = TrimOrNull(SecondaryMemberId),
+            PrimaryCareProviderName = TrimOrNull(PrimaryCareProvider),
+            ReferringPhysicianName = TrimOrNull(ReferringPhysician),
+            PhysicianNpiNumber = TrimOrNull(PhysicianNpi),
+            AuthorizationRequired = TrimOrNull(AuthorizationRequired),
+            AuthorizationStatus = AuthorizationRequired == "Yes" ? "pending" : null,
+            AuthorizationNumber = TrimOrNull(AuthorizationNumber)
+        };
+
+        return JsonSerializer.Serialize(payload, PayerJsonOptions);
+    }
+
+    private static bool HasValue(string? value) => !string.IsNullOrWhiteSpace(value);
+
+    private static string? TrimOrNull(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static DateTime? ParseDateOfBirthInput(string? rawValue)
     {
@@ -489,6 +679,16 @@
         public string Email { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
         public DateTime? DateOfBirth { get; set; }
+        public string PrimaryInsuranceCompany { get; set; } = string.Empty;
+        public string PrimaryMemberId { get; set; } = string.Empty;
+        public string SecondaryInsuranceCompany { get; set; } = string.Empty;
+        public string SecondaryMemberId { get; set; } = string.Empty;
+        public string PrimaryCareProvider { get; set; } = string.Empty;
+        public string ReferringPhysician { get; set; } = string.Empty;
+        public string PhysicianNpi { get; set; } = string.Empty;
+        public string AuthorizationRequired { get; set; } = string.Empty;
+        public string AuthorizationNumber { get; set; } = string.Empty;
+        public string PayerInfoJson { get; set; } = "{}";
         public PatientSubmitIntent SubmitIntent { get; set; } = PatientSubmitIntent.AddPatient;
     }
 }

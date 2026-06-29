@@ -35,7 +35,10 @@ public class SoapNoteVm
     public ObjectiveVm Objective { get; set; } = new();
     public AssessmentWorkspaceVm Assessment { get; set; } = new();
     public PlanVm Plan { get; set; } = new();
+    public BillingModifierSettingsVm BillingSettings { get; set; } = new();
     public DailyTreatmentVm DailyTreatment { get; set; } = new();
+    public ProgressSubjectiveVm ProgressSubjective { get; set; } = new();
+    public DischargeSubjectiveVm DischargeSubjective { get; set; } = new();
 
     public void MoveTo(SoapSection section)
     {
@@ -103,13 +106,15 @@ public class SoapNoteVm
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(Plan.TreatmentFrequency))
+        if (string.Equals(NoteType, "Evaluation Note", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(Plan.TreatmentFrequency))
         {
             message = "Treatment Frequency is required before submit.";
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(Plan.TreatmentDuration))
+        if (string.Equals(NoteType, "Evaluation Note", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(Plan.TreatmentDuration))
         {
             message = "Treatment Duration is required before submit.";
             return false;

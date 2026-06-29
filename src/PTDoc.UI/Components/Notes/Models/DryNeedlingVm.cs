@@ -6,6 +6,7 @@ namespace PTDoc.UI.Components.Notes.Models;
 public class DryNeedlingVm
 {
     public DateTime? DateOfTreatment { get; set; }
+    public string BillingDesignation { get; set; } = "Billable";
     public string Location { get; set; } = string.Empty;
     public string NeedlingType { get; set; } = string.Empty;
     public int? PainBefore { get; set; }

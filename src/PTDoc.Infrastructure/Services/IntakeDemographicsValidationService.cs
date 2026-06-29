@@ -114,7 +114,7 @@ public sealed partial class IntakeDemographicsValidationService : IIntakeDemogra
         return new string(buffer.Slice(0, index));
     }
 
-    [GeneratedRegex("^\\s*[\\p{L}][\\p{L}'\\-\\.\\s]*\\s+[\\p{L}][\\p{L}'\\-\\.\\s]*$")]
+    [GeneratedRegex("^\\s*[\\p{L}][\\p{L}'\\-\\.]*\\s+[\\p{L}][\\p{L}'\\-\\.]*(?:\\s+[\\p{L}\\d][\\p{L}\\d'\\-\\.]*)*\\s*$")]
     private static partial Regex FullNameRegex();
 
     [GeneratedRegex("^\\d{10}$")]

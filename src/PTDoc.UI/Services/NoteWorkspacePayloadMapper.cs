@@ -32,6 +32,13 @@ public sealed class NoteWorkspacePayloadMapper
     public NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
     {
         var dailyTreatment = payload.DailyTreatment ?? new WorkspaceDailyTreatmentV2();
+        var discharge = payload.Discharge ?? new WorkspaceDischargeV2();
+        var progressQuestionnaire = payload.ProgressQuestionnaire ?? new WorkspaceProgressNoteQuestionnaireV2();
+        var useProgressPainValues = payload.NoteType == NoteType.ProgressNote
+            && (progressQuestionnaire.CurrentPainLevel > 0
+                || progressQuestionnaire.BestPainLevel > 0
+                || progressQuestionnaire.WorstPainLevel > 0
+                || !string.IsNullOrWhiteSpace(progressQuestionnaire.PainFrequency));
         var assistiveDeviceSelections = _subjectiveCatalogNormalizer.ParseAssistiveDeviceSelections(payload.Subjective.AssistiveDevice);
         var houseLayoutSelections = _subjectiveCatalogNormalizer.ParseHouseLayoutSelections(payload.Subjective.OtherLivingSituation);
         var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
@@ -43,11 +50,18 @@ public sealed class NoteWorkspacePayloadMapper
         {
             WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(payload),
             StructuredPayload = structuredPayload,
+            BillingSettings = new BillingModifierSettingsVm
+            {
+                ModifierWorkflowEnabled = payload.BillingSettings.ModifierWorkflowEnabled,
+                AutoApplySuggestedModifiers = payload.BillingSettings.AutoApplySuggestedModifiers,
+                RequireSuggestedModifierReview = payload.BillingSettings.RequireSuggestedModifierReview
+            },
             DryNeedling = payload.DryNeedling is null
                 ? new DryNeedlingVm()
                 : new DryNeedlingVm
                 {
                     DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                    BillingDesignation = NormalizeBillingDesignation(payload.DryNeedling.BillingDesignation),
                     Location = payload.DryNeedling.Location,
                     NeedlingType = payload.DryNeedling.NeedlingType,
                     PainBefore = payload.DryNeedling.PainBefore,
@@ -62,11 +76,15 @@ public sealed class NoteWorkspacePayloadMapper
                 OtherProblem = payload.Subjective.OtherProblem,
                 Locations = CloneSet(payload.Subjective.Locations),
                 OtherLocation = payload.Subjective.OtherLocation,
-                CurrentPainScore = payload.Subjective.CurrentPainScore,
-                BestPainScore = payload.Subjective.BestPainScore,
-                WorstPainScore = payload.Subjective.WorstPainScore,
-                IsPainScoreDocumented = payload.Subjective.IsPainScoreDocumented,
-                PainFrequency = payload.Subjective.PainFrequency,
+                PainDescriptors = CloneSet(payload.Subjective.PainDescriptors),
+                OtherPainDescriptor = payload.Subjective.OtherPainDescriptor,
+                CurrentPainScore = useProgressPainValues ? progressQuestionnaire.CurrentPainLevel : payload.Subjective.CurrentPainScore,
+                BestPainScore = useProgressPainValues ? progressQuestionnaire.BestPainLevel : payload.Subjective.BestPainScore,
+                WorstPainScore = useProgressPainValues ? progressQuestionnaire.WorstPainLevel : payload.Subjective.WorstPainScore,
+                IsPainScoreDocumented = payload.Subjective.IsPainScoreDocumented || useProgressPainValues,
+                PainFrequency = useProgressPainValues ? progressQuestionnaire.PainFrequency : payload.Subjective.PainFrequency,
+                SymptomFrequencies = CloneDictionary(payload.Subjective.SymptomFrequencies),
+                SymptomTimeOfDay = CloneSet(payload.Subjective.SymptomTimeOfDay),
                 OnsetDate = payload.Subjective.OnsetDate,
                 OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo,
                 CauseUnknown = payload.Subjective.CauseUnknown,
@@ -93,6 +111,9 @@ public sealed class NoteWorkspacePayloadMapper
                     .ToHashSet(StringComparer.OrdinalIgnoreCase),
                 AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations,
                 HasImaging = payload.Subjective.Imaging.HasImaging,
+                ImagingModalities = CloneSet(payload.Subjective.Imaging.Modalities),
+                OtherImagingModality = payload.Subjective.Imaging.OtherModality,
+                ImagingFindings = payload.Subjective.Imaging.Findings,
                 UsesAssistiveDevice = payload.Subjective.AssistiveDevice.UsesAssistiveDevice
                     ?? (assistiveDeviceSelections.HasSelections ? true : null),
                 SelectedAssistiveDeviceLabels = CloneSet(assistiveDeviceSelections.SelectedLabels),
@@ -118,6 +139,7 @@ public sealed class NoteWorkspacePayloadMapper
                     .Select(metric => new ObjectiveMetricRowEntry
                     {
                         Name = ResolveMetricName(metric),
+                        BodyPart = metric.BodyPart == BodyPart.Other ? null : metric.BodyPart.ToString(),
                         MetricType = metric.MetricType,
                         Value = metric.Value,
                         PreviousValue = metric.PreviousValue,
@@ -125,6 +147,7 @@ public sealed class NoteWorkspacePayloadMapper
                         IsWithinNormalLimits = metric.IsWithinNormalLimits
                     })
                     .ToList(),
+                IsGaitUnremarkable = payload.Objective.GaitObservation.IsNormal,
                 PrimaryGaitPattern = payload.Objective.GaitObservation.PrimaryPattern,
                 GaitDeviations = CloneSet(payload.Objective.GaitObservation.Deviations),
                 AdditionalGaitObservations = payload.Objective.GaitObservation.AdditionalObservations,
@@ -147,7 +170,10 @@ public sealed class NoteWorkspacePayloadMapper
                         Notes = test.Notes
                     })
                     .ToList(),
+                IsPalpationUnremarkable = payload.Objective.PalpationObservation.IsNormal,
                 TenderMuscles = CloneSet(payload.Objective.PalpationObservation.TenderMuscles),
+                PalpationComments = payload.Objective.PalpationObservation.Other,
+                IsPostureUnremarkable = payload.Objective.PostureObservation.IsNormal,
                 PostureFindings = CloneSet(payload.Objective.PostureObservation.Findings),
                 OtherPostureFinding = payload.Objective.PostureObservation.Other,
                 ExerciseRows = payload.Objective.ExerciseRows
@@ -160,6 +186,9 @@ public sealed class NoteWorkspacePayloadMapper
                         CptCode = row.CptCode,
                         CptDescription = row.CptDescription,
                         TimeMinutes = row.TimeMinutes,
+                        AssistanceLevel = row.AssistanceLevel,
+                        Cueing = row.Cueing,
+                        IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                         IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                         IsSourceBacked = row.IsSourceBacked
                     })
@@ -168,6 +197,7 @@ public sealed class NoteWorkspacePayloadMapper
             Assessment = new AssessmentWorkspaceVm
             {
                 AssessmentNarrative = payload.Assessment.AssessmentNarrative,
+                FindingsSummary = payload.Assessment.FindingsSummary,
                 FunctionalLimitations = string.IsNullOrWhiteSpace(payload.Assessment.FunctionalLimitationsSummary)
                     ? string.Join(", ", payload.Subjective.FunctionalLimitations.Select(item => item.Description))
                     : payload.Assessment.FunctionalLimitationsSummary,
@@ -214,7 +244,8 @@ public sealed class NoteWorkspacePayloadMapper
                 BarriersToRecovery = CloneSet(payload.Assessment.BarriersToRecovery),
                 SupportSystemDetails = payload.Assessment.SupportSystemDetails,
                 SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes,
-                OverallPrognosis = payload.Assessment.OverallPrognosis
+                OverallPrognosis = payload.Assessment.OverallPrognosis,
+                PrognosisNarrative = payload.Assessment.PrognosisNarrative
             },
             Plan = new PlanVm
             {
@@ -240,13 +271,56 @@ public sealed class NoteWorkspacePayloadMapper
                         Name = entry.Name,
                         Category = entry.Category,
                         IsSourceBacked = entry.IsSourceBacked,
-                        Notes = entry.Notes
+                        Notes = entry.Notes,
+                        CptCode = entry.CptCode,
+                        CptDescription = entry.CptDescription,
+                        TimeMinutes = entry.TimeMinutes,
+                        AssistanceLevel = entry.AssistanceLevel,
+                        Cueing = entry.Cueing,
+                        Response = entry.Response,
+                        IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
                     })
                     .ToList(),
                 HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes,
                 DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
                 FollowUpInstructions = payload.Plan.FollowUpInstructions,
-                ClinicalSummary = payload.Plan.ClinicalSummary
+                ClinicalSummary = payload.Plan.ClinicalSummary,
+                DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode),
+                IsNonBillableDischarge = ResolveIsNonBillableDischarge(
+                    payload.Plan.DischargeDocumentationMode,
+                    payload.Plan.IsNonBillableDischarge),
+                FullDischargeSummary = payload.Plan.FullDischargeSummary,
+                PostDischargeInstructions = payload.Plan.PostDischargeInstructions,
+                PrimaryDischargeReason = payload.Plan.PrimaryDischargeReason,
+                OtherDischargeReasonExplanation = payload.Plan.OtherDischargeReasonExplanation,
+                DischargeRecommendations = payload.Plan.DischargeRecommendations,
+                CompletedDischargeChecklistItems = [.. payload.Plan.CompletedDischargeChecklistItems]
+            },
+            DischargeSubjective = new DischargeSubjectiveVm
+            {
+                GoalsMetStatus = discharge.GoalsMetStatus,
+                RemainingDifficulty = discharge.RemainingDifficulty,
+                PercentImproved = discharge.PercentImproved,
+                PatientReportedOutcome = discharge.PatientReportedOutcome
+            },
+            ProgressSubjective = new ProgressSubjectiveVm
+            {
+                OverallCondition = progressQuestionnaire.OverallCondition,
+                GoalProgress = progressQuestionnaire.GoalProgress,
+                PainChange = progressQuestionnaire.PainChange,
+                DailyActivityEase = progressQuestionnaire.DailyActivityEase,
+                ImprovedActivities = CloneSet(progressQuestionnaire.ImprovedActivities),
+                SameActivities = CloneSet(progressQuestionnaire.SameActivities),
+                WorseActivities = CloneSet(progressQuestionnaire.WorseActivities),
+                NewDifficultyActivities = CloneSet(progressQuestionnaire.NewDifficultyActivities),
+                ImpactedAreas = CloneSet(progressQuestionnaire.ImpactedAreas),
+                ReturnedToActivities = progressQuestionnaire.ReturnedToActivities,
+                HepAdherence = progressQuestionnaire.HepAdherence,
+                HepResponse = progressQuestionnaire.HepResponse,
+                HasSetbacksOrNewSymptoms = progressQuestionnaire.HasSetbacksOrNewSymptoms,
+                SetbackDetails = progressQuestionnaire.SetbackDetails,
+                HasMedicalChanges = progressQuestionnaire.HasMedicalChanges,
+                AdditionalInformation = progressQuestionnaire.AdditionalInformation
             },
             DailyTreatment = new DailyTreatmentVm
             {
@@ -268,30 +342,37 @@ public sealed class NoteWorkspacePayloadMapper
     public NoteWorkspaceV2Payload MapToV2Payload(NoteWorkspacePayload payload, NoteType noteType)
     {
         var preservedPayload = ClonePayload(payload.StructuredPayload) ?? new NoteWorkspaceV2Payload();
+        var dischargeSubjective = payload.DischargeSubjective ?? new DischargeSubjectiveVm();
         preservedPayload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
         preservedPayload.NoteType = noteType;
         preservedPayload.Subjective ??= new WorkspaceSubjectiveV2();
         preservedPayload.Objective ??= new WorkspaceObjectiveV2();
         preservedPayload.Assessment ??= new WorkspaceAssessmentV2();
         preservedPayload.Plan ??= new WorkspacePlanV2();
+        preservedPayload.Discharge ??= new WorkspaceDischargeV2();
         preservedPayload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         preservedPayload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+        preservedPayload.BillingSettings ??= new WorkspaceBillingSettingsV2();
         NormalizePlannedCptCodeSources(preservedPayload.Plan.SelectedCptCodes);
 
         var primaryBodyPart = ParseBodyPart(
-            !string.IsNullOrWhiteSpace(payload.Objective.SelectedBodyPart)
-                ? payload.Objective.SelectedBodyPart
-                : payload.Subjective.SelectedBodyPart);
+            !string.IsNullOrWhiteSpace(payload.Subjective.SelectedBodyPart)
+                ? payload.Subjective.SelectedBodyPart
+                : payload.Objective.SelectedBodyPart);
 
         preservedPayload.Subjective.Problems = CloneSet(payload.Subjective.Problems);
         preservedPayload.Subjective.OtherProblem = payload.Subjective.OtherProblem;
         preservedPayload.Subjective.Locations = CloneSet(payload.Subjective.Locations);
         preservedPayload.Subjective.OtherLocation = payload.Subjective.OtherLocation;
+        preservedPayload.Subjective.PainDescriptors = CloneSet(payload.Subjective.PainDescriptors);
+        preservedPayload.Subjective.OtherPainDescriptor = TrimToNull(payload.Subjective.OtherPainDescriptor);
         preservedPayload.Subjective.CurrentPainScore = payload.Subjective.CurrentPainScore;
         preservedPayload.Subjective.BestPainScore = payload.Subjective.BestPainScore;
         preservedPayload.Subjective.WorstPainScore = payload.Subjective.WorstPainScore;
         preservedPayload.Subjective.IsPainScoreDocumented = payload.Subjective.IsPainScoreDocumented;
         preservedPayload.Subjective.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.Subjective.SymptomFrequencies = CloneDictionary(payload.Subjective.SymptomFrequencies);
+        preservedPayload.Subjective.SymptomTimeOfDay = CloneSet(payload.Subjective.SymptomTimeOfDay);
         preservedPayload.Subjective.OnsetDate = payload.Subjective.OnsetDate;
         preservedPayload.Subjective.OnsetOverAYearAgo = payload.Subjective.OnsetOverAYearAgo;
         preservedPayload.Subjective.CauseUnknown = payload.Subjective.CauseUnknown;
@@ -310,6 +391,15 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Subjective.AdditionalFunctionalLimitations = payload.Subjective.AdditionalFunctionalLimitations;
         preservedPayload.Subjective.Imaging ??= new ImagingDetailsV2();
         preservedPayload.Subjective.Imaging.HasImaging = payload.Subjective.HasImaging;
+        preservedPayload.Subjective.Imaging.Modalities = payload.Subjective.HasImaging == true
+            ? CloneSet(payload.Subjective.ImagingModalities)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        preservedPayload.Subjective.Imaging.OtherModality = payload.Subjective.HasImaging == true
+            ? TrimToNull(payload.Subjective.OtherImagingModality)
+            : null;
+        preservedPayload.Subjective.Imaging.Findings = payload.Subjective.HasImaging == true
+            ? TrimToNull(payload.Subjective.ImagingFindings)
+            : null;
         preservedPayload.Subjective.AssistiveDevice ??= new AssistiveDeviceDetailsV2();
         preservedPayload.Subjective.AssistiveDevice.UsesAssistiveDevice = payload.Subjective.UsesAssistiveDevice;
         preservedPayload.Subjective.AssistiveDevice.Devices = payload.Subjective.UsesAssistiveDevice == true
@@ -343,6 +433,7 @@ public sealed class NoteWorkspacePayloadMapper
             payload.Objective.Metrics,
             primaryBodyPart);
         preservedPayload.Objective.GaitObservation ??= new GaitObservationV2();
+        preservedPayload.Objective.GaitObservation.IsNormal = payload.Objective.IsGaitUnremarkable;
         preservedPayload.Objective.GaitObservation.PrimaryPattern = payload.Objective.PrimaryGaitPattern ?? string.Empty;
         preservedPayload.Objective.GaitObservation.Deviations = CloneSet(payload.Objective.GaitDeviations);
         preservedPayload.Objective.GaitObservation.AdditionalObservations = payload.Objective.AdditionalGaitObservations;
@@ -359,17 +450,18 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.PostureObservation ??= new PostureObservationV2();
         preservedPayload.Objective.PostureObservation.Findings = CloneSet(payload.Objective.PostureFindings);
         preservedPayload.Objective.PostureObservation.Other = payload.Objective.OtherPostureFinding;
-        preservedPayload.Objective.PostureObservation.IsNormal = preservedPayload.Objective.PostureObservation.Findings.Count == 0
-            && string.IsNullOrWhiteSpace(payload.Objective.OtherPostureFinding);
+        preservedPayload.Objective.PostureObservation.IsNormal = payload.Objective.IsPostureUnremarkable;
         preservedPayload.Objective.PalpationObservation ??= new PalpationObservationV2();
         preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);
-        preservedPayload.Objective.PalpationObservation.IsNormal = preservedPayload.Objective.PalpationObservation.TenderMuscles.Count == 0;
+        preservedPayload.Objective.PalpationObservation.Other = TrimToNull(payload.Objective.PalpationComments);
+        preservedPayload.Objective.PalpationObservation.IsNormal = payload.Objective.IsPalpationUnremarkable;
         preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
             preservedPayload.Objective.ExerciseRows,
             payload.Objective.ExerciseRows,
             []);
 
         preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
+        preservedPayload.Assessment.FindingsSummary = TrimToNull(payload.Assessment.FindingsSummary);
         preservedPayload.Assessment.FunctionalLimitationsSummary = payload.Assessment.FunctionalLimitations;
         preservedPayload.Assessment.DeficitsSummary = payload.Assessment.DeficitsSummary;
         preservedPayload.Assessment.DeficitCategories = [.. payload.Assessment.DeficitCategories];
@@ -393,6 +485,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Assessment.SupportSystemDetails = payload.Assessment.SupportSystemDetails;
         preservedPayload.Assessment.SupportAdditionalNotes = payload.Assessment.SupportAdditionalNotes;
         preservedPayload.Assessment.OverallPrognosis = payload.Assessment.OverallPrognosis;
+        preservedPayload.Assessment.PrognosisNarrative = TrimToNull(payload.Assessment.PrognosisNarrative);
 
         preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
         preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
@@ -403,11 +496,38 @@ public sealed class NoteWorkspacePayloadMapper
             []);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
-            payload.Plan.SelectedCptCodes);
+            BuildVisibleCptCodes(payload.Plan, payload.Objective));
         preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
         preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+        preservedPayload.Plan.DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode);
+        preservedPayload.Plan.IsNonBillableDischarge = ResolveIsNonBillableDischarge(
+            preservedPayload.Plan.DischargeDocumentationMode,
+            payload.Plan.IsNonBillableDischarge);
+        preservedPayload.Plan.FullDischargeSummary = TrimToNull(payload.Plan.FullDischargeSummary);
+        preservedPayload.Plan.PostDischargeInstructions = TrimToNull(payload.Plan.PostDischargeInstructions);
+        preservedPayload.Plan.PrimaryDischargeReason = TrimToNull(payload.Plan.PrimaryDischargeReason);
+        preservedPayload.Plan.OtherDischargeReasonExplanation = string.Equals(payload.Plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase)
+            ? TrimToNull(payload.Plan.OtherDischargeReasonExplanation)
+            : null;
+        preservedPayload.Plan.DischargeRecommendations = TrimToNull(payload.Plan.DischargeRecommendations);
+        preservedPayload.Plan.CompletedDischargeChecklistItems = payload.Plan.CompletedDischargeChecklistItems
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        preservedPayload.BillingSettings.ModifierWorkflowEnabled = payload.BillingSettings.ModifierWorkflowEnabled;
+        preservedPayload.BillingSettings.AutoApplySuggestedModifiers = payload.BillingSettings.AutoApplySuggestedModifiers;
+        preservedPayload.BillingSettings.RequireSuggestedModifierReview = payload.BillingSettings.RequireSuggestedModifierReview;
+
+        preservedPayload.Discharge.GoalsMetStatus = TrimToNull(dischargeSubjective.GoalsMetStatus);
+        preservedPayload.Discharge.RemainingDifficulty = TrimToNull(dischargeSubjective.RemainingDifficulty);
+        preservedPayload.Discharge.PercentImproved = dischargeSubjective.PercentImproved.HasValue
+            ? Math.Clamp(dischargeSubjective.PercentImproved.Value, 0, 100)
+            : null;
+        preservedPayload.Discharge.PatientReportedOutcome = TrimToNull(dischargeSubjective.PatientReportedOutcome);
 
         var dailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
         preservedPayload.DailyTreatment.ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit?.Trim() ?? string.Empty;
@@ -422,14 +542,32 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.DailyTreatment.AssociatedSymptoms = CloneSet(dailyTreatment.AssociatedSymptoms);
         preservedPayload.DailyTreatment.ResponseToTreatment = dailyTreatment.ResponseToTreatment?.Trim() ?? string.Empty;
 
+        var progressSubjective = payload.ProgressSubjective ?? new ProgressSubjectiveVm();
+        preservedPayload.ProgressQuestionnaire.OverallCondition = progressSubjective.OverallCondition?.Trim() ?? string.Empty;
+        preservedPayload.ProgressQuestionnaire.GoalProgress = progressSubjective.GoalProgress?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
         preservedPayload.ProgressQuestionnaire.BestPainLevel = payload.Subjective.BestPainScore;
         preservedPayload.ProgressQuestionnaire.WorstPainLevel = payload.Subjective.WorstPainScore;
+        preservedPayload.ProgressQuestionnaire.PainChange = progressSubjective.PainChange?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.PainFrequency = payload.Subjective.PainFrequency;
+        preservedPayload.ProgressQuestionnaire.DailyActivityEase = progressSubjective.DailyActivityEase?.Trim() ?? string.Empty;
+        preservedPayload.ProgressQuestionnaire.ImprovedActivities = CloneSet(progressSubjective.ImprovedActivities);
+        preservedPayload.ProgressQuestionnaire.SameActivities = CloneSet(progressSubjective.SameActivities);
+        preservedPayload.ProgressQuestionnaire.WorseActivities = CloneSet(progressSubjective.WorseActivities);
+        preservedPayload.ProgressQuestionnaire.NewDifficultyActivities = CloneSet(progressSubjective.NewDifficultyActivities);
+        preservedPayload.ProgressQuestionnaire.ImpactedAreas = CloneSet(progressSubjective.ImpactedAreas);
+        preservedPayload.ProgressQuestionnaire.ReturnedToActivities = progressSubjective.ReturnedToActivities?.Trim() ?? string.Empty;
+        preservedPayload.ProgressQuestionnaire.HepAdherence = progressSubjective.HepAdherence?.Trim() ?? string.Empty;
+        preservedPayload.ProgressQuestionnaire.HepResponse = progressSubjective.HepResponse?.Trim() ?? string.Empty;
+        preservedPayload.ProgressQuestionnaire.HasSetbacksOrNewSymptoms = progressSubjective.HasSetbacksOrNewSymptoms;
+        preservedPayload.ProgressQuestionnaire.SetbackDetails = TrimToNull(progressSubjective.SetbackDetails);
+        preservedPayload.ProgressQuestionnaire.HasMedicalChanges = progressSubjective.HasMedicalChanges;
+        preservedPayload.ProgressQuestionnaire.AdditionalInformation = TrimToNull(progressSubjective.AdditionalInformation);
         preservedPayload.DryNeedling = WorkspaceNoteTypeMapper.IsDryNeedlingWorkspaceType(payload.WorkspaceNoteType)
             ? new WorkspaceDryNeedlingV2
             {
                 DateOfTreatment = payload.DryNeedling.DateOfTreatment,
+                BillingDesignation = NormalizeBillingDesignation(payload.DryNeedling.BillingDesignation),
                 Location = payload.DryNeedling.Location?.Trim() ?? string.Empty,
                 NeedlingType = payload.DryNeedling.NeedlingType?.Trim() ?? string.Empty,
                 PainBefore = payload.DryNeedling.PainBefore,
@@ -652,6 +790,9 @@ public sealed class NoteWorkspacePayloadMapper
                 CptCode = string.IsNullOrWhiteSpace(row.CptCode) ? null : row.CptCode.Trim(),
                 CptDescription = string.IsNullOrWhiteSpace(row.CptDescription) ? null : row.CptDescription.Trim(),
                 TimeMinutes = row.TimeMinutes,
+                AssistanceLevel = string.IsNullOrWhiteSpace(row.AssistanceLevel) ? null : row.AssistanceLevel.Trim(),
+                Cueing = string.IsNullOrWhiteSpace(row.Cueing) ? null : row.Cueing.Trim(),
+                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                 IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                 IsSourceBacked = row.IsSourceBacked
             })
@@ -673,6 +814,9 @@ public sealed class NoteWorkspacePayloadMapper
                 CptCode = row.CptCode,
                 CptDescription = row.CptDescription,
                 TimeMinutes = row.TimeMinutes,
+                AssistanceLevel = row.AssistanceLevel,
+                Cueing = row.Cueing,
+                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
                 IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
                 IsSourceBacked = row.IsSourceBacked
             })
@@ -739,7 +883,7 @@ public sealed class NoteWorkspacePayloadMapper
             merged.Add(new ObjectiveMetricInputV2
             {
                 Name = name,
-                BodyPart = existing?.BodyPart == BodyPart.Other ? defaultBodyPart : existing?.BodyPart ?? defaultBodyPart,
+                BodyPart = ResolveMetricBodyPart(row.BodyPart, existing?.BodyPart, defaultBodyPart),
                 MetricType = row.MetricType != MetricType.Other ? row.MetricType : existing?.MetricType ?? MetricType.Other,
                 Value = value,
                 PreviousValue = string.IsNullOrWhiteSpace(row.PreviousValue)
@@ -861,7 +1005,14 @@ public sealed class NoteWorkspacePayloadMapper
                 Name = entry.Name.Trim(),
                 Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
                 IsSourceBacked = entry.IsSourceBacked,
-                Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim()
+                Notes = string.IsNullOrWhiteSpace(entry.Notes) ? null : entry.Notes.Trim(),
+                CptCode = string.IsNullOrWhiteSpace(entry.CptCode) ? null : entry.CptCode.Trim(),
+                CptDescription = string.IsNullOrWhiteSpace(entry.CptDescription) ? null : entry.CptDescription.Trim(),
+                TimeMinutes = entry.TimeMinutes,
+                AssistanceLevel = string.IsNullOrWhiteSpace(entry.AssistanceLevel) ? null : entry.AssistanceLevel.Trim(),
+                Cueing = string.IsNullOrWhiteSpace(entry.Cueing) ? null : entry.Cueing.Trim(),
+                Response = string.IsNullOrWhiteSpace(entry.Response) ? null : entry.Response.Trim(),
+                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
             })
             .ToList();
 
@@ -877,7 +1028,14 @@ public sealed class NoteWorkspacePayloadMapper
                 Name = entry.Name,
                 Category = entry.Category,
                 IsSourceBacked = entry.IsSourceBacked,
-                Notes = entry.Notes
+                Notes = entry.Notes,
+                CptCode = entry.CptCode,
+                CptDescription = entry.CptDescription,
+                TimeMinutes = entry.TimeMinutes,
+                AssistanceLevel = entry.AssistanceLevel,
+                Cueing = entry.Cueing,
+                Response = entry.Response,
+                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
             })
             .ToList();
 
@@ -894,6 +1052,74 @@ public sealed class NoteWorkspacePayloadMapper
                 Category = "Manual"
             })
             .ToList();
+    }
+
+    private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective)
+    {
+        var selected = plan.SelectedCptCodes
+            .Select(code => CloneUiCptCode(code))
+            .ToList();
+
+        foreach (var row in objective.ExerciseRows)
+        {
+            AddRowCptCode(
+                selected,
+                row.CptCode,
+                row.CptDescription,
+                row.TimeMinutes);
+        }
+
+        foreach (var intervention in plan.GeneralInterventions)
+        {
+            AddRowCptCode(
+                selected,
+                intervention.CptCode,
+                intervention.CptDescription,
+                intervention.TimeMinutes);
+        }
+
+        return selected;
+    }
+
+    private static UiCptCodeEntry CloneUiCptCode(UiCptCodeEntry code) => new()
+    {
+        Code = code.Code,
+        Description = code.Description,
+        Units = code.Units,
+        Minutes = code.Minutes,
+        Modifiers = [.. code.Modifiers],
+        ModifierOptions = [.. code.ModifierOptions],
+        SuggestedModifiers = [.. code.SuggestedModifiers],
+        ModifierSource = code.ModifierSource
+    };
+
+    private static void AddRowCptCode(List<UiCptCodeEntry> selected, string? code, string? description, int? minutes)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        var existing = selected.FirstOrDefault(entry =>
+            string.Equals(entry.Code?.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.Minutes ??= minutes;
+            if (string.IsNullOrWhiteSpace(existing.Description) && !string.IsNullOrWhiteSpace(description))
+            {
+                existing.Description = description.Trim();
+            }
+
+            return;
+        }
+
+        selected.Add(new UiCptCodeEntry
+        {
+            Code = code.Trim(),
+            Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim(),
+            Units = minutes.HasValue && minutes.Value > 0 ? Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m)) : 1,
+            Minutes = minutes
+        });
     }
 
     private static bool? DeriveAppearsMotivated(string? motivationLevel)
@@ -1151,12 +1377,65 @@ public sealed class NoteWorkspacePayloadMapper
             .Select(value => value.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    private static Dictionary<string, string> CloneDictionary(IDictionary<string, string>? values) =>
+        (values ?? new Dictionary<string, string>())
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+            .ToDictionary(
+                pair => pair.Key.Trim(),
+                pair => pair.Value.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+    private static BodyPart ResolveMetricBodyPart(string? visibleBodyPart, BodyPart? preservedBodyPart, BodyPart defaultBodyPart)
+    {
+        var parsed = ParseBodyPart(visibleBodyPart);
+        if (parsed != BodyPart.Other)
+        {
+            return parsed;
+        }
+
+        if (preservedBodyPart.HasValue && preservedBodyPart.Value != BodyPart.Other)
+        {
+            return preservedBodyPart.Value;
+        }
+
+        return defaultBodyPart;
+    }
+
     private static BodyPart ParseBodyPart(string? value)
     {
         return Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed)
             ? parsed
             : BodyPart.Other;
     }
+
+    private static string NormalizeDischargeDocumentationMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Standard billable discharge";
+        }
+
+        return value.Trim() switch
+        {
+            "Patient unreachable" => "Patient unreachable",
+            "Patient self-discharge" => "Patient self-discharge",
+            "MD/provider-initiated discharge" => "MD/provider-initiated discharge",
+            "Standard billable discharge" => "Standard billable discharge",
+            _ => value.Trim()
+        };
+    }
+
+    private static bool ResolveIsNonBillableDischarge(string? mode, bool explicitFlag)
+    {
+        var normalizedMode = NormalizeDischargeDocumentationMode(mode);
+        return explicitFlag
+            || !string.Equals(normalizedMode, "Standard billable discharge", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBillingDesignation(string? value) =>
+        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
+            ? "Non-billable"
+            : "Billable";
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

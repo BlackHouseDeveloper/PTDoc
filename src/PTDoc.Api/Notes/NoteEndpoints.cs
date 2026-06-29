@@ -434,9 +434,23 @@ public static class NoteEndpoints
 
         if (previewFilters.Count > 0)
         {
-            query = query.Where(note => previewFilters.Any(filter =>
-                filter.NoteType == note.NoteType &&
-                filter.IsReEvaluation == note.IsReEvaluation));
+            var includeInitialEvaluation = previewFilters.Any(filter =>
+                filter.NoteType == NoteType.Evaluation && !filter.IsReEvaluation);
+            var includeReEvaluation = previewFilters.Any(filter =>
+                filter.NoteType == NoteType.Evaluation && filter.IsReEvaluation);
+            var includeProgressNote = previewFilters.Any(filter =>
+                filter.NoteType == NoteType.ProgressNote);
+            var includeDailyNote = previewFilters.Any(filter =>
+                filter.NoteType == NoteType.Daily);
+            var includeDischargeSummary = previewFilters.Any(filter =>
+                filter.NoteType == NoteType.Discharge);
+
+            query = query.Where(note =>
+                (includeInitialEvaluation && note.NoteType == NoteType.Evaluation && !note.IsReEvaluation) ||
+                (includeReEvaluation && note.NoteType == NoteType.Evaluation && note.IsReEvaluation) ||
+                (includeProgressNote && note.NoteType == NoteType.ProgressNote) ||
+                (includeDailyNote && note.NoteType == NoteType.Daily) ||
+                (includeDischargeSummary && note.NoteType == NoteType.Discharge));
         }
 
         var matchingNotes = await query

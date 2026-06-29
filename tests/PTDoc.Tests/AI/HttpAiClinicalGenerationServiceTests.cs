@@ -58,6 +58,47 @@ public sealed class HttpAiClinicalGenerationServiceTests
     }
 
     [Fact]
+    public async Task GeneratePrognosisAsync_PostsToDedicatedEndpointAndMapsMetadata()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return StubHttpMessageHandler.JsonResponse("""
+            {
+              "generatedText": "Prognosis narrative",
+              "metadata": {
+                "templateVersion": "v1",
+                "model": "gpt-4.1",
+                "generatedAt": "2026-03-30T12:34:56Z",
+                "tokenCount": 88
+              }
+            }
+            """);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePrognosisAsync(new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
+            FunctionalLimitations = "Lifting",
+            Goals = "Return to work"
+        });
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(HttpMethod.Post, capturedRequest!.Method);
+        Assert.Equal("/api/v1/ai/prognosis", capturedRequest.RequestUri!.AbsolutePath);
+        Assert.True(result.Success);
+        Assert.Equal("Prognosis narrative", result.GeneratedText);
+        Assert.NotNull(result.Metadata);
+        Assert.Equal("gpt-4.1", result.Metadata!.Model);
+        Assert.Equal(88, result.Metadata.TokenCount);
+    }
+
+    [Fact]
     public async Task GenerateGoalNarrativesAsync_WithEmptyNoteId_DoesNotCallApi()
     {
         var wasCalled = false;
@@ -120,6 +161,30 @@ public sealed class HttpAiClinicalGenerationServiceTests
         {
             NoteId = Guid.Empty,
             Diagnosis = "Lumbar strain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("save the note", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(wasCalled);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosisAsync_WithEmptyNoteId_DoesNotCallApi()
+    {
+        var wasCalled = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            wasCalled = true;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePrognosisAsync(new PrognosisGenerationRequest
+        {
+            NoteId = Guid.Empty,
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar"
         });
 
         Assert.False(result.Success);
@@ -202,6 +267,57 @@ public sealed class HttpAiClinicalGenerationServiceTests
         Assert.False(result.Success);
         Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
         Assert.False(wasCalled);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosisAsync_WithMissingBodyPart_DoesNotCallApi()
+    {
+        var wasCalled = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            wasCalled = true;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePrognosisAsync(new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Other"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(wasCalled);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosisAsync_WhenApiReturnsStructuredAiError_IncludesReferenceId()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("""
+            {
+              "error": "AI generation is currently disabled.",
+              "code": "ai_feature_disabled",
+              "correlationId": "ai-ref-456"
+            }
+            """, System.Text.Encoding.UTF8, "application/json")
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.GeneratePrognosisAsync(new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation is currently disabled. Reference ID: ai-ref-456", result.ErrorMessage);
     }
 
     private static HttpAiClinicalGenerationService CreateService(HttpMessageHandler handler)

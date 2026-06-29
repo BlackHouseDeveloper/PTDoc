@@ -76,7 +76,7 @@ public sealed class HttpSyncService(HttpClient httpClient) : ISyncService
     {
         if (!_lastSyncTime.HasValue)
         {
-            return "Never";
+            return _isSyncing ? "Syncing" : "Sync pending";
         }
 
         var elapsed = DateTime.UtcNow - _lastSyncTime.Value;
