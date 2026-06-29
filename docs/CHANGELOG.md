@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Patient payer and authorization intake workflows
+
+- **Patient payer, intake, and authorization screens** — Added secondary-insurance and adjuster capture, expanded Patient & Payer Information with cost-sharing and visit-limit fields, and added editable authorization/referral history with validation coverage. Reason: split the client-feedback payer and authorization workflow remediation into a focused reviewable PR.
+
 ### Changed - Dashboard alerts and appointment detail readiness
 
 - **Dashboard and appointments** — Added role-scoped dashboard alert data with authorization alert support, bounded/single-pass authorization alert reuse for dashboard snapshots, updated Dashboard alert grouping, and added appointment detail readiness indicators for billing, intake, clinical documents backed by visit-note ids, disabled copay availability, clinician labels, and week-view date context. Reason: split the live-audit/client-feedback remediation into a focused reviewable PR for dashboard and appointment UX.
