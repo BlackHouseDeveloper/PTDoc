@@ -361,6 +361,72 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
+    public void PlanTab_InterventionRowsCaptureCptAssistanceCueingAndHepLink()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var vm = new PlanVm
+        {
+            GeneralInterventions =
+            [
+                new GeneralInterventionEntry
+                {
+                    Name = "Step ups"
+                }
+            ]
+        };
+
+        workspaceService
+            .Setup(service => service.SearchCptAsync("97110", 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CodeLookupEntry
+                {
+                    Code = "97110",
+                    Description = "Exercise",
+                    Source = CptSource,
+                    ModifierOptions = ["GP"],
+                    SuggestedModifiers = ["GP"],
+                    ModifierSource = CptSource
+                }
+            ]);
+
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+
+        var cut = RenderComponent<PlanTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => vm = updated))
+            .Add(component => component.NoteId, Guid.NewGuid())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("[data-testid='plan-intervention-cpt']").Change("97110");
+        cut.Find("[data-testid='plan-intervention-minutes']").Change("12");
+        cut.Find("[data-testid='plan-intervention-assistance']").Change("Min Assist");
+        cut.Find("[data-testid='plan-intervention-cueing']").Change("Verbal cueing");
+        cut.Find("[data-testid='plan-intervention-response']").Change("Improved form");
+        cut.Find("[data-testid='plan-intervention-hep-link']").Change(true);
+
+        cut.WaitForAssertion(() =>
+        {
+            var intervention = Assert.Single(vm.GeneralInterventions);
+            Assert.Equal("97110", intervention.CptCode);
+            Assert.Equal("Exercise", intervention.CptDescription);
+            Assert.Equal(12, intervention.TimeMinutes);
+            Assert.Equal("Min Assist", intervention.AssistanceLevel);
+            Assert.Equal("Verbal cueing", intervention.Cueing);
+            Assert.Equal("Improved form", intervention.Response);
+            Assert.True(intervention.IncludeInHomeExerciseProgram);
+
+            var selected = Assert.Single(vm.SelectedCptCodes);
+            Assert.Equal("97110", selected.Code);
+            Assert.Contains("Linked HEP activities", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Step ups", cut.Find("[data-testid='plan-hep-linked-interventions']").TextContent, StringComparison.Ordinal);
+        });
+
+        workspaceService.VerifyAll();
+    }
+
+    [Fact]
     public void PlanTab_WhenNoteIsUnsaved_DisablesAllAiButtonsAndShowsSaveFirstReason()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);

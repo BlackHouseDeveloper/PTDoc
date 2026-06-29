@@ -342,10 +342,10 @@
 
             <div class="objective-tab__section" data-testid="objective-exercises-section">
                 <div class="objective-tab__section-header">
-                    <h3 class="objective-tab__section-heading">Exercises Performed</h3>
+                    <h3 class="objective-tab__section-heading">Interventions / Activities Performed</h3>
                     @if (!IsReadOnly)
                     {
-                        <button type="button" class="objective-tab__secondary-btn" @onclick="AddManualExerciseRow">+ Add Manual Row</button>
+                        <button type="button" class="objective-tab__secondary-btn" @onclick="AddManualExerciseRow">+ Add Intervention Row</button>
                     }
                 </div>
 
@@ -369,7 +369,7 @@
 
                 @if (_vm.ExerciseRows.Count == 0)
                 {
-                    <p class="objective-tab__helper">No structured exercise rows documented yet.</p>
+                    <p class="objective-tab__helper">No structured intervention rows documented yet.</p>
                 }
                 else
                 {
@@ -386,7 +386,7 @@
                                 </div>
                                 <div class="objective-tab__editor-grid">
                                     <label>
-                                        <span>Suggested exercise</span>
+                                        <span>Suggested activity</span>
                                         <input class="objective-tab__text-input"
                                                value="@row.SuggestedExercise"
                                                disabled="@IsReadOnly"
@@ -412,6 +412,64 @@
                                                value="@row.ResistanceOrWeight"
                                                disabled="@IsReadOnly"
                                                @onchange="e => UpdateExerciseRow(row, item => item.ResistanceOrWeight = e.Value?.ToString())" />
+                                    </label>
+                                    <label>
+                                        <span>CPT</span>
+                                        <select class="objective-tab__select"
+                                                value="@NormalizeCode(row.CptCode)"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateExerciseCpt(row, e.Value?.ToString())">
+                                            <option value="">Select CPT ↓</option>
+                                            @foreach (var option in InterventionCptOptions)
+                                            {
+                                                <option value="@option.Code" selected="@CodesMatch(row.CptCode, option.Code)">
+                                                    @option.Code - @option.Label
+                                                </option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Minutes</span>
+                                        <input class="objective-tab__text-input"
+                                               type="number"
+                                               min="0"
+                                               step="1"
+                                               value="@(row.TimeMinutes?.ToString() ?? string.Empty)"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseMinutes(row, e.Value)" />
+                                    </label>
+                                    <label>
+                                        <span>Assistance</span>
+                                        <select class="objective-tab__select"
+                                                value="@row.AssistanceLevel"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateExerciseRow(row, item => item.AssistanceLevel = e.Value?.ToString())">
+                                            <option value="">None documented</option>
+                                            @foreach (var option in AssistanceLevelOptions)
+                                            {
+                                                <option value="@option" selected="@string.Equals(row.AssistanceLevel, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Cueing</span>
+                                        <select class="objective-tab__select"
+                                                value="@row.Cueing"
+                                                disabled="@IsReadOnly"
+                                                @onchange="e => UpdateExerciseRow(row, item => item.Cueing = e.Value?.ToString())">
+                                            <option value="">None documented</option>
+                                            @foreach (var option in CueingOptions)
+                                            {
+                                                <option value="@option" selected="@string.Equals(row.Cueing, option, StringComparison.OrdinalIgnoreCase)">@option</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label class="objective-tab__checkbox-item">
+                                        <input type="checkbox"
+                                               checked="@row.IncludeInHomeExerciseProgram"
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateExerciseRow(row, item => item.IncludeInHomeExerciseProgram = (bool)e.Value!)" />
+                                        Link to HEP
                                     </label>
                                 </div>
                             </div>
@@ -479,6 +537,37 @@
         .ToArray();
 
     private record GaitPatternOption(string Value, string Label, string Description);
+    private record InterventionCptOption(string Code, string Label);
+
+    private static readonly InterventionCptOption[] InterventionCptOptions =
+    [
+        new("97110", "Exercise"),
+        new("97112", "Neuromuscular re-ed"),
+        new("97530", "Functional activities"),
+        new("97116", "Gait training"),
+        new("97535", "Self-care / ADL training"),
+        new("97140", "Manual therapy")
+    ];
+
+    private static readonly string[] AssistanceLevelOptions =
+    [
+        "Min Assist",
+        "Mod Assist",
+        "Max Assist",
+        "Contact Guard",
+        "Standby Assist",
+        "Independent"
+    ];
+
+    private static readonly string[] CueingOptions =
+    [
+        "Verbal cueing",
+        "Tactile cueing",
+        "Visual cueing",
+        "Verbal + tactile cueing",
+        "Verbal + visual cueing",
+        "Tactile + visual cueing"
+    ];
 
     private static readonly GaitPatternOption[] _gaitPatterns =
     [
@@ -728,6 +817,22 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
+    private Task UpdateExerciseCpt(ExerciseRowEntry row, string? code)
+    {
+        var option = InterventionCptOptions.FirstOrDefault(item => CodesMatch(item.Code, code));
+        row.CptCode = option?.Code;
+        row.CptDescription = option?.Label;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task UpdateExerciseMinutes(ExerciseRowEntry row, object? value)
+    {
+        row.TimeMinutes = int.TryParse(value?.ToString(), out var minutes)
+            ? Math.Max(0, minutes)
+            : null;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
     private Task SetAndNotify(Action<ObjectiveVm> update)
     {
         update(_vm);
@@ -765,4 +870,9 @@
 
     private static BodyPart ParseBodyPart(string? value) =>
         Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
+
+    private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
+
+    private static bool CodesMatch(string? left, string? right) =>
+        string.Equals(NormalizeCode(left), NormalizeCode(right), StringComparison.OrdinalIgnoreCase);
 }

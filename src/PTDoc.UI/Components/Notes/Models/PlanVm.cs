@@ -43,6 +43,13 @@ public sealed class GeneralInterventionEntry
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }
     public string? Notes { get; set; }
+    public string? CptCode { get; set; }
+    public string? CptDescription { get; set; }
+    public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public string? Response { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
 }
 
 public class CptCodeEntry
