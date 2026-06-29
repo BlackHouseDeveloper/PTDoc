@@ -1,6 +1,8 @@
-@* Patient Clinical Info Card - Tabbed interface for timeline, notes, and documents *@
+@* Patient Clinical Info Card - Tabbed interface for timeline, notes, documents, and communications *@
 @using PTDoc.Application.DTOs
 @using PTDoc.UI.Components.Patients.Profile.Models
+@using PTDoc.UI.Services
+@inject IPatientChartStorageService ChartStorageService
 
 <div class="patient-clinical-info-card" data-testid="patient-clinical-info-card">
     @if (!string.IsNullOrWhiteSpace(IntakeStateMessage))
@@ -35,7 +37,7 @@
                 aria-selected="@IsSelectedTab("timeline")"
                 aria-controls="patient-profile-panel-current"
                 data-testid="patient-profile-tab-timeline"
-                @onclick="@(() => SelectTab("timeline"))">
+                @onclick="@(() => SelectTabAsync("timeline"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
                 <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -49,12 +51,40 @@
                 aria-selected="@IsSelectedTab("notes")"
                 aria-controls="patient-profile-panel-current"
                 data-testid="patient-profile-tab-notes"
-                @onclick="@(() => SelectTab("notes"))">
+                @onclick="@(() => SelectTabAsync("notes"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M10 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6L10 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M10 2V6H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span>Notes</span>
+        </button>
+        <button type="button"
+                class="patient-clinical-info-tab @(selectedTab == "documents" ? "active" : "")"
+                id="patient-profile-tab-documents"
+                role="tab"
+                aria-selected="@IsSelectedTab("documents")"
+                aria-controls="patient-profile-panel-current"
+                data-testid="patient-profile-tab-documents"
+                @onclick="@(() => SelectTabAsync("documents"))">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M9.33333 2H4C3.26362 2 2.66667 2.59695 2.66667 3.33333V12.6667C2.66667 13.403 3.26362 14 4 14H12C12.7364 14 13.3333 13.403 13.3333 12.6667V6L9.33333 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9.33333 2V6H13.3333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M5.33333 9.33333H10.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span>Documents</span>
+        </button>
+        <button type="button"
+                class="patient-clinical-info-tab @(selectedTab == "communications" ? "active" : "")"
+                id="patient-profile-tab-communications"
+                role="tab"
+                aria-selected="@IsSelectedTab("communications")"
+                aria-controls="patient-profile-panel-current"
+                data-testid="patient-profile-tab-communications"
+                @onclick="@(() => SelectTabAsync("communications"))">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M14 7.66667C14.0023 8.54657 13.7944 9.41408 13.3933 10.1973C12.9178 11.1487 12.1871 11.9484 11.2832 12.5177C10.3793 13.087 9.33789 13.4034 8.26667 13.4333C7.38677 13.4356 6.51926 13.2277 5.736 12.8267L2 14L3.17333 10.264C2.7723 9.48074 2.56441 8.61323 2.56667 7.73333C2.59658 6.66211 2.91299 5.6207 3.48229 4.7168C4.05159 3.8129 4.85131 3.08223 5.80267 2.60667C6.58592 2.20563 7.45343 1.99774 8.33333 2H8.66667C10.0812 2.07666 11.4169 2.66011 12.3755 3.61873C13.3341 4.57735 13.9176 5.91302 14 7.33333V7.66667Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Communications</span>
         </button>
     </div>
 
@@ -153,6 +183,188 @@
                 </div>
             }
         }
+        else if (selectedTab == "documents")
+        {
+            <section class="patient-clinical-info-workflow-empty" aria-label="Patient documents" data-testid="patient-documents-panel">
+                <div class="patient-clinical-info-workflow-header">
+                    <h4>Patient Documents</h4>
+                    <p>Upload and review patient chart documents by document type.</p>
+                </div>
+
+                <div class="patient-clinical-info-workflow-form">
+                    <label class="patient-clinical-info-form-field" for="patient-document-type">
+                        <span>Document type</span>
+                        <select id="patient-document-type"
+                                class="patient-clinical-info-input"
+                                @bind="SelectedDocumentType"
+                                disabled="@IsUploadingDocument">
+                            @foreach (var documentType in PatientDocumentTypes)
+                            {
+                                <option value="@documentType">@documentType</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="patient-clinical-info-form-field" for="patient-document-notes">
+                        <span>Notes</span>
+                        <input id="patient-document-notes"
+                               class="patient-clinical-info-input"
+                               type="text"
+                               placeholder="Optional upload note"
+                               @bind="DocumentUploadNotes"
+                               @bind:event="oninput"
+                               disabled="@IsUploadingDocument" />
+                    </label>
+                    <label class="patient-demographics-card-edit-btn patient-clinical-info-file-button" for="patient-document-file">
+                        Upload document
+                    </label>
+                    <InputFile id="patient-document-file"
+                               class="patient-clinical-info-file-input"
+                               OnChange="HandleDocumentSelectedAsync"
+                               disabled="@IsUploadingDocument" />
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(DocumentStatusMessage))
+                {
+                    <p class="patient-clinical-info-workflow-note" role="status">@DocumentStatusMessage</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(DocumentErrorMessage))
+                {
+                    <p class="patient-clinical-info-workflow-error" role="alert">@DocumentErrorMessage</p>
+                }
+
+                @if (IsLoadingDocuments)
+                {
+                    <div class="patient-clinical-info-empty" role="status">Loading documents...</div>
+                }
+                else if (Documents.Count == 0)
+                {
+                    <div class="patient-clinical-info-empty">
+                        <p>No patient documents have been uploaded for this chart yet.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="patient-clinical-info-list" aria-label="Uploaded patient documents">
+                        @foreach (var document in Documents)
+                        {
+                            <article class="patient-clinical-info-list-item">
+                                <div>
+                                    <h4>@document.DocumentType</h4>
+                                    <p>@document.FileName • @FormatFileSize(document.SizeBytes) • @document.UploadedAtUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</p>
+                                    @if (!string.IsNullOrWhiteSpace(document.Notes))
+                                    {
+                                        <p>@document.Notes</p>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        }
+        else if (selectedTab == "communications")
+        {
+            <section class="patient-clinical-info-workflow-empty" aria-label="Patient communications" data-testid="patient-communications-panel">
+                <div class="patient-clinical-info-workflow-header">
+                    <h4>Communication Log</h4>
+                    <p>Log patient communication attempts, outcomes, and follow-up notes.</p>
+                </div>
+
+                <div class="patient-clinical-info-workflow-form">
+                    <label class="patient-clinical-info-form-field" for="patient-communication-channel">
+                        <span>Channel</span>
+                        <select id="patient-communication-channel" class="patient-clinical-info-input" @bind="CommunicationChannel">
+                            @foreach (var communicationType in CommunicationTypes)
+                            {
+                                <option value="@communicationType">@communicationType</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="patient-clinical-info-form-field" for="patient-communication-direction">
+                        <span>Direction</span>
+                        <select id="patient-communication-direction" class="patient-clinical-info-input" @bind="CommunicationDirection">
+                            <option value="Outbound">Outbound</option>
+                            <option value="Inbound">Inbound</option>
+                        </select>
+                    </label>
+                    <label class="patient-clinical-info-form-field" for="patient-communication-contact">
+                        <span>Contact</span>
+                        <input id="patient-communication-contact"
+                               class="patient-clinical-info-input"
+                               type="text"
+                               placeholder="Optional contact name"
+                               @bind="CommunicationContactName"
+                               @bind:event="oninput" />
+                    </label>
+                    <label class="patient-clinical-info-form-field patient-clinical-info-form-field--wide" for="patient-communication-summary">
+                        <span>Summary</span>
+                        <input id="patient-communication-summary"
+                               class="patient-clinical-info-input"
+                               type="text"
+                               placeholder="Brief communication summary"
+                               @bind="CommunicationSummary"
+                               @bind:event="oninput" />
+                    </label>
+                    <label class="patient-clinical-info-form-field patient-clinical-info-form-field--wide" for="patient-communication-details">
+                        <span>Details</span>
+                        <textarea id="patient-communication-details"
+                                  class="patient-clinical-info-input patient-clinical-info-textarea"
+                                  rows="3"
+                                  placeholder="Optional details or follow-up notes"
+                                  @bind="CommunicationDetails"
+                                  @bind:event="oninput"></textarea>
+                    </label>
+                    <button type="button"
+                            class="patient-demographics-card-edit-btn"
+                            @onclick="CreateCommunicationAsync"
+                            disabled="@IsSavingCommunication">
+                        @(IsSavingCommunication ? "Saving..." : "Add communication")
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(CommunicationStatusMessage))
+                {
+                    <p class="patient-clinical-info-workflow-note" role="status">@CommunicationStatusMessage</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(CommunicationErrorMessage))
+                {
+                    <p class="patient-clinical-info-workflow-error" role="alert">@CommunicationErrorMessage</p>
+                }
+
+                @if (IsLoadingCommunications)
+                {
+                    <div class="patient-clinical-info-empty" role="status">Loading communications...</div>
+                }
+                else if (CommunicationLogEntries.Count == 0)
+                {
+                    <div class="patient-clinical-info-empty">
+                        <p>No patient communications have been logged for this chart yet.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="patient-clinical-info-list" aria-label="Patient communication log entries">
+                        @foreach (var entry in CommunicationLogEntries)
+                        {
+                            <article class="patient-clinical-info-list-item">
+                                <div>
+                                    <h4>@entry.Summary</h4>
+                                    <p>@entry.Direction @entry.Channel • @entry.OccurredAtUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</p>
+                                    @if (!string.IsNullOrWhiteSpace(entry.ContactName))
+                                    {
+                                        <p>Contact: @entry.ContactName</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(entry.Details))
+                                    {
+                                        <p>@entry.Details</p>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        }
     </div>
 </div>
 
@@ -170,10 +382,56 @@
     [Parameter] public EventCallback<NoteListItemApiResponse> OnEditNote { get; set; }
 
     private string selectedTab = "timeline";
+    private IReadOnlyList<PatientDocumentResponse> Documents { get; set; } = Array.Empty<PatientDocumentResponse>();
+    private IReadOnlyList<PatientCommunicationLogEntryResponse> CommunicationLogEntries { get; set; } = Array.Empty<PatientCommunicationLogEntryResponse>();
+    private string SelectedDocumentType { get; set; } = "Insurance card";
+    private string DocumentUploadNotes { get; set; } = string.Empty;
+    private string? DocumentStatusMessage { get; set; }
+    private string? DocumentErrorMessage { get; set; }
+    private bool IsLoadingDocuments { get; set; }
+    private bool IsUploadingDocument { get; set; }
+    private bool HasLoadedDocuments { get; set; }
+    private string CommunicationChannel { get; set; } = "Call";
+    private string CommunicationDirection { get; set; } = "Outbound";
+    private string CommunicationContactName { get; set; } = string.Empty;
+    private string CommunicationSummary { get; set; } = string.Empty;
+    private string CommunicationDetails { get; set; } = string.Empty;
+    private string? CommunicationStatusMessage { get; set; }
+    private string? CommunicationErrorMessage { get; set; }
+    private bool IsLoadingCommunications { get; set; }
+    private bool IsSavingCommunication { get; set; }
+    private bool HasLoadedCommunications { get; set; }
+    private static readonly string[] PatientDocumentTypes = new[]
+    {
+        "Driver's license",
+        "Insurance card",
+        "Signed POC",
+        "Protocol",
+        "Authorization/referral",
+        "Prescription",
+        "Other"
+    };
+    private static readonly string[] CommunicationTypes = new[]
+    {
+        "Call",
+        "Text",
+        "Email",
+        "Portal",
+        "In person",
+        "Other"
+    };
 
-    private void SelectTab(string tab)
+    private async Task SelectTabAsync(string tab)
     {
         selectedTab = tab;
+        if (tab == "documents")
+        {
+            await LoadDocumentsAsync();
+        }
+        else if (tab == "communications")
+        {
+            await LoadCommunicationsAsync();
+        }
     }
 
     private string IsSelectedTab(string tab)
@@ -182,6 +440,161 @@
     private string SelectedTabId => $"patient-profile-tab-{selectedTab}";
 
     private string SelectedPanelTestId => $"patient-profile-panel-{selectedTab}";
+
+    private bool TryGetPatientId(out Guid patientId)
+        => Guid.TryParse(Patient.Id, out patientId);
+
+    private async Task LoadDocumentsAsync(bool force = false)
+    {
+        if (!force && HasLoadedDocuments)
+        {
+            return;
+        }
+
+        if (!TryGetPatientId(out var patientId))
+        {
+            DocumentErrorMessage = "Patient document storage is unavailable for this chart.";
+            return;
+        }
+
+        IsLoadingDocuments = true;
+        DocumentErrorMessage = null;
+        try
+        {
+            Documents = await ChartStorageService.ListDocumentsAsync(patientId);
+            HasLoadedDocuments = true;
+        }
+        catch (Exception ex)
+        {
+            DocumentErrorMessage = "Unable to load patient documents.";
+            Console.WriteLine($"[PatientClinicalInfo] Document load failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            IsLoadingDocuments = false;
+        }
+    }
+
+    private async Task HandleDocumentSelectedAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (!TryGetPatientId(out var patientId))
+        {
+            DocumentErrorMessage = "Patient document storage is unavailable for this chart.";
+            return;
+        }
+
+        IsUploadingDocument = true;
+        DocumentErrorMessage = null;
+        DocumentStatusMessage = null;
+        try
+        {
+            await ChartStorageService.UploadDocumentAsync(patientId, file, SelectedDocumentType, DocumentUploadNotes);
+            DocumentUploadNotes = string.Empty;
+            DocumentStatusMessage = "Document uploaded.";
+            await LoadDocumentsAsync(force: true);
+        }
+        catch (Exception ex)
+        {
+            DocumentErrorMessage = "Unable to upload document.";
+            Console.WriteLine($"[PatientClinicalInfo] Document upload failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            IsUploadingDocument = false;
+        }
+    }
+
+    private async Task LoadCommunicationsAsync(bool force = false)
+    {
+        if (!force && HasLoadedCommunications)
+        {
+            return;
+        }
+
+        if (!TryGetPatientId(out var patientId))
+        {
+            CommunicationErrorMessage = "Patient communication storage is unavailable for this chart.";
+            return;
+        }
+
+        IsLoadingCommunications = true;
+        CommunicationErrorMessage = null;
+        try
+        {
+            CommunicationLogEntries = await ChartStorageService.ListCommunicationLogEntriesAsync(patientId);
+            HasLoadedCommunications = true;
+        }
+        catch (Exception ex)
+        {
+            CommunicationErrorMessage = "Unable to load patient communications.";
+            Console.WriteLine($"[PatientClinicalInfo] Communication load failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            IsLoadingCommunications = false;
+        }
+    }
+
+    private async Task CreateCommunicationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CommunicationSummary))
+        {
+            CommunicationErrorMessage = "Summary is required.";
+            return;
+        }
+
+        if (!TryGetPatientId(out var patientId))
+        {
+            CommunicationErrorMessage = "Patient communication storage is unavailable for this chart.";
+            return;
+        }
+
+        IsSavingCommunication = true;
+        CommunicationErrorMessage = null;
+        CommunicationStatusMessage = null;
+        try
+        {
+            await ChartStorageService.CreateCommunicationLogEntryAsync(patientId, new CreatePatientCommunicationLogEntryRequest
+            {
+                Channel = CommunicationChannel,
+                Direction = CommunicationDirection,
+                ContactName = string.IsNullOrWhiteSpace(CommunicationContactName) ? null : CommunicationContactName.Trim(),
+                Summary = CommunicationSummary.Trim(),
+                Details = string.IsNullOrWhiteSpace(CommunicationDetails) ? null : CommunicationDetails.Trim(),
+                OccurredAtUtc = DateTime.UtcNow
+            });
+            CommunicationContactName = string.Empty;
+            CommunicationSummary = string.Empty;
+            CommunicationDetails = string.Empty;
+            CommunicationStatusMessage = "Communication logged.";
+            await LoadCommunicationsAsync(force: true);
+        }
+        catch (Exception ex)
+        {
+            CommunicationErrorMessage = "Unable to add communication.";
+            Console.WriteLine($"[PatientClinicalInfo] Communication save failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            IsSavingCommunication = false;
+        }
+    }
+
+    private static string FormatFileSize(long sizeBytes)
+    {
+        if (sizeBytes >= 1024 * 1024)
+        {
+            return $"{sizeBytes / 1024d / 1024d:0.#} MB";
+        }
+
+        if (sizeBytes >= 1024)
+        {
+            return $"{sizeBytes / 1024d:0.#} KB";
+        }
+
+        return $"{sizeBytes} bytes";
+    }
 
     private string GetTimelineIconClass(string type)
     {

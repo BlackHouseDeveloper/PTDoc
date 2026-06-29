@@ -33,6 +33,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<ClinicalNote> ClinicalNotes => Set<ClinicalNote>();
     public DbSet<IntakeForm> IntakeForms => Set<IntakeForm>();
+    public DbSet<PatientDocument> PatientDocuments => Set<PatientDocument>();
+    public DbSet<PatientCommunicationLogEntry> PatientCommunicationLogEntries => Set<PatientCommunicationLogEntry>();
 
     // User & auth entities
     public DbSet<User> Users => Set<User>();
@@ -355,6 +357,58 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<PatientDocument>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => new { e.PatientId, e.UploadedAtUtc });
+            entity.HasIndex(e => new { e.PatientId, e.DocumentType, e.UploadedAtUtc });
+            entity.HasIndex(e => e.ContentHashSha256);
+
+            entity.Property(e => e.DocumentType).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.ContentType).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.ContentHashSha256).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.ContentBytes).IsRequired();
+
+            entity.HasOne(e => e.Patient)
+                .WithMany(e => e.Documents)
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PatientCommunicationLogEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+            entity.HasIndex(e => new { e.PatientId, e.OccurredAtUtc });
+            entity.HasIndex(e => new { e.PatientId, e.Channel, e.OccurredAtUtc });
+
+            entity.Property(e => e.Channel).HasMaxLength(40).IsRequired();
+            entity.Property(e => e.Direction).HasMaxLength(40).IsRequired();
+            entity.Property(e => e.Summary).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Details).HasMaxLength(2000);
+            entity.Property(e => e.ContactName).HasMaxLength(120);
+
+            entity.HasOne(e => e.Patient)
+                .WithMany(e => e.CommunicationLogEntries)
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<RuleOverride>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -420,6 +474,7 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Patient)
                 .WithMany()
                 .HasForeignKey(e => e.InternalPatientId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -589,6 +644,16 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<PatientDocument>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+        });
+
+        modelBuilder.Entity<PatientCommunicationLogEntry>(entity =>
+        {
+            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
+        });
+
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
@@ -613,6 +678,15 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<IntakeForm>()
             .HasQueryFilter(f => CurrentClinicId == null || f.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<PatientDocument>()
+            .HasQueryFilter(d => CurrentClinicId == null || d.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<PatientCommunicationLogEntry>()
+            .HasQueryFilter(c => CurrentClinicId == null || c.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<ExternalSystemMapping>()
+            .HasQueryFilter(m => CurrentClinicId == null || m.Patient == null || m.Patient.ClinicId == CurrentClinicId);
 
         // Sprint O: ObjectiveMetric is accessed only through its parent ClinicalNote,
         // which already has its own query filter. Filter ObjectiveMetric via the note's ClinicId
