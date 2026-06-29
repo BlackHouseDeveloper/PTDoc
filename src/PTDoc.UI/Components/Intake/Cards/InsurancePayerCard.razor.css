@@ -7,10 +7,15 @@
     padding: var(--spacing-6);
 }
 
-.intake-card h2 {
+.intake-card h2,
+.intake-card h3 {
     color: var(--card-foreground);
     font-size: var(--text-base);
     margin: 0;
+}
+
+.intake-card h3 {
+    color: var(--muted-foreground);
 }
 
 .intake-card__subtext {
@@ -31,6 +36,10 @@
     font-weight: var(--font-weight-medium);
     gap: var(--spacing-2);
     margin: 0;
+}
+
+.intake-card__divider {
+    border-top: 1px solid var(--border);
 }
 
 .intake-card__tip {

@@ -959,7 +959,15 @@ public static class IntakeEndpoints
             MemberIdPolicyNumber = draft.MemberOrPolicyNumber,
             GroupNumber = draft.GroupNumber,
             CoverageType = draft.InsuranceCoverageType,
-            InsurancePriority = draft.InsuranceCoverageType
+            InsurancePriority = draft.InsuranceCoverageType,
+            SecondaryInsuranceCompanyName = draft.SecondaryInsuranceCompanyName,
+            SecondaryMemberOrPolicyNumber = draft.SecondaryMemberOrPolicyNumber,
+            SecondaryMemberIdPolicyNumber = draft.SecondaryMemberOrPolicyNumber,
+            SecondaryGroupNumber = draft.SecondaryGroupNumber,
+            AdjusterName = draft.AdjusterName,
+            AdjusterPhone = draft.AdjusterPhone,
+            AdjusterEmail = draft.AdjusterEmail,
+            AdjusterFax = draft.AdjusterFax
         }, DraftSerializerOptions);
     }
 
@@ -971,6 +979,13 @@ public static class IntakeEndpoints
         var memberOrPolicyNumber = TrimOrNull(draft.MemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "memberOrPolicyNumber", "memberIdPolicyNumber");
         var groupNumber = TrimOrNull(draft.GroupNumber) ?? GetPayerInfoValue(merged, "groupNumber");
         var coverageType = TrimOrNull(draft.InsuranceCoverageType) ?? GetPayerInfoValue(merged, "coverageType", "insurancePriority");
+        var secondaryInsuranceCompanyName = TrimOrNull(draft.SecondaryInsuranceCompanyName) ?? GetPayerInfoValue(merged, "secondaryInsuranceCompanyName");
+        var secondaryMemberOrPolicyNumber = TrimOrNull(draft.SecondaryMemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "secondaryMemberOrPolicyNumber", "secondaryMemberIdPolicyNumber");
+        var secondaryGroupNumber = TrimOrNull(draft.SecondaryGroupNumber) ?? GetPayerInfoValue(merged, "secondaryGroupNumber");
+        var adjusterName = TrimOrNull(draft.AdjusterName) ?? GetPayerInfoValue(merged, "adjusterName");
+        var adjusterPhone = TrimOrNull(draft.AdjusterPhone) ?? GetPayerInfoValue(merged, "adjusterPhone");
+        var adjusterEmail = TrimOrNull(draft.AdjusterEmail) ?? GetPayerInfoValue(merged, "adjusterEmail");
+        var adjusterFax = TrimOrNull(draft.AdjusterFax) ?? GetPayerInfoValue(merged, "adjusterFax");
 
         SetPayerInfoValue(merged, "payerType", payerType);
         SetPayerInfoValue(merged, "providerType", payerType);
@@ -980,6 +995,14 @@ public static class IntakeEndpoints
         SetPayerInfoValue(merged, "groupNumber", groupNumber);
         SetPayerInfoValue(merged, "coverageType", coverageType);
         SetPayerInfoValue(merged, "insurancePriority", coverageType);
+        SetPayerInfoValue(merged, "secondaryInsuranceCompanyName", secondaryInsuranceCompanyName);
+        SetPayerInfoValue(merged, "secondaryMemberOrPolicyNumber", secondaryMemberOrPolicyNumber);
+        SetPayerInfoValue(merged, "secondaryMemberIdPolicyNumber", secondaryMemberOrPolicyNumber);
+        SetPayerInfoValue(merged, "secondaryGroupNumber", secondaryGroupNumber);
+        SetPayerInfoValue(merged, "adjusterName", adjusterName);
+        SetPayerInfoValue(merged, "adjusterPhone", adjusterPhone);
+        SetPayerInfoValue(merged, "adjusterEmail", adjusterEmail);
+        SetPayerInfoValue(merged, "adjusterFax", adjusterFax);
 
         return merged.ToJsonString(DraftSerializerOptions);
     }
@@ -1055,7 +1078,14 @@ public static class IntakeEndpoints
         || !string.IsNullOrWhiteSpace(draft.InsuranceCompanyName)
         || !string.IsNullOrWhiteSpace(draft.MemberOrPolicyNumber)
         || !string.IsNullOrWhiteSpace(draft.GroupNumber)
-        || !string.IsNullOrWhiteSpace(draft.InsuranceCoverageType);
+        || !string.IsNullOrWhiteSpace(draft.InsuranceCoverageType)
+        || !string.IsNullOrWhiteSpace(draft.SecondaryInsuranceCompanyName)
+        || !string.IsNullOrWhiteSpace(draft.SecondaryMemberOrPolicyNumber)
+        || !string.IsNullOrWhiteSpace(draft.SecondaryGroupNumber)
+        || !string.IsNullOrWhiteSpace(draft.AdjusterName)
+        || !string.IsNullOrWhiteSpace(draft.AdjusterPhone)
+        || !string.IsNullOrWhiteSpace(draft.AdjusterEmail)
+        || !string.IsNullOrWhiteSpace(draft.AdjusterFax);
 
     private static string? TrimOrFallback(string? value, string? fallback)
     {

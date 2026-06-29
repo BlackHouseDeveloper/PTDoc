@@ -3,31 +3,33 @@
     <p class="intake-card__subtext">Please provide your insurance information (optional):</p>
 
     <div class="intake-card__form-grid">
-        <label>Insurance Company Name
-            <input class="form-control" value="@InsuranceCompanyName" @oninput="(args) => InsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="e.g., Blue Cross Blue Shield" />
+        <label for="intake-primary-insurance-company">Primary Insurance Company Name
+            <input id="intake-primary-insurance-company" class="form-control" value="@InsuranceCompanyName" @oninput="(args) => InsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="e.g., Blue Cross Blue Shield" />
         </label>
 
-        <label>Member ID / Policy Number
-            <input class="form-control" value="@MemberOrPolicyNumber" @oninput="(args) => MemberOrPolicyNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Your insurance member ID" />
+        <label for="intake-primary-member-id">Primary Member ID / Policy Number
+            <input id="intake-primary-member-id" class="form-control" value="@MemberOrPolicyNumber" @oninput="(args) => MemberOrPolicyNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Your insurance member ID" />
         </label>
 
-        <label>Group Number
-            <input class="form-control" value="@GroupNumber" @oninput="(args) => GroupNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Group number (if applicable)" />
+        <label for="intake-primary-group-number">Primary Group Number
+            <input id="intake-primary-group-number" class="form-control" value="@GroupNumber" @oninput="(args) => GroupNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Group number (if applicable)" />
         </label>
 
-        <label>Payer Type
-            <select class="form-select" value="@PayerType" @onchange="(args) => PayerTypeChanged.InvokeAsync(args.Value?.ToString())">
+        <label for="intake-payer-type">Payer Type
+            <select id="intake-payer-type" class="form-select" value="@PayerType" @onchange="(args) => PayerTypeChanged.InvokeAsync(args.Value?.ToString())">
                 <option value="">Select payer type</option>
                 <option>Commercial</option>
                 <option>Medicare</option>
                 <option>Medicaid</option>
                 <option>Workers&apos; Compensation</option>
+                <option>Motor Vehicle</option>
+                <option>Liability</option>
                 <option>Self Pay</option>
             </select>
         </label>
 
-        <label>Insurance Coverage Type
-            <select class="form-select" value="@InsuranceCoverageType" @onchange="(args) => InsuranceCoverageTypeChanged.InvokeAsync(args.Value?.ToString())">
+        <label for="intake-insurance-coverage-type">Insurance Coverage Type
+            <select id="intake-insurance-coverage-type" class="form-select" value="@InsuranceCoverageType" @onchange="(args) => InsuranceCoverageTypeChanged.InvokeAsync(args.Value?.ToString())">
                 <option value="">Select coverage type</option>
                 <option>Primary</option>
                 <option>Secondary</option>
@@ -35,6 +37,50 @@
             </select>
         </label>
     </div>
+
+    <div class="intake-card__divider"></div>
+
+    <h3>Secondary Insurance</h3>
+
+    <div class="intake-card__form-grid">
+        <label for="intake-secondary-insurance-company">Secondary Insurance Company
+            <input id="intake-secondary-insurance-company" class="form-control" value="@SecondaryInsuranceCompanyName" @oninput="(args) => SecondaryInsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Secondary insurance company" />
+        </label>
+
+        <label for="intake-secondary-member-id">Secondary Member ID / Policy Number
+            <input id="intake-secondary-member-id" class="form-control" value="@SecondaryMemberOrPolicyNumber" @oninput="(args) => SecondaryMemberOrPolicyNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Secondary member ID" />
+        </label>
+
+        <label for="intake-secondary-group-number">Secondary Group Number
+            <input id="intake-secondary-group-number" class="form-control" value="@SecondaryGroupNumber" @oninput="(args) => SecondaryGroupNumberChanged.InvokeAsync(args.Value?.ToString())" placeholder="Secondary group number" />
+        </label>
+    </div>
+
+    @if (RequiresAdjusterContact)
+    {
+        <div class="intake-card__divider"></div>
+
+        <h3>Adjuster Contact</h3>
+        <p class="intake-card__subtext">For workers&apos; compensation, motor vehicle, or liability claims, provide adjuster contact details if available.</p>
+
+        <div class="intake-card__form-grid">
+            <label for="intake-adjuster-name">Adjuster Name
+                <input id="intake-adjuster-name" class="form-control" value="@AdjusterName" @oninput="(args) => AdjusterNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Adjuster name" />
+            </label>
+
+            <label for="intake-adjuster-phone">Adjuster Phone
+                <input id="intake-adjuster-phone" class="form-control" type="tel" value="@AdjusterPhone" @oninput="(args) => AdjusterPhoneChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
+            </label>
+
+            <label for="intake-adjuster-email">Adjuster Email
+                <input id="intake-adjuster-email" class="form-control" type="email" value="@AdjusterEmail" @oninput="(args) => AdjusterEmailChanged.InvokeAsync(args.Value?.ToString())" placeholder="adjuster@example.com" />
+            </label>
+
+            <label for="intake-adjuster-fax">Adjuster Fax
+                <input id="intake-adjuster-fax" class="form-control" type="tel" value="@AdjusterFax" @oninput="(args) => AdjusterFaxChanged.InvokeAsync(args.Value?.ToString())" placeholder="Fax number" />
+            </label>
+        </div>
+    }
 
     <div class="intake-card__tip">
         <p><strong>Tip:</strong> Having your insurance information ready helps us verify your coverage and expedite your treatment.</p>
@@ -47,10 +93,29 @@
     [Parameter] public string? GroupNumber { get; set; }
     [Parameter] public string? PayerType { get; set; }
     [Parameter] public string? InsuranceCoverageType { get; set; }
+    [Parameter] public string? SecondaryInsuranceCompanyName { get; set; }
+    [Parameter] public string? SecondaryMemberOrPolicyNumber { get; set; }
+    [Parameter] public string? SecondaryGroupNumber { get; set; }
+    [Parameter] public string? AdjusterName { get; set; }
+    [Parameter] public string? AdjusterPhone { get; set; }
+    [Parameter] public string? AdjusterEmail { get; set; }
+    [Parameter] public string? AdjusterFax { get; set; }
 
     [Parameter] public EventCallback<string?> InsuranceCompanyNameChanged { get; set; }
     [Parameter] public EventCallback<string?> MemberOrPolicyNumberChanged { get; set; }
     [Parameter] public EventCallback<string?> GroupNumberChanged { get; set; }
     [Parameter] public EventCallback<string?> PayerTypeChanged { get; set; }
     [Parameter] public EventCallback<string?> InsuranceCoverageTypeChanged { get; set; }
+    [Parameter] public EventCallback<string?> SecondaryInsuranceCompanyNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> SecondaryMemberOrPolicyNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> SecondaryGroupNumberChanged { get; set; }
+    [Parameter] public EventCallback<string?> AdjusterNameChanged { get; set; }
+    [Parameter] public EventCallback<string?> AdjusterPhoneChanged { get; set; }
+    [Parameter] public EventCallback<string?> AdjusterEmailChanged { get; set; }
+    [Parameter] public EventCallback<string?> AdjusterFaxChanged { get; set; }
+
+    private bool RequiresAdjusterContact =>
+        string.Equals(PayerType, "Workers' Compensation", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(PayerType, "Motor Vehicle", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(PayerType, "Liability", StringComparison.OrdinalIgnoreCase);
 }
