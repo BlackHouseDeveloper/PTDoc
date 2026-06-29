@@ -66,17 +66,37 @@ public static class DashboardEndpoints
         var tomorrow = today.AddDays(1);
         var visibility = BuildVisibilityContext(identityContext);
 
-        var overview = await BuildOverviewCountsAsync(db, today, tomorrow, now, visibility, cancellationToken);
-        var alerts = await BuildVisibleAlertsAsync(db, DefaultTake, today, tomorrow, now, visibility, cancellationToken);
-        alerts = await EnsureAuthorizationAlertIncludedAsync(
+        var authorizationAlerts = await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken);
+        var overview = await BuildOverviewCountsAsync(
             db,
+            today,
+            tomorrow,
+            now,
+            visibility,
+            authorizationAlerts.Count,
+            cancellationToken);
+        var alerts = await BuildVisibleAlertsAsync(
+            db,
+            DefaultTake,
+            today,
+            tomorrow,
+            now,
+            visibility,
+            cancellationToken,
+            authorizationAlerts);
+        alerts = EnsureAuthorizationAlertIncluded(
             alerts,
+            authorizationAlerts,
+            overview.AuthorizationActionItems,
+            DefaultTake);
+        var urgentAlertCount = await CountUrgentAlertsAsync(
+            db,
             today,
             now,
             visibility,
-            overview.AuthorizationActionItems,
+            overview.NotesDueToday,
+            authorizationAlerts.Count(alert => alert.IsUrgent),
             cancellationToken);
-        var urgentAlertCount = await CountUrgentAlertsAsync(db, today, now, visibility, overview.NotesDueToday, cancellationToken);
         var recentNotes = await BuildRecentNotesAsync(db, visibility, cancellationToken);
         var recentPlansOfCare = await BuildRecentPlansOfCareAsync(db, visibility, cancellationToken);
         var recentActivities = await BuildRecentActivitiesAsync(db, today, tomorrow, visibility, cancellationToken);
@@ -101,7 +121,8 @@ public static class DashboardEndpoints
         DateTime tomorrow,
         DateTimeOffset now,
         DashboardVisibilityContext visibility,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<DashboardAlertItemResponse>? authorizationAlerts = null)
     {
         var requestedTake = Math.Clamp(take, 1, MaxTake);
         var alerts = new List<DashboardAlertItemResponse>();
@@ -110,32 +131,26 @@ public static class DashboardEndpoints
         alerts.AddRange(await BuildSubmittedIntakeReviewAlertsAsync(db, now, visibility, cancellationToken));
         alerts.AddRange(await BuildIncompleteIntakeAlertsAsync(db, now, visibility, cancellationToken));
         alerts.AddRange(await BuildNotesDueTodayAlertsAsync(db, today, tomorrow, visibility, cancellationToken));
-        alerts.AddRange(await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken));
+        alerts.AddRange(authorizationAlerts ?? await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken));
 
         return OrderAlerts(alerts)
             .Take(requestedTake)
             .ToList();
     }
 
-    private static async Task<List<DashboardAlertItemResponse>> EnsureAuthorizationAlertIncludedAsync(
-        ApplicationDbContext db,
+    private static List<DashboardAlertItemResponse> EnsureAuthorizationAlertIncluded(
         List<DashboardAlertItemResponse> alerts,
-        DateTime today,
-        DateTimeOffset now,
-        DashboardVisibilityContext visibility,
+        IReadOnlyList<DashboardAlertItemResponse> authorizationAlerts,
         int authorizationActionItems,
-        CancellationToken cancellationToken)
+        int take)
     {
         if (authorizationActionItems <= 0 || alerts.Any(alert => IsAuthorizationAlertKind(alert.Kind)))
         {
             return alerts;
         }
 
-        var authorizationAlert = (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken))
-            .OrderBy(alert => PriorityRank(alert.Priority))
-            .ThenBy(alert => KindRank(alert.Kind))
-            .ThenBy(alert => alert.DueDateUtc ?? alert.Timestamp.UtcDateTime)
-            .ThenBy(alert => alert.Id, StringComparer.Ordinal)
+        var requestedTake = Math.Clamp(take, 1, MaxTake);
+        var authorizationAlert = OrderAlerts(authorizationAlerts)
             .FirstOrDefault();
 
         if (authorizationAlert is null)
@@ -143,17 +158,17 @@ public static class DashboardEndpoints
             return alerts;
         }
 
-        if (alerts.Count >= DefaultTake)
+        if (alerts.Count >= requestedTake)
         {
             alerts[^1] = authorizationAlert;
             return OrderAlerts(alerts)
-                .Take(DefaultTake)
+                .Take(requestedTake)
                 .ToList();
         }
 
         alerts.Add(authorizationAlert);
         return OrderAlerts(alerts)
-            .Take(DefaultTake)
+            .Take(requestedTake)
             .ToList();
     }
 
@@ -163,6 +178,7 @@ public static class DashboardEndpoints
         DateTime tomorrow,
         DateTimeOffset now,
         DashboardVisibilityContext visibility,
+        int authorizationActionItems,
         CancellationToken cancellationToken)
     {
         var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
@@ -246,8 +262,6 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var authorizationActionItems = await CountAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken);
-
         return new DashboardOverviewCountsResponse
         {
             PatientsToday = appointmentRows.Select(appointment => appointment.PatientId).Distinct().Count(),
@@ -268,6 +282,7 @@ public static class DashboardEndpoints
         DateTimeOffset now,
         DashboardVisibilityContext visibility,
         int notesDueToday,
+        int urgentAuthorizationAlertCount,
         CancellationToken cancellationToken)
     {
         var staleIntakeThreshold = now.UtcDateTime.AddHours(-24);
@@ -302,10 +317,7 @@ public static class DashboardEndpoints
                 !intake.Patient.IsArchived,
                 cancellationToken);
 
-        var urgentAuthorizationAlerts = (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken))
-            .Count(alert => alert.IsUrgent);
-
-        return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes + staleSubmittedIntakesAwaitingReview + urgentAuthorizationAlerts;
+        return notesDueToday + overdueUnsignedNotes + staleIncompleteIntakes + staleSubmittedIntakesAwaitingReview + urgentAuthorizationAlertCount;
     }
 
     private static async Task<IReadOnlyList<NoteListItemApiResponse>> BuildRecentNotesAsync(
@@ -716,14 +728,6 @@ public static class DashboardEndpoints
             };
         }).ToList();
     }
-
-    private static async Task<int> CountAuthorizationAlertsAsync(
-        ApplicationDbContext db,
-        DateTime today,
-        DateTimeOffset now,
-        DashboardVisibilityContext visibility,
-        CancellationToken cancellationToken) =>
-        (await BuildAuthorizationAlertsAsync(db, today, now, visibility, cancellationToken)).Count;
 
     private static async Task<IReadOnlyList<DashboardAlertItemResponse>> BuildAuthorizationAlertsAsync(
         ApplicationDbContext db,
