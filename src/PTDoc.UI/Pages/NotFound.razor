@@ -1,6 +1,6 @@
 @page "/not-found"
 @page "/{*Path}"
-@attribute [AllowAnonymous]
+@attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
 @rendermode InteractiveServer
 @inject NavigationManager NavigationManager
 
