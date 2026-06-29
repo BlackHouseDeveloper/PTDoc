@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using PTDoc.Application.DTOs;
 using PTDoc.Core.Models;
@@ -117,6 +118,21 @@ public sealed class AppointmentComponentsTests : TestContext
         var copayButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
         Assert.True(copayButton.HasAttribute("disabled"));
         Assert.Contains("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_NullIntakeStatus_RendersNeutralDocumentBadge()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var appointment = CreateAppointment(status: "Scheduled");
+        appointment.IntakeStatus = null!;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, appointment));
+
+        Assert.Contains("Intake pending", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("appointment-detail-modal__status-badge--neutral", cut.Markup, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -305,14 +321,29 @@ public sealed class AppointmentComponentsTests : TestContext
     [Fact]
     public void AppointmentsDaySwitcher_WeekView_ShowsWeekRangeAndWeekNavigationLabels()
     {
-        var cut = RenderComponent<AppointmentsDaySwitcher>(parameters => parameters
-            .Add(component => component.SelectedDate, new DateTime(2026, 6, 9))
-            .Add(component => component.SelectedView, AppointmentsView.Week));
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            var nonUsCulture = CultureInfo.GetCultureInfo("fr-FR");
+            CultureInfo.CurrentCulture = nonUsCulture;
+            CultureInfo.CurrentUICulture = nonUsCulture;
 
-        Assert.Contains("June 7 - 13, 2026", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
-        Assert.Equal("Previous week", cut.FindAll("button")[0].GetAttribute("aria-label"));
-        Assert.Equal("Next week", cut.FindAll("button")[1].GetAttribute("aria-label"));
+            var cut = RenderComponent<AppointmentsDaySwitcher>(parameters => parameters
+                .Add(component => component.SelectedDate, new DateTime(2026, 6, 9))
+                .Add(component => component.SelectedView, AppointmentsView.Week));
+
+            Assert.Contains("juin 7 - 13, 2026", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("13/06/2026", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal("Previous week", cut.FindAll("button")[0].GetAttribute("aria-label"));
+            Assert.Equal("Next week", cut.FindAll("button")[1].GetAttribute("aria-label"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     [Fact]

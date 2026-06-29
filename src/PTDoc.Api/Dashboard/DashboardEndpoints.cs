@@ -191,8 +191,8 @@ public static class DashboardEndpoints
         var activeAppointmentIds = activeAppointmentRows.Select(appointment => appointment.Id).ToHashSet();
         var activeAppointmentPatientIds = activeAppointmentRows.Select(appointment => appointment.PatientId).ToHashSet();
 
-        var relatedTodayNotes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var relatedTodayNotes = await noteQuery
             .Where(note =>
                 !note.IsAddendum &&
                 ((note.AppointmentId.HasValue && activeAppointmentIds.Contains(note.AppointmentId.Value)) ||
@@ -212,7 +212,6 @@ public static class DashboardEndpoints
                 today,
                 tomorrow));
 
-        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
         var draftNotes = await noteQuery
             .CountAsync(note =>
                 !note.IsAddendum &&
@@ -532,8 +531,8 @@ public static class DashboardEndpoints
         var appointmentIds = appointments.Select(appointment => appointment.Id).ToHashSet();
         var patientIds = appointments.Select(appointment => appointment.PatientId).ToHashSet();
 
-        var relatedNotes = await db.ClinicalNotes
-            .AsNoTracking()
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+        var relatedNotes = await noteQuery
             .Where(note =>
                 !note.IsAddendum &&
                 ((note.AppointmentId.HasValue && appointmentIds.Contains(note.AppointmentId.Value)) ||

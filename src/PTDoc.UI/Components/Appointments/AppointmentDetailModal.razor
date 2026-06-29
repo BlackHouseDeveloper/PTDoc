@@ -382,7 +382,7 @@
     private string GetCopayBadgeClass() =>
         "appointment-detail-modal__status-badge appointment-detail-modal__status-badge--neutral";
 
-    private static string GetDocumentBadgeLabel(string label, string status)
+    private static string GetDocumentBadgeLabel(string label, string? status)
     {
         if (string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, "Signed", StringComparison.OrdinalIgnoreCase))
@@ -405,9 +405,9 @@
         return $"{label} pending";
     }
 
-    private static string GetDocumentBadgeClass(string status)
+    private static string GetDocumentBadgeClass(string? status)
     {
-        var variant = status.ToLowerInvariant() switch
+        var variant = NormalizeBadgeStatus(status) switch
         {
             "completed" or "signed" => "appointment-detail-modal__status-badge--completed",
             "missing" => "appointment-detail-modal__status-badge--missing",
@@ -418,9 +418,9 @@
         return $"appointment-detail-modal__status-badge {variant}";
     }
 
-    private string GetStatusBadgeClass(string status)
+    private string GetStatusBadgeClass(string? status)
     {
-        var variant = status.ToLowerInvariant() switch
+        var variant = NormalizeBadgeStatus(status) switch
         {
             "scheduled" => "appointment-detail-modal__status-badge--scheduled",
             "checked in" => "appointment-detail-modal__status-badge--checked-in",
@@ -432,6 +432,11 @@
 
         return $"appointment-detail-modal__status-badge {variant}";
     }
+
+    private static string NormalizeBadgeStatus(string? status) =>
+        string.IsNullOrWhiteSpace(status)
+            ? string.Empty
+            : status.Trim().ToLowerInvariant();
 
     public async ValueTask DisposeAsync()
     {

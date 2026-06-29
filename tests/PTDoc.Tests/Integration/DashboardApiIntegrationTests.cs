@@ -326,24 +326,35 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             NoteStatus.Draft,
             today.AddDays(-1),
             today.AddYears(5).AddMinutes(1));
+        var hiddenSamePatientNote = CreateClinicalNote(
+            ownAppointmentPatient.Id,
+            ptaUserId,
+            null,
+            NoteStatus.Draft,
+            today,
+            today.AddYears(5).AddMinutes(2));
 
         db.Patients.AddRange(ownAppointmentPatient, otherAppointmentPatient, ownNotePatient, otherNotePatient);
         db.Appointments.AddRange(ownAppointment, otherAppointment);
-        db.ClinicalNotes.AddRange(ownDraft, otherDraft);
+        db.ClinicalNotes.AddRange(ownDraft, otherDraft, hiddenSamePatientNote);
         await db.SaveChangesAsync();
 
         using var adminClient = _factory.CreateClientWithRole(Roles.Admin);
         using var ptClient = _factory.CreateClientWithRole(Roles.PT);
         using var adminResponse = await adminClient.GetAsync("/api/v1/dashboard/snapshot");
         using var ptResponse = await ptClient.GetAsync("/api/v1/dashboard/snapshot");
+        using var ptAlertsResponse = await ptClient.GetAsync("/api/v1/dashboard/alerts?take=50");
 
         Assert.Equal(HttpStatusCode.OK, adminResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, ptResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, ptAlertsResponse.StatusCode);
 
         var adminSnapshot = await adminResponse.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
         var ptSnapshot = await ptResponse.Content.ReadFromJsonAsync<DashboardSnapshotResponse>();
+        var ptAlerts = await ptAlertsResponse.Content.ReadFromJsonAsync<DashboardAlertsResponse>();
         Assert.NotNull(adminSnapshot);
         Assert.NotNull(ptSnapshot);
+        Assert.NotNull(ptAlerts);
 
         Assert.True(ptSnapshot!.Overview.PatientsToday >= 1);
         Assert.True(ptSnapshot.Overview.AppointmentsToday >= 1);
@@ -353,11 +364,12 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         Assert.True(adminSnapshot!.Overview.PatientsToday >= ptSnapshot.Overview.PatientsToday + 1);
         Assert.True(adminSnapshot.Overview.AppointmentsToday >= ptSnapshot.Overview.AppointmentsToday + 1);
-        Assert.True(adminSnapshot.Overview.NotesDueToday >= ptSnapshot.Overview.NotesDueToday + 1);
+        Assert.True(adminSnapshot.Overview.NotesDueToday >= 1);
         Assert.True(adminSnapshot.Overview.DraftNotes >= ptSnapshot.Overview.DraftNotes + 1);
         Assert.True(adminSnapshot.Overview.UnsignedNotes >= ptSnapshot.Overview.UnsignedNotes + 1);
         Assert.Contains(ptSnapshot.RecentNotes, note => note.Id == ownDraft.Id);
         Assert.DoesNotContain(ptSnapshot.RecentNotes, note => note.Id == otherDraft.Id);
+        Assert.Contains(ptAlerts!.Alerts, alert => alert.Id == $"notesDueToday:{ownAppointment.Id:N}");
     }
 
     [Fact]

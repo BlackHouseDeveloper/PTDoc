@@ -23,6 +23,6 @@ internal static class AppointmentsDateFormatter
             return $"{startOfWeek:MMM d} - {endOfWeek:MMM d, yyyy}";
         }
 
-        return $"{startOfWeek:MMMM d} - {endOfWeek:d, yyyy}";
+        return $"{startOfWeek:MMMM d} - {endOfWeek:%d}, {endOfWeek:yyyy}";
     }
 }
