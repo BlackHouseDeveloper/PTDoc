@@ -43,6 +43,7 @@
 
                 <PatientPrimaryActionButton
                     Label="Start New Note"
+                    Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")"
                     OnClick="@HandleStartNote" />
 
                 @if (isNoteTypeChooserOpen)
@@ -75,6 +76,7 @@
                     TimelineErrorMessage="@timelineErrorMessage"
                     IntakeStateMessage="@intakeStateMessage"
                     IntakeStatusVariant="@intakeStatusVariant"
+                    InitialTab="@selectedProfileTab"
                     OnRetry="ReloadTimelineAsync"
                     OnReviewIntake="HandleReviewIntake"
                     OnViewNote="HandleViewNote"
@@ -96,6 +98,8 @@
     private string? timelineErrorMessage;
     private string? intakeStateMessage;
     private string intakeStatusVariant = "default";
+    private string selectedProfileTab = "timeline";
+    private string? lastAppliedRouteQuery;
     private Guid currentPatientId;
     private bool isNoteTypeChooserOpen;
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
@@ -110,7 +114,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyRouteQuery();
         await ReloadProfileAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        ApplyRouteQuery();
     }
 
     private async Task ReloadProfileAsync()
@@ -413,6 +423,58 @@
     private void HandleStartNote()
     {
         isNoteTypeChooserOpen = true;
+    }
+
+    private void ApplyRouteQuery()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (string.Equals(lastAppliedRouteQuery, uri.Query, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastAppliedRouteQuery = uri.Query;
+
+        if (TryGetQueryParameter(uri.Query, "tab", out var tab)
+            && IsValidProfileTab(tab))
+        {
+            selectedProfileTab = tab.ToLowerInvariant();
+        }
+
+        if (TryGetQueryParameter(uri.Query, "action", out var action)
+            && string.Equals(action, "new-note", StringComparison.OrdinalIgnoreCase))
+        {
+            isNoteTypeChooserOpen = true;
+        }
+    }
+
+    private static bool IsValidProfileTab(string tab) =>
+        string.Equals(tab, "timeline", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "notes", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "documents", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "communications", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetQueryParameter(string query, string key, out string value)
+    {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0 || !string.Equals(parts[0], key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal)) : string.Empty;
+            return true;
+        }
+
+        return false;
     }
 
     private void HandleCreateNoteType(string noteType)

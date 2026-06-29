@@ -1,8 +1,12 @@
 import { expect, Page, test } from '@playwright/test';
-import { authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
+import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
 
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
 const writableNoteWorkspacePath = process.env.PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH;
+const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
+  ?? '/patient/f9c2cb68-4ab4-4f57-a1db-73ed8e2da789';
+const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
+const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
 
 test.describe('PTDoc audit remediation QA', () => {
   test('login validation and protected dashboard route behave consistently', async ({ page }) => {
@@ -53,14 +57,58 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('appointments week view defaults to clinician grouping and can switch to day grouping', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/appointments?dateRange=week');
+    await page.goto('/appointments');
     await page.waitForLoadState('domcontentloaded');
+
+    const weekView = page.getByRole('tab', { name: 'Week View' });
+    await expect(weekView).toHaveAttribute('href', '/appointments?dateRange=week');
+    await weekView.click();
 
     await expect(page.locator('.week-grouping-control')).toBeVisible();
     await expect(page.locator('.scheduler-grid.week-grouping-clinician')).toBeVisible();
 
     await page.getByRole('button', { name: 'Day' }).click();
     await expect(page.locator('.scheduler-grid.week-grouping-day')).toBeVisible();
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('patients add action opens modal without relying on hydrated click only', async ({ page }) => {
+    await authenticateIfNeeded(page);
+    await page.goto('/patients');
+    await page.waitForLoadState('domcontentloaded');
+
+    const addPatient = page.getByRole('button', { name: /^Add Patient$/ });
+    await expect(addPatient).toHaveAttribute('href', '/patients?action=add');
+    await addPatient.click();
+
+    await expect(page).toHaveURL(/\/patients\?action=add$/);
+    await expect(page.getByRole('heading', { name: 'Add New Patient' })).toBeVisible();
+    await expect(page.locator('#firstName')).toBeVisible();
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('patient chart tabs and PT start-new-note entry are route-backed', async ({ page }) => {
+    test.skip(!ptPin, 'Set PTDOC_UI_QA_PIN or PTDOC_UI_QA_PT_PIN to verify PT note-entry coverage.');
+
+    await loginThroughForm(page, ptUsername, ptPin!);
+    await page.goto(patientChartPath);
+    await page.waitForLoadState('domcontentloaded');
+
+    await expect(page.getByTestId('patient-primary-action')).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
+
+    for (const tabName of ['Notes', 'Documents', 'Communications']) {
+      await page.getByRole('tab', { name: tabName }).click();
+      await expect(page.getByRole('tabpanel', { name: tabName })).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
+    }
+
+    const insurance = page.getByTestId('patient-profile-tab-insurance-authorization');
+    await expect(insurance).toHaveAttribute('href', /\/patient\/[^/]+\/info$/);
+
+    await page.getByTestId('patient-primary-action').click();
+    await expect(page.getByTestId('patient-note-type-chooser')).toBeVisible();
+    await page.getByRole('button', { name: 'Evaluation Note' }).click();
+    await expect(page).toHaveURL(/\/patient\/[^/]+\/new-note\?noteType=Evaluation%20Note$/);
     await expectNoRelevantConsoleErrors(page);
   });
 
@@ -171,4 +219,16 @@ async function gotoProtectedRouteExpectingLogin(page: Page, route: string) {
   }
 
   await expect(page.locator('#username')).toBeVisible();
+}
+
+async function loginThroughForm(page: Page, username: string, pin: string) {
+  attachConsoleCapture(page);
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.waitForLoadState('domcontentloaded');
+  await page.locator('#username').fill(username);
+  await page.locator('#pin').fill(pin);
+  await page.locator('form[data-testid="login-form"] button[type="submit"]').click();
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.locator('#username')).toHaveCount(0);
 }

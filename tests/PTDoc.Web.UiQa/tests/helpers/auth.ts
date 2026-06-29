@@ -47,6 +47,24 @@ export async function expectNoRelevantConsoleErrors(page: Page) {
   expect(messages).toEqual([]);
 }
 
+export function attachConsoleCapture(page: Page) {
+  if ((page as Page & { __ptdocConsoleErrors?: string[] }).__ptdocConsoleErrors) {
+    return;
+  }
+
+  (page as Page & { __ptdocConsoleErrors: string[] }).__ptdocConsoleErrors = [];
+  page.on('console', message => {
+    if (message.type() === 'error' && !isAllowedConsoleMessage(message.text())) {
+      getConsoleCapture(page).push(message.text());
+    }
+  });
+  page.on('pageerror', error => {
+    if (!isAllowedConsoleMessage(error.message)) {
+      getConsoleCapture(page).push(error.message);
+    }
+  });
+}
+
 async function normalizeAuthCookiesForLocalHttp(page: Page, headers: { name: string; value: string }[]) {
   const baseUrl = new URL(page.url());
   if (baseUrl.protocol !== 'http:') {
@@ -81,24 +99,6 @@ async function normalizeAuthCookiesForLocalHttp(page: Page, headers: { name: str
       }
     ]);
   }
-}
-
-function attachConsoleCapture(page: Page) {
-  if ((page as Page & { __ptdocConsoleErrors?: string[] }).__ptdocConsoleErrors) {
-    return;
-  }
-
-  (page as Page & { __ptdocConsoleErrors: string[] }).__ptdocConsoleErrors = [];
-  page.on('console', message => {
-    if (message.type() === 'error' && !isAllowedConsoleMessage(message.text())) {
-      getConsoleCapture(page).push(message.text());
-    }
-  });
-  page.on('pageerror', error => {
-    if (!isAllowedConsoleMessage(error.message)) {
-      getConsoleCapture(page).push(error.message);
-    }
-  });
 }
 
 function getConsoleCapture(page: Page): string[] {
