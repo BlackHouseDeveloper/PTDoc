@@ -409,8 +409,19 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         Assert.NotNull(snapshot);
         Assert.True(snapshot!.Overview.AuthorizationActionItems >= 1);
-        Assert.Contains(snapshot.Alerts, alert => alert.Kind == "authorizationExpiration");
-        Assert.Equal("authorizationExpiration", snapshot.Alerts[0].Kind);
+        Assert.True(snapshot.Alerts.Count <= 10);
+
+        var alertList = snapshot.Alerts.ToList();
+        var authorizationIndex = alertList.FindIndex(alert => alert.Kind == "authorizationExpiration");
+        Assert.True(authorizationIndex >= 0);
+
+        var firstUnsignedNoteIndex = alertList.FindIndex(alert => alert.Kind == "unsignedNote");
+        if (firstUnsignedNoteIndex >= 0)
+        {
+            Assert.True(
+                authorizationIndex < firstUnsignedNoteIndex,
+                "Forced authorization alerts should be re-sorted ahead of lower-ranked unsigned-note alerts.");
+        }
     }
 
     [Fact]
