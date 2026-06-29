@@ -98,6 +98,42 @@
                     </div>
                 </section>
 
+                <section class="appointment-detail-modal__section" aria-label="Billing and document readiness">
+                    <div class="appointment-detail-modal__section-heading">
+                        <p class="appointment-detail-modal__field-label">Billing & Documents</p>
+                        <span class="@GetCopayBadgeClass()">@GetCopayStatusLabel()</span>
+                    </div>
+
+                    <div class="appointment-detail-modal__readiness-grid">
+                        <div class="appointment-detail-modal__readiness-item">
+                            <span class="@GetDocumentBadgeClass(Appointment.IntakeStatus)">
+                                @GetDocumentBadgeLabel("Intake", Appointment.IntakeStatus)
+                            </span>
+                            <p>Intake form</p>
+                        </div>
+                        <div class="appointment-detail-modal__readiness-item">
+                            <span class="@GetDocumentBadgeClass(EffectiveAppointmentStatus)">
+                                @GetDocumentBadgeLabel("Visit note", EffectiveAppointmentStatus)
+                            </span>
+                            <p>Clinical document</p>
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="appointment-detail-modal__quick-action appointment-detail-modal__quick-action--secondary appointment-detail-modal__quick-action--full"
+                            disabled="@(true)"
+                            aria-describedby="@CopayActionReasonId">
+                        <svg class="appointment-detail-modal__button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M3 5.25H13M4.5 3.25H11.5C12.3284 3.25 13 3.92157 13 4.75V11.25C13 12.0784 12.3284 12.75 11.5 12.75H4.5C3.67157 12.75 3 12.0784 3 11.25V4.75C3 3.92157 3.67157 3.25 4.5 3.25Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M5.5 9.75H7.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        </svg>
+                        <span>Record Copay</span>
+                    </button>
+                    <p id="@CopayActionReasonId" class="appointment-detail-modal__quick-action-reason">
+                        Copay collection is not configured for this appointment.
+                    </p>
+                </section>
+
                 <section class="appointment-detail-modal__section" aria-label="Quick actions">
                     <p class="appointment-detail-modal__field-label">Quick Actions</p>
                     <div class="appointment-detail-modal__quick-actions-grid">
@@ -252,6 +288,8 @@
 
     private string PrimaryActionDisabledReasonId => $"{modalId}-primary-action-reason";
 
+    private string CopayActionReasonId => $"{modalId}-copay-action-reason";
+
     private string? GetPrimaryActionDescriptionId() => CanUsePrimaryAction ? null : PrimaryActionDisabledReasonId;
 
     private string? GetTerminalActionDescriptionId() => IsTerminalStatus ? PrimaryActionDisabledReasonId : null;
@@ -338,6 +376,47 @@
         string.IsNullOrWhiteSpace(Appointment?.Notes)
             ? "Appointment notes are not available yet."
             : Appointment.Notes;
+
+    private string GetCopayStatusLabel() => "Copay not configured";
+
+    private string GetCopayBadgeClass() =>
+        "appointment-detail-modal__status-badge appointment-detail-modal__status-badge--neutral";
+
+    private static string GetDocumentBadgeLabel(string label, string status)
+    {
+        if (string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Signed", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{label} complete";
+        }
+
+        if (string.Equals(status, "Missing", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{label} missing";
+        }
+
+        if (string.Equals(status, "Note Started", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "In Progress", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Checked In", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{label} in progress";
+        }
+
+        return $"{label} pending";
+    }
+
+    private static string GetDocumentBadgeClass(string status)
+    {
+        var variant = status.ToLowerInvariant() switch
+        {
+            "completed" or "signed" => "appointment-detail-modal__status-badge--completed",
+            "missing" => "appointment-detail-modal__status-badge--missing",
+            "checked in" or "in progress" or "note started" => "appointment-detail-modal__status-badge--note-started",
+            _ => "appointment-detail-modal__status-badge--neutral"
+        };
+
+        return $"appointment-detail-modal__status-badge {variant}";
+    }
 
     private string GetStatusBadgeClass(string status)
     {

@@ -152,13 +152,13 @@
 
     private async Task HandlePrevDay()
     {
-        selectedDate = selectedDate.AddDays(-1);
+        selectedDate = selectedDate.AddDays(selectedView == AppointmentsView.Week ? -7 : -1);
         await LoadAppointmentsAsync();
     }
 
     private async Task HandleNextDay()
     {
-        selectedDate = selectedDate.AddDays(1);
+        selectedDate = selectedDate.AddDays(selectedView == AppointmentsView.Week ? 7 : 1);
         await LoadAppointmentsAsync();
     }
 
@@ -319,7 +319,14 @@
 
     private string GetViewLabel()
     {
-        return selectedView == AppointmentsView.Today ? "Today's Appointments" : "Week Appointments";
+        if (selectedView == AppointmentsView.Today)
+        {
+            return selectedDate.Date == DateTime.Today.Date
+                ? "Today's Appointments"
+                : $"Appointments for {selectedDate:MMM d, yyyy}";
+        }
+
+        return $"Week of {FormatWeekRange(selectedDate)}";
     }
 
     private void HandleRouteAction()
@@ -834,6 +841,24 @@
     {
         var daysFromSunday = (int)date.DayOfWeek;
         return date.Date.AddDays(-daysFromSunday);
+    }
+
+    private static string FormatWeekRange(DateTime selectedDate)
+    {
+        var startOfWeek = GetStartOfWeek(selectedDate);
+        var endOfWeek = startOfWeek.AddDays(6);
+
+        if (startOfWeek.Year != endOfWeek.Year)
+        {
+            return $"{startOfWeek:MMM d, yyyy} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        if (startOfWeek.Month != endOfWeek.Month)
+        {
+            return $"{startOfWeek:MMM d} - {endOfWeek:MMM d, yyyy}";
+        }
+
+        return $"{startOfWeek:MMMM d} - {endOfWeek:d, yyyy}";
     }
 
     public async ValueTask DisposeAsync()

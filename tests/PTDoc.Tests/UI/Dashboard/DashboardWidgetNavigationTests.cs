@@ -26,7 +26,6 @@ public sealed class DashboardWidgetNavigationTests : TestContext
             .Add(component => component.PatientsToday, 3)
             .Add(component => component.Appointments, 4)
             .Add(component => component.NotesDue, 2)
-            .Add(component => component.Pending, 9)
             .Add(component => component.Drafts, 5)
             .Add(component => component.Unsigned, 6)
             .Add(component => component.Intakes, 7));
@@ -40,9 +39,6 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         cut.Find("button[aria-label=\"Open notes due today\"]").Click();
         Assert.EndsWith("/notes?status=Unsigned&dateRange=today", navigation.Uri, StringComparison.Ordinal);
 
-        cut.Find("button[aria-label=\"Open items needing attention\"]").Click();
-        Assert.EndsWith("/notes?status=Needs%20Attention", navigation.Uri, StringComparison.Ordinal);
-
         cut.Find("button[aria-label=\"Open draft notes\"]").Click();
         Assert.EndsWith("/notes?status=Draft", navigation.Uri, StringComparison.Ordinal);
 
@@ -51,6 +47,9 @@ public sealed class DashboardWidgetNavigationTests : TestContext
 
         cut.Find("button[aria-label=\"Open intake work queue\"]").Click();
         Assert.EndsWith("/intake", navigation.Uri, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("All Alerts", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Authorization", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

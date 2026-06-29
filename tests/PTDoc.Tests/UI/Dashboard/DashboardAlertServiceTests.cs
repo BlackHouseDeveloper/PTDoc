@@ -73,6 +73,7 @@ public sealed class DashboardAlertServiceTests
                 AppointmentsToday = 5,
                 NotesDueToday = 2,
                 PendingItems = 12,
+                AuthorizationActionItems = 4,
                 DraftNotes = 7,
                 UnsignedNotes = 9,
                 IncompleteIntakes = 1
@@ -105,6 +106,7 @@ public sealed class DashboardAlertServiceTests
         Assert.Equal("/api/v1/dashboard/snapshot", handler.LastRequest.RequestUri!.AbsolutePath);
         Assert.Equal(12, response.TotalAlertCount);
         Assert.Equal(7, response.Overview.DraftNotes);
+        Assert.Equal(4, response.Overview.AuthorizationActionItems);
         Assert.Single(response.RecentPlansOfCare);
         Assert.Equal("Sarah Johnson", response.RecentPlansOfCare[0].PatientName);
         Assert.Equal(2, response.RecentPlansOfCare[0].IcdCount);
