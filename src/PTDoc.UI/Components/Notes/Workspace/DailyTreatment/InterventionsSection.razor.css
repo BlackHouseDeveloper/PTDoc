@@ -1,0 +1,144 @@
+::deep .daily-plan .daily-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+::deep .daily-plan .daily-col-12 {
+    grid-column: span 12;
+}
+
+::deep .daily-plan__summary-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--spacing-3);
+}
+
+::deep .daily-plan__summary-header button {
+    min-height: var(--touch-target-desktop);
+    border: 1px solid var(--info-box-border);
+    border-radius: var(--radius-md);
+    background: var(--info-box-bg);
+    color: var(--info);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-plan__chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+::deep .daily-plan__chip {
+    min-height: var(--touch-target-desktop);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-plan__chip--active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+::deep .daily-plan__message {
+    margin: var(--spacing-2) 0 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+::deep .daily-plan__intervention-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+::deep .daily-plan__intervention-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-3);
+    align-items: end;
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+::deep .daily-plan__intervention-row label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+::deep .daily-plan__intervention-row input,
+::deep .daily-plan__intervention-row textarea,
+::deep .daily-plan__intervention-row select {
+    width: 100%;
+    min-height: var(--touch-target-desktop);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+    font: inherit;
+}
+
+::deep .daily-plan__intervention-row textarea {
+    min-height: 5rem;
+    resize: vertical;
+}
+
+::deep .daily-plan__intervention-row input:focus,
+::deep .daily-plan__intervention-row textarea:focus,
+::deep .daily-plan__intervention-row select:focus {
+    outline: 2px solid rgba(var(--primary-rgb), 0.25);
+    border-color: var(--primary);
+}
+
+::deep .daily-plan__checkbox-row {
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: var(--touch-target-desktop);
+}
+
+::deep .daily-plan__checkbox-row input {
+    width: var(--spacing-4);
+    min-width: var(--spacing-4);
+    min-height: var(--spacing-4);
+    accent-color: var(--primary);
+}
+
+::deep .daily-plan__intervention-row button {
+    min-height: var(--touch-target-desktop);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--foreground);
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+@media (max-width: 1199px) {
+    ::deep .daily-plan__summary-header {
+        justify-content: stretch;
+    }
+
+    ::deep .daily-plan__summary-header button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 767px) {
+    ::deep .daily-plan__intervention-row {
+        grid-template-columns: 1fr;
+    }
+}
