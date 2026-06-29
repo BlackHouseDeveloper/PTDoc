@@ -257,6 +257,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             alert => alert.Id.StartsWith($"authorizationExpiration:{expiringAuthorizationPatient.Id:N}", StringComparison.Ordinal));
         Assert.Equal("authorizationExpiration", expiringAuthorizationAlert.Kind);
         Assert.Equal("Authorization Expiring", expiringAuthorizationAlert.Title);
+        Assert.Equal("Authorization coverage is nearing its end date.", expiringAuthorizationAlert.Message);
         Assert.Equal($"/patient/{expiringAuthorizationPatient.Id:D}/info", expiringAuthorizationAlert.TargetUrl);
         Assert.Equal("Review Auth", expiringAuthorizationAlert.ActionLabel);
         Assert.True(expiringAuthorizationAlert.IsUrgent);

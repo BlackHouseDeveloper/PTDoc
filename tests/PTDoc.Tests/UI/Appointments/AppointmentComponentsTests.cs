@@ -113,11 +113,51 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Contains("Billing & Documents", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Copay not configured", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Intake complete", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Visit note complete", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Visit note missing", cut.Markup, StringComparison.Ordinal);
 
         var copayButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
         Assert.True(copayButton.HasAttribute("disabled"));
         Assert.Contains("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_UsesExplicitVisitNoteForClinicalDocumentReadiness()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(
+                status: "Completed",
+                visitWorkflowStatus: "Completed",
+                visitNoteId: Guid.NewGuid())));
+
+        Assert.Contains("Visit note complete", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_CopayAvailable_EnablesRecordCopayAction()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var requestedAction = string.Empty;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(
+                status: "Scheduled",
+                canRecordCopay: true,
+                copayStatusLabel: "Copay ready"))
+            .Add(component => component.OnActionRequested, action => requestedAction = action));
+
+        Assert.Contains("Copay ready", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
+
+        var copayButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
+        Assert.False(copayButton.HasAttribute("disabled"));
+
+        copayButton.Click();
+
+        Assert.Equal("record-copay", requestedAction);
     }
 
     [Fact]
@@ -385,11 +425,15 @@ public sealed class AppointmentComponentsTests : TestContext
     private static AppointmentDetailViewModel CreateAppointment(
         string status,
         string? visitWorkflowStatus = null,
-        string? intakeStatus = "Completed")
+        string? intakeStatus = "Completed",
+        Guid? visitNoteId = null,
+        bool canRecordCopay = false,
+        string copayStatusLabel = "Copay not configured")
     {
         return new AppointmentDetailViewModel
         {
             AppointmentId = Guid.NewGuid(),
+            VisitNoteId = visitNoteId,
             PatientRecordId = Guid.NewGuid(),
             PatientName = "Alex Patient",
             PatientId = "PT-123456",
@@ -402,6 +446,8 @@ public sealed class AppointmentComponentsTests : TestContext
             AppointmentStatus = status,
             VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
             IntakeStatus = intakeStatus!,
+            CanRecordCopay = canRecordCopay,
+            CopayStatusLabel = copayStatusLabel,
             Notes = "Shoulder mobility follow-up."
         };
     }

@@ -847,9 +847,7 @@ public static class DashboardEndpoints
 
         var isOverdue = daysUntilDue < 0;
         var isUrgent = isOverdue || daysUntilDue <= AuthorizationUrgentWindowDays;
-        var message = isOverdue
-            ? $"{overdueMessage} Due date: {dueDateOnly:MMM d, yyyy}."
-            : $"{dueSoonMessage} Due date: {dueDateOnly:MMM d, yyyy}.";
+        var message = isOverdue ? overdueMessage : dueSoonMessage;
 
         alerts.Add(BuildAuthorizationAlert(
             patient,
