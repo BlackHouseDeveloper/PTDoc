@@ -19,13 +19,16 @@
     <GlobalPageHeader Configuration="patientsHeader">
         <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
             <Authorized>
-                <button type="button" class="global-page-header-primary-action" @onclick="OpenAddPatientModal">
+                <a href="/patients?action=add"
+                   class="global-page-header-primary-action"
+                   role="button"
+                   @onclick="OpenAddPatientModal">
                     <svg class="global-page-header-primary-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M8 3.33337V12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M3.33334 8H12.6667" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <span>Add Patient</span>
-                </button>
+                </a>
             </Authorized>
         </AuthorizeView>
         <AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
@@ -123,11 +126,18 @@
     private CancellationTokenSource? _searchCts;
     private int _loadSequence;
     private bool _isPreparingPendingSendIntake;
+    private string? _lastAppliedRouteAction;
     private string AriaBusy => isLoading ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyRouteAction();
         await LoadPatientsAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        ApplyRouteAction();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -222,6 +232,46 @@
     private void OpenAddPatientModal()
     {
         isAddPatientModalOpen = true;
+    }
+
+    private void ApplyRouteAction()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (string.Equals(_lastAppliedRouteAction, uri.Query, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastAppliedRouteAction = uri.Query;
+
+        if (TryGetQueryParameter(uri.Query, "action", out var action)
+            && string.Equals(action, "add", StringComparison.OrdinalIgnoreCase))
+        {
+            isAddPatientModalOpen = true;
+        }
+    }
+
+    private static bool TryGetQueryParameter(string query, string key, out string value)
+    {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0 || !string.Equals(parts[0], key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal)) : string.Empty;
+            return true;
+        }
+
+        return false;
     }
 
     private async Task HandleSendIntakeAsync()

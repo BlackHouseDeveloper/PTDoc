@@ -45,7 +45,46 @@ public sealed class WebLoginEndpointIntegrationTests
         }));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?error=1", response.Headers.Location?.OriginalString);
+        Assert.Equal("/login?loginValidation=usernameRequired&ReturnUrl=%2Fpatients", response.Headers.Location?.OriginalString);
+        Assert.Empty(recordingFactory.RequestPayloads);
+    }
+
+    [Theory]
+    [InlineData("", "pinRequired")]
+    [InlineData("12", "pinFormat")]
+    [InlineData("abcd", "pinFormat")]
+    public async Task AuthLogin_InvalidPin_RedirectsToFieldValidationWithoutCallingApi(string pin, string expectedValidation)
+    {
+        var recordingFactory = new RecordingHttpClientFactory(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    Status = "Succeeded",
+                    UserId = Guid.NewGuid(),
+                    Username = "should-not-be-used",
+                    Token = "token",
+                    ExpiresAt = DateTime.UtcNow.AddHours(1),
+                    Role = "PT"
+                })
+            });
+
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["username"] = "testuser",
+            ["pin"] = pin,
+            ["returnUrl"] = "/"
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/login?loginValidation={expectedValidation}", response.Headers.Location?.OriginalString);
         Assert.Empty(recordingFactory.RequestPayloads);
     }
 

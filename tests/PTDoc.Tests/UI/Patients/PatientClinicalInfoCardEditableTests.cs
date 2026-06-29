@@ -380,6 +380,27 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         Assert.DoesNotContain("Should not render while errored", cut.Markup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RoutedInitialTabAndInsuranceLink_AreRenderedAsChartNavigation()
+    {
+        var patient = CreatePatient();
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, patient)
+            .Add(component => component.InitialTab, "documents"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-selected"));
+            Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(
+                $"/patient/{patient.Id}?tab=documents",
+                cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("href"));
+            Assert.Equal(
+                $"/patient/{patient.Id}/info",
+                cut.Find("[data-testid='patient-profile-tab-insurance-authorization']").GetAttribute("href"));
+        });
+    }
+
     private static PatientProfileVm CreatePatient() => new()
     {
         Id = Guid.NewGuid().ToString("D"),

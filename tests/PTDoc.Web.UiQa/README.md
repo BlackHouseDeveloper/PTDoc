@@ -49,7 +49,7 @@ PTDOC_UI_QA_PIN=<pin> \
 npm run test:audit-remediation
 ```
 
-The suite covers login validation, protected `/dashboard`, dashboard Notes Due routing, appointments week grouping, and notes pagination. Set `PTDOC_UI_QA_INTAKE_PATH=/intake/<patient-id>` to include the editable intake validation/body-map keyboard check. Set `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>` only for a safe PT-role draft note when verifying note autosave/CPT/HEP persistence.
+The suite covers login validation, protected `/dashboard`, dashboard Notes Due routing, live-click Appointments Week View activation, Patients Add Patient modal activation, patient chart tab routing, PT Start New Note entry, and notes pagination. Set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when the seeded patient chart differs from the default. Set `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN` to override the PT-role credentials used for Start New Note coverage. Set `PTDOC_UI_QA_INTAKE_PATH=/intake/<patient-id>` to include the editable intake validation/body-map keyboard check. Set `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>` only for a safe PT-role draft note when verifying note autosave/CPT/HEP persistence.
 
 ## Authentication
 

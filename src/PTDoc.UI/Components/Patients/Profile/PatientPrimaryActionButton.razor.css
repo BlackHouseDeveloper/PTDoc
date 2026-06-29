@@ -13,6 +13,7 @@
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
     line-height: 20px;
+    text-decoration: none;
     cursor: pointer;
     transition: opacity var(--transition-fast);
 }
