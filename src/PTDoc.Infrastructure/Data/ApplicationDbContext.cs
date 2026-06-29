@@ -474,6 +474,7 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Patient)
                 .WithMany()
                 .HasForeignKey(e => e.InternalPatientId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -683,6 +684,9 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<PatientCommunicationLogEntry>()
             .HasQueryFilter(c => CurrentClinicId == null || c.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<ExternalSystemMapping>()
+            .HasQueryFilter(m => CurrentClinicId == null || m.Patient == null || m.Patient.ClinicId == CurrentClinicId);
 
         // Sprint O: ObjectiveMetric is accessed only through its parent ClinicalNote,
         // which already has its own query filter. Filter ObjectiveMetric via the note's ClinicId

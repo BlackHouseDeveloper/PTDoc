@@ -176,11 +176,15 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         Services.AddSingleton(appointmentService.Object);
         Services.AddSingleton(intakeService.Object);
         Services.AddSingleton(toastService.Object);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()
+            .NavigateTo($"/patient/{patientId:D}?action=new-note");
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
         cut.WaitForElement("[data-testid='patient-primary-action']");
 
-        cut.Find("[data-testid='patient-primary-action']").Click();
+        Assert.Equal(
+            $"/patient/{patientId:D}?action=new-note",
+            cut.Find("[data-testid='patient-primary-action']").GetAttribute("href"));
         cut.WaitForElement("[data-testid='patient-note-type-chooser']");
         cut.FindAll("button")
             .Single(button => button.TextContent.Contains("Daily Treatment Note", StringComparison.Ordinal))
