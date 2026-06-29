@@ -1593,7 +1593,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             "/api/v1/notes/export/preview-target",
             JsonContent(new ExportPreviewTargetRequest
             {
-                PatientIds = [patientId]
+                PatientIds = [patientId],
+                NoteTypeFilters = ["daily-note"]
             }));
 
         Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
@@ -1603,6 +1604,123 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.NotNull(payload);
         Assert.False(payload!.CanDownloadPdf);
         Assert.Contains("does not have permission", payload.UnavailableReason ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExportPreviewTarget_DailyFilter_ReturnsDailyNote()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var dailyNoteId = await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.Daily,
+            DateTime.UtcNow.AddDays(-2));
+        await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.ProgressNote,
+            DateTime.UtcNow);
+
+        using var previewResponse = await client.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                PatientIds = [patientId],
+                NoteTypeFilters = ["daily-note"]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = await ReadJsonAsync<ExportPreviewTargetResponse>(previewResponse);
+        Assert.Equal(dailyNoteId, payload.NoteId);
+        Assert.True(payload.CanDownloadPdf);
+        Assert.Null(payload.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task ExportPreviewTarget_MultipleFilters_ReturnsMatchingNewestNote()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.Daily,
+            DateTime.UtcNow.AddDays(-2));
+        var progressNoteId = await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.ProgressNote,
+            DateTime.UtcNow);
+        await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.Evaluation,
+            DateTime.UtcNow.AddDays(1));
+
+        using var previewResponse = await client.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                PatientIds = [patientId],
+                NoteTypeFilters = ["daily-note", "progress-note"]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = await ReadJsonAsync<ExportPreviewTargetResponse>(previewResponse);
+        Assert.Equal(progressNoteId, payload.NoteId);
+        Assert.True(payload.CanDownloadPdf);
+    }
+
+    [Fact]
+    public async Task ExportPreviewTarget_ReEvaluationFilter_ExcludesInitialEvaluations()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var reEvaluationNoteId = await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.Evaluation,
+            DateTime.UtcNow.AddDays(-2),
+            isReEvaluation: true);
+        await CreateNoteAsync(
+            client,
+            patientId,
+            NoteType.Evaluation,
+            DateTime.UtcNow,
+            isReEvaluation: false);
+
+        using var previewResponse = await client.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                PatientIds = [patientId],
+                NoteTypeFilters = ["re-eval"]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = await ReadJsonAsync<ExportPreviewTargetResponse>(previewResponse);
+        Assert.Equal(reEvaluationNoteId, payload.NoteId);
+        Assert.True(payload.CanDownloadPdf);
+    }
+
+    [Fact]
+    public async Task ExportPreviewTarget_InvalidFilter_ReturnsUnavailableReason()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var previewResponse = await client.PostAsync(
+            "/api/v1/notes/export/preview-target",
+            JsonContent(new ExportPreviewTargetRequest
+            {
+                NoteTypeFilters = ["daily"]
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var payload = await ReadJsonAsync<ExportPreviewTargetResponse>(previewResponse);
+        Assert.Null(payload.NoteId);
+        Assert.False(payload.CanDownloadPdf);
+        Assert.Contains("daily", payload.UnavailableReason ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2330,6 +2448,28 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         return doc!.RootElement.GetProperty("id").GetGuid();
     }
 
+    private static async Task<Guid> CreateNoteAsync(
+        HttpClient client,
+        Guid patientId,
+        NoteType noteType,
+        DateTime dateOfService,
+        bool isReEvaluation = false)
+    {
+        using var response = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = noteType,
+            IsReEvaluation = isReEvaluation,
+            DateOfService = dateOfService,
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(noteType),
+            CptCodesJson = "[]"
+        }));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var payload = await ReadJsonAsync<JsonDocument>(response);
+        return payload.RootElement.GetProperty("note").GetProperty("id").GetGuid();
+    }
+
     private static string CreateWorkspaceNoteContentWithDiagnosis(
         NoteType noteType,
         string code = "M54.5",
@@ -2371,6 +2511,14 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             .Where(patient => patient.Id == patientId)
             .Select(patient => patient.Email!)
             .SingleAsync();
+    }
+
+    private static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response)
+    {
+        var payload = JsonSerializer.Deserialize<T>(
+            await response.Content.ReadAsStringAsync(),
+            JsonOpts);
+        return Assert.IsType<T>(payload);
     }
 
     private static StringContent JsonContent<T>(T value) =>

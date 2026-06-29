@@ -246,8 +246,8 @@ else
                                  AllowSubmitWhenReadOnly="@CanSubmitCurrentNote"
                                  Vm="@_dryNeedling"
                                  VmChanged="HandleDryNeedlingChanged"
-                                 OnSave="HandleSaveAsync"
-                                 OnSubmit="HandleSubmitAsync" />
+                                 OnSave="HandleSaveSafelyAsync"
+                                 OnSubmit="HandleSubmitSafelyAsync" />
         }
         else
         {
@@ -264,7 +264,7 @@ else
             <SoapTabNav ActiveSection="@_note.ActiveSection"
                         IsReadOnly="@IsWorkspaceReadOnly"
                         Sections="@CurrentSoapSections"
-                        ActiveSectionChanged="HandleSectionChanged" />
+                        ActiveSectionChanged="HandleSectionChangedSafelyAsync" />
 
             <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
                 @switch (_note.ActiveSection)
@@ -447,7 +447,7 @@ else
                                         OnDiscardPendingSummary="HandleDiscardPendingSummaryAsync"
                                         OnRegenerateGoals="HandleRegenerateGoalsAsync"
                                         OnExportPdf="HandleExportPdfAsync"
-                                        OnSubmit="HandleSubmitAsync" />
+                                        OnSubmit="HandleSubmitSafelyAsync" />
                         break;
                 }
             </div>
@@ -467,8 +467,8 @@ else
                                   OnNextSection="HandleNextSection"
                                   OnGoalsClick="HandleGoalsClick"
                                   OnReviewClick="HandleReviewClick"
-                                  OnSave="HandleSaveAsync"
-                                  OnSubmit="HandleSubmitAsync" />
+                                  OnSave="HandleSaveSafelyAsync"
+                                  OnSubmit="HandleSubmitSafelyAsync" />
             }
         }
     </div>
@@ -989,6 +989,23 @@ else
         ClearStatusMessage();
     }
 
+    private async Task HandleSectionChangedSafelyAsync(SoapSection next)
+    {
+        try
+        {
+            await HandleSectionChanged(next);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}", PatientId, _note.NoteId, next);
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to open that note section right now. Please retry."),
+                "error",
+                showToast: true,
+                toastTitle: "Section unavailable");
+        }
+    }
+
     private async Task HandleNoteTypeChanged(string value)
     {
         if (!CanEditCurrentDraft)
@@ -1131,7 +1148,7 @@ else
         var previous = GetAdjacentSection(-1);
         if (previous.HasValue)
         {
-            await HandleSectionChanged(previous.Value);
+            await HandleSectionChangedSafelyAsync(previous.Value);
         }
     }
 
@@ -1140,7 +1157,7 @@ else
         var next = GetAdjacentSection(1);
         if (next.HasValue)
         {
-            await HandleSectionChanged(next.Value);
+            await HandleSectionChangedSafelyAsync(next.Value);
         }
     }
 
@@ -1180,7 +1197,7 @@ else
 
     private async Task HandleReviewClick()
     {
-        await HandleSectionChanged(SoapSection.Review);
+        await HandleSectionChangedSafelyAsync(SoapSection.Review);
     }
 
     private Task HandleBackToEdit()
@@ -1429,6 +1446,24 @@ else
         }
     }
 
+    private async Task HandleSaveSafelyAsync()
+    {
+        try
+        {
+            await HandleSaveAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Manual draft save failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            _note.MarkSaveError();
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."),
+                "error",
+                showToast: true,
+                toastTitle: "Save failed");
+        }
+    }
+
     private async Task<DraftAutosaveSaveResult> AutosaveSaveAsync(CancellationToken cancellationToken)
     {
         var saved = await PersistDraftAsync(showFeedback: false, cancellationToken);
@@ -1664,6 +1699,24 @@ else
         _consentAccepted = false;
         _intentConfirmed = false;
         _showSignatureConsent = true;
+    }
+
+    private async Task HandleSubmitSafelyAsync()
+    {
+        try
+        {
+            await HandleSubmitAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Note submit action failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            _note.MarkSaveError();
+            SetStatusMessage(
+                GetUserFacingMessage(ex, "Unable to submit note."),
+                "error",
+                showToast: true,
+                toastTitle: "Submit failed");
+        }
     }
 
     private Task HandleConsentCancelAsync()

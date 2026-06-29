@@ -57,7 +57,14 @@ public sealed class SoapReviewPageTests : TestContext
                     new ExerciseRowEntry
                     {
                         SuggestedExercise = "Heel slides",
-                        ActualExercisePerformed = "Heel slides"
+                        ActualExercisePerformed = "Heel slides",
+                        SetsRepsDuration = "2 x 10",
+                        CptCode = "97110",
+                        CptDescription = "Therapeutic exercise",
+                        TimeMinutes = 12,
+                        AssistanceLevel = "Standby Assist",
+                        Cueing = "Verbal cueing",
+                        IncludeInHomeExerciseProgram = true
                     }
                 ]
             },
@@ -81,9 +88,17 @@ public sealed class SoapReviewPageTests : TestContext
                     new GeneralInterventionEntry
                     {
                         Name = "Manual therapy",
-                        Category = "Manual"
+                        Category = "Manual",
+                        CptCode = "97140",
+                        CptDescription = "Manual therapy",
+                        TimeMinutes = 10,
+                        AssistanceLevel = "Contact Guard",
+                        Cueing = "Tactile cueing",
+                        Response = "Improved mobility",
+                        IncludeInHomeExerciseProgram = true
                     }
-                ]
+                ],
+                HomeExerciseProgramNotes = "Continue knee HEP"
             }
         };
 
@@ -102,6 +117,14 @@ public sealed class SoapReviewPageTests : TestContext
         Assert.Contains("Tender muscles: Quadriceps", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Mobility", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Manual therapy (Manual)", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("CPT: 97140", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Assistance: Contact Guard", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Cueing: Tactile cueing", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Response: Improved mobility", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("HEP linked", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Continue knee HEP", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Heel slides", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("CPT: 97110", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Progress assessment is visit-specific.", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Plan for next visit", cut.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Prognosis", cut.Markup, StringComparison.Ordinal);

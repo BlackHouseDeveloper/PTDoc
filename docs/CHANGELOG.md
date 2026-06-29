@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - High-priority live audit hardening
+
+- **`src/PTDoc.UI/Pages/Patient/NoteWorkspacePage.razor`**, **`src/PTDoc.UI/Components/AddPatientModal.razor.css`**, **`src/PTDoc.Infrastructure/Pdf/ClinicalDocumentHierarchyBuilder.cs`**, **`src/PTDoc.Api/Notes/NoteEndpoints.cs`**, **`tests/PTDoc.Tests/UI/Notes/SoapReviewPageTests.cs`**, **`tests/PTDoc.Tests/Integration/PdfIntegrationTests.cs`**, **`tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs`**, **`tests/PTDoc.Tests/UI/Dashboard/DashboardWidgetNavigationTests.cs`** — Routed note workspace save/submit/section actions through handled alert paths, strengthened Add Patient modal backdrop/surface isolation, preserved row-level intervention CPT/assistance/cueing/response/HEP details as first-class Daily export rows, fixed filtered Export Center preview targeting with EF-translatable note-type predicates, and added regression coverage for Review/PDF hierarchy semantics, filtered export previews, and actionable dashboard Authorization alert visibility. Reason: the updated live audit identified remaining high-priority fragility around new-note error banners, Add Patient modal readability, intervention/CPT/HEP verification, filtered export preview failures, and Authorization alert fixture visibility.
+
 ### Changed - Copilot instructions align with agent guidance
 
 - **`.github/copilot-instructions.md`** — Added an explicit relationship to `AGENTS.md`, aligned the documentation authority order with the agent notes, corrected local API/Web and SQLite path guidance, and added the current Playwright browser QA commands plus optional overrides. Reason: Copilot guidance should reinforce the repo-wide agent contract instead of drifting into conflicting command or documentation priorities.
