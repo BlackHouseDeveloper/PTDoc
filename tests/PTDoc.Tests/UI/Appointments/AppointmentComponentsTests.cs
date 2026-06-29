@@ -124,8 +124,7 @@ public sealed class AppointmentComponentsTests : TestContext
     public void AppointmentDetailModal_NullIntakeStatus_RendersNeutralDocumentBadge()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        var appointment = CreateAppointment(status: "Scheduled");
-        appointment.IntakeStatus = null!;
+        var appointment = CreateAppointment(status: "Scheduled", intakeStatus: null);
 
         var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
             .Add(component => component.IsOpen, true)
@@ -383,7 +382,10 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("Dr. Taylor", cut.Find(".appointment-clinician").TextContent.Trim());
     }
 
-    private static AppointmentDetailViewModel CreateAppointment(string status, string? visitWorkflowStatus = null)
+    private static AppointmentDetailViewModel CreateAppointment(
+        string status,
+        string? visitWorkflowStatus = null,
+        string? intakeStatus = "Completed")
     {
         return new AppointmentDetailViewModel
         {
@@ -399,7 +401,7 @@ public sealed class AppointmentComponentsTests : TestContext
             AppointmentType = "Follow Up",
             AppointmentStatus = status,
             VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
-            IntakeStatus = "Completed",
+            IntakeStatus = intakeStatus!,
             Notes = "Shoulder mobility follow-up."
         };
     }
