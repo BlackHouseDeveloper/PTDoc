@@ -35,6 +35,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         var pendingNote = SeedAppointmentCase(db, clinician.Id, prefix, "PendingNote", date.AddHours(11), AppointmentStatus.CheckedIn, NoteStatus.PendingCoSign);
         var signedNote = SeedAppointmentCase(db, clinician.Id, prefix, "SignedNote", date.AddHours(12), AppointmentStatus.CheckedIn, NoteStatus.Signed);
         var completed = SeedAppointmentCase(db, clinician.Id, prefix, "Completed", date.AddHours(13), AppointmentStatus.Completed);
+        var completedWithDraft = SeedAppointmentCase(db, clinician.Id, prefix, "CompletedWithDraft", date.AddHours(16), AppointmentStatus.Completed, NoteStatus.Draft);
         var cancelledWithDraft = SeedAppointmentCase(db, clinician.Id, prefix, "CancelledWithDraft", date.AddHours(14), AppointmentStatus.Cancelled, NoteStatus.Draft);
         var noShowWithSigned = SeedAppointmentCase(db, clinician.Id, prefix, "NoShowWithSigned", date.AddHours(15), AppointmentStatus.NoShow, NoteStatus.Signed);
 
@@ -64,6 +65,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(signedNote.NoteId, appointmentsByPatient[signedNote.PatientName].VisitNoteId);
         Assert.Equal("Completed", appointmentsByPatient[completed.PatientName].VisitWorkflowStatus);
         Assert.Null(appointmentsByPatient[completed.PatientName].VisitNoteId);
+        Assert.Equal("Completed", appointmentsByPatient[completedWithDraft.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[completedWithDraft.PatientName].VisitNoteId);
         Assert.Equal("Cancelled", appointmentsByPatient[cancelledWithDraft.PatientName].VisitWorkflowStatus);
         Assert.Null(appointmentsByPatient[cancelledWithDraft.PatientName].VisitNoteId);
         Assert.Equal("No Show", appointmentsByPatient[noShowWithSigned.PatientName].VisitWorkflowStatus);

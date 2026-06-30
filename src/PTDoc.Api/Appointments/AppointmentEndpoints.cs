@@ -672,17 +672,24 @@ public static class AppointmentEndpoints
             AppointmentType = MapAppointmentType(row.AppointmentType),
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
             VisitWorkflowStatus = visitWorkflowStatus,
-            VisitNoteId = IsVisitNoteWorkflowStatus(visitWorkflowStatus)
-                ? row.VisitNoteId
-                : null,
+            VisitNoteId = ResolveVisitNoteId(row, visitWorkflowStatus),
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty
         };
     }
 
-    private static bool IsVisitNoteWorkflowStatus(string visitWorkflowStatus) =>
-        string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(visitWorkflowStatus, "Completed", StringComparison.OrdinalIgnoreCase);
+    private static Guid? ResolveVisitNoteId(AppointmentQueryRow row, string visitWorkflowStatus)
+    {
+        if (string.Equals(visitWorkflowStatus, "Note Started", StringComparison.OrdinalIgnoreCase))
+        {
+            return row.VisitNoteId;
+        }
+
+        return row.HasCompletedNote &&
+            string.Equals(visitWorkflowStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                ? row.VisitNoteId
+                : null;
+    }
 
     private static string BuildClinicianName(string? firstName, string? lastName)
     {

@@ -18,7 +18,7 @@ public sealed class NotificationsSectionTests : TestContext
             .Add(component => component.Alerts, alerts));
 
         Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
-        Assert.Contains("2 Urgent", cut.Markup);
+        Assert.Contains("3 Urgent", cut.Markup);
         Assert.Contains("Note Due Today", cut.Markup);
         Assert.Contains("Authorization Expiring", cut.Markup);
         Assert.Contains("Incomplete Intake", cut.Markup);
@@ -115,7 +115,7 @@ public sealed class NotificationsSectionTests : TestContext
                 DueDateUtc = DateTime.UtcNow.Date.AddDays(5),
                 TargetUrl = "/patient/patient-4/info",
                 ActionLabel = "Review Auth",
-                IsUrgent = false
+                IsUrgent = true
             },
             new()
             {
