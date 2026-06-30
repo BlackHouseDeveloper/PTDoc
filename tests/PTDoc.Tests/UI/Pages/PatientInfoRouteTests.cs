@@ -183,6 +183,62 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void Save_NormalizesLegacyPayerDisplayValuesAndSkipsBlankFaxLabel()
+    {
+        var patientId = Guid.NewGuid();
+        var payerInfoJson = JsonSerializer.Serialize(new
+        {
+            insuranceCompanyName = "Primary Health",
+            providerType = "Commercial",
+            insurancePriority = "Primary",
+            adjusterName = "Alex Adjuster",
+            adjusterPhone = "555-0200",
+            adjusterFax = "   "
+        }, SerializerOptions);
+        UpdatePatientRequest? capturedRequest = null;
+
+        var patient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Beta",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = payerInfoJson
+        };
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(patient);
+        patientService
+            .Setup(service => service.UpdateAsync(patientId, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdatePatientRequest, CancellationToken>((_, request, _) => capturedRequest = request)
+            .ReturnsAsync(patient);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("commercial", cut.Find("#pi-provider-type").GetAttribute("value"));
+            Assert.Equal("primary", cut.Find("#pi-insurance-priority").GetAttribute("value"));
+            Assert.DoesNotContain("Fax:", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
+        });
+
+        cut.Find("#pi-insurance-name").Input("Updated Primary Health");
+        cut.Find("button[aria-label='Save Changes']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(capturedRequest?.PayerInfoJson));
+
+        using var savedPayerInfo = JsonDocument.Parse(capturedRequest!.PayerInfoJson!);
+        var root = savedPayerInfo.RootElement;
+        Assert.Equal("commercial", root.GetProperty("providerType").GetString());
+        Assert.Equal("primary", root.GetProperty("insurancePriority").GetString());
+    }
+
+    [Fact]
     public async Task Save_PersistsCostSharingVisitLimitsAndAuthorizationReferralHistory()
     {
         var patientId = Guid.NewGuid();

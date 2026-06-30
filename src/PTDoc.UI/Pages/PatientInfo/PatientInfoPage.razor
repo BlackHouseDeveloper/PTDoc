@@ -207,8 +207,8 @@
                 OutOfPocketMet = payer?.OutOfPocketMet ?? string.Empty,
                 CopayAmount = payer?.CopayAmount ?? string.Empty,
                 CoinsurancePercent = payer?.CoinsurancePercent ?? string.Empty,
-                ProviderType = payer?.ProviderType ?? string.Empty,
-                InsurancePriority = payer?.InsurancePriority ?? string.Empty,
+                ProviderType = NormalizeProviderType(payer?.ProviderType),
+                InsurancePriority = NormalizeInsurancePriority(payer?.InsurancePriority),
                 YearType = payer?.YearType ?? string.Empty,
                 EffectiveStartDate = payer?.EffectiveStartDate ?? string.Empty,
                 EffectiveEndDate = payer?.EffectiveEndDate ?? string.Empty,
@@ -279,13 +279,49 @@
             payer.AdjusterName,
             payer.AdjusterPhone,
             payer.AdjusterEmail,
-            payer.AdjusterFax is null ? null : $"Fax: {payer.AdjusterFax}"
+            string.IsNullOrWhiteSpace(payer.AdjusterFax) ? null : $"Fax: {payer.AdjusterFax}"
         }
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Select(value => value!.Trim())
         .ToArray();
 
         return parts.Length == 0 ? string.Empty : string.Join(" | ", parts);
+    }
+
+    private static string NormalizeProviderType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "commercial" => "commercial",
+            "medicare" => "medicare",
+            "medicaid" => "medicaid",
+            "tricare" => "tricare",
+            "workers_comp" or "workers compensation" or "workers' compensation" or "workers_compensation" => "workers_comp",
+            "motor_vehicle" or "motor vehicle" => "motor_vehicle",
+            "liability" => "liability",
+            "self_pay" or "self pay" or "self-pay" => "self_pay",
+            _ => value.Trim()
+        };
+    }
+
+    private static string NormalizeInsurancePriority(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "primary" or "primary insurance" => "primary",
+            "secondary" or "secondary insurance" => "secondary",
+            _ => value.Trim()
+        };
     }
 
     private static List<AuthorizationReferralHistoryEntryVm> CloneAuthorizationReferralHistory(
@@ -349,8 +385,8 @@
                 OutOfPocketMet = Vm.PatientPayer.OutOfPocketMet,
                 CopayAmount = Vm.PatientPayer.CopayAmount,
                 CoinsurancePercent = Vm.PatientPayer.CoinsurancePercent,
-                ProviderType = Vm.PatientPayer.ProviderType,
-                InsurancePriority = Vm.PatientPayer.InsurancePriority,
+                ProviderType = NormalizeProviderType(Vm.PatientPayer.ProviderType),
+                InsurancePriority = NormalizeInsurancePriority(Vm.PatientPayer.InsurancePriority),
                 YearType = Vm.PatientPayer.YearType,
                 EffectiveStartDate = Vm.PatientPayer.EffectiveStartDate,
                 EffectiveEndDate = Vm.PatientPayer.EffectiveEndDate,
