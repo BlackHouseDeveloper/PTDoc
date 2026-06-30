@@ -180,6 +180,56 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("adjuster@example.com", root.GetProperty("adjusterEmail").GetString());
         Assert.Equal("555-0201", root.GetProperty("adjusterFax").GetString());
         Assert.Equal("SEC-GRP", root.GetProperty("secondaryGroupNumber").GetString());
+        Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
+    }
+
+    [Fact]
+    public void Save_PersistsEditedCaseManagerAdjusterContactInfo()
+    {
+        var patientId = Guid.NewGuid();
+        var payerInfoJson = JsonSerializer.Serialize(new
+        {
+            insuranceCompanyName = "Primary Health",
+            adjusterName = "Alex Adjuster",
+            adjusterPhone = "555-0200"
+        }, SerializerOptions);
+        UpdatePatientRequest? capturedRequest = null;
+
+        var patient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Beta",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = payerInfoJson
+        };
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(patient);
+        patientService
+            .Setup(service => service.UpdateAsync(patientId, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdatePatientRequest, CancellationToken>((_, request, _) => capturedRequest = request)
+            .ReturnsAsync(patient);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Alex Adjuster", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal));
+
+        cut.Find("#pi-case-manager").Input("Call Alex before re-auth submission.");
+        cut.Find("button[aria-label='Save Changes']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(capturedRequest?.PayerInfoJson));
+
+        using var savedPayerInfo = JsonDocument.Parse(capturedRequest!.PayerInfoJson!);
+        Assert.Equal(
+            "Call Alex before re-auth submission.",
+            savedPayerInfo.RootElement.GetProperty("caseManagerAdjusterContactInfo").GetString());
     }
 
     [Fact]

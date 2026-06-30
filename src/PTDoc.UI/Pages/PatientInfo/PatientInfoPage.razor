@@ -403,7 +403,7 @@
                 TotalVisitLimit = Vm.Utilization.TotalVisitLimit,
                 DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
                 NotesComments = Vm.Utilization.NotesComments,
-                CaseManagerAdjusterContactInfo = Vm.SupportingDocs.CaseManagerAdjusterContactInfo,
+                CaseManagerAdjusterContactInfo = ResolveCaseManagerAdjusterContactInfoForSave(),
                 AdjusterName = loadedPayerInfo?.AdjusterName,
                 AdjusterPhone = loadedPayerInfo?.AdjusterPhone,
                 AdjusterEmail = loadedPayerInfo?.AdjusterEmail,
@@ -438,6 +438,20 @@
             Vm.IsSaving = false;
             StateHasChanged();
         }
+    }
+
+    private string? ResolveCaseManagerAdjusterContactInfoForSave()
+    {
+        var enteredValue = Vm.SupportingDocs.CaseManagerAdjusterContactInfo;
+        if (!string.IsNullOrWhiteSpace(loadedPayerInfo?.CaseManagerAdjusterContactInfo))
+        {
+            return enteredValue;
+        }
+
+        var derivedValue = FormatAdjusterContactInfo(loadedPayerInfo);
+        return string.Equals(enteredValue, derivedValue, StringComparison.Ordinal)
+            ? null
+            : enteredValue;
     }
 
     private void HandleBack()
