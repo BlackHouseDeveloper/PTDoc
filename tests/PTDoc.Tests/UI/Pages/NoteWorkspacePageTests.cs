@@ -119,6 +119,7 @@ public sealed class NoteWorkspacePageTests : TestContext
         {
             var noteTypeSelect = cut.Find("[data-testid='note-type-select']");
             Assert.Equal("Evaluation Note", noteTypeSelect.GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='soap-tab-interventions']"));
             Assert.Contains("Started a new Evaluation note with the latest submitted intake prefill.", cut.Markup, StringComparison.Ordinal);
             Assert.Equal("7", cut.Find("#q3-current").GetAttribute("value"));
             Assert.Contains("Submitted intake", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
@@ -136,6 +137,71 @@ public sealed class NoteWorkspacePageTests : TestContext
         });
 
         noteWorkspaceService.Verify(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void ExistingDischargeNote_DoesNotRenderInterventionsTab()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Drew",
+                LastName = "Discharge",
+                DateOfBirth = new DateTime(1980, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Discharge Note",
+                DateOfService = new DateTime(2026, 4, 18),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Discharge Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Discharge
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm(),
+                    DailyTreatment = new DailyTreatmentVm(),
+                    DischargeSubjective = new DischargeSubjectiveVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Discharge Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            Assert.Empty(cut.FindAll("[data-testid='soap-tab-interventions']"));
+        });
+
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -323,8 +389,9 @@ public sealed class NoteWorkspacePageTests : TestContext
         {
             var noteTypeSelect = cut.Find("[data-testid='note-type-select']");
             Assert.Equal("Progress Note", noteTypeSelect.GetAttribute("value"));
+            Assert.Single(cut.FindAll("[data-testid='soap-tab-interventions']"));
             Assert.Contains("Started a new Progress Note with carry-forward from the latest signed Evaluation Note.", cut.Markup, StringComparison.Ordinal);
-            Assert.True(cut.Find("input[name='current-pain'][value='4']").HasAttribute("checked"));
+            Assert.Equal("4", cut.Find("#progress-current-pain").GetAttribute("value"));
             Assert.Contains("Signed Evaluation Note", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
             Assert.Contains("Medication: Ibuprofen", cut.Markup, StringComparison.Ordinal);
         });
@@ -467,6 +534,7 @@ public sealed class NoteWorkspacePageTests : TestContext
         {
             var noteTypeSelect = cut.Find("[data-testid='note-type-select']");
             Assert.Equal("Daily Treatment Note", noteTypeSelect.GetAttribute("value"));
+            Assert.Single(cut.FindAll("[data-testid='soap-tab-interventions']"));
             Assert.Contains("Started a new Daily Treatment Note with carry-forward from the latest signed Progress Note.", cut.Markup, StringComparison.Ordinal);
             Assert.Equal("3", cut.Find("#current-pain").GetAttribute("value"));
             Assert.False(cut.Find("#current-pain").HasAttribute("disabled"));
@@ -531,7 +599,7 @@ public sealed class NoteWorkspacePageTests : TestContext
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
             .Add(component => component.PatientId, patientId.ToString())
             .Add(component => component.NoteId, noteId.ToString())
-            .Add(component => component.RequestedSection, "plan"));
+            .Add(component => component.RequestedSection, "interventions"));
 
         cut.WaitForAssertion(() =>
         {
@@ -540,7 +608,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.True(
                 string.Equals("Tolerated gait training without symptom flare.", responseField.GetAttribute("value"), StringComparison.Ordinal) ||
                 string.Equals("Tolerated gait training without symptom flare.", responseField.TextContent, StringComparison.Ordinal),
-                "Expected persisted response-to-treatment text to render in the Daily Treatment plan field.");
+                "Expected persisted response-to-treatment text to render in the Daily/Progress Interventions field.");
         });
 
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
@@ -1160,6 +1228,10 @@ public sealed class NoteWorkspacePageTests : TestContext
 
         cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 
+        cut.Find("[data-testid='soap-tab-plan']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Plan for next visit", cut.Markup, StringComparison.Ordinal));
+        cut.Find("textarea").Input("Manual save failure regression edit.");
+
         cut.Find("[data-testid='footer-save']").Click();
 
         cut.WaitForAssertion(() =>
@@ -1327,14 +1399,13 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
-    public void ExistingDailyTreatmentNote_AssessmentGenerationUsesDailySubjectiveComplaint()
+    public void ExistingDailyTreatmentNote_AssessmentRendersAdditionalNotesOnly()
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
-        AssessmentGenerationRequest? capturedRequest = null;
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -1382,22 +1453,6 @@ public sealed class NoteWorkspacePageTests : TestContext
                 }
             });
 
-        aiService
-            .Setup(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<AssessmentGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
-            .ReturnsAsync(new AssessmentGenerationResult
-            {
-                GeneratedText = "AI assessment draft",
-                Confidence = 0.85,
-                SourceInputs = new AssessmentGenerationRequest
-                {
-                    NoteId = noteId,
-                    ChiefComplaint = "Knee Pain; Right knee; Pain with stairs",
-                    SelectedBodyPart = "Knee"
-                },
-                Success = true
-            });
-
         Services.AddAuthorizationCore();
         Services.AddLogging();
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
@@ -1414,32 +1469,23 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 
         cut.Find("[data-testid='soap-tab-assessment']").Click();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-assessment-section']"));
-
-        cut.FindAll("button")
-            .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
-            .Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-progress-simple-assessment-section']"));
 
         cut.WaitForAssertion(() =>
         {
-            Assert.NotNull(capturedRequest);
-            Assert.Equal(noteId, capturedRequest!.NoteId);
-            Assert.Equal("Knee", capturedRequest.SelectedBodyPart);
-            Assert.Contains("Knee Pain", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
-            Assert.Contains("Right knee", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
-            Assert.Contains("Pain with stairs", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
-            Assert.Contains("Reports symptoms improved after HEP.", capturedRequest.ChiefComplaint, StringComparison.Ordinal);
-            Assert.DoesNotContain("A chief complaint is required before generating an assessment.", cut.Markup, StringComparison.Ordinal);
-            Assert.Contains("AI-generated content", cut.Markup, StringComparison.Ordinal);
-            Assert.Contains("AI assessment draft", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Additional Notes", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Existing assessment", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Generate Assessment", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Deficits &amp; Impairments", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("ICD-10 Diagnosis Codes", cut.Markup, StringComparison.Ordinal);
         });
 
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
-        aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public void ExistingDailyTreatmentNote_AssessmentGenerationWithoutDailyComplaintStillBlocksAi()
+    public void ExistingDailyTreatmentNote_AssessmentWithoutDailyComplaintStillRendersAdditionalNotes()
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
@@ -1499,18 +1545,14 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 
         cut.Find("[data-testid='soap-tab-assessment']").Click();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-assessment-section']"));
-
-        cut.FindAll("button")
-            .First(button => button.TextContent.Contains("Generate Assessment", StringComparison.Ordinal))
-            .Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='daily-progress-simple-assessment-section']"));
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("A chief complaint is required before generating an assessment.", cut.Find("[role='alert']").TextContent, StringComparison.Ordinal);
-            var toast = Assert.Single(Services.GetRequiredService<IToastService>().GetAll());
-            Assert.Equal(ToastLevel.Error, toast.Level);
-            Assert.Equal("A chief complaint is required before generating an assessment.", toast.Message);
+            Assert.Contains("Additional Notes", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Existing assessment", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Generate Assessment", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("A chief complaint is required before generating an assessment.", cut.Markup, StringComparison.Ordinal);
         });
 
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
@@ -2030,6 +2072,64 @@ public sealed class NoteWorkspacePageTests : TestContext
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
         noteWorkspaceService.VerifyAll();
         aiService.VerifyAll();
+    }
+
+    [Fact]
+    public void DailyReviewNavigation_SaveCancellation_ShowsHandledWorkspaceAlert()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Audit",
+                LastName = "Daily",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException("save canceled"));
+
+        Services.AddAuthorizationCore();
+        Services.AddLogging();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Daily Treatment Note"));
+
+        cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+
+        cut.Find("[data-testid='footer-review']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var alert = cut.Find("[data-testid='note-workspace-alert']");
+            Assert.Contains("Unable to open that note section right now. Please retry.", alert.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("soap-review-page", cut.Markup, StringComparison.Ordinal);
+        });
+
+        noteWorkspaceService.Verify(service => service.GetCarryForwardSeedAsync(patientId, "Daily Treatment Note", It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()), Times.Once);
+        patientService.VerifyAll();
     }
 
     [Fact]

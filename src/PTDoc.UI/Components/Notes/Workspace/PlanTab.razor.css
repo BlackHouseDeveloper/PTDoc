@@ -446,6 +446,22 @@
 
 .pt-card__field-header .pt-card__field-label { margin-bottom: 0; }
 
+.pt-card__checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-top: calc(var(--spacing-2) * -1);
+    margin-bottom: var(--spacing-3);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+}
+
+.pt-card__checkbox-row input {
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    accent-color: var(--primary);
+}
+
 .pt-card__select {
     width: 100%;
     height: var(--touch-target-desktop);

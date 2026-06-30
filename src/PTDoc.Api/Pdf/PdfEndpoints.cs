@@ -404,6 +404,9 @@ public static class PdfEndpoints
         "dateOfService",
         "dateOfEvaluation",
         "dateOfTreatment",
+        "billingDesignation",
+        "dischargeDocumentationMode",
+        "isNonBillableDischarge",
         "startDate",
         "endDate"
     };

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - SOAP workspace interventions and export summaries
+
+- **SOAP workspace and PDF export** — Added row-level intervention CPT, assistance, cueing, response, and HEP linkage; expanded daily/progress/discharge/dry-needling documentation sections; and hardened export hierarchy/PDF summaries for those clinical fields. Reason: split documentation-workspace and export semantics into a focused reviewable PR.
+
 ### Added - Patient chart document and communication storage
 
 - **Patient chart storage** — Added patient document and communication-log entities, DTOs, API endpoints, UI service wiring, upload/log controls, provider migrations, and migration snapshot synchronization across SQLite, SQL Server, and PostgreSQL. Reason: split the schema-bearing patient chart storage and migration validation work into its own reviewable PR.

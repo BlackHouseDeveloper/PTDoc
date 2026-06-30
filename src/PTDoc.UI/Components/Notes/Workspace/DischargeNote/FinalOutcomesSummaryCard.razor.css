@@ -44,6 +44,26 @@
     gap: var(--spacing-3);
 }
 
+::deep .discharge-summary-card__empty-state {
+    display: grid;
+    gap: var(--spacing-1);
+    padding: var(--spacing-3);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+}
+
+::deep .discharge-summary-card__empty-state strong {
+    font-size: var(--text-sm);
+    color: var(--foreground);
+}
+
+::deep .discharge-summary-card__empty-state p {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+}
+
 ::deep .discharge-summary-card__item {
     display: grid;
     gap: var(--spacing-2);

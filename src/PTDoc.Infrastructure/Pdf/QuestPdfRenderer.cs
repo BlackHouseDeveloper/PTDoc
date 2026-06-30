@@ -197,9 +197,9 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
             {
                 pdfTable.ColumnsDefinition(columns =>
                 {
-                    for (var i = 0; i < table.Columns.Count; i++)
+                    foreach (var column in table.Columns)
                     {
-                        columns.RelativeColumn();
+                        columns.RelativeColumn(GetColumnWeight(column));
                     }
                 });
 
@@ -276,4 +276,12 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
 
     private static IContainer TableBodyCell(IContainer container)
         => container.Border(1).BorderColor(Colors.Grey.Lighten3).PaddingVertical(4).PaddingHorizontal(5);
+
+    private static float GetColumnWeight(ClinicalDocumentTableColumn column)
+        => column.Key switch
+        {
+            "details" => 3f,
+            "performed" => 0.8f,
+            _ => 1f
+        };
 }

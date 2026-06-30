@@ -125,6 +125,36 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
+    public void CommunicationsTab_CreatedEntryRendersAfterReopen()
+    {
+        var patient = CreatePatient();
+        var firstRender = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, patient));
+
+        firstRender.Find("[data-testid='patient-profile-tab-communications']").Click();
+        firstRender.Find("#patient-communication-summary").Input("Reload persistence call marker.");
+        firstRender.Find("#patient-communication-details").Input("Communication persists after component reopen.");
+        firstRender.FindAll("button").Single(button => button.TextContent.Contains("Add communication", StringComparison.Ordinal)).Click();
+
+        firstRender.WaitForAssertion(() =>
+        {
+            Assert.Contains("Communication logged.", firstRender.Markup, StringComparison.Ordinal);
+            Assert.Contains("Reload persistence call marker.", firstRender.Markup, StringComparison.Ordinal);
+        });
+
+        var reopened = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, patient));
+
+        reopened.Find("[data-testid='patient-profile-tab-communications']").Click();
+
+        reopened.WaitForAssertion(() =>
+        {
+            Assert.Contains("Reload persistence call marker.", reopened.Markup, StringComparison.Ordinal);
+            Assert.Contains("Communication persists after component reopen.", reopened.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void TimelineError_RendersOnlyErrorState()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters

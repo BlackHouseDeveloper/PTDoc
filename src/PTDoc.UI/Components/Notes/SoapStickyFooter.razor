@@ -128,11 +128,21 @@
 </footer>
 
 @code {
-    private static readonly SoapSection[] _sections = Enum.GetValues<SoapSection>();
+    private static readonly IReadOnlyList<SoapSection> DefaultSections =
+    [
+        SoapSection.Subjective,
+        SoapSection.Objective,
+        SoapSection.Assessment,
+        SoapSection.Plan,
+        SoapSection.Review
+    ];
+
+    private IReadOnlyList<SoapSection> ActiveSections => Sections is { Count: > 0 } ? Sections : DefaultSections;
 
     [Parameter, EditorRequired] public string NoteType { get; set; } = "Evaluation Note";
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public NoteSaveState SaveState { get; set; }
+    [Parameter] public IReadOnlyList<SoapSection>? Sections { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool DisableSave { get; set; }
     [Parameter] public bool DisableSubmit { get; set; }
@@ -146,8 +156,8 @@
     [Parameter, EditorRequired] public EventCallback OnSave { get; set; }
     [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
 
-    private bool IsFirstSection => ActiveSection == _sections[0];
-    private bool IsLastSection  => ActiveSection == _sections[^1];
+    private bool IsFirstSection => ActiveSection == ActiveSections[0];
+    private bool IsLastSection  => ActiveSection == ActiveSections[^1];
     private bool ShowSaveAction => !IsReadOnly;
     private bool ShowSubmitAction => !IsReadOnly || AllowSubmitWhenReadOnly;
     private string GetFooterStateLabel() => IsReadOnly && !AllowSubmitWhenReadOnly

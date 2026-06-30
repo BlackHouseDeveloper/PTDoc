@@ -63,6 +63,7 @@ public sealed class NoteWorkspaceV2Payload
     public WorkspaceObjectiveV2 Objective { get; set; } = new();
     public WorkspaceAssessmentV2 Assessment { get; set; } = new();
     public WorkspacePlanV2 Plan { get; set; } = new();
+    public WorkspaceDischargeV2 Discharge { get; set; } = new();
     public WorkspaceProgressNoteQuestionnaireV2 ProgressQuestionnaire { get; set; } = new();
 }
 
@@ -81,9 +82,18 @@ public sealed class WorkspaceDailyTreatmentV2
     public string ResponseToTreatment { get; set; } = string.Empty;
 }
 
+public sealed class WorkspaceDischargeV2
+{
+    public string? GoalsMetStatus { get; set; }
+    public string? RemainingDifficulty { get; set; }
+    public int? PercentImproved { get; set; }
+    public string? PatientReportedOutcome { get; set; }
+}
+
 public sealed class WorkspaceDryNeedlingV2
 {
     public DateTime? DateOfTreatment { get; set; }
+    public string BillingDesignation { get; set; } = "Billable";
     public string Location { get; set; } = string.Empty;
     public string NeedlingType { get; set; } = string.Empty;
     public int? PainBefore { get; set; }
@@ -245,6 +255,9 @@ public sealed class ExerciseRowV2
     public string? CptCode { get; set; }
     public string? CptDescription { get; set; }
     public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
     public bool IsCheckedSuggestedExercise { get; set; }
     public bool IsSourceBacked { get; set; }
 }
@@ -333,6 +346,14 @@ public sealed class WorkspacePlanV2
     public string? DischargePlanningNotes { get; set; }
     public string? FollowUpInstructions { get; set; }
     public string? ClinicalSummary { get; set; }
+    public string DischargeDocumentationMode { get; set; } = "Standard billable discharge";
+    public bool IsNonBillableDischarge { get; set; }
+    public string? FullDischargeSummary { get; set; }
+    public string? PostDischargeInstructions { get; set; }
+    public string? PrimaryDischargeReason { get; set; }
+    public string? OtherDischargeReasonExplanation { get; set; }
+    public string? DischargeRecommendations { get; set; }
+    public List<string> CompletedDischargeChecklistItems { get; set; } = new();
 }
 
 public sealed class PlannedCptCodeV2
@@ -353,6 +374,13 @@ public sealed class GeneralInterventionEntryV2
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }
     public string? Notes { get; set; }
+    public string? CptCode { get; set; }
+    public string? CptDescription { get; set; }
+    public int? TimeMinutes { get; set; }
+    public string? AssistanceLevel { get; set; }
+    public string? Cueing { get; set; }
+    public string? Response { get; set; }
+    public bool IncludeInHomeExerciseProgram { get; set; }
 }
 
 public sealed class ComputedPlanOfCareV2
@@ -376,6 +404,9 @@ public sealed class WorkspaceProgressNoteQuestionnaireV2
     public string PainFrequency { get; set; } = string.Empty;
     public string DailyActivityEase { get; set; } = string.Empty;
     public HashSet<string> ImprovedActivities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SameActivities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> WorseActivities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> NewDifficultyActivities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> ImpactedAreas { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string ReturnedToActivities { get; set; } = string.Empty;
     public string HepAdherence { get; set; } = string.Empty;
@@ -383,6 +414,7 @@ public sealed class WorkspaceProgressNoteQuestionnaireV2
     public bool? HasSetbacksOrNewSymptoms { get; set; }
     public string? SetbackDetails { get; set; }
     public bool? HasMedicalChanges { get; set; }
+    public string? AdditionalInformation { get; set; }
 }
 
 public sealed class NoteWorkspaceV2SaveRequest
