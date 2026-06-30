@@ -209,6 +209,96 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
     }
 
     /// <inheritdoc />
+    public async Task<PrognosisGenerationResult> GeneratePrognosisAsync(
+        PrognosisGenerationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Safety: reject generation on signed notes
+        if (request.IsNoteSigned)
+        {
+            _logger.LogWarning(
+                "Prognosis generation rejected: note {NoteId} is already signed",
+                request.NoteId);
+
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "AI generation is not permitted on signed notes."
+            };
+        }
+
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = BodyPartRequiredMessage
+            };
+        }
+
+        _logger.LogInformation(
+            "Prognosis generation attempt for note {NoteId}, template v1",
+            request.NoteId);
+
+        try
+        {
+            var aiRequest = new AiPrognosisRequest
+            {
+                NoteId = request.NoteId,
+                Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
+                SelectedBodyPart = _promptBuilder.SanitizeInput(request.SelectedBodyPart!),
+                AssessmentSummary = request.AssessmentSummary is not null ? _promptBuilder.SanitizeInput(request.AssessmentSummary) : null,
+                FindingsSummary = request.FindingsSummary is not null ? _promptBuilder.SanitizeInput(request.FindingsSummary) : null,
+                SubjectiveSummary = request.SubjectiveSummary is not null ? _promptBuilder.SanitizeInput(request.SubjectiveSummary) : null,
+                ObjectiveSummary = request.ObjectiveSummary is not null ? _promptBuilder.SanitizeInput(request.ObjectiveSummary) : null,
+                FunctionalLimitations = request.FunctionalLimitations is not null ? _promptBuilder.SanitizeInput(request.FunctionalLimitations) : null,
+                Goals = request.Goals is not null ? _promptBuilder.SanitizeInput(request.Goals) : null,
+                Comorbidities = request.Comorbidities is not null ? _promptBuilder.SanitizeInput(request.Comorbidities) : null,
+                SupportContext = request.SupportContext is not null ? _promptBuilder.SanitizeInput(request.SupportContext) : null,
+                Barriers = request.Barriers is not null ? _promptBuilder.SanitizeInput(request.Barriers) : null,
+                PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
+                CurrentLevelOfFunction = request.CurrentLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.CurrentLevelOfFunction) : null,
+                StructuredInputs = SanitizeAndScopeInputs(request.StructuredInputs, request.SelectedBodyPart!)
+            };
+
+            var aiResult = await _aiService.GeneratePrognosisAsync(aiRequest, cancellationToken);
+            var warnings = BuildPrognosisWarnings(request);
+
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = aiResult.GeneratedText,
+                Confidence = aiResult.Success ? DefaultConfidence : 0,
+                Warnings = warnings,
+                SourceInputs = request,
+                Success = aiResult.Success,
+                ErrorMessage = aiResult.Success ? null : aiResult.ErrorMessage,
+                Metadata = aiResult.Metadata
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Prognosis generation failed for note {NoteId}", request.NoteId);
+
+            return new PrognosisGenerationResult
+            {
+                GeneratedText = string.Empty,
+                Confidence = 0,
+                SourceInputs = request,
+                Success = false,
+                ErrorMessage = "AI generation failed. Please try again or contact support."
+            };
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<GoalGenerationResult> GenerateGoalNarrativesAsync(
         GoalNarrativesGenerationRequest request,
         CancellationToken cancellationToken = default)
@@ -313,6 +403,20 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             warnings.Add("No patient goals provided — plan may not reflect patient-centered outcomes.");
         if (string.IsNullOrWhiteSpace(request.AssessmentSummary))
             warnings.Add("No assessment summary provided — plan may lack clinical justification.");
+        return warnings;
+    }
+
+    private static IReadOnlyList<string> BuildPrognosisWarnings(PrognosisGenerationRequest request)
+    {
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(request.Goals))
+            warnings.Add("No patient goals provided — prognosis may not reflect patient-centered outcomes.");
+        if (string.IsNullOrWhiteSpace(request.FunctionalLimitations))
+            warnings.Add("No functional limitations provided — prognosis may be less specific.");
+        if (string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+            warnings.Add("No prior level of function provided — prognosis may lack baseline context.");
+        if (string.IsNullOrWhiteSpace(request.SupportContext))
+            warnings.Add("No support context provided — prognosis may not reflect recovery resources.");
         return warnings;
     }
 

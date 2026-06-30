@@ -16,6 +16,10 @@ public class SubjectiveVm
     public HashSet<string> Locations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? OtherLocation { get; set; }
 
+    // Symptom descriptors
+    public HashSet<string> PainDescriptors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? OtherPainDescriptor { get; set; }
+
     // Q3: Symptom rating 0–10
     public int CurrentPainScore { get; set; }
     public int BestPainScore { get; set; }
@@ -24,6 +28,8 @@ public class SubjectiveVm
 
     // Q3a: Frequency
     public string PainFrequency { get; set; } = string.Empty;
+    public Dictionary<string, string> SymptomFrequencies { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SymptomTimeOfDay { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // Q4: Onset
     public DateTime? OnsetDate { get; set; }
@@ -44,6 +50,9 @@ public class SubjectiveVm
 
     // Q7: Imaging
     public bool? HasImaging { get; set; }
+    public HashSet<string> ImagingModalities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? OtherImagingModality { get; set; }
+    public string? ImagingFindings { get; set; }
 
     // Q8: Assistive device
     public bool? UsesAssistiveDevice { get; set; }

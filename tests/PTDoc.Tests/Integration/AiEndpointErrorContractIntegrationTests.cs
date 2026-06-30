@@ -20,6 +20,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
     [Theory]
     [InlineData("/api/v1/ai/assessment", """{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}""")]
     [InlineData("/api/v1/ai/plan", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}""")]
+    [InlineData("/api/v1/ai/prognosis", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}""")]
     [InlineData("/api/v1/ai/goals", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","functionalLimitations":"Walking"}""")]
     public async Task AiEndpoints_WhenFeatureDisabled_ReturnStructured403(string path, string payload)
     {
@@ -213,6 +214,54 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             using var response = await client.PostAsync(
                 "/api/v1/ai/plan",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Other"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Select a body part before generating AI content.", "ai_body_part_required");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenDiagnosisMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"   ","selectedBodyPart":"Lumbar"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Diagnosis is required", "ai_request_invalid");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenBodyPartMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
                 CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Other"}"""));
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
