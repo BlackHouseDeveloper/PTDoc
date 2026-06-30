@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - Patient payer and authorization intake workflows
 
 - **Patient payer, intake, and authorization screens** — Added secondary-insurance and adjuster capture, expanded Patient & Payer Information with cost-sharing and visit-limit fields, and added editable authorization/referral history with validation coverage. Reason: split the client-feedback payer and authorization workflow remediation into a focused reviewable PR.
+- **Patient payer review follow-up** — Preserved the legacy `secondaryMemberOrPolicyNumber` payer JSON alias on Patient Info saves, normalized blank adjuster display text to derived structured adjuster details, and aligned authorization-detail prompts/date validation with the updated Authorization / Referral labels. Reason: validated PR review feedback identified compatibility and locale-specific edge cases in the expanded payer workflow.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 

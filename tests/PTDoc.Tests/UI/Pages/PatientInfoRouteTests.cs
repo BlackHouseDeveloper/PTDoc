@@ -132,7 +132,7 @@ public sealed class PatientInfoRouteTests : TestContext
             insuranceCompanyName = "Primary Health",
             memberIdPolicyNumber = "PRI-123",
             secondaryInsuranceCompanyName = "Secondary Health",
-            secondaryMemberIdPolicyNumber = "SEC-123",
+            secondaryMemberOrPolicyNumber = "SEC-123",
             secondaryGroupNumber = "SEC-GRP",
             adjusterName = "Alex Adjuster",
             adjusterPhone = "555-0200",
@@ -167,6 +167,7 @@ public sealed class PatientInfoRouteTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Secondary Health", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("SEC-123", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Alex Adjuster", cut.Markup, StringComparison.Ordinal);
         });
 
@@ -181,6 +182,8 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("555-0200", root.GetProperty("adjusterPhone").GetString());
         Assert.Equal("adjuster@example.com", root.GetProperty("adjusterEmail").GetString());
         Assert.Equal("555-0201", root.GetProperty("adjusterFax").GetString());
+        Assert.Equal("SEC-123", root.GetProperty("secondaryMemberIdPolicyNumber").GetString());
+        Assert.Equal("SEC-123", root.GetProperty("secondaryMemberOrPolicyNumber").GetString());
         Assert.Equal("SEC-GRP", root.GetProperty("secondaryGroupNumber").GetString());
         Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
     }
@@ -243,6 +246,7 @@ public sealed class PatientInfoRouteTests : TestContext
             insuranceCompanyName = "Primary Health",
             providerType = "Commercial",
             insurancePriority = "Primary",
+            caseManagerAdjusterContactInfo = "   ",
             adjusterName = "Alex Adjuster",
             adjusterPhone = "555-0200",
             adjusterFax = "   "
@@ -276,9 +280,11 @@ public sealed class PatientInfoRouteTests : TestContext
         {
             Assert.Equal("commercial", cut.Find("#pi-provider-type").GetAttribute("value"));
             Assert.Equal("primary", cut.Find("#pi-insurance-priority").GetAttribute("value"));
+            Assert.Contains("Alex Adjuster", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
             Assert.DoesNotContain("Fax:", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
         });
 
+        cut.Find("#pi-case-manager").Input("   ");
         cut.Find("#pi-insurance-name").Input("Updated Primary Health");
         cut.Find("button[aria-label='Save Changes']").Click();
 
@@ -288,6 +294,67 @@ public sealed class PatientInfoRouteTests : TestContext
         var root = savedPayerInfo.RootElement;
         Assert.Equal("commercial", root.GetProperty("providerType").GetString());
         Assert.Equal("primary", root.GetProperty("insurancePriority").GetString());
+        Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
+    }
+
+    [Fact]
+    public void AuthorizationDetailsPanel_UnknownRequirement_ShowsUnknownPrompt()
+    {
+        var cut = RenderComponent<AuthorizationDetailsPanel>(parameters => parameters
+            .Add(component => component.Model, new AuthorizationDetailsVm())
+            .Add(component => component.AuthorizationRequired, "Unknown"));
+
+        Assert.Contains(
+            "Authorization / PCP referral requirement is marked unknown",
+            cut.Markup,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Select Yes for Authorization / PCP Referral Required",
+            cut.Markup,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AuthorizationDetailsPanel_DateRangeValidation_UsesInvariantCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-GB");
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-GB");
+
+        try
+        {
+            var cut = RenderComponent<AuthorizationDetailsPanel>(parameters => parameters
+                .Add(component => component.Model, new AuthorizationDetailsVm
+                {
+                    AuthorizationStartDate = "03/04/2026",
+                    AuthorizationEndDate = "04/03/2026"
+                })
+                .Add(component => component.AuthorizationRequired, "Yes"));
+
+            Assert.DoesNotContain(
+                "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
+                cut.Markup,
+                StringComparison.Ordinal);
+
+            cut.SetParametersAndRender(parameters => parameters
+                .Add(component => component.Model, new AuthorizationDetailsVm
+                {
+                    AuthorizationStartDate = "04/03/2026",
+                    AuthorizationEndDate = "03/04/2026"
+                })
+                .Add(component => component.AuthorizationRequired, "Yes"));
+
+            Assert.Contains(
+                "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
+                cut.Markup,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUICulture;
+        }
     }
 
     [Fact]

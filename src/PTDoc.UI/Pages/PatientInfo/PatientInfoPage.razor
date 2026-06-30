@@ -201,7 +201,7 @@
                 MemberIdPolicyNumber = payer?.MemberIdPolicyNumber ?? string.Empty,
                 GroupNumber = payer?.GroupNumber ?? string.Empty,
                 SecondaryInsuranceCompanyName = payer?.SecondaryInsuranceCompanyName ?? string.Empty,
-                SecondaryMemberIdPolicyNumber = payer?.SecondaryMemberIdPolicyNumber ?? string.Empty,
+                SecondaryMemberIdPolicyNumber = ResolveSecondaryMemberIdPolicyNumber(payer),
                 SecondaryGroupNumber = payer?.SecondaryGroupNumber ?? string.Empty,
                 DeductibleAmount = payer?.DeductibleAmount ?? string.Empty,
                 DeductibleMet = payer?.DeductibleMet ?? string.Empty,
@@ -239,7 +239,7 @@
                 PrimaryCareProviderName = payer?.PrimaryCareProviderName ?? string.Empty,
                 ReferringPhysicianName = payer?.ReferringPhysicianName ?? string.Empty,
                 PhysicianNpiNumber = payer?.PhysicianNpiNumber ?? string.Empty,
-                CaseManagerAdjusterContactInfo = payer?.CaseManagerAdjusterContactInfo ?? FormatAdjusterContactInfo(payer),
+                CaseManagerAdjusterContactInfo = ResolveCaseManagerAdjusterContactInfoForDisplay(payer),
             },
             AdditionalSettings = new AdditionalAuthorizationSettingsVm
             {
@@ -288,6 +288,28 @@
         .ToArray();
 
         return parts.Length == 0 ? string.Empty : string.Join(" | ", parts);
+    }
+
+    private static string ResolveSecondaryMemberIdPolicyNumber(PayerInfoStorage? payer) =>
+        FirstNonWhiteSpace(payer?.SecondaryMemberIdPolicyNumber, payer?.SecondaryMemberOrPolicyNumber);
+
+    private static string ResolveCaseManagerAdjusterContactInfoForDisplay(PayerInfoStorage? payer)
+    {
+        var storedValue = FirstNonWhiteSpace(payer?.CaseManagerAdjusterContactInfo);
+        return storedValue.Length > 0 ? storedValue : FormatAdjusterContactInfo(payer);
+    }
+
+    private static string FirstNonWhiteSpace(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string NormalizeProviderType(string? value)
@@ -380,6 +402,7 @@
                 GroupNumber = Vm.PatientPayer.GroupNumber,
                 SecondaryInsuranceCompanyName = Vm.PatientPayer.SecondaryInsuranceCompanyName,
                 SecondaryMemberIdPolicyNumber = Vm.PatientPayer.SecondaryMemberIdPolicyNumber,
+                SecondaryMemberOrPolicyNumber = Vm.PatientPayer.SecondaryMemberIdPolicyNumber,
                 SecondaryGroupNumber = Vm.PatientPayer.SecondaryGroupNumber,
                 DeductibleAmount = Vm.PatientPayer.DeductibleAmount,
                 DeductibleMet = Vm.PatientPayer.DeductibleMet,
@@ -444,7 +467,9 @@
 
     private string? ResolveCaseManagerAdjusterContactInfoForSave()
     {
-        var enteredValue = Vm.SupportingDocs.CaseManagerAdjusterContactInfo;
+        var enteredValue = string.IsNullOrWhiteSpace(Vm.SupportingDocs.CaseManagerAdjusterContactInfo)
+            ? null
+            : Vm.SupportingDocs.CaseManagerAdjusterContactInfo.Trim();
         if (!string.IsNullOrWhiteSpace(loadedPayerInfo?.CaseManagerAdjusterContactInfo))
         {
             return enteredValue;
@@ -489,6 +514,7 @@
         public string? GroupNumber { get; set; }
         public string? SecondaryInsuranceCompanyName { get; set; }
         public string? SecondaryMemberIdPolicyNumber { get; set; }
+        public string? SecondaryMemberOrPolicyNumber { get; set; }
         public string? SecondaryGroupNumber { get; set; }
         public string? DeductibleAmount { get; set; }
         public string? DeductibleMet { get; set; }
