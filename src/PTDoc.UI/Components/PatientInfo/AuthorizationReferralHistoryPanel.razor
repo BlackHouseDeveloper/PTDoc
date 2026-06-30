@@ -102,7 +102,6 @@
 
     private List<AuthorizationReferralHistoryEntryVm> Entries { get; set; } = new();
     private List<AuthorizationReferralHistoryEntryVm>? _lastModelParameter;
-    private bool _hasLocalChanges;
 
     protected override void OnParametersSet()
     {
@@ -110,7 +109,6 @@
         {
             Entries = Model ?? new();
             _lastModelParameter = Model;
-            _hasLocalChanges = false;
         }
     }
 
@@ -134,7 +132,6 @@
 
     private async Task AddHistoryEntry()
     {
-        _hasLocalChanges = true;
         Entries = [.. Entries, new AuthorizationReferralHistoryEntryVm()];
         await ModelChanged.InvokeAsync(Entries);
         await OnAnyFieldChanged.InvokeAsync();
@@ -144,7 +141,6 @@
         AuthorizationReferralHistoryEntryVm entry,
         Action<AuthorizationReferralHistoryEntryVm> setter)
     {
-        _hasLocalChanges = true;
         setter(entry);
         await ModelChanged.InvokeAsync(Entries);
         await OnAnyFieldChanged.InvokeAsync();

@@ -6,6 +6,7 @@
 @using PTDoc.UI.Components.PatientInfo.Models
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
+@using System.Globalization
 @using System.Text.Json
 @inject NavigationManager Navigation
 @inject IPatientService PatientService
@@ -542,8 +543,16 @@
 
             var hasStart = !string.IsNullOrWhiteSpace(entry.StartDate);
             var hasEnd = !string.IsNullOrWhiteSpace(entry.EndDate);
-            var startParsed = DateTime.TryParse(entry.StartDate, out var start);
-            var endParsed = DateTime.TryParse(entry.EndDate, out var end);
+            var startParsed = DateTime.TryParse(
+                entry.StartDate,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var start);
+            var endParsed = DateTime.TryParse(
+                entry.EndDate,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var end);
 
             if (hasStart && !startParsed)
             {

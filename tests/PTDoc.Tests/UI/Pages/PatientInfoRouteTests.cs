@@ -8,6 +8,7 @@ using PTDoc.UI.Components.PatientInfo;
 using PTDoc.UI.Components.PatientInfo.Models;
 using PTDoc.UI.Pages.PatientInfo;
 using PTDoc.UI.Services;
+using System.Globalization;
 using System.Text.Json;
 
 namespace PTDoc.Tests.UI.Pages;
@@ -304,5 +305,63 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Contains("Authorization / PCP referral history has date or numeric issues", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("History date ranges cannot overlap.", cut.Markup, StringComparison.Ordinal);
         Assert.True(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task AuthorizationReferralHistory_DateValidation_UsesInvariantCulture()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-GB");
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-GB");
+
+        try
+        {
+            var patientId = Guid.NewGuid();
+            var patient = new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Beta",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1990, 1, 1),
+                PayerInfoJson = "{}"
+            };
+
+            var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+            patientService
+                .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(patient);
+            Services.AddSingleton(patientService.Object);
+            Services.AddSingleton<IToastService, ToastService>();
+
+            var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+                .Add(component => component.Id, patientId.ToString()));
+
+            cut.WaitForAssertion(() =>
+                Assert.Contains("Authorization / PCP Referral History", cut.Markup, StringComparison.Ordinal));
+
+            var addButton = cut.FindAll("button")
+                .Single(button => button.TextContent.Contains("Add history entry", StringComparison.Ordinal));
+            await cut.InvokeAsync(() => addButton.Click());
+            cut.WaitForElement("#pi-auth-history-0-start");
+            await cut.InvokeAsync(() => cut.FindAll("button")
+                .Single(button => button.TextContent.Contains("Add history entry", StringComparison.Ordinal))
+                .Click());
+            cut.WaitForElement("#pi-auth-history-1-start");
+
+            cut.Find("#pi-auth-history-0-start").Input("2026-03-01");
+            cut.Find("#pi-auth-history-0-end").Input("2026-03-31");
+            cut.Find("#pi-auth-history-1-start").Input("03/15/2026");
+            cut.Find("#pi-auth-history-1-end").Input("04/01/2026");
+
+            Assert.DoesNotContain("Use a valid date.", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("History date ranges cannot overlap.", cut.Markup, StringComparison.Ordinal);
+            Assert.True(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUICulture;
+        }
     }
 }
