@@ -17,14 +17,17 @@ public sealed class NotificationsSectionTests : TestContext
         var cut = RenderComponent<NotificationsSection>(parameters => parameters
             .Add(component => component.Alerts, alerts));
 
-        Assert.Equal(3, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
-        Assert.Contains("2 Urgent", cut.Markup);
+        Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
+        Assert.Contains("3 Urgent", cut.Markup);
         Assert.Contains("Note Due Today", cut.Markup);
+        Assert.Contains("Authorization Expiring", cut.Markup);
         Assert.Contains("Incomplete Intake", cut.Markup);
         Assert.Contains("Unsigned Note", cut.Markup);
         Assert.Contains("Notes", cut.Markup);
+        Assert.Contains("Authorization", cut.Markup);
         Assert.Contains("Intake", cut.Markup);
         Assert.Contains("Unsigned items", cut.Markup);
+        Assert.Contains("dashboard-alerts-authorization", cut.Markup);
         Assert.Contains("High Priority", cut.Markup);
         Assert.Contains("Medium", cut.Markup);
         Assert.Contains("Emily Rodriguez", cut.Markup);
@@ -51,7 +54,7 @@ public sealed class NotificationsSectionTests : TestContext
 
         cut.Find("button[aria-label='Expand alerts']").Click();
 
-        Assert.Equal(3, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
+        Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
     }
 
     [Fact]
@@ -96,6 +99,22 @@ public sealed class NotificationsSectionTests : TestContext
                 DueDateUtc = DateTime.UtcNow.Date,
                 TargetUrl = $"/patient/{patientId:D}/new-note",
                 ActionLabel = "Start",
+                IsUrgent = true
+            },
+            new()
+            {
+                Id = "authorizationExpiration:patient-1",
+                Kind = "authorizationExpiration",
+                Priority = "medium",
+                Title = "Authorization Expiring",
+                Message = "Authorization coverage is nearing its end date.",
+                PatientId = Guid.NewGuid(),
+                PatientName = "Ari Auth",
+                PatientMedicalRecordNumber = "PT004",
+                Timestamp = DateTimeOffset.UtcNow.AddHours(-3),
+                DueDateUtc = DateTime.UtcNow.Date.AddDays(5),
+                TargetUrl = "/patient/patient-4/info",
+                ActionLabel = "Review Auth",
                 IsUrgent = true
             },
             new()

@@ -1,4 +1,7 @@
+using System.Globalization;
 using Bunit;
+using PTDoc.Application.DTOs;
+using PTDoc.Core.Models;
 using PTDoc.UI.Components.Appointments;
 
 namespace PTDoc.Tests.UI.Appointments;
@@ -98,6 +101,92 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("check-in", requestedAction);
     }
 
+    [Fact]
+    public void AppointmentDetailModal_ShowsBillingAndDocumentReadiness()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Completed")));
+
+        Assert.Contains("Billing & Documents", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Copay not configured", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Intake complete", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Visit note missing", cut.Markup, StringComparison.Ordinal);
+
+        var copayButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
+        Assert.True(copayButton.HasAttribute("disabled"));
+        Assert.Contains("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_ScheduledAppointmentWithoutNote_RendersPendingClinicalDocument()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled")));
+
+        Assert.Contains("Visit note pending", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Visit note missing", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_UsesExplicitVisitNoteForClinicalDocumentReadiness()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(
+                status: "Completed",
+                visitWorkflowStatus: "Completed",
+                visitNoteId: Guid.NewGuid())));
+
+        Assert.Contains("Visit note complete", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_CopayAvailable_EnablesRecordCopayAction()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var requestedAction = string.Empty;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(
+                status: "Scheduled",
+                canRecordCopay: true,
+                copayStatusLabel: "Copay ready"))
+            .Add(component => component.OnActionRequested, action => requestedAction = action));
+
+        Assert.Contains("Copay ready", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
+
+        var copayButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
+        Assert.False(copayButton.HasAttribute("disabled"));
+
+        copayButton.Click();
+
+        Assert.Equal("record-copay", requestedAction);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_NullIntakeStatus_RendersNeutralDocumentBadge()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var appointment = CreateAppointment(status: "Scheduled", intakeStatus: null);
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, appointment));
+
+        Assert.Contains("Intake pending", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("appointment-detail-modal__status-badge--neutral", cut.Markup, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Cancelled")]
     [InlineData("No Show")]
@@ -110,22 +199,24 @@ public sealed class AppointmentComponentsTests : TestContext
             .Add(component => component.IsOpen, true)
             .Add(component => component.Appointment, CreateAppointment(status: status)));
 
-        var reason = cut.Find(".appointment-detail-modal__quick-action-reason");
-        Assert.Contains("This appointment is closed and cannot be started.", reason.TextContent, StringComparison.Ordinal);
-
         var primaryButtons = cut.FindAll("button").Where(button => button.TextContent.Contains("Start Visit", StringComparison.Ordinal)).ToList();
         Assert.NotEmpty(primaryButtons);
+        var reasonId = primaryButtons[0].GetAttribute("aria-describedby");
+        Assert.False(string.IsNullOrWhiteSpace(reasonId));
+        var reason = cut.Find($"#{reasonId}");
+        Assert.Contains("This appointment is closed and cannot be started.", reason.TextContent, StringComparison.Ordinal);
+
         Assert.All(primaryButtons, button =>
         {
             Assert.True(button.HasAttribute("disabled"));
-            Assert.Equal(reason.Id, button.GetAttribute("aria-describedby"));
+            Assert.Equal(reasonId, button.GetAttribute("aria-describedby"));
         });
 
         Assert.DoesNotContain(cut.FindAll("button"), button => button.TextContent.Contains("Send Reminder", StringComparison.OrdinalIgnoreCase));
 
         var editButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Edit Appointment", StringComparison.Ordinal));
         Assert.True(editButton.HasAttribute("disabled"));
-        Assert.Equal(reason.Id, editButton.GetAttribute("aria-describedby"));
+        Assert.Equal(reasonId, editButton.GetAttribute("aria-describedby"));
     }
 
     [Fact]
@@ -279,11 +370,83 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
     }
 
-    private static AppointmentDetailViewModel CreateAppointment(string status, string? visitWorkflowStatus = null)
+    [Fact]
+    public void AppointmentsDaySwitcher_WeekView_ShowsWeekRangeAndWeekNavigationLabels()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            var nonUsCulture = CultureInfo.GetCultureInfo("fr-FR");
+            CultureInfo.CurrentCulture = nonUsCulture;
+            CultureInfo.CurrentUICulture = nonUsCulture;
+
+            var cut = RenderComponent<AppointmentsDaySwitcher>(parameters => parameters
+                .Add(component => component.SelectedDate, new DateTime(2026, 6, 9))
+                .Add(component => component.SelectedView, AppointmentsView.Week));
+
+            Assert.Contains("juin 7 - 13, 2026", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("13/06/2026", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal("Previous week", cut.FindAll("button")[0].GetAttribute("aria-label"));
+            Assert.Equal("Next week", cut.FindAll("button")[1].GetAttribute("aria-label"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
+    }
+
+    [Fact]
+    public void ClinicianScheduler_WeekView_RendersClinicianNameOnAppointmentCard()
+    {
+        var selectedDate = DateTime.Today;
+        var localStart = selectedDate.AddHours(9);
+
+        var cut = RenderComponent<ClinicianScheduler>(parameters => parameters
+            .Add(component => component.SelectedDate, selectedDate)
+            .Add(component => component.View, AppointmentsView.Week)
+            .Add(component => component.Clinicians, new List<ClinicianSchedule>
+            {
+                new() { Name = "Dr. Taylor", AppointmentCount = 1 }
+            })
+            .Add(component => component.Appointments, new List<AppointmentListItemResponse>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Alex Patient",
+                    MedicalRecordNumber = "PT-123456",
+                    ClinicianId = Guid.NewGuid(),
+                    ClinicianName = "Taylor",
+                    StartTimeUtc = localStart.ToUniversalTime(),
+                    EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow Up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = string.Empty,
+                    IntakeStatus = "Completed",
+                    Notes = "Follow up."
+                }
+            }));
+
+        Assert.Contains("Alex Patient", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("Dr. Taylor", cut.Find(".appointment-clinician").TextContent.Trim());
+    }
+
+    private static AppointmentDetailViewModel CreateAppointment(
+        string status,
+        string? visitWorkflowStatus = null,
+        string? intakeStatus = "Completed",
+        Guid? visitNoteId = null,
+        bool canRecordCopay = false,
+        string copayStatusLabel = "Copay not configured")
     {
         return new AppointmentDetailViewModel
         {
             AppointmentId = Guid.NewGuid(),
+            VisitNoteId = visitNoteId,
             PatientRecordId = Guid.NewGuid(),
             PatientName = "Alex Patient",
             PatientId = "PT-123456",
@@ -295,7 +458,9 @@ public sealed class AppointmentComponentsTests : TestContext
             AppointmentType = "Follow Up",
             AppointmentStatus = status,
             VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
-            IntakeStatus = "Completed",
+            IntakeStatus = intakeStatus,
+            CanRecordCopay = canRecordCopay,
+            CopayStatusLabel = copayStatusLabel,
             Notes = "Shoulder mobility follow-up."
         };
     }

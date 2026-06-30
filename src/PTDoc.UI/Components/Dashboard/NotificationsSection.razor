@@ -37,7 +37,11 @@
                     <div class="dashboard-alerts__list" role="list">
                         @foreach (var group in VisibleAlertGroups)
                         {
-                            <section class="dashboard-alerts__group" role="group" aria-label="@group.Category" data-testid="dashboard-alert-group">
+                            <section class="dashboard-alerts__group"
+                                     id="@ToCategoryAnchorId(group.Category)"
+                                     role="group"
+                                     aria-label="@group.Category"
+                                     data-testid="dashboard-alert-group">
                                 <h3 class="dashboard-alerts__group-title">@group.Category</h3>
                                 @foreach (var alert in group.Alerts)
                                 {
@@ -197,6 +201,9 @@
         "Unsigned items" => 3,
         _ => 4
     };
+
+    private static string ToCategoryAnchorId(string category) =>
+        $"dashboard-alerts-{NormalizeCssToken(category)}";
 
     private static string DisplayPatientIdentifier(DashboardAlertItemResponse alert) =>
         !string.IsNullOrWhiteSpace(alert.PatientMedicalRecordNumber)

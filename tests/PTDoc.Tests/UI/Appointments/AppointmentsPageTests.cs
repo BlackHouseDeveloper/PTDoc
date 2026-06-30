@@ -82,7 +82,7 @@ public sealed class AppointmentsPageTests : TestContext
             EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
             AppointmentType = appointmentType,
             AppointmentStatus = "Checked In",
-            IntakeStatus = "Complete"
+            IntakeStatus = "Completed"
         };
 
         RegisterServices(new AppointmentsOverviewResponse
@@ -144,7 +144,7 @@ public sealed class AppointmentsPageTests : TestContext
                     AppointmentStatus = "Checked In",
                     VisitWorkflowStatus = "Note Started",
                     VisitNoteId = noteId,
-                    IntakeStatus = "Complete"
+                    IntakeStatus = "Completed"
                 }
             ],
             Clinicians =
@@ -199,7 +199,7 @@ public sealed class AppointmentsPageTests : TestContext
                         AppointmentType = "Follow-up",
                         AppointmentStatus = "Scheduled",
                         VisitWorkflowStatus = "Scheduled",
-                        IntakeStatus = "Complete",
+                        IntakeStatus = "Completed",
                         Notes = "Change visit type if needed."
                     }
                 ],
@@ -234,6 +234,58 @@ public sealed class AppointmentsPageTests : TestContext
         cut.WaitForAssertion(() => Assert.Contains("Edit Appointment", cut.Markup, StringComparison.Ordinal));
         var appointmentTypeSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(cut.Find("#appointmentType"));
         Assert.Equal("Follow Up", appointmentTypeSelect.Value);
+    }
+
+    [Fact]
+    public void AppointmentsPage_AppointmentDetails_DisablesCopayActionUntilWorkflowExists()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+
+        RegisterServices(
+            new AppointmentsOverviewResponse
+            {
+                Appointments =
+                [
+                    new AppointmentListItemResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientRecordId = patientId,
+                        PatientName = "Alex Patient",
+                        ClinicianId = clinicianId,
+                        ClinicianName = "Taylor PT",
+                        StartTimeUtc = localStart.ToUniversalTime(),
+                        EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                        AppointmentType = "Follow Up",
+                        AppointmentStatus = "Scheduled",
+                        VisitWorkflowStatus = "Scheduled",
+                        IntakeStatus = "Completed"
+                    }
+                ],
+                Clinicians =
+                [
+                    new AppointmentClinicianResponse
+                    {
+                        Id = clinicianId,
+                        DisplayName = "Taylor PT"
+                    }
+                ]
+            });
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+
+        cut.Find(".appointment-block").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Appointment Details", cut.Markup, StringComparison.Ordinal));
+
+        var copayButton = Assert.Single(
+            cut.FindAll("button"),
+            button => button.TextContent.Contains("Record Copay", StringComparison.Ordinal));
+
+        Assert.True(copayButton.HasAttribute("disabled"));
+        Assert.Contains("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
     }
 
     private void RegisterServices(
