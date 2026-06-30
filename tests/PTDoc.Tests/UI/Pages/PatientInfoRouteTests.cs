@@ -88,6 +88,39 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void AuthorizationReferralHistoryPanel_NewModelInstance_ReplacesLocalEntries()
+    {
+        var firstEntries = new List<AuthorizationReferralHistoryEntryVm>
+        {
+            new()
+            {
+                EntryId = "first-entry",
+                ReferenceNumber = "AUTH-OLD"
+            }
+        };
+        var replacementEntries = new List<AuthorizationReferralHistoryEntryVm>
+        {
+            new()
+            {
+                EntryId = "replacement-entry",
+                ReferenceNumber = "AUTH-NEW"
+            }
+        };
+
+        var cut = RenderComponent<AuthorizationReferralHistoryPanel>(parameters => parameters
+            .Add(component => component.Model, firstEntries));
+
+        cut.Find("#pi-auth-history-0-number").Input("AUTH-LOCAL");
+
+        cut.SetParametersAndRender(parameters => parameters
+            .Add(component => component.Model, replacementEntries));
+
+        Assert.DoesNotContain("AUTH-OLD", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("AUTH-LOCAL", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("AUTH-NEW", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Save_PreservesStructuredAdjusterFieldsFromIntakePayerJson()
     {
         var patientId = Guid.NewGuid();

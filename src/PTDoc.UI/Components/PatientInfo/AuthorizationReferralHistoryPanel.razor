@@ -34,7 +34,7 @@
                             <PatientInfoField Label="Record Type" ForId="@FieldId(rowIndex, "type")" Error="@GetError(rowIndex, "type")">
                                 <PatientInfoSelect Id="@FieldId(rowIndex, "type")"
                                                    Value="@entry.RecordType"
-                                                   ValueChanged="@(v => SetEntryField(entry, v, e => e.RecordType = v))"
+                                                   ValueChanged="@(v => SetEntryField(entry, e => e.RecordType = v))"
                                                    Placeholder="Select type"
                                                    Options="@RecordTypeOptions"
                                                    HasError="@HasError(rowIndex, "type")" />
@@ -43,14 +43,14 @@
                             <PatientInfoField Label="Reference Number" ForId="@FieldId(rowIndex, "number")" Error="@GetError(rowIndex, "number")">
                                 <PatientInfoTextInput Id="@FieldId(rowIndex, "number")"
                                                       Value="@entry.ReferenceNumber"
-                                                      ValueChanged="@(v => SetEntryField(entry, v, e => e.ReferenceNumber = v))"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.ReferenceNumber = v))"
                                                       HasError="@HasError(rowIndex, "number")" />
                             </PatientInfoField>
 
                             <PatientInfoField Label="Status" ForId="@FieldId(rowIndex, "status")" Error="@GetError(rowIndex, "status")">
                                 <PatientInfoSelect Id="@FieldId(rowIndex, "status")"
                                                    Value="@entry.Status"
-                                                   ValueChanged="@(v => SetEntryField(entry, v, e => e.Status = v))"
+                                                   ValueChanged="@(v => SetEntryField(entry, e => e.Status = v))"
                                                    Placeholder="Select status"
                                                    Options="@StatusOptions"
                                                    HasError="@HasError(rowIndex, "status")" />
@@ -59,28 +59,28 @@
                             <PatientInfoField Label="Start Date" ForId="@FieldId(rowIndex, "start")" Error="@GetError(rowIndex, "start")">
                                 <PatientInfoTextInput Id="@FieldId(rowIndex, "start")"
                                                       Value="@entry.StartDate"
-                                                      ValueChanged="@(v => SetEntryField(entry, v, e => e.StartDate = v))"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.StartDate = v))"
                                                       HasError="@HasError(rowIndex, "start")" />
                             </PatientInfoField>
 
                             <PatientInfoField Label="End Date" ForId="@FieldId(rowIndex, "end")" Error="@GetError(rowIndex, "end")">
                                 <PatientInfoTextInput Id="@FieldId(rowIndex, "end")"
                                                       Value="@entry.EndDate"
-                                                      ValueChanged="@(v => SetEntryField(entry, v, e => e.EndDate = v))"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.EndDate = v))"
                                                       HasError="@HasError(rowIndex, "end")" />
                             </PatientInfoField>
 
                             <PatientInfoField Label="Visits or Units Authorized" ForId="@FieldId(rowIndex, "units")" Error="@GetError(rowIndex, "units")">
                                 <PatientInfoTextInput Id="@FieldId(rowIndex, "units")"
                                                       Value="@entry.VisitsOrUnitsAuthorized"
-                                                      ValueChanged="@(v => SetEntryField(entry, v, e => e.VisitsOrUnitsAuthorized = v))"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.VisitsOrUnitsAuthorized = v))"
                                                       HasError="@HasError(rowIndex, "units")" />
                             </PatientInfoField>
 
                             <PatientInfoField Label="Notes" ForId="@FieldId(rowIndex, "notes")" Error="@GetError(rowIndex, "notes")" SpanFull="true">
                                 <PatientInfoTextArea Id="@FieldId(rowIndex, "notes")"
                                                      Value="@entry.Notes"
-                                                     ValueChanged="@(v => SetEntryField(entry, v, e => e.Notes = v))"
+                                                     ValueChanged="@(v => SetEntryField(entry, e => e.Notes = v))"
                                                      Placeholder="Add edit notes, payer instructions, or referral limitations..."
                                                      Rows="3"
                                                      HasError="@HasError(rowIndex, "notes")" />
@@ -106,10 +106,11 @@
 
     protected override void OnParametersSet()
     {
-        if (!_hasLocalChanges && !ReferenceEquals(Model, _lastModelParameter))
+        if (!ReferenceEquals(Model, _lastModelParameter))
         {
             Entries = Model ?? new();
             _lastModelParameter = Model;
+            _hasLocalChanges = false;
         }
     }
 
@@ -141,7 +142,6 @@
 
     private async Task SetEntryField(
         AuthorizationReferralHistoryEntryVm entry,
-        string value,
         Action<AuthorizationReferralHistoryEntryVm> setter)
     {
         _hasLocalChanges = true;
