@@ -180,7 +180,7 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("adjuster@example.com", root.GetProperty("adjusterEmail").GetString());
         Assert.Equal("555-0201", root.GetProperty("adjusterFax").GetString());
         Assert.Equal("SEC-GRP", root.GetProperty("secondaryGroupNumber").GetString());
-        Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("caseManagerAdjusterContactInfo").ValueKind);
     }
 
     [Fact]
