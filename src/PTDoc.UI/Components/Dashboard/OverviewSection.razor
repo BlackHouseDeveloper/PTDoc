@@ -48,7 +48,7 @@
         </button>
 
         <!-- Notes Due Card -->
-        <button type="button" class="metric-card metric-card--action" aria-label="Open notes due today" @onclick='() => NavigateTo("/notes?status=Unsigned&dateRange=today")'>
+        <button type="button" class="metric-card metric-card--action" aria-label="Open appointments needing notes today" @onclick='() => NavigateTo("/appointments?needsNote=true&dateRange=today")'>
             <div class="metric-card-content">
                 <div class="metric-icon-container metric-icon-warning">
                     <svg class="metric-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

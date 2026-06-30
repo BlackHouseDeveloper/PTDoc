@@ -85,6 +85,41 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void PainDetailsStep_RequiresExplicitPainSeverityBeforeContinue()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var continued = false;
+        var state = new IntakeWizardState
+        {
+            StructuredData = new IntakeStructuredDataDto
+            {
+                SchemaVersion = "2026-03-30",
+                BodyPartSelections =
+                [
+                    new IntakeBodyPartSelectionDto
+                    {
+                        BodyPartId = "knee"
+                    }
+                ]
+            }
+        };
+
+        var cut = RenderComponent<PainDetailsStep>(parameters => parameters
+            .Add(component => component.State, state)
+            .Add(component => component.OnContinue, EventCallback.Factory.Create(this, () => continued = true)));
+
+        cut.Find("[data-testid='continue-button']").Click();
+
+        Assert.False(continued);
+        Assert.Contains("Select a pain severity score before continuing.", cut.Markup, StringComparison.Ordinal);
+
+        cut.Find("input[type='range']").Input("0");
+        cut.Find("[data-testid='continue-button']").Click();
+
+        Assert.True(continued);
+    }
+
+    [Fact]
     public void CareTeamCard_UpdatesDoctorFields()
     {
         string? primaryDoctorName = null;

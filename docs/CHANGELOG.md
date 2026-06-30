@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Live audit route, intake, notes, and accessibility hardening
+
+- **Live audit remediation** — Added route-backed `/dashboard` and protected fallback behavior, inline login validation, appointments needs-note/week grouping controls, intake pain severity/body-map accessibility, notes pagination, route-backed patient actions, ARIA link cleanup, and sanitized route-derived note logging. Reason: split the live UI audit remediation and PR review follow-up fixes into a focused reviewable PR.
+
 ### Added - AI prognosis generation
 
 - **AI prognosis generation** — Added a dedicated prognosis prompt, clinical generation service contract, API endpoint support, UI client integration, and assessment-workspace generation controls with focused tests. Reason: split AI-assisted prognosis drafting into its own reviewable feature PR.

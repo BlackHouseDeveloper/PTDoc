@@ -80,6 +80,7 @@
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
     line-height: 20px;
+    text-decoration: none;
     cursor: pointer;
     transition: background var(--transition-fast), color var(--transition-fast);
 }
@@ -91,6 +92,10 @@
 .patient-clinical-info-tab.active {
     background: var(--primary);
     color: var(--primary-foreground);
+}
+
+.patient-clinical-info-tab--link {
+    border-color: rgba(var(--primary-rgb), 0.25);
 }
 
 .patient-clinical-info-tab:focus-visible {

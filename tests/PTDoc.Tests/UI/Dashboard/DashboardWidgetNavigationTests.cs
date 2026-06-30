@@ -36,8 +36,8 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         cut.Find("button[aria-label=\"Open appointments\"]").Click();
         Assert.EndsWith("/appointments", navigation.Uri, StringComparison.Ordinal);
 
-        cut.Find("button[aria-label=\"Open notes due today\"]").Click();
-        Assert.EndsWith("/notes?status=Unsigned&dateRange=today", navigation.Uri, StringComparison.Ordinal);
+        cut.Find("button[aria-label=\"Open appointments needing notes today\"]").Click();
+        Assert.EndsWith("/appointments?needsNote=true&dateRange=today", navigation.Uri, StringComparison.Ordinal);
 
         cut.Find("button[aria-label=\"Open draft notes\"]").Click();
         Assert.EndsWith("/notes?status=Draft", navigation.Uri, StringComparison.Ordinal);
@@ -326,6 +326,82 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         intakeDeliveryService.Verify(
             service => service.SendInviteAsync(It.IsAny<IntakeSendInviteRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public void Dashboard_RendersAuthorizationAlertGroup_WhenSnapshotHasActionableAuthAlert()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+        authorization.SetPolicies(
+            AuthorizationPolicies.ClinicalStaff,
+            AuthorizationPolicies.PatientWrite,
+            AuthorizationPolicies.IntakeWrite);
+
+        var patientId = Guid.NewGuid();
+        Services.AddLogging();
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IToastService, ToastService>();
+        Services.AddSingleton(Mock.Of<IPatientService>());
+        Services.AddSingleton(Mock.Of<IIntakeService>());
+        Services.AddSingleton(Mock.Of<IIntakeDeliveryService>());
+        Services.AddSingleton<IDashboardAlertService>(new StaticDashboardAlertService(new DashboardSnapshotResponse
+        {
+            Overview = new DashboardOverviewCountsResponse
+            {
+                AuthorizationActionItems = 1
+            },
+            Alerts =
+            [
+                new DashboardAlertItemResponse
+                {
+                    Id = $"authorizationExpiration:{patientId:N}:20260630",
+                    Kind = "authorizationExpiration",
+                    Priority = "high",
+                    Title = "Authorization Expiring",
+                    Message = "Authorization coverage is nearing its end date.",
+                    PatientId = patientId,
+                    PatientName = "Audit Auth",
+                    PatientMedicalRecordNumber = "AUTH-001",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    DueDateUtc = DateTime.UtcNow.Date.AddDays(2),
+                    TargetUrl = $"/patient/{patientId:D}/info",
+                    ActionLabel = "Review Auth",
+                    IsUrgent = true
+                }
+            ]
+        }));
+
+        var authStateTask = Services
+            .GetRequiredService<AuthenticationStateProvider>()
+            .GetAuthenticationStateAsync();
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<CascadingValue<Task<AuthenticationState>>>(0);
+            builder.AddAttribute(1, "Value", authStateTask);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent<PTDoc.UI.Pages.Dashboard>(3);
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        root.WaitForAssertion(() =>
+        {
+            Assert.Contains("Authorization", root.Markup, StringComparison.Ordinal);
+            Assert.Contains("Authorization Expiring", root.Markup, StringComparison.Ordinal);
+            Assert.Contains("Audit Auth", root.Markup, StringComparison.Ordinal);
+            Assert.Contains("Review Auth", root.Markup, StringComparison.Ordinal);
+            Assert.Contains("dashboard-alerts-authorization", root.Markup, StringComparison.Ordinal);
+        });
+
+        root.Find("button[aria-label='Review Auth for Audit Auth']").Click();
+
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        Assert.EndsWith($"/patient/{patientId:D}/info", navigation.Uri, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -304,16 +304,25 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     }
     username = username.Trim();
 
-    if (string.IsNullOrWhiteSpace(pin) || pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
-    {
-        logger.LogInformation("Rejected web login attempt with missing or malformed PIN.");
-        return Results.Redirect("/login?error=1");
-    }
-
+    var validationCodes = new List<string>();
     if (string.IsNullOrWhiteSpace(username))
     {
-        logger.LogInformation("Rejected web login attempt with empty username.");
-        return Results.Redirect("/login?error=1");
+        validationCodes.Add("usernameRequired");
+    }
+
+    if (string.IsNullOrWhiteSpace(pin))
+    {
+        validationCodes.Add("pinRequired");
+    }
+    else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+    {
+        validationCodes.Add("pinFormat");
+    }
+
+    if (validationCodes.Count > 0)
+    {
+        logger.LogInformation("Rejected web login attempt with validation errors.");
+        return Results.Redirect(BuildLoginValidationRedirect(validationCodes, returnUrlValidation.Value));
     }
 
     HttpResponseMessage authResponse;
@@ -935,6 +944,17 @@ static string ResolvePostLoginRedirect(string role, string returnUrl)
     return IsClinicianRouteForPatient(safeReturnUrl)
         ? "/intake"
         : safeReturnUrl;
+}
+
+static string BuildLoginValidationRedirect(IReadOnlyCollection<string> validationCodes, string returnUrl)
+{
+    var query = $"loginValidation={WebUtility.UrlEncode(string.Join(",", validationCodes))}";
+    if (!string.IsNullOrWhiteSpace(returnUrl) && !string.Equals(returnUrl, "/", StringComparison.Ordinal))
+    {
+        query += $"&ReturnUrl={WebUtility.UrlEncode(returnUrl)}";
+    }
+
+    return $"/login?{query}";
 }
 
 static bool IsClinicianRouteForPatient(string returnUrl)

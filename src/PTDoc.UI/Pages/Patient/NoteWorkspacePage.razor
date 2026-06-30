@@ -966,6 +966,10 @@ else
             : null;
     }
 
+    private static string SanitizeForLog(object? value)
+        => value?.ToString()?.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal) ?? string.Empty;
+
     private async Task HandleSectionChanged(SoapSection next)
     {
         if (next == SoapSection.Review && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
@@ -997,7 +1001,7 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}", PatientId, _note.NoteId, next);
+            Logger.LogError(ex, "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}", SanitizeForLog(PatientId), _note.NoteId, next);
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to open that note section right now. Please retry."),
                 "error",
@@ -1454,7 +1458,7 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Manual draft save failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            Logger.LogError(ex, "Manual draft save failed for patient {PatientId}, note {NoteId}", SanitizeForLog(PatientId), _note.NoteId);
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."),
@@ -1709,7 +1713,7 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Note submit action failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            Logger.LogError(ex, "Note submit action failed for patient {PatientId}, note {NoteId}", SanitizeForLog(PatientId), _note.NoteId);
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to submit note."),

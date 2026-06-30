@@ -53,6 +53,27 @@ public sealed class PatientsPageTests : TestContext
     }
 
     [Fact]
+    public void AddPatientRouteAction_OpensAddPatientModal()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+
+        RegisterServices(patientService.Object, includePatientWrite: true);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
+
+        var cut = RenderComponent<PatientsPage>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Add New Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.NotEmpty(cut.FindAll("#firstName"));
+        });
+    }
+
+    [Fact]
     public void LoadFailure_ShowsInlineRetryWithoutRawExceptionText()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -131,11 +152,12 @@ public sealed class PatientsPageTests : TestContext
             .ReturnsAsync(Array.Empty<PatientListItemResponse>());
 
         RegisterServices(patientService.Object, includePatientWrite: true);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
 
         var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
-        cut.Find(".global-page-header-primary-action").Click();
+        Assert.Equal("/patients?action=add", cut.Find(".global-page-header-primary-action").GetAttribute("href"));
 
         cut.WaitForAssertion(() =>
         {
@@ -233,11 +255,12 @@ public sealed class PatientsPageTests : TestContext
             .ThrowsAsync(new HttpRequestException("raw backend failure", null, HttpStatusCode.BadRequest));
 
         RegisterServices(patientService.Object, includePatientWrite: true, toastService);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
 
         var cut = RenderComponent<PatientsPage>();
 
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
-        cut.Find(".global-page-header-primary-action").Click();
+        Assert.Equal("/patients?action=add", cut.Find(".global-page-header-primary-action").GetAttribute("href"));
         cut.Find("#firstName").Change("Alex");
         cut.Find("#lastName").Change("Patient");
         cut.Find("#email").Change("alex.patient@example.com");
@@ -313,6 +336,7 @@ public sealed class PatientsPageTests : TestContext
             includePatientWrite: true,
             intakeService: intakeService.Object,
             intakeDeliveryService: intakeDeliveryService.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
 
         var cut = RenderComponent<PatientsPage>();
         cut.WaitForAssertion(() => Assert.Contains("No patients found", cut.Markup, StringComparison.Ordinal));
@@ -326,7 +350,7 @@ public sealed class PatientsPageTests : TestContext
             Assert.Equal("false", cut.Find(".patients-page-content").GetAttribute("aria-busy"));
         });
 
-        cut.Find(".global-page-header-primary-action").Click();
+        Assert.Equal("/patients?action=add", cut.Find(".global-page-header-primary-action").GetAttribute("href"));
         cut.WaitForElement("#firstName");
         cut.Find("#firstName").Change("Casey");
         cut.Find("#lastName").Change("Created");
@@ -401,11 +425,12 @@ public sealed class PatientsPageTests : TestContext
             includePatientWrite: true,
             intakeService: intakeService.Object,
             intakeDeliveryService: intakeDeliveryService.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/patients?action=add");
 
         var cut = RenderComponent<PatientsPage>();
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".global-page-header-primary-action")));
 
-        cut.Find(".global-page-header-primary-action").Click();
+        Assert.Equal("/patients?action=add", cut.Find(".global-page-header-primary-action").GetAttribute("href"));
         cut.WaitForElement("#firstName");
         cut.Find("#firstName").Change("Jamie");
         cut.Find("#lastName").Change("Intake");

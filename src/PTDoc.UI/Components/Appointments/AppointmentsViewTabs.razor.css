@@ -27,6 +27,7 @@
     font-weight: var(--font-weight-medium);
     line-height: var(--line-height-normal);
     color: var(--muted-foreground);
+    text-decoration: none;
     cursor: pointer;
     transition: background var(--transition-fast), color var(--transition-fast);
 }

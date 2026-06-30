@@ -6,6 +6,7 @@
   "scripts": {
     "install:browsers": "playwright install chromium",
     "test": "playwright test",
+    "test:audit-remediation": "playwright test tests/audit-remediation.spec.ts",
     "test:patient-documents": "playwright test tests/patient-documents.spec.ts",
     "test:responsive": "playwright test tests/responsive.spec.ts"
   },
