@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.Dashboard;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -37,12 +38,17 @@ public static class DashboardEndpoints
     }
 
     private static async Task<IResult> GetAlerts(
-        [FromQuery] int? take,
+        [FromQuery] string? take,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var requestedTake = Math.Clamp(take.GetValueOrDefault(DefaultTake), 1, MaxTake);
+        if (!ListQueryParameterParser.TryNormalizeTake(take, DefaultTake, MaxTake, httpContext, out var requestedTake, out var failure))
+        {
+            return failure!;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var today = now.UtcDateTime.Date;
         var tomorrow = today.AddDays(1);

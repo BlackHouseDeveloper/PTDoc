@@ -121,6 +121,19 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void AppointmentDetailModal_ScheduledAppointmentWithoutNote_RendersPendingClinicalDocument()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled")));
+
+        Assert.Contains("Visit note pending", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Visit note missing", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppointmentDetailModal_UsesExplicitVisitNoteForClinicalDocumentReadiness()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

@@ -394,7 +394,10 @@
         {
             if (Appointment?.VisitNoteId is null)
             {
-                return "Missing";
+                return string.Equals(EffectiveAppointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(EffectiveAppointmentStatus, "Signed", StringComparison.OrdinalIgnoreCase)
+                        ? "Missing"
+                        : "Pending";
             }
 
             return string.Equals(EffectiveAppointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase)

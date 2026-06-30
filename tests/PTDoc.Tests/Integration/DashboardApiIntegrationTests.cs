@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.DTOs;
@@ -110,6 +111,21 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Contains(patients!, patient => patient.Id == unlockedPatient.Id);
         Assert.Contains(patients, patient => patient.Id == newPatient.Id);
         Assert.DoesNotContain(patients, patient => patient.Id == lockedOnlyPatient.Id);
+    }
+
+    [Fact]
+    public async Task DashboardAlerts_WhenTakeIsMalformed_ReturnsSafeBadRequest()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.Admin);
+        using var response = await client.GetAsync("/api/v1/dashboard/alerts?take=abc");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        Assert.Equal("The request could not be processed.", root.GetProperty("error").GetString());
+        Assert.Equal("bad_request", root.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("correlationId").GetString()));
     }
 
     [Fact]
