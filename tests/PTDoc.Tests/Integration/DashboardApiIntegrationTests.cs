@@ -371,6 +371,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Contains(ptSnapshot.RecentNotes, note => note.Id == ownDraft.Id);
         Assert.DoesNotContain(ptSnapshot.RecentNotes, note => note.Id == otherDraft.Id);
         Assert.Contains(ptAlerts!.Alerts, alert => alert.Id == $"notesDueToday:{ownAppointment.Id:N}");
+        Assert.DoesNotContain(ptAlerts.Alerts, alert => alert.Id == $"notesDueToday:{otherAppointment.Id:N}");
     }
 
     [Fact]

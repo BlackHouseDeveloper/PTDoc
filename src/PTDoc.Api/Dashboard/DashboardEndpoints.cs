@@ -1044,20 +1044,18 @@ public static class DashboardEndpoints
             return query;
         }
 
-        return visibility.CurrentUserId is { } userId
-            ? query.Where(intake =>
-                intake.ModifiedByUserId == userId ||
-                db.Appointments.Any(appointment =>
-                    appointment.PatientId == intake.PatientId &&
-                    appointment.ClinicalId == userId) ||
-                db.ClinicalNotes.Any(note =>
-                    !note.IsAddendum &&
-                    note.PatientId == intake.PatientId &&
-                    (note.ModifiedByUserId == userId ||
-                     note.SignedByUserId == userId ||
-                     note.CoSignedByUserId == userId ||
-                     (note.Appointment != null && note.Appointment.ClinicalId == userId))))
-            : query.Where(_ => false);
+        if (visibility.CurrentUserId is not { } userId)
+        {
+            return query.Where(_ => false);
+        }
+
+        var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+
+        return query.Where(intake =>
+            intake.ModifiedByUserId == userId ||
+            appointmentQuery.Any(appointment => appointment.PatientId == intake.PatientId) ||
+            noteQuery.Any(note => !note.IsAddendum && note.PatientId == intake.PatientId));
     }
 
     private static IQueryable<Patient> ApplyPatientVisibility(
@@ -1070,20 +1068,18 @@ public static class DashboardEndpoints
             return query;
         }
 
-        return visibility.CurrentUserId is { } userId
-            ? query.Where(patient =>
-                patient.ModifiedByUserId == userId ||
-                db.Appointments.Any(appointment =>
-                    appointment.PatientId == patient.Id &&
-                    appointment.ClinicalId == userId) ||
-                db.ClinicalNotes.Any(note =>
-                    !note.IsAddendum &&
-                    note.PatientId == patient.Id &&
-                    (note.ModifiedByUserId == userId ||
-                     note.SignedByUserId == userId ||
-                     note.CoSignedByUserId == userId ||
-                     (note.Appointment != null && note.Appointment.ClinicalId == userId))))
-            : query.Where(_ => false);
+        if (visibility.CurrentUserId is not { } userId)
+        {
+            return query.Where(_ => false);
+        }
+
+        var appointmentQuery = ApplyAppointmentVisibility(db.Appointments.AsNoTracking(), visibility);
+        var noteQuery = ApplyNoteVisibility(db.ClinicalNotes.AsNoTracking(), visibility);
+
+        return query.Where(patient =>
+            patient.ModifiedByUserId == userId ||
+            appointmentQuery.Any(appointment => appointment.PatientId == patient.Id) ||
+            noteQuery.Any(note => !note.IsAddendum && note.PatientId == patient.Id));
     }
 
     private sealed record DashboardVisibilityContext(Guid? CurrentUserId, string? CurrentUserRole)
