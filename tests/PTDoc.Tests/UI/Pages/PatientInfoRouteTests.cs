@@ -113,6 +113,8 @@ public sealed class PatientInfoRouteTests : TestContext
 
         cut.Find("#pi-auth-history-0-number").Input("AUTH-LOCAL");
 
+        Assert.Equal("AUTH-OLD", firstEntries[0].ReferenceNumber);
+
         cut.SetParametersAndRender(parameters => parameters
             .Add(component => component.Model, replacementEntries));
 
@@ -180,7 +182,7 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("adjuster@example.com", root.GetProperty("adjusterEmail").GetString());
         Assert.Equal("555-0201", root.GetProperty("adjusterFax").GetString());
         Assert.Equal("SEC-GRP", root.GetProperty("secondaryGroupNumber").GetString());
-        Assert.Equal(JsonValueKind.Null, root.GetProperty("caseManagerAdjusterContactInfo").ValueKind);
+        Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
     }
 
     [Fact]

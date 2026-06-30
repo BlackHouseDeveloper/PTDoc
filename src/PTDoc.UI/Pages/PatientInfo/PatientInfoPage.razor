@@ -8,6 +8,7 @@
 @using PTDoc.Application.DTOs
 @using System.Globalization
 @using System.Text.Json
+@using System.Text.Json.Serialization
 @inject NavigationManager Navigation
 @inject IPatientService PatientService
 @inject IToastService ToastService
@@ -102,7 +103,8 @@
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     // ── Dropdown option lists ────────────────────────────────────────────────

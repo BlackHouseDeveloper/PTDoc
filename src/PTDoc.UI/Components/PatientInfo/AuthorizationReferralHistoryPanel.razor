@@ -107,7 +107,7 @@
     {
         if (!ReferenceEquals(Model, _lastModelParameter))
         {
-            Entries = Model ?? new();
+            Entries = CloneEntries(Model);
             _lastModelParameter = Model;
         }
     }
@@ -141,9 +141,40 @@
         AuthorizationReferralHistoryEntryVm entry,
         Action<AuthorizationReferralHistoryEntryVm> setter)
     {
-        setter(entry);
+        var index = Entries.IndexOf(entry);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var updatedEntry = CloneEntry(entry);
+        setter(updatedEntry);
+        var updatedEntries = new List<AuthorizationReferralHistoryEntryVm>(Entries);
+        updatedEntries[index] = updatedEntry;
+        Entries = updatedEntries;
         await ModelChanged.InvokeAsync(Entries);
         await OnAnyFieldChanged.InvokeAsync();
+    }
+
+    private static List<AuthorizationReferralHistoryEntryVm> CloneEntries(
+        IEnumerable<AuthorizationReferralHistoryEntryVm>? entries)
+    {
+        return entries?.Select(CloneEntry).ToList() ?? new List<AuthorizationReferralHistoryEntryVm>();
+    }
+
+    private static AuthorizationReferralHistoryEntryVm CloneEntry(AuthorizationReferralHistoryEntryVm entry)
+    {
+        return new AuthorizationReferralHistoryEntryVm
+        {
+            EntryId = entry.EntryId,
+            RecordType = entry.RecordType,
+            ReferenceNumber = entry.ReferenceNumber,
+            Status = entry.Status,
+            StartDate = entry.StartDate,
+            EndDate = entry.EndDate,
+            VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized,
+            Notes = entry.Notes
+        };
     }
 
     private static string FieldId(int index, string field) => $"pi-auth-history-{index}-{field}";
