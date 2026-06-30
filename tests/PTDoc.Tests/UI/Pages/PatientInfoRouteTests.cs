@@ -282,6 +282,7 @@ public sealed class PatientInfoRouteTests : TestContext
         cut.Find("#pi-visit-limit-type").Change("visits");
         cut.Find("#pi-visit-limit-period").Change("authorization_period");
         cut.Find("#pi-total-visit-limit").Input("20");
+        cut.Find("#pi-primary-care-provider").Input("Dr. Primary Care");
         await cut.InvokeAsync(() => cut.FindAll("button")
             .Single(button => button.TextContent.Contains("Add history entry", StringComparison.Ordinal))
             .Click());
@@ -309,6 +310,7 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("visits", root.GetProperty("visitLimitType").GetString());
         Assert.Equal("authorization_period", root.GetProperty("visitLimitPeriod").GetString());
         Assert.Equal("20", root.GetProperty("totalVisitLimit").GetString());
+        Assert.Equal("Dr. Primary Care", root.GetProperty("primaryCareProviderName").GetString());
 
         var history = root.GetProperty("authorizationReferralHistory");
         Assert.Equal("PCP Referral", history[0].GetProperty("recordType").GetString());

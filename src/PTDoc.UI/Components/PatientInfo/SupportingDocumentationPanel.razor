@@ -17,6 +17,13 @@
                                  HasError="@HasError("caseManager")" />
         </PatientInfoField>
 
+        <PatientInfoField Label="Primary Care Provider Name" ForId="pi-primary-care-provider" Error="@GetError("primaryCareProvider")">
+            <PatientInfoTextInput Id="pi-primary-care-provider"
+                                  Value="@Model.PrimaryCareProviderName"
+                                  ValueChanged="@(v => SetField(v, f => f.PrimaryCareProviderName = v))"
+                                  HasError="@HasError("primaryCareProvider")" />
+        </PatientInfoField>
+
         <PatientInfoField Label="Referring Physician Name" ForId="pi-referring-physician" Error="@GetError("referringPhysician")">
             <PatientInfoTextInput Id="pi-referring-physician"
                                   Value="@Model.ReferringPhysicianName"
