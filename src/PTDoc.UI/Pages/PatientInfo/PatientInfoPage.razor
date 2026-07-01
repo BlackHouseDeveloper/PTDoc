@@ -568,9 +568,52 @@
 
     private Dictionary<string, string> GetPanelErrors(string panel)
     {
-        // Return a subset of FieldErrors keyed for that panel, filtering by prefix.
-        // For now all errors live in the shared FieldErrors dictionary.
-        return Vm.FieldErrors;
+        var keys = panel switch
+        {
+            "payer" => new HashSet<string>(StringComparer.Ordinal)
+            {
+                "deductibleAmount",
+                "deductibleMet",
+                "oopMax",
+                "oopMet",
+                "copayAmount",
+                "coinsurancePercent"
+            },
+            "additionalSettings" => new HashSet<string>(StringComparer.Ordinal)
+            {
+                "alertThreshold"
+            },
+            "auth" => new HashSet<string>(StringComparer.Ordinal)
+            {
+                "authStart",
+                "authEnd",
+                "authUnits"
+            },
+            "utilization" => new HashSet<string>(StringComparer.Ordinal)
+            {
+                "visitsUsed",
+                "visitsRemaining",
+                "totalVisitLimit"
+            },
+            "supportingDocs" => new HashSet<string>(StringComparer.Ordinal)
+            {
+                "npi"
+            },
+            _ => null
+        };
+
+        if (string.Equals(panel, "authHistory", StringComparison.Ordinal))
+        {
+            return Vm.FieldErrors
+                .Where(error => error.Key.StartsWith("authHistory[", StringComparison.Ordinal))
+                .ToDictionary(error => error.Key, error => error.Value, StringComparer.Ordinal);
+        }
+
+        return keys is null
+            ? Vm.FieldErrors
+            : Vm.FieldErrors
+                .Where(error => keys.Contains(error.Key))
+                .ToDictionary(error => error.Key, error => error.Value, StringComparer.Ordinal);
     }
 
     private void RunUiValidation()

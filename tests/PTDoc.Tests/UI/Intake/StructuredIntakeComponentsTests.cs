@@ -134,6 +134,13 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         cut.Find("#intake-adjuster-email").Input("adjuster@example.com");
         cut.Find("#intake-adjuster-fax").Input("555-0201");
 
+        var dividers = cut.FindAll(".intake-card__divider");
+        Assert.Equal(2, dividers.Count);
+        Assert.All(dividers, divider =>
+        {
+            Assert.Equal("separator", divider.GetAttribute("role"));
+            Assert.Equal("horizontal", divider.GetAttribute("aria-orientation"));
+        });
         Assert.Contains("Adjuster Contact", cut.Markup, StringComparison.Ordinal);
         Assert.Equal("Secondary Health", secondaryInsuranceCompanyName);
         Assert.Equal("SEC-123", secondaryMemberOrPolicyNumber);
