@@ -59,7 +59,7 @@
         </PatientInfoFormGrid>
 
         @* UI-only validation: start date must be <= end date *@
-        @if (!string.IsNullOrEmpty(DateRangeError))
+        @if (!string.IsNullOrEmpty(DateRangeError) && !HasError("authStart") && !HasError("authEnd"))
         {
             <p class="pi-auth-date-range-error" role="alert">@DateRangeError</p>
         }

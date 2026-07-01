@@ -166,14 +166,14 @@
     {
         return new AuthorizationReferralHistoryEntryVm
         {
-            EntryId = entry.EntryId,
-            RecordType = entry.RecordType,
-            ReferenceNumber = entry.ReferenceNumber,
-            Status = entry.Status,
-            StartDate = entry.StartDate,
-            EndDate = entry.EndDate,
-            VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized,
-            Notes = entry.Notes
+            EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId,
+            RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType,
+            ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
+            Status = entry.Status ?? string.Empty,
+            StartDate = entry.StartDate ?? string.Empty,
+            EndDate = entry.EndDate ?? string.Empty,
+            VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized ?? string.Empty,
+            Notes = entry.Notes ?? string.Empty
         };
     }
 

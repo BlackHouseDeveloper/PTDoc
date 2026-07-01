@@ -124,6 +124,36 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void AuthorizationReferralHistoryPanel_ClonesBlankKeysAndTypesToStableDefaults()
+    {
+        var entries = new List<AuthorizationReferralHistoryEntryVm>
+        {
+            new()
+            {
+                EntryId = " ",
+                RecordType = " ",
+                ReferenceNumber = "AUTH-123"
+            }
+        };
+        List<AuthorizationReferralHistoryEntryVm>? updatedEntries = null;
+
+        var cut = RenderComponent<AuthorizationReferralHistoryPanel>(parameters => parameters
+            .Add(component => component.Model, entries)
+            .Add(component => component.ModelChanged, updated => updatedEntries = updated));
+
+        cut.WaitForElement(".pi-history-entry");
+        Assert.Equal("Authorization", cut.Find("#pi-auth-history-0-type").GetAttribute("value"));
+        Assert.Contains("AUTH-123", cut.Markup, StringComparison.Ordinal);
+
+        cut.Find("#pi-auth-history-0-number").Input("AUTH-456");
+
+        Assert.NotNull(updatedEntries);
+        Assert.False(string.IsNullOrWhiteSpace(updatedEntries![0].EntryId));
+        Assert.Equal("Authorization", updatedEntries[0].RecordType);
+        Assert.Equal("AUTH-456", updatedEntries[0].ReferenceNumber);
+    }
+
+    [Fact]
     public void PatientInfoPage_DefaultsBlankAuthorizationHistoryTypeToAuthorization()
     {
         var patientId = Guid.NewGuid();
@@ -398,6 +428,29 @@ public sealed class PatientInfoRouteTests : TestContext
             CultureInfo.CurrentCulture = originalCulture;
             CultureInfo.CurrentUICulture = originalUICulture;
         }
+    }
+
+    [Fact]
+    public void AuthorizationDetailsPanel_SuppressesDateSummaryWhenFieldErrorsAreProvided()
+    {
+        var cut = RenderComponent<AuthorizationDetailsPanel>(parameters => parameters
+            .Add(component => component.Model, new AuthorizationDetailsVm
+            {
+                AuthorizationStartDate = "2026-04-01",
+                AuthorizationEndDate = "2026-03-01"
+            })
+            .Add(component => component.AuthorizationRequired, "Yes")
+            .Add(component => component.FieldErrors, new Dictionary<string, string>
+            {
+                ["authStart"] = "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
+                ["authEnd"] = "Authorization / Referral End Date must be on or after Authorization / Referral Start Date."
+            }));
+
+        Assert.Empty(cut.FindAll(".pi-auth-date-range-error"));
+        Assert.Contains(
+            "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
+            cut.Markup,
+            StringComparison.Ordinal);
     }
 
     [Fact]
