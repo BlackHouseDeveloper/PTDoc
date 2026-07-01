@@ -587,6 +587,7 @@
         ValidateNumericField("oopMet", Vm.PatientPayer.OutOfPocketMet);
         ValidateNumericField("copayAmount", Vm.PatientPayer.CopayAmount);
         ValidateNumericField("coinsurancePercent", Vm.PatientPayer.CoinsurancePercent);
+        ValidateAuthorizationDateRange();
         ValidateAuthorizationReferralHistory();
         ValidateNpi("npi", Vm.SupportingDocs.PhysicianNpiNumber);
     }
@@ -608,6 +609,34 @@
         {
             Vm.FieldErrors[key] = "NPI must be exactly 10 digits.";
         }
+    }
+
+    private void ValidateAuthorizationDateRange()
+    {
+        if (string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationStartDate) ||
+            string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationEndDate))
+        {
+            return;
+        }
+
+        var startParsed = DateTime.TryParse(
+            Vm.Authorization.AuthorizationStartDate,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var start);
+        var endParsed = DateTime.TryParse(
+            Vm.Authorization.AuthorizationEndDate,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var end);
+
+        if (!startParsed || !endParsed || start <= end)
+        {
+            return;
+        }
+
+        Vm.FieldErrors["authStart"] = "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.";
+        Vm.FieldErrors["authEnd"] = "Authorization / Referral End Date must be on or after Authorization / Referral Start Date.";
     }
 
     private void ValidateAuthorizationReferralHistory()
