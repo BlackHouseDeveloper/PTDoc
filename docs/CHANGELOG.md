@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient payer review follow-up** — Preserved the legacy `secondaryMemberOrPolicyNumber` payer JSON alias on Patient Info saves, normalized blank adjuster display text to derived structured adjuster details, and aligned authorization-detail prompts/date validation with the updated Authorization / Referral labels. Reason: validated PR review feedback identified compatibility and locale-specific edge cases in the expanded payer workflow.
 - **Patient authorization review follow-up** — Added page-level save blocking for out-of-order Authorization / Referral start and end dates. Reason: validated PR review feedback identified that the inline date-range error did not previously participate in `Save Changes` validation.
 - **Patient payer accessibility review follow-up** — Marked intake payer section dividers as horizontal separators and made Patient Info panel error routing filter by panel. Reason: validated PR review feedback identified missing separator semantics and a misleading shared-error helper comment.
+- **Patient authorization history review follow-up** — Defaulted blank stored authorization/referral history record types to `Authorization` when loading Patient Info. Reason: validated PR review feedback identified that blank persisted values could override the VM default and re-save ambiguous history rows.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 

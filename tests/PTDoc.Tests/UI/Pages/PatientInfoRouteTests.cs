@@ -124,6 +124,49 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void PatientInfoPage_DefaultsBlankAuthorizationHistoryTypeToAuthorization()
+    {
+        var patientId = Guid.NewGuid();
+        var payerInfoJson = JsonSerializer.Serialize(new
+        {
+            authorizationReferralHistory = new[]
+            {
+                new
+                {
+                    entryId = "blank-type-entry",
+                    recordType = "   ",
+                    referenceNumber = "AUTH-123"
+                }
+            }
+        }, SerializerOptions);
+
+        var patient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Beta",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = payerInfoJson
+        };
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(patient);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Authorization", cut.Find("#pi-auth-history-0-type").GetAttribute("value"));
+            Assert.Contains("AUTH-123", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void Save_PreservesStructuredAdjusterFieldsFromIntakePayerJson()
     {
         var patientId = Guid.NewGuid();

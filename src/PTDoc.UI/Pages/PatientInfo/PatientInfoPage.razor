@@ -360,7 +360,7 @@
             .Select(entry => new AuthorizationReferralHistoryEntryVm
             {
                 EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId,
-                RecordType = entry.RecordType ?? string.Empty,
+                RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType,
                 ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
                 Status = entry.Status ?? string.Empty,
                 StartDate = entry.StartDate ?? string.Empty,
