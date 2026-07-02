@@ -534,7 +534,6 @@ public static class PatientEndpoints
         Guid id,
         [FromBody] UploadPatientDocumentRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
@@ -555,7 +554,7 @@ public static class PatientEndpoints
         var document = new PatientDocument
         {
             PatientId = id,
-            ClinicId = tenantContext.GetCurrentClinicId(),
+            ClinicId = patient.ClinicId,
             DocumentType = request.DocumentType.Trim(),
             FileName = SanitizeFileName(request.FileName),
             ContentType = string.IsNullOrWhiteSpace(request.ContentType)
@@ -621,7 +620,6 @@ public static class PatientEndpoints
         Guid id,
         [FromBody] CreatePatientCommunicationLogEntryRequest request,
         [FromServices] ApplicationDbContext db,
-        [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
@@ -642,7 +640,7 @@ public static class PatientEndpoints
         var entry = new PatientCommunicationLogEntry
         {
             PatientId = id,
-            ClinicId = tenantContext.GetCurrentClinicId(),
+            ClinicId = patient.ClinicId,
             Channel = request.Channel.Trim(),
             Direction = request.Direction.Trim(),
             Summary = request.Summary.Trim(),
@@ -720,6 +718,12 @@ public static class PatientEndpoints
             return errors;
         }
 
+        if (WouldDecodedBase64ExceedLimit(request.Base64Content, MaxPatientDocumentBytes))
+        {
+            errors[nameof(request.Base64Content)] = [$"Uploaded document cannot exceed {MaxPatientDocumentBytes / 1024 / 1024} MB."];
+            return errors;
+        }
+
         try
         {
             contentBytes = Convert.FromBase64String(request.Base64Content);
@@ -740,6 +744,50 @@ public static class PatientEndpoints
         }
 
         return errors;
+    }
+
+    private static bool WouldDecodedBase64ExceedLimit(string base64Content, int maxDecodedBytes)
+    {
+        var encodedLength = 0;
+        foreach (var character in base64Content)
+        {
+            if (!char.IsWhiteSpace(character))
+            {
+                encodedLength++;
+            }
+        }
+
+        var maxEncodedLength = ((maxDecodedBytes + 2) / 3) * 4;
+        if (encodedLength > maxEncodedLength)
+        {
+            return true;
+        }
+
+        if (encodedLength == 0 || encodedLength % 4 != 0)
+        {
+            return false;
+        }
+
+        var padding = 0;
+        for (var i = base64Content.Length - 1; i >= 0 && padding < 2; i--)
+        {
+            var character = base64Content[i];
+            if (char.IsWhiteSpace(character))
+            {
+                continue;
+            }
+
+            if (character == '=')
+            {
+                padding++;
+                continue;
+            }
+
+            break;
+        }
+
+        var maxPossibleDecodedLength = (encodedLength / 4 * 3) - padding;
+        return maxPossibleDecodedLength > maxDecodedBytes;
     }
 
     private static Dictionary<string, string[]> ValidateCommunicationLogEntry(

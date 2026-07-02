@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using PTDoc.Api.Patients;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -65,6 +67,32 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var errors = payload.RootElement.GetProperty("errors");
         Assert.True(errors.TryGetProperty(nameof(UploadPatientDocumentRequest.FileName), out _));
+    }
+
+    [Fact]
+    public void UploadDocument_WhenEncodedPayloadIsTooLarge_RejectsBeforeDecoding()
+    {
+        const int maxPatientDocumentBytes = 10 * 1024 * 1024;
+        var maxEncodedLength = ((maxPatientDocumentBytes + 2) / 3) * 4;
+        var request = new UploadPatientDocumentRequest
+        {
+            DocumentType = "Referral",
+            FileName = "referral.pdf",
+            ContentType = "application/pdf",
+            Base64Content = new string('A', maxEncodedLength + 4)
+        };
+
+        var validateMethod = typeof(PatientEndpoints).GetMethod(
+            "ValidateDocumentUpload",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(validateMethod);
+
+        object?[] arguments = [request, null];
+        var errors = Assert.IsType<Dictionary<string, string[]>>(validateMethod!.Invoke(null, arguments));
+
+        Assert.True(errors.TryGetValue(nameof(UploadPatientDocumentRequest.Base64Content), out var base64Errors));
+        Assert.Contains("cannot exceed", base64Errors.Single(), StringComparison.Ordinal);
+        Assert.Same(Array.Empty<byte>(), arguments[1]);
     }
 
     [Fact]

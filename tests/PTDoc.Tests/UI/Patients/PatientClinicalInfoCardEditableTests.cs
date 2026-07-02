@@ -4,6 +4,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.UI.Components.Patients.Profile;
 using PTDoc.UI.Components.Patients.Profile.Models;
 using PTDoc.UI.Services;
+using System.Reflection;
 
 namespace PTDoc.Tests.UI.Patients;
 
@@ -125,6 +126,46 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
+    public async Task LoadDocumentsAsync_WhenRefreshFails_ClearsStaleDocumentStatus()
+    {
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, CreatePatient()));
+        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal));
+        SetPrivateProperty(cut.Instance, "DocumentStatusMessage", "Document uploaded.");
+        chartStorageService.FailDocumentList = true;
+
+        await cut.InvokeAsync(() => InvokePrivateLoadAsync(cut.Instance, "LoadDocumentsAsync"));
+        cut.Render();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to load patient documents.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Document uploaded.", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task LoadCommunicationsAsync_WhenRefreshFails_ClearsStaleCommunicationStatus()
+    {
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, CreatePatient()));
+        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
+        SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
+        chartStorageService.FailCommunicationList = true;
+
+        await cut.InvokeAsync(() => InvokePrivateLoadAsync(cut.Instance, "LoadCommunicationsAsync"));
+        cut.Render();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Unable to load patient communications.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Communication logged.", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void TimelineError_RendersOnlyErrorState()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
@@ -152,16 +193,50 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         DisplayName = "Alex Patient"
     };
 
+    private static void SetPrivateProperty(
+        PatientClinicalInfoCardEditable component,
+        string propertyName,
+        string value)
+    {
+        var property = typeof(PatientClinicalInfoCardEditable).GetProperty(
+            propertyName,
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        property!.SetValue(component, value);
+    }
+
+    private static Task InvokePrivateLoadAsync(
+        PatientClinicalInfoCardEditable component,
+        string methodName)
+    {
+        var method = typeof(PatientClinicalInfoCardEditable).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        return (Task)method!.Invoke(component, [true])!;
+    }
+
     private sealed class FakePatientChartStorageService : IPatientChartStorageService
     {
         private readonly List<PatientCommunicationLogEntryResponse> communicationLogEntries = new();
 
         public IReadOnlyList<PatientCommunicationLogEntryResponse> CreatedCommunicationLogEntries => communicationLogEntries;
 
+        public bool FailDocumentList { get; set; }
+
+        public bool FailCommunicationList { get; set; }
+
         public Task<IReadOnlyList<PatientDocumentResponse>> ListDocumentsAsync(
             Guid patientId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PatientDocumentResponse>>(Array.Empty<PatientDocumentResponse>());
+            CancellationToken cancellationToken = default)
+        {
+            if (FailDocumentList)
+            {
+                throw new InvalidOperationException("Document list failed.");
+            }
+
+            return Task.FromResult<IReadOnlyList<PatientDocumentResponse>>(Array.Empty<PatientDocumentResponse>());
+        }
 
         public Task<PatientDocumentResponse> UploadDocumentAsync(
             Guid patientId,
@@ -182,8 +257,15 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         public Task<IReadOnlyList<PatientCommunicationLogEntryResponse>> ListCommunicationLogEntriesAsync(
             Guid patientId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PatientCommunicationLogEntryResponse>>(communicationLogEntries.ToArray());
+            CancellationToken cancellationToken = default)
+        {
+            if (FailCommunicationList)
+            {
+                throw new InvalidOperationException("Communication list failed.");
+            }
+
+            return Task.FromResult<IReadOnlyList<PatientCommunicationLogEntryResponse>>(communicationLogEntries.ToArray());
+        }
 
         public Task<PatientCommunicationLogEntryResponse> CreateCommunicationLogEntryAsync(
             Guid patientId,

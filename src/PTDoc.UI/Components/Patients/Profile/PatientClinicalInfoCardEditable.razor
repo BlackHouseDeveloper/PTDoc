@@ -466,6 +466,7 @@
         }
         catch (Exception ex)
         {
+            DocumentStatusMessage = null;
             DocumentErrorMessage = "Unable to load patient documents.";
             Console.WriteLine($"[PatientClinicalInfo] Document load failed: {ex.GetType().Name}");
         }
@@ -527,6 +528,7 @@
         }
         catch (Exception ex)
         {
+            CommunicationStatusMessage = null;
             CommunicationErrorMessage = "Unable to load patient communications.";
             Console.WriteLine($"[PatientClinicalInfo] Communication load failed: {ex.GetType().Name}");
         }
