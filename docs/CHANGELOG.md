@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Patient chart storage** — Added patient document and communication-log entities, DTOs, API endpoints, UI service wiring, upload/log controls, provider migrations, and migration snapshot synchronization across SQLite, SQL Server, and PostgreSQL. Reason: split the schema-bearing patient chart storage and migration validation work into its own reviewable PR.
 - **Patient chart storage review follow-up** — Added API validation for document and communication-log storage length limits, validated sanitized upload file names before persistence, and registered patient chart storage in the MAUI composition root. Reason: validated PR review feedback identified possible 500s from overlong metadata and missing shared UI service registration outside Web.
+- **Patient chart storage review follow-up** — Removed duplicate tenant-index declarations, stripped control characters from upload filenames before response reuse, and avoided an extra full-size upload buffer copy while base64-encoding document uploads. Reason: validated PR review feedback identified snapshot churn risk, header-safety risk, and avoidable upload memory pressure.
 
 ### Changed - Patient payer and authorization intake workflows
 

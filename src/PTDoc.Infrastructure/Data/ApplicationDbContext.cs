@@ -644,16 +644,6 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        modelBuilder.Entity<PatientDocument>(entity =>
-        {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
-        });
-
-        modelBuilder.Entity<PatientCommunicationLogEntry>(entity =>
-        {
-            entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));
-        });
-
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasIndex(e => e.ClinicId).HasFilter(IsNotNullFilter("ClinicId"));

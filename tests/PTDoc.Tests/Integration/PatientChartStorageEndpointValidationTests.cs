@@ -47,6 +47,27 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
     }
 
     [Fact]
+    public async Task UploadDocument_WhenSanitizedFileNameIsEmpty_ReturnsValidationProblem()
+    {
+        var patientId = await SeedPatientAsync();
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.PostAsJsonAsync($"/api/v1/patients/{patientId:D}/documents", new UploadPatientDocumentRequest
+        {
+            DocumentType = "Referral",
+            FileName = "\r\n",
+            ContentType = "application/pdf",
+            Base64Content = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = payload.RootElement.GetProperty("errors");
+        Assert.True(errors.TryGetProperty(nameof(UploadPatientDocumentRequest.FileName), out _));
+    }
+
+    [Fact]
     public async Task CreateCommunicationLogEntry_WhenFieldsExceedStorageLimits_ReturnsValidationProblem()
     {
         var patientId = await SeedPatientAsync();

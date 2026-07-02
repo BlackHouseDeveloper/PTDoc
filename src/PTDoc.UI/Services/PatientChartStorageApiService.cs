@@ -35,13 +35,15 @@ public sealed class PatientChartStorageApiService(HttpClient httpClient) : IPati
         await using var stream = file.OpenReadStream(MaxUploadBytes, cancellationToken);
         using var memory = new MemoryStream();
         await stream.CopyToAsync(memory, cancellationToken);
+        var buffer = memory.GetBuffer();
+        var length = checked((int)memory.Length);
 
         var request = new UploadPatientDocumentRequest
         {
             DocumentType = documentType,
             FileName = file.Name,
             ContentType = file.ContentType,
-            Base64Content = Convert.ToBase64String(memory.ToArray()),
+            Base64Content = Convert.ToBase64String(buffer, 0, length),
             Notes = notes
         };
 

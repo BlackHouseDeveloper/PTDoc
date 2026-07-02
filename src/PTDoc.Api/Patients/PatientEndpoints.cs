@@ -8,6 +8,7 @@ using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace PTDoc.Api.Patients;
@@ -778,7 +779,20 @@ public static class PatientEndpoints
         return errors;
     }
 
-    private static string SanitizeFileName(string? fileName) => Path.GetFileName(fileName?.Trim() ?? string.Empty);
+    private static string SanitizeFileName(string? fileName)
+    {
+        var baseName = Path.GetFileName(fileName?.Trim() ?? string.Empty);
+        var sanitized = new StringBuilder(baseName.Length);
+        foreach (var character in baseName)
+        {
+            if (!char.IsControl(character))
+            {
+                sanitized.Append(character);
+            }
+        }
+
+        return sanitized.ToString().Trim();
+    }
 
     private static void AddMaxLengthError(
         Dictionary<string, string[]> errors,
