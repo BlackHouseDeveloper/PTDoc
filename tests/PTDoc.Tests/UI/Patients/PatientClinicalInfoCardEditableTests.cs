@@ -126,6 +126,46 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
+    public void DocumentsTab_ShowsLoadingStateWhileDocumentsLoad()
+    {
+        chartStorageService.PendingDocumentList = new TaskCompletionSource<IReadOnlyList<PatientDocumentResponse>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, CreatePatient()));
+
+        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Loading documents...", cut.Markup, StringComparison.Ordinal));
+        chartStorageService.PendingDocumentList.SetResult(Array.Empty<PatientDocumentResponse>());
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("Loading documents...", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No patient documents have been uploaded", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void CommunicationsTab_ShowsLoadingStateWhileCommunicationsLoad()
+    {
+        chartStorageService.PendingCommunicationList = new TaskCompletionSource<IReadOnlyList<PatientCommunicationLogEntryResponse>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, CreatePatient()));
+
+        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Loading communications...", cut.Markup, StringComparison.Ordinal));
+        chartStorageService.PendingCommunicationList.SetResult(Array.Empty<PatientCommunicationLogEntryResponse>());
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("Loading communications...", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No patient communications have been logged", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public async Task LoadDocumentsAsync_WhenRefreshFails_ClearsStaleDocumentStatus()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
@@ -307,10 +347,19 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         public bool FailCommunicationList { get; set; }
 
+        public TaskCompletionSource<IReadOnlyList<PatientDocumentResponse>>? PendingDocumentList { get; set; }
+
+        public TaskCompletionSource<IReadOnlyList<PatientCommunicationLogEntryResponse>>? PendingCommunicationList { get; set; }
+
         public Task<IReadOnlyList<PatientDocumentResponse>> ListDocumentsAsync(
             Guid patientId,
             CancellationToken cancellationToken = default)
         {
+            if (PendingDocumentList is not null)
+            {
+                return PendingDocumentList.Task;
+            }
+
             if (FailDocumentList)
             {
                 throw new InvalidOperationException("Document list failed.");
@@ -340,6 +389,11 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Guid patientId,
             CancellationToken cancellationToken = default)
         {
+            if (PendingCommunicationList is not null)
+            {
+                return PendingCommunicationList.Task;
+            }
+
             if (FailCommunicationList)
             {
                 throw new InvalidOperationException("Communication list failed.");

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient chart storage review follow-up** — Aligned `ExternalSystemMapping.InternalPatientId` relationship configuration with its required domain/database contract and updated integration fixtures to seed linked patients before mappings. Reason: validated PR review feedback identified an optional EF relationship override on a non-nullable patient mapping key.
 - **Patient chart storage review follow-up** — Validated uploaded document content types before persistence and cleared remaining stale communication success messages on invalid patient-chart IDs. Reason: validated PR review feedback identified response-header safety and contradictory UI state edge cases.
 - **Patient chart storage review follow-up** — Short-circuited document upload validation before base64 decoding when metadata errors already exist. Reason: validated PR review feedback identified avoidable decode work for rejected requests.
+- **Patient chart storage review follow-up** — Forced document and communication loading states to render before awaiting chart-storage API calls. Reason: validated PR review feedback identified that slow tab loads could feel unresponsive without an intermediate render.
 
 ### Changed - Patient payer and authorization intake workflows
 

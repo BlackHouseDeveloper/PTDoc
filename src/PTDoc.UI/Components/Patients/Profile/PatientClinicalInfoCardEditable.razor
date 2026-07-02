@@ -458,6 +458,7 @@
 
         IsLoadingDocuments = true;
         DocumentErrorMessage = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             Documents = await ChartStorageService.ListDocumentsAsync(patientId);
@@ -522,6 +523,7 @@
 
         IsLoadingCommunications = true;
         CommunicationErrorMessage = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             CommunicationLogEntries = await ChartStorageService.ListCommunicationLogEntriesAsync(patientId);
