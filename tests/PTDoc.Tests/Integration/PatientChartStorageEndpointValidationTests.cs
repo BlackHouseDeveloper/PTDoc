@@ -137,6 +137,30 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
     }
 
     [Fact]
+    public void UploadDocument_WhenMetadataIsInvalid_ReturnsBeforeBase64Decode()
+    {
+        var request = new UploadPatientDocumentRequest
+        {
+            DocumentType = new string('D', 81),
+            FileName = "referral.pdf",
+            ContentType = "application/pdf",
+            Base64Content = "not valid base64"
+        };
+
+        var validateMethod = typeof(PatientEndpoints).GetMethod(
+            "ValidateDocumentUpload",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(validateMethod);
+
+        object?[] arguments = [request, null];
+        var errors = Assert.IsType<Dictionary<string, string[]>>(validateMethod!.Invoke(null, arguments));
+
+        Assert.True(errors.TryGetValue(nameof(UploadPatientDocumentRequest.DocumentType), out _));
+        Assert.False(errors.ContainsKey(nameof(UploadPatientDocumentRequest.Base64Content)));
+        Assert.Same(Array.Empty<byte>(), arguments[1]);
+    }
+
+    [Fact]
     public async Task CreateCommunicationLogEntry_WhenFieldsExceedStorageLimits_ReturnsValidationProblem()
     {
         var patientId = await SeedPatientAsync();

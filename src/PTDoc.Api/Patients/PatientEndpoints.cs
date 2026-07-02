@@ -756,6 +756,11 @@ public static class PatientEndpoints
             return errors;
         }
 
+        if (errors.Count > 0)
+        {
+            return errors;
+        }
+
         try
         {
             contentBytes = Convert.FromBase64String(request.Base64Content);
