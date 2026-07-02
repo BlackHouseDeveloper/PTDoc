@@ -212,7 +212,7 @@ public sealed class PatientInfoRouteTests : TestContext
             adjusterName = "Alex Adjuster",
             adjusterPhone = "555-0200",
             adjusterEmail = "adjuster@example.com",
-            adjusterFax = "555-0201"
+            adjusterFax = " 555-0201 "
         }, SerializerOptions);
         UpdatePatientRequest? capturedRequest = null;
 
@@ -244,6 +244,8 @@ public sealed class PatientInfoRouteTests : TestContext
             Assert.Contains("Secondary Health", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("SEC-123", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Alex Adjuster", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Fax: 555-0201", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("Fax:  555-0201", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
         });
 
         cut.Find("#pi-insurance-name").Input("Updated Primary Health");

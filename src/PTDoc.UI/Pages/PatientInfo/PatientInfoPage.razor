@@ -281,7 +281,7 @@
             payer.AdjusterName,
             payer.AdjusterPhone,
             payer.AdjusterEmail,
-            string.IsNullOrWhiteSpace(payer.AdjusterFax) ? null : $"Fax: {payer.AdjusterFax}"
+            string.IsNullOrWhiteSpace(payer.AdjusterFax) ? null : $"Fax: {payer.AdjusterFax.Trim()}"
         }
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Select(value => value!.Trim())

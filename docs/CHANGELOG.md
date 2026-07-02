@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient payer serialization review follow-up** — Trimmed preserved structured adjuster fields and omitted whitespace-only adjuster values when saving Patient Info. Reason: validated PR review feedback identified that legacy blank adjuster values could be re-serialized into payer JSON.
 - **Patient Info validation review follow-up** — Expanded panel-specific error routing to include every field key rendered by the payer, authorization settings, authorization details, utilization, and supporting-documentation panels. Reason: validated PR review feedback identified that future server-side field errors could be filtered out before reaching their panels.
 - **Patient authorization history accessibility follow-up** — Marked the authorization/referral history container and rows with list/listitem semantics. Reason: validated PR review feedback identified that assistive technologies should receive the repeated-entry structure.
+- **Patient payer display review follow-up** — Trimmed structured adjuster fax before deriving the read-only case-manager contact display. Reason: validated PR review feedback identified inconsistent whitespace handling in the `Fax:` segment.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 
