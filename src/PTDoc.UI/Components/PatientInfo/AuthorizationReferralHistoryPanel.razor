@@ -20,12 +20,12 @@
         }
         else
         {
-            <div class="pi-history-list" aria-label="Authorization and referral history entries">
+            <div class="pi-history-list" aria-label="Authorization and referral history entries" role="list">
                 @for (var index = 0; index < Entries.Count; index++)
                 {
                     var rowIndex = index;
                     var entry = Entries[index];
-                    <article class="pi-history-entry" @key="entry.EntryId">
+                    <article class="pi-history-entry" @key="entry.EntryId" role="listitem">
                         <div class="pi-history-entry__header">
                             <h3>History Entry @(rowIndex + 1)</h3>
                         </div>

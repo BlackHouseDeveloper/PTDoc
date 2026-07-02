@@ -85,6 +85,8 @@ public sealed class PatientInfoRouteTests : TestContext
             .Click());
 
         cut.WaitForElement("#pi-auth-history-0-start");
+        Assert.Equal("list", cut.Find(".pi-history-list").GetAttribute("role"));
+        Assert.Equal("listitem", cut.Find(".pi-history-entry").GetAttribute("role"));
         Assert.Single(entries);
     }
 
