@@ -683,8 +683,9 @@
 
     private void ValidateAuthorizationDateRange()
     {
-        if (string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationStartDate) ||
-            string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationEndDate))
+        var hasStart = !string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationStartDate);
+        var hasEnd = !string.IsNullOrWhiteSpace(Vm.Authorization.AuthorizationEndDate);
+        if (!hasStart && !hasEnd)
         {
             return;
         }
@@ -700,17 +701,17 @@
             DateTimeStyles.None,
             out var end);
 
-        if (!startParsed)
+        if (hasStart && !startParsed)
         {
             Vm.FieldErrors["authStart"] = "Use a valid date.";
         }
 
-        if (!endParsed)
+        if (hasEnd && !endParsed)
         {
             Vm.FieldErrors["authEnd"] = "Use a valid date.";
         }
 
-        if (!startParsed || !endParsed || start <= end)
+        if (!hasStart || !hasEnd || !startParsed || !endParsed || start <= end)
         {
             return;
         }

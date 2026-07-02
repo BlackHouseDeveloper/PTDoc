@@ -553,6 +553,46 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void AuthorizationDateRangeValidation_DisablesSaveWhenOneProvidedDateIsInvalid()
+    {
+        var patientId = Guid.NewGuid();
+        var patient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Beta",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = "{}"
+        };
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(patient);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+
+        cut.Find("#pi-auth-required").Change("Yes");
+        cut.Find("#pi-auth-start").Input("not a date");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Use a valid date.", cut.Markup, StringComparison.Ordinal);
+            Assert.True(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
+        });
+
+        patientService.Verify(
+            service => service.UpdateAsync(patientId, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Save_PersistsCostSharingVisitLimitsAndAuthorizationReferralHistory()
     {
         var patientId = Guid.NewGuid();
