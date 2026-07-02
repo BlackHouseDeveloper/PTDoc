@@ -70,6 +70,27 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
     }
 
     [Fact]
+    public async Task UploadDocument_WhenContentTypeIsInvalid_ReturnsValidationProblem()
+    {
+        var patientId = await SeedPatientAsync();
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.PostAsJsonAsync($"/api/v1/patients/{patientId:D}/documents", new UploadPatientDocumentRequest
+        {
+            DocumentType = "Referral",
+            FileName = "referral.pdf",
+            ContentType = "application/pdf\r\nx-bad: true",
+            Base64Content = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = payload.RootElement.GetProperty("errors");
+        Assert.True(errors.TryGetProperty(nameof(UploadPatientDocumentRequest.ContentType), out _));
+    }
+
+    [Fact]
     public async Task UploadDocument_WhenCreated_ReturnsLocationForContentRoute()
     {
         var patientId = await SeedPatientAsync();

@@ -7,6 +7,7 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -732,7 +733,15 @@ public static class PatientEndpoints
             }
         }
 
-        AddMaxLengthError(errors, nameof(request.ContentType), TrimOrNull(request.ContentType), MaxDocumentContentTypeLength);
+        var normalizedContentType = TrimOrNull(request.ContentType);
+        AddMaxLengthError(errors, nameof(request.ContentType), normalizedContentType, MaxDocumentContentTypeLength);
+        if (normalizedContentType is not null
+            && !errors.ContainsKey(nameof(request.ContentType))
+            && !MediaTypeHeaderValue.TryParse(normalizedContentType, out _))
+        {
+            errors[nameof(request.ContentType)] = ["ContentType must be a valid media type."];
+        }
+
         AddMaxLengthError(errors, nameof(request.Notes), TrimOrNull(request.Notes), MaxDocumentNotesLength);
 
         if (string.IsNullOrWhiteSpace(request.Base64Content))

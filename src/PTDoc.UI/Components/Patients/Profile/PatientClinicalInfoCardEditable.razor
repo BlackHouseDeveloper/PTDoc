@@ -515,6 +515,7 @@
 
         if (!TryGetPatientId(out var patientId))
         {
+            CommunicationStatusMessage = null;
             CommunicationErrorMessage = "Patient communication storage is unavailable for this chart.";
             return;
         }
@@ -549,6 +550,7 @@
 
         if (!TryGetPatientId(out var patientId))
         {
+            CommunicationStatusMessage = null;
             CommunicationErrorMessage = "Patient communication storage is unavailable for this chart.";
             return;
         }

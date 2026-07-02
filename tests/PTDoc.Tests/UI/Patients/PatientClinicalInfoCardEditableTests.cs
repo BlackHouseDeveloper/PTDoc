@@ -186,6 +186,26 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
+    public void LoadCommunicationsAsync_WhenPatientIdIsInvalid_ClearsStaleCommunicationStatus()
+    {
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, new PatientProfileVm
+            {
+                Id = "not-a-guid",
+                DisplayName = "Legacy Patient"
+            }));
+        SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
+
+        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Patient communication storage is unavailable for this chart.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Communication logged.", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void CreateCommunicationAsync_WhenSummaryIsBlank_ClearsStaleCommunicationStatus()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
@@ -199,6 +219,29 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Summary is required.", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Communication logged.", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void CreateCommunicationAsync_WhenPatientIdIsInvalid_ClearsStaleCommunicationStatus()
+    {
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, new PatientProfileVm
+            {
+                Id = "not-a-guid",
+                DisplayName = "Legacy Patient"
+            }));
+        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
+        SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
+        cut.Find("#patient-communication-summary").Input("Called patient about authorization.");
+
+        cut.FindAll("button").Single(button => button.TextContent.Contains("Add communication", StringComparison.Ordinal)).Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Patient communication storage is unavailable for this chart.", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Communication logged.", cut.Markup, StringComparison.Ordinal);
         });
     }
