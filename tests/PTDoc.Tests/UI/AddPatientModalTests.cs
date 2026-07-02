@@ -282,6 +282,36 @@ public sealed class AddPatientModalTests : TestContext
     }
 
     [Fact]
+    public void Submit_WithWhitespacePaddedAuthorizationRequired_SerializesPendingAuthorizationStatus()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        AddPatientModal.PatientFormData? submitted = null;
+
+        var cut = RenderComponent<AddPatientModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.OnSubmit, formData =>
+            {
+                submitted = formData;
+                return Task.FromResult(true);
+            }));
+
+        cut.Find("#firstName").Change("Alex");
+        cut.Find("#lastName").Change("Patient");
+        cut.Find("#email").Change("alex.patient@example.com");
+        cut.Find("#dob").Change("1990-01-01");
+        cut.Find("#authorizationRequired").Change(" Yes ");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(submitted);
+            using var payer = JsonDocument.Parse(submitted!.PayerInfoJson);
+            Assert.Equal("Yes", payer.RootElement.GetProperty("authorizationRequired").GetString());
+            Assert.Equal("pending", payer.RootElement.GetProperty("authorizationStatus").GetString());
+        });
+    }
+
+    [Fact]
     public void Submit_WithInvalidPhysicianNpi_ShowsValidationAndDoesNotCallSubmit()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

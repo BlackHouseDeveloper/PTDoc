@@ -558,6 +558,7 @@
             return "{}";
         }
 
+        var normalizedAuthorizationRequired = TrimOrNull(AuthorizationRequired);
         var payload = new
         {
             InsuranceCompanyName = TrimOrNull(PrimaryInsuranceCompany),
@@ -569,8 +570,8 @@
             PrimaryCareProviderName = TrimOrNull(PrimaryCareProvider),
             ReferringPhysicianName = TrimOrNull(ReferringPhysician),
             PhysicianNpiNumber = TrimOrNull(PhysicianNpi),
-            AuthorizationRequired = TrimOrNull(AuthorizationRequired),
-            AuthorizationStatus = AuthorizationRequired == "Yes" ? "pending" : null,
+            AuthorizationRequired = normalizedAuthorizationRequired,
+            AuthorizationStatus = normalizedAuthorizationRequired == "Yes" ? "pending" : null,
             AuthorizationNumber = TrimOrNull(AuthorizationNumber)
         };
 
