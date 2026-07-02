@@ -5,6 +5,7 @@ namespace PTDoc.UI.Components.PatientInfo.Models;
 /// </summary>
 public class AdditionalAuthorizationSettingsVm
 {
+    public string AuthorizationRequired { get; set; } = string.Empty;
     public string AuthorizationStatus { get; set; } = string.Empty;
     public string AuthorizationType { get; set; } = string.Empty;
     public string ReAuthorizationDueDate { get; set; } = string.Empty;

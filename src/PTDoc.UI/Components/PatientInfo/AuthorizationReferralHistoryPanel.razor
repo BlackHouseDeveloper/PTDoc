@@ -1,0 +1,187 @@
+@* AuthorizationReferralHistoryPanel — editable authorization/referral history rows *@
+@using PTDoc.UI.Components.PatientInfo.Models
+
+<PatientInfoSectionPanel Title="Authorization / PCP Referral History">
+    <ChildContent>
+        <div class="pi-history-toolbar">
+            <button type="button" class="pi-history-add" @onclick="AddHistoryEntry">Add history entry</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+        {
+            <p class="pi-history-validation" role="alert">@ValidationMessage</p>
+        }
+
+        @if (Entries.Count == 0)
+        {
+            <div class="pi-history-empty" role="status">
+                <p>No authorization or referral history has been added yet.</p>
+            </div>
+        }
+        else
+        {
+            <div class="pi-history-list" aria-label="Authorization and referral history entries" role="list">
+                @for (var index = 0; index < Entries.Count; index++)
+                {
+                    var rowIndex = index;
+                    var entry = Entries[index];
+                    <article class="pi-history-entry" @key="entry.EntryId" role="listitem">
+                        <div class="pi-history-entry__header">
+                            <h3>History Entry @(rowIndex + 1)</h3>
+                        </div>
+
+                        <PatientInfoFormGrid>
+                            <PatientInfoField Label="Record Type" ForId="@FieldId(rowIndex, "type")" Error="@GetError(rowIndex, "type")">
+                                <PatientInfoSelect Id="@FieldId(rowIndex, "type")"
+                                                   Value="@entry.RecordType"
+                                                   ValueChanged="@(v => SetEntryField(entry, e => e.RecordType = v))"
+                                                   Placeholder="Select type"
+                                                   Options="@RecordTypeOptions"
+                                                   HasError="@HasError(rowIndex, "type")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="Reference Number" ForId="@FieldId(rowIndex, "number")" Error="@GetError(rowIndex, "number")">
+                                <PatientInfoTextInput Id="@FieldId(rowIndex, "number")"
+                                                      Value="@entry.ReferenceNumber"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.ReferenceNumber = v))"
+                                                      HasError="@HasError(rowIndex, "number")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="Status" ForId="@FieldId(rowIndex, "status")" Error="@GetError(rowIndex, "status")">
+                                <PatientInfoSelect Id="@FieldId(rowIndex, "status")"
+                                                   Value="@entry.Status"
+                                                   ValueChanged="@(v => SetEntryField(entry, e => e.Status = v))"
+                                                   Placeholder="Select status"
+                                                   Options="@StatusOptions"
+                                                   HasError="@HasError(rowIndex, "status")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="Start Date" ForId="@FieldId(rowIndex, "start")" Error="@GetError(rowIndex, "start")">
+                                <PatientInfoTextInput Id="@FieldId(rowIndex, "start")"
+                                                      Value="@entry.StartDate"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.StartDate = v))"
+                                                      HasError="@HasError(rowIndex, "start")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="End Date" ForId="@FieldId(rowIndex, "end")" Error="@GetError(rowIndex, "end")">
+                                <PatientInfoTextInput Id="@FieldId(rowIndex, "end")"
+                                                      Value="@entry.EndDate"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.EndDate = v))"
+                                                      HasError="@HasError(rowIndex, "end")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="Visits or Units Authorized" ForId="@FieldId(rowIndex, "units")" Error="@GetError(rowIndex, "units")">
+                                <PatientInfoTextInput Id="@FieldId(rowIndex, "units")"
+                                                      Value="@entry.VisitsOrUnitsAuthorized"
+                                                      ValueChanged="@(v => SetEntryField(entry, e => e.VisitsOrUnitsAuthorized = v))"
+                                                      HasError="@HasError(rowIndex, "units")" />
+                            </PatientInfoField>
+
+                            <PatientInfoField Label="Notes" ForId="@FieldId(rowIndex, "notes")" Error="@GetError(rowIndex, "notes")" SpanFull="true">
+                                <PatientInfoTextArea Id="@FieldId(rowIndex, "notes")"
+                                                     Value="@entry.Notes"
+                                                     ValueChanged="@(v => SetEntryField(entry, e => e.Notes = v))"
+                                                     Placeholder="Add edit notes, payer instructions, or referral limitations..."
+                                                     Rows="3"
+                                                     HasError="@HasError(rowIndex, "notes")" />
+                            </PatientInfoField>
+                        </PatientInfoFormGrid>
+                    </article>
+                }
+            </div>
+        }
+    </ChildContent>
+</PatientInfoSectionPanel>
+
+@code {
+    [Parameter, EditorRequired] public List<AuthorizationReferralHistoryEntryVm> Model { get; set; } = new();
+    [Parameter] public EventCallback<List<AuthorizationReferralHistoryEntryVm>> ModelChanged { get; set; }
+    [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
+    [Parameter] public string ValidationMessage { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+
+    private List<AuthorizationReferralHistoryEntryVm> Entries { get; set; } = new();
+    private List<AuthorizationReferralHistoryEntryVm>? _lastModelParameter;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Model, _lastModelParameter))
+        {
+            Entries = CloneEntries(Model);
+            _lastModelParameter = Model;
+        }
+    }
+
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> RecordTypeOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("Authorization", "Authorization"),
+        new PatientInfoSelectOptionVm("PCP Referral", "PCP Referral"),
+        new PatientInfoSelectOptionVm("Prescription", "Prescription"),
+        new PatientInfoSelectOptionVm("Plan of Care", "Plan of Care"),
+        new PatientInfoSelectOptionVm("Other", "Other"),
+    };
+
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> StatusOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("Active", "Active"),
+        new PatientInfoSelectOptionVm("Pending", "Pending"),
+        new PatientInfoSelectOptionVm("Expired", "Expired"),
+        new PatientInfoSelectOptionVm("Denied", "Denied"),
+        new PatientInfoSelectOptionVm("Superseded", "Superseded"),
+    };
+
+    private async Task AddHistoryEntry()
+    {
+        Entries = [.. Entries, new AuthorizationReferralHistoryEntryVm()];
+        await ModelChanged.InvokeAsync(Entries);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+
+    private async Task SetEntryField(
+        AuthorizationReferralHistoryEntryVm entry,
+        Action<AuthorizationReferralHistoryEntryVm> setter)
+    {
+        var index = Entries.IndexOf(entry);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var updatedEntry = CloneEntry(entry);
+        setter(updatedEntry);
+        var updatedEntries = new List<AuthorizationReferralHistoryEntryVm>(Entries);
+        updatedEntries[index] = updatedEntry;
+        Entries = updatedEntries;
+        await ModelChanged.InvokeAsync(Entries);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+
+    private static List<AuthorizationReferralHistoryEntryVm> CloneEntries(
+        IEnumerable<AuthorizationReferralHistoryEntryVm>? entries)
+    {
+        return entries?.Select(CloneEntry).ToList() ?? new List<AuthorizationReferralHistoryEntryVm>();
+    }
+
+    private static AuthorizationReferralHistoryEntryVm CloneEntry(AuthorizationReferralHistoryEntryVm entry)
+    {
+        return new AuthorizationReferralHistoryEntryVm
+        {
+            EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId.Trim(),
+            RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType.Trim(),
+            ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
+            Status = entry.Status?.Trim() ?? string.Empty,
+            StartDate = entry.StartDate ?? string.Empty,
+            EndDate = entry.EndDate ?? string.Empty,
+            VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized ?? string.Empty,
+            Notes = entry.Notes ?? string.Empty
+        };
+    }
+
+    private static string FieldId(int index, string field) => $"pi-auth-history-{index}-{field}";
+    private string ErrorKey(int index, string field) => $"authHistory[{index}].{field}";
+
+    private string GetError(int index, string field) =>
+        FieldErrors.TryGetValue(ErrorKey(index, field), out var msg) ? msg : string.Empty;
+
+    private bool HasError(int index, string field) => FieldErrors.ContainsKey(ErrorKey(index, field));
+}

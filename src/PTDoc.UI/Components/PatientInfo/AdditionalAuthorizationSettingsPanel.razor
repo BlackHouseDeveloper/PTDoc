@@ -1,10 +1,19 @@
 @* AdditionalAuthorizationSettingsPanel — status/type dropdowns and alerting fields *@
 @using PTDoc.UI.Components.PatientInfo.Models
 
-<PatientInfoSectionPanel Title="Additional Authorization Settings">
+<PatientInfoSectionPanel Title="Authorization / PCP Referral Settings">
     <PatientInfoFormGrid>
 
-        <PatientInfoField Label="Authorization Status" ForId="pi-auth-status" Error="@GetError("authStatus")">
+        <PatientInfoField Label="Authorization / PCP Referral Required?" ForId="pi-auth-required" Error="@GetError("authRequired")">
+            <PatientInfoSelect Id="pi-auth-required"
+                               Value="@Model.AuthorizationRequired"
+                               ValueChanged="@(v => SetField(v, f => f.AuthorizationRequired = v))"
+                               Placeholder="Select yes or no"
+                               Options="@AuthorizationRequiredOptions"
+                               HasError="@HasError("authRequired")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Authorization / Referral Status" ForId="pi-auth-status" Error="@GetError("authStatus")">
             <PatientInfoSelect Id="pi-auth-status"
                                Value="@Model.AuthorizationStatus"
                                ValueChanged="@(v => SetField(v, f => f.AuthorizationStatus = v))"
@@ -13,11 +22,11 @@
                                HasError="@HasError("authStatus")" />
         </PatientInfoField>
 
-        <PatientInfoField Label="Authorization Type" ForId="pi-auth-type" Error="@GetError("authType")">
+        <PatientInfoField Label="Authorization / Referral Type" ForId="pi-auth-type" Error="@GetError("authType")">
             <PatientInfoSelect Id="pi-auth-type"
                                Value="@Model.AuthorizationType"
                                ValueChanged="@(v => SetField(v, f => f.AuthorizationType = v))"
-                               Placeholder="Select authorization type"
+                               Placeholder="Select authorization or referral type"
                                Options="@AuthorizationTypeOptions"
                                HasError="@HasError("authType")" />
         </PatientInfoField>
@@ -50,6 +59,12 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
     [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationRequiredOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("Yes", "Yes"),
+        new PatientInfoSelectOptionVm("No", "No"),
+        new PatientInfoSelectOptionVm("Unknown", "Unknown / Verify"),
+    };
 
     private string GetError(string key) =>
         FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;

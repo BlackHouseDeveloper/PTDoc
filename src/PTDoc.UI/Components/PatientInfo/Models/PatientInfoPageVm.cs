@@ -9,6 +9,7 @@ public class PatientInfoPageVm
 
     public PatientPayerInfoVm PatientPayer { get; set; } = new();
     public AuthorizationDetailsVm Authorization { get; set; } = new();
+    public List<AuthorizationReferralHistoryEntryVm> AuthorizationReferralHistory { get; set; } = new();
     public UtilizationVm Utilization { get; set; } = new();
     public SupportingDocumentationVm SupportingDocs { get; set; } = new();
     public AdditionalAuthorizationSettingsVm AdditionalSettings { get; set; } = new();

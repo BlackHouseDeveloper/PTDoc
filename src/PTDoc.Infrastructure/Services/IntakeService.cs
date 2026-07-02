@@ -467,6 +467,13 @@ public sealed class IntakeService : IIntakeService
         target.GroupNumber = source.GroupNumber;
         target.PayerType = source.PayerType;
         target.InsuranceCoverageType = source.InsuranceCoverageType;
+        target.SecondaryInsuranceCompanyName = source.SecondaryInsuranceCompanyName;
+        target.SecondaryMemberOrPolicyNumber = source.SecondaryMemberOrPolicyNumber;
+        target.SecondaryGroupNumber = source.SecondaryGroupNumber;
+        target.AdjusterName = source.AdjusterName;
+        target.AdjusterPhone = source.AdjusterPhone;
+        target.AdjusterEmail = source.AdjusterEmail;
+        target.AdjusterFax = source.AdjusterFax;
         target.HasCurrentMedications = source.HasCurrentMedications;
         target.HasOtherMedicalConditions = source.HasOtherMedicalConditions;
         target.UsesAssistiveDevices = source.UsesAssistiveDevices;
@@ -620,7 +627,15 @@ public sealed class IntakeService : IIntakeService
             MemberIdPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
             CoverageType = state.InsuranceCoverageType,
-            InsurancePriority = state.InsuranceCoverageType
+            InsurancePriority = state.InsuranceCoverageType,
+            SecondaryInsuranceCompanyName = state.SecondaryInsuranceCompanyName,
+            SecondaryMemberOrPolicyNumber = state.SecondaryMemberOrPolicyNumber,
+            SecondaryMemberIdPolicyNumber = state.SecondaryMemberOrPolicyNumber,
+            SecondaryGroupNumber = state.SecondaryGroupNumber,
+            AdjusterName = state.AdjusterName,
+            AdjusterPhone = state.AdjusterPhone,
+            AdjusterEmail = state.AdjusterEmail,
+            AdjusterFax = state.AdjusterFax
         };
         return JsonSerializer.Serialize(payerInfo, SerializerOptions);
     }
@@ -633,6 +648,13 @@ public sealed class IntakeService : IIntakeService
         var memberOrPolicyNumber = TrimOrNull(state.MemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "memberOrPolicyNumber", "memberIdPolicyNumber");
         var groupNumber = TrimOrNull(state.GroupNumber) ?? GetPayerInfoValue(merged, "groupNumber");
         var coverageType = TrimOrNull(state.InsuranceCoverageType) ?? GetPayerInfoValue(merged, "coverageType", "insurancePriority");
+        var secondaryInsuranceCompanyName = TrimOrNull(state.SecondaryInsuranceCompanyName) ?? GetPayerInfoValue(merged, "secondaryInsuranceCompanyName");
+        var secondaryMemberOrPolicyNumber = TrimOrNull(state.SecondaryMemberOrPolicyNumber) ?? GetPayerInfoValue(merged, "secondaryMemberOrPolicyNumber", "secondaryMemberIdPolicyNumber");
+        var secondaryGroupNumber = TrimOrNull(state.SecondaryGroupNumber) ?? GetPayerInfoValue(merged, "secondaryGroupNumber");
+        var adjusterName = TrimOrNull(state.AdjusterName) ?? GetPayerInfoValue(merged, "adjusterName");
+        var adjusterPhone = TrimOrNull(state.AdjusterPhone) ?? GetPayerInfoValue(merged, "adjusterPhone");
+        var adjusterEmail = TrimOrNull(state.AdjusterEmail) ?? GetPayerInfoValue(merged, "adjusterEmail");
+        var adjusterFax = TrimOrNull(state.AdjusterFax) ?? GetPayerInfoValue(merged, "adjusterFax");
 
         SetPayerInfoValue(merged, "payerType", payerType);
         SetPayerInfoValue(merged, "providerType", payerType);
@@ -642,6 +664,14 @@ public sealed class IntakeService : IIntakeService
         SetPayerInfoValue(merged, "groupNumber", groupNumber);
         SetPayerInfoValue(merged, "coverageType", coverageType);
         SetPayerInfoValue(merged, "insurancePriority", coverageType);
+        SetPayerInfoValue(merged, "secondaryInsuranceCompanyName", secondaryInsuranceCompanyName);
+        SetPayerInfoValue(merged, "secondaryMemberOrPolicyNumber", secondaryMemberOrPolicyNumber);
+        SetPayerInfoValue(merged, "secondaryMemberIdPolicyNumber", secondaryMemberOrPolicyNumber);
+        SetPayerInfoValue(merged, "secondaryGroupNumber", secondaryGroupNumber);
+        SetPayerInfoValue(merged, "adjusterName", adjusterName);
+        SetPayerInfoValue(merged, "adjusterPhone", adjusterPhone);
+        SetPayerInfoValue(merged, "adjusterEmail", adjusterEmail);
+        SetPayerInfoValue(merged, "adjusterFax", adjusterFax);
 
         return merged.ToJsonString(SerializerOptions);
     }
@@ -717,7 +747,14 @@ public sealed class IntakeService : IIntakeService
         || !string.IsNullOrWhiteSpace(state.InsuranceCompanyName)
         || !string.IsNullOrWhiteSpace(state.MemberOrPolicyNumber)
         || !string.IsNullOrWhiteSpace(state.GroupNumber)
-        || !string.IsNullOrWhiteSpace(state.InsuranceCoverageType);
+        || !string.IsNullOrWhiteSpace(state.InsuranceCoverageType)
+        || !string.IsNullOrWhiteSpace(state.SecondaryInsuranceCompanyName)
+        || !string.IsNullOrWhiteSpace(state.SecondaryMemberOrPolicyNumber)
+        || !string.IsNullOrWhiteSpace(state.SecondaryGroupNumber)
+        || !string.IsNullOrWhiteSpace(state.AdjusterName)
+        || !string.IsNullOrWhiteSpace(state.AdjusterPhone)
+        || !string.IsNullOrWhiteSpace(state.AdjusterEmail)
+        || !string.IsNullOrWhiteSpace(state.AdjusterFax);
 
     private static string? TrimOrNull(string? value)
     {

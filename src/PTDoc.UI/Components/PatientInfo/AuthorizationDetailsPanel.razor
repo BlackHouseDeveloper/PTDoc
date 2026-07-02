@@ -1,17 +1,26 @@
 @* AuthorizationDetailsPanel — authorization metadata and visit/unit limits *@
+@using System.Globalization
 @using PTDoc.UI.Components.PatientInfo.Models
 
-<PatientInfoSectionPanel Title="Authorization Details">
-    <PatientInfoFormGrid>
+<PatientInfoSectionPanel Title="Authorization / PCP Referral Details">
+    @if (!ShouldShowDetails)
+    {
+        <div class="pi-auth-details-empty" role="status">
+            <p>@DetailsPrompt</p>
+        </div>
+    }
+    else
+    {
+        <PatientInfoFormGrid>
 
-        <PatientInfoField Label="Authorization Number" ForId="pi-auth-number" Error="@GetError("authNumber")">
+        <PatientInfoField Label="Authorization / Referral Number" ForId="pi-auth-number" Error="@GetError("authNumber")">
             <PatientInfoTextInput Id="pi-auth-number"
                                   Value="@Model.AuthorizationNumber"
                                   ValueChanged="@(v => SetField(v, f => f.AuthorizationNumber = v))"
                                   HasError="@HasError("authNumber")" />
         </PatientInfoField>
 
-        <PatientInfoField Label="Date Authorization Received" ForId="pi-auth-received" Error="@GetError("authReceived")">
+        <PatientInfoField Label="Date Authorization / Referral Received" ForId="pi-auth-received" Error="@GetError("authReceived")">
             <PatientInfoTextInput Id="pi-auth-received"
                                   Value="@Model.DateAuthorizationReceived"
                                   ValueChanged="@(v => SetField(v, f => f.DateAuthorizationReceived = v))"
@@ -19,7 +28,7 @@
             @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
-        <PatientInfoField Label="Authorization Start Date" ForId="pi-auth-start" Error="@GetError("authStart")">
+        <PatientInfoField Label="Authorization / Referral Start Date" ForId="pi-auth-start" Error="@GetError("authStart")">
             <PatientInfoTextInput Id="pi-auth-start"
                                   Value="@Model.AuthorizationStartDate"
                                   ValueChanged="@(v => SetField(v, f => f.AuthorizationStartDate = v))"
@@ -27,7 +36,7 @@
             @* Text date input retained for consistency with existing JSON-backed model fields. *@
         </PatientInfoField>
 
-        <PatientInfoField Label="Authorization End Date" ForId="pi-auth-end" Error="@GetError("authEnd")">
+        <PatientInfoField Label="Authorization / Referral End Date" ForId="pi-auth-end" Error="@GetError("authEnd")">
             <PatientInfoTextInput Id="pi-auth-end"
                                   Value="@Model.AuthorizationEndDate"
                                   ValueChanged="@(v => SetField(v, f => f.AuthorizationEndDate = v))"
@@ -47,23 +56,41 @@
         @* Explicit right-column spacer so "units" field stays left-only on desktop *@
         <div class="pi-form-grid-spacer" aria-hidden="true"></div>
 
-    </PatientInfoFormGrid>
+        </PatientInfoFormGrid>
 
-    @* UI-only validation: start date must be <= end date *@
-    @if (!string.IsNullOrEmpty(DateRangeError))
-    {
-        <p class="pi-auth-date-range-error" role="alert">@DateRangeError</p>
+        @* UI-only validation: start date must be <= end date *@
+        @if (!string.IsNullOrEmpty(DateRangeError) && !HasError("authStart") && !HasError("authEnd"))
+        {
+            <p class="pi-auth-date-range-error" role="alert">@DateRangeError</p>
+        }
     }
 </PatientInfoSectionPanel>
 
 @code {
     [Parameter, EditorRequired] public AuthorizationDetailsVm Model { get; set; } = null!;
     [Parameter] public EventCallback<AuthorizationDetailsVm> ModelChanged { get; set; }
+    [Parameter] public string AuthorizationRequired { get; set; } = string.Empty;
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
     [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
 
     private string DateRangeError => ValidateDateRange();
+    private bool IsRequiredYes => string.Equals(AuthorizationRequired, "Yes", StringComparison.OrdinalIgnoreCase);
+    private bool IsRequiredNo => string.Equals(AuthorizationRequired, "No", StringComparison.OrdinalIgnoreCase);
+    private bool IsRequiredUnknown => string.Equals(AuthorizationRequired, "Unknown", StringComparison.OrdinalIgnoreCase);
+    private bool HasAnyDetails =>
+        !string.IsNullOrWhiteSpace(Model.AuthorizationNumber) ||
+        !string.IsNullOrWhiteSpace(Model.DateAuthorizationReceived) ||
+        !string.IsNullOrWhiteSpace(Model.AuthorizationStartDate) ||
+        !string.IsNullOrWhiteSpace(Model.AuthorizationEndDate) ||
+        !string.IsNullOrWhiteSpace(Model.NumberOfVisitsOrUnitsAuthorized);
+    private bool ShouldShowDetails => IsRequiredYes || HasAnyDetails;
+    private string DetailsPrompt =>
+        IsRequiredNo
+            ? "Authorization or PCP referral is marked not required for this patient."
+            : IsRequiredUnknown
+                ? "Authorization / PCP referral requirement is marked unknown for this patient. Select Yes to enter details if available."
+                : "Select Yes for Authorization / PCP Referral Required to enter authorization, referral, or prescription details.";
 
     private string GetError(string key) =>
         FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
@@ -86,11 +113,11 @@
             return string.Empty;
         }
 
-        if (DateTime.TryParse(Model.AuthorizationStartDate, out var start) &&
-            DateTime.TryParse(Model.AuthorizationEndDate, out var end) &&
+        if (DateTime.TryParse(Model.AuthorizationStartDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) &&
+            DateTime.TryParse(Model.AuthorizationEndDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var end) &&
             start > end)
         {
-            return "Authorization Start Date must be on or before Authorization End Date.";
+            return "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.";
         }
 
         return string.Empty;
