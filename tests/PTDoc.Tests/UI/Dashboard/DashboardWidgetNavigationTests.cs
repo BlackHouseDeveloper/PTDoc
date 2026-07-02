@@ -239,8 +239,10 @@ public sealed class DashboardWidgetNavigationTests : TestContext
             DateOfBirth = new DateTime(1991, 5, 6)
         };
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        CreatePatientRequest? capturedCreateRequest = null;
         patientService
             .Setup(service => service.CreateAsync(It.IsAny<CreatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreatePatientRequest, CancellationToken>((request, _) => capturedCreateRequest = request)
             .ReturnsAsync(createdPatient);
 
         var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
@@ -302,6 +304,8 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         root.Find("#email").Change("morgan.dashboard@example.com");
         root.Find("#phone").Change("555-0199");
         root.Find("#dob").Change("1991-05-06");
+        root.Find("#referringPhysician").Change(" ");
+        root.Find("#authorizationNumber").Change(" ");
         root.FindAll("button")
             .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
             .Click();
@@ -323,6 +327,9 @@ public sealed class DashboardWidgetNavigationTests : TestContext
                 request.Phone == "555-0199" &&
                 request.DateOfBirth == new DateTime(1991, 5, 6)),
             It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(capturedCreateRequest);
+        Assert.Null(capturedCreateRequest!.ReferringPhysician);
+        Assert.Null(capturedCreateRequest.AuthorizationNumber);
         intakeDeliveryService.Verify(
             service => service.SendInviteAsync(It.IsAny<IntakeSendInviteRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);

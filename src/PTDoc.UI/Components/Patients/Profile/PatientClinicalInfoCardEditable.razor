@@ -451,6 +451,7 @@
 
         if (!TryGetPatientId(out var patientId))
         {
+            DocumentStatusMessage = null;
             DocumentErrorMessage = "Patient document storage is unavailable for this chart.";
             return;
         }
@@ -479,6 +480,7 @@
         var file = args.File;
         if (!TryGetPatientId(out var patientId))
         {
+            DocumentStatusMessage = null;
             DocumentErrorMessage = "Patient document storage is unavailable for this chart.";
             return;
         }
@@ -540,6 +542,7 @@
     {
         if (string.IsNullOrWhiteSpace(CommunicationSummary))
         {
+            CommunicationStatusMessage = null;
             CommunicationErrorMessage = "Summary is required.";
             return;
         }

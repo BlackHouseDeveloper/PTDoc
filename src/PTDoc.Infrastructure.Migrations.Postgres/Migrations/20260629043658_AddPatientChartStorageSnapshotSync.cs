@@ -8,10 +8,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Intentionally empty: provider snapshot synchronization only.
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Intentionally empty: provider snapshot synchronization only.
         }
     }
 }

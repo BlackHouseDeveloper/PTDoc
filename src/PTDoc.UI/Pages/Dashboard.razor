@@ -340,9 +340,9 @@
                 Email = formData.Email,
                 Phone = formData.PhoneNumber,
                 PayerInfoJson = formData.PayerInfoJson,
-                ReferringPhysician = formData.ReferringPhysician,
+                ReferringPhysician = string.IsNullOrWhiteSpace(formData.ReferringPhysician) ? null : formData.ReferringPhysician,
                 PhysicianNpi = string.IsNullOrWhiteSpace(formData.PhysicianNpi) ? null : formData.PhysicianNpi,
-                AuthorizationNumber = formData.AuthorizationNumber
+                AuthorizationNumber = string.IsNullOrWhiteSpace(formData.AuthorizationNumber) ? null : formData.AuthorizationNumber
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess($"Patient {created.FirstName} {created.LastName} created.");
