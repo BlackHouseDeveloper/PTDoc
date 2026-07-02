@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using PTDoc.Application.Integrations;
+using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Integrations;
 using PTDoc.Integrations.Services;
@@ -21,6 +22,27 @@ public class IntegrationServicesTests
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
         return new ApplicationDbContext(options);
+    }
+
+    private static async Task SeedPatientAsync(ApplicationDbContext context, Guid patientId)
+    {
+        if (await context.Patients.IgnoreQueryFilters().AnyAsync(patient => patient.Id == patientId))
+        {
+            return;
+        }
+
+        context.Patients.Add(new Patient
+        {
+            Id = patientId,
+            FirstName = "Integration",
+            LastName = $"Patient{patientId:N}"[..15],
+            DateOfBirth = new DateTime(1980, 1, 1),
+            MedicalRecordNumber = $"INT-{patientId:N}"[..24],
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.Empty,
+            SyncState = SyncState.Synced
+        });
+        await context.SaveChangesAsync();
     }
 
     private IConfiguration CreateTestConfiguration(bool enabled = false)
@@ -55,6 +77,7 @@ public class IntegrationServicesTests
         await using var context = CreateInMemoryContext();
         var service = new ExternalSystemMappingService(context);
         var patientId = Guid.NewGuid();
+        await SeedPatientAsync(context, patientId);
 
         // Act
         var result = await service.GetOrCreateMappingAsync(
@@ -78,6 +101,8 @@ public class IntegrationServicesTests
         var service = new ExternalSystemMappingService(context);
         var patientId1 = Guid.NewGuid();
         var patientId2 = Guid.NewGuid();
+        await SeedPatientAsync(context, patientId1);
+        await SeedPatientAsync(context, patientId2);
 
         // Create initial mapping
         var first = await service.GetOrCreateMappingAsync(patientId1, "Wibbi", "wibbi-123");
@@ -97,6 +122,9 @@ public class IntegrationServicesTests
         // Arrange
         await using var context = CreateInMemoryContext();
         var patientId = Guid.NewGuid();
+        var duplicatePatientId = Guid.NewGuid();
+        await SeedPatientAsync(context, patientId);
+        await SeedPatientAsync(context, duplicatePatientId);
 
         var mapping1 = new PTDoc.Core.Models.ExternalSystemMapping
         {
@@ -110,7 +138,7 @@ public class IntegrationServicesTests
         {
             ExternalSystemName = "Wibbi",
             ExternalId = "wibbi-123", // Duplicate
-            InternalPatientId = Guid.NewGuid(),
+            InternalPatientId = duplicatePatientId,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -129,6 +157,20 @@ public class IntegrationServicesTests
         // Document the difference: InMemory allows duplicates (count == 2)
         // Real SQLite would throw DbUpdateException on the second SaveChangesAsync
         Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public void ExternalSystemMapping_ModelRequiresInternalPatientForeignKey()
+    {
+        using var context = CreateInMemoryContext();
+
+        var entityType = context.Model.FindEntityType(typeof(PTDoc.Core.Models.ExternalSystemMapping));
+        Assert.NotNull(entityType);
+        var foreignKey = Assert.Single(entityType!.GetForeignKeys(), key =>
+            key.Properties.Any(property => property.Name == nameof(PTDoc.Core.Models.ExternalSystemMapping.InternalPatientId)));
+
+        Assert.True(foreignKey.IsRequired);
+        Assert.False(foreignKey.Properties.Single().IsNullable);
     }
 
     [Fact]
@@ -275,6 +317,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
 
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
@@ -304,6 +347,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
@@ -323,6 +367,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
@@ -346,6 +391,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
@@ -382,6 +428,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
@@ -420,6 +467,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
@@ -465,6 +513,7 @@ public class IntegrationServicesTests
         var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
         await using var context = CreateInMemoryContext();
         var mappingService = new ExternalSystemMappingService(context);
+        await SeedPatientAsync(context, patientId);
         await mappingService.GetOrCreateMappingAsync(patientId, "Wibbi", "external-client-123");
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);

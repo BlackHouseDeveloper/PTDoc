@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient chart storage review follow-up** — Projected patient document and communication lists directly to DTO fields, made document upload input keyboard-focusable, and made browser QA console-error checks attach capture defensively. Reason: validated PR review feedback identified avoidable BLOB materialization, inaccessible upload control semantics, and a brittle QA helper assumption.
 - **Patient chart storage review follow-up** — Aligned created document and communication `Location` headers with existing retrievable routes. Reason: validated PR review feedback identified create responses pointing to unmapped resource URLs.
 - **Patient chart storage review follow-up** — Cleared stale chart-storage success messages on early validation errors, normalized blank referral/authorization values before patient creation, and documented intentionally empty snapshot-sync migrations. Reason: validated PR review feedback identified contradictory UI states, nullable contract drift, and migration-maintenance ambiguity.
+- **Patient chart storage review follow-up** — Aligned `ExternalSystemMapping.InternalPatientId` relationship configuration with its required domain/database contract and updated integration fixtures to seed linked patients before mappings. Reason: validated PR review feedback identified an optional EF relationship override on a non-nullable patient mapping key.
 
 ### Changed - Patient payer and authorization intake workflows
 

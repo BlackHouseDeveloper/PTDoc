@@ -474,7 +474,6 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Patient)
                 .WithMany()
                 .HasForeignKey(e => e.InternalPatientId)
-                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
