@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient payer display review follow-up** — Trimmed structured adjuster fax before deriving the read-only case-manager contact display. Reason: validated PR review feedback identified inconsistent whitespace handling in the `Fax:` segment.
 - **Patient payer and authorization normalization follow-up** — Blocked invalid non-parseable authorization dates, trimmed authorization/referral history keys and select values, and trimmed intake payer type before deciding whether adjuster fields are required. Reason: validated PR review feedback identified legacy whitespace and invalid-date edge cases.
 - **Patient authorization date validation follow-up** — Validated each nonblank authorization/referral date independently before applying date-range ordering. Reason: validated PR review feedback identified that one invalid date could be saved when the paired date field was blank.
+- **Patient payer numeric validation follow-up** — Parsed cost-sharing and visit-limit numeric validation with invariant culture after trimming input. Reason: validated PR review feedback identified culture-dependent save-blocking behavior for decimal fields.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 

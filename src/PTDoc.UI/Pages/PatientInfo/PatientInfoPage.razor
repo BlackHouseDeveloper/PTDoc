@@ -665,7 +665,7 @@
     private void ValidateNumericField(string key, string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
-        if (!decimal.TryParse(value, out var n) || n < 0)
+        if (!decimal.TryParse(value.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var n) || n < 0)
         {
             Vm.FieldErrors[key] = "Must be a non-negative number.";
         }

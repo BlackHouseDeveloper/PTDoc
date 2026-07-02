@@ -593,6 +593,54 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
+    public void NumericValidation_UsesInvariantCultureForCostSharingFields()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUICulture = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+
+        try
+        {
+            var patientId = Guid.NewGuid();
+            var patient = new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Beta",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1990, 1, 1),
+                PayerInfoJson = "{}"
+            };
+
+            var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+            patientService
+                .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(patient);
+            Services.AddSingleton(patientService.Object);
+            Services.AddSingleton<IToastService, ToastService>();
+
+            var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+                .Add(component => component.Id, patientId.ToString()));
+
+            cut.WaitForAssertion(() =>
+                Assert.Contains("Patient &amp; Payer Information", cut.Markup, StringComparison.Ordinal));
+
+            cut.Find("#pi-copay-amount").Input(" 35.50 ");
+
+            cut.WaitForAssertion(() =>
+            {
+                Assert.DoesNotContain("Must be a non-negative number.", cut.Markup, StringComparison.Ordinal);
+                Assert.False(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
+            });
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUICulture;
+        }
+    }
+
+    [Fact]
     public async Task Save_PersistsCostSharingVisitLimitsAndAuthorizationReferralHistory()
     {
         var patientId = Guid.NewGuid();
