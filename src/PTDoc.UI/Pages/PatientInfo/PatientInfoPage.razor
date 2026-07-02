@@ -573,19 +573,38 @@
         {
             "payer" => new HashSet<string>(StringComparer.Ordinal)
             {
+                "patientName",
+                "dob",
+                "insuranceName",
+                "memberId",
+                "groupNumber",
+                "secondaryInsuranceName",
+                "secondaryMemberId",
+                "secondaryGroupNumber",
                 "deductibleAmount",
                 "deductibleMet",
                 "oopMax",
                 "oopMet",
                 "copayAmount",
-                "coinsurancePercent"
+                "coinsurancePercent",
+                "providerType",
+                "insurancePriority",
+                "yearType",
+                "effectiveStart",
+                "effectiveEnd"
             },
             "additionalSettings" => new HashSet<string>(StringComparer.Ordinal)
             {
+                "authRequired",
+                "authStatus",
+                "authType",
+                "reauthDate",
                 "alertThreshold"
             },
             "auth" => new HashSet<string>(StringComparer.Ordinal)
             {
+                "authNumber",
+                "authReceived",
                 "authStart",
                 "authEnd",
                 "authUnits"
@@ -594,10 +613,17 @@
             {
                 "visitsUsed",
                 "visitsRemaining",
-                "totalVisitLimit"
+                "visitLimitType",
+                "visitLimitPeriod",
+                "totalVisitLimit",
+                "firstVisitDate",
+                "notes"
             },
             "supportingDocs" => new HashSet<string>(StringComparer.Ordinal)
             {
+                "caseManager",
+                "primaryCareProvider",
+                "referringPhysician",
                 "npi"
             },
             _ => null

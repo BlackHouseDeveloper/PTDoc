@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient authorization history review follow-up** — Defaulted blank stored authorization/referral history record types to `Authorization` when loading Patient Info. Reason: validated PR review feedback identified that blank persisted values could override the VM default and re-save ambiguous history rows.
 - **Patient authorization UI review follow-up** — Suppressed duplicate authorization date-range alerts when field errors are present and sanitized cloned history row keys/types in the history panel. Reason: validated PR review feedback identified redundant alerts and unstable `@key` values for legacy blank history entries.
 - **Patient payer serialization review follow-up** — Trimmed preserved structured adjuster fields and omitted whitespace-only adjuster values when saving Patient Info. Reason: validated PR review feedback identified that legacy blank adjuster values could be re-serialized into payer JSON.
+- **Patient Info validation review follow-up** — Expanded panel-specific error routing to include every field key rendered by the payer, authorization settings, authorization details, utilization, and supporting-documentation panels. Reason: validated PR review feedback identified that future server-side field errors could be filtered out before reaching their panels.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 
