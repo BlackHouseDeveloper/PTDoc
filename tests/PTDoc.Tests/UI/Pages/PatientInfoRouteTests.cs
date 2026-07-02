@@ -320,8 +320,9 @@ public sealed class PatientInfoRouteTests : TestContext
             providerType = "Commercial",
             insurancePriority = "Primary",
             caseManagerAdjusterContactInfo = "   ",
-            adjusterName = "Alex Adjuster",
-            adjusterPhone = "555-0200",
+            adjusterName = " Alex Adjuster ",
+            adjusterPhone = " 555-0200 ",
+            adjusterEmail = "   ",
             adjusterFax = "   "
         }, SerializerOptions);
         UpdatePatientRequest? capturedRequest = null;
@@ -367,6 +368,10 @@ public sealed class PatientInfoRouteTests : TestContext
         var root = savedPayerInfo.RootElement;
         Assert.Equal("commercial", root.GetProperty("providerType").GetString());
         Assert.Equal("primary", root.GetProperty("insurancePriority").GetString());
+        Assert.Equal("Alex Adjuster", root.GetProperty("adjusterName").GetString());
+        Assert.Equal("555-0200", root.GetProperty("adjusterPhone").GetString());
+        Assert.False(root.TryGetProperty("adjusterEmail", out _));
+        Assert.False(root.TryGetProperty("adjusterFax", out _));
         Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
     }
 

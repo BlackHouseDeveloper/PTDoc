@@ -429,10 +429,10 @@
                 DateOfFirstVisitUnderAuthorization = Vm.Utilization.DateOfFirstVisitUnderAuthorization,
                 NotesComments = Vm.Utilization.NotesComments,
                 CaseManagerAdjusterContactInfo = ResolveCaseManagerAdjusterContactInfoForSave(),
-                AdjusterName = loadedPayerInfo?.AdjusterName,
-                AdjusterPhone = loadedPayerInfo?.AdjusterPhone,
-                AdjusterEmail = loadedPayerInfo?.AdjusterEmail,
-                AdjusterFax = loadedPayerInfo?.AdjusterFax,
+                AdjusterName = TrimToNull(loadedPayerInfo?.AdjusterName),
+                AdjusterPhone = TrimToNull(loadedPayerInfo?.AdjusterPhone),
+                AdjusterEmail = TrimToNull(loadedPayerInfo?.AdjusterEmail),
+                AdjusterFax = TrimToNull(loadedPayerInfo?.AdjusterFax),
                 PrimaryCareProviderName = Vm.SupportingDocs.PrimaryCareProviderName,
                 ReferringPhysicianName = Vm.SupportingDocs.ReferringPhysicianName,
                 PhysicianNpiNumber = Vm.SupportingDocs.PhysicianNpiNumber,
@@ -467,9 +467,7 @@
 
     private string? ResolveCaseManagerAdjusterContactInfoForSave()
     {
-        var enteredValue = string.IsNullOrWhiteSpace(Vm.SupportingDocs.CaseManagerAdjusterContactInfo)
-            ? null
-            : Vm.SupportingDocs.CaseManagerAdjusterContactInfo.Trim();
+        var enteredValue = TrimToNull(Vm.SupportingDocs.CaseManagerAdjusterContactInfo);
         if (!string.IsNullOrWhiteSpace(loadedPayerInfo?.CaseManagerAdjusterContactInfo))
         {
             return enteredValue;
@@ -480,6 +478,9 @@
             ? null
             : enteredValue;
     }
+
+    private static string? TrimToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private void HandleBack()
     {
