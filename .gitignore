@@ -537,3 +537,5 @@ docs/_archive/        # Superseded documentation (archived for reference but not
 .playwright-cli/
 .playwright-mcp/       # Playwright test artifacts (screenshots, videos, trace files)
 src/PTDoc.Api/PTDoc.db
+/docs/audits/evidence
+/docs/audits

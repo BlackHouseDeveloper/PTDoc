@@ -251,7 +251,11 @@
                 LastName = formData.LastName,
                 DateOfBirth = formData.DateOfBirth.Value,
                 Email = formData.Email,
-                Phone = formData.PhoneNumber
+                Phone = formData.PhoneNumber,
+                PayerInfoJson = formData.PayerInfoJson,
+                ReferringPhysician = string.IsNullOrWhiteSpace(formData.ReferringPhysician) ? null : formData.ReferringPhysician,
+                PhysicianNpi = string.IsNullOrWhiteSpace(formData.PhysicianNpi) ? null : formData.PhysicianNpi,
+                AuthorizationNumber = string.IsNullOrWhiteSpace(formData.AuthorizationNumber) ? null : formData.AuthorizationNumber
             };
             var created = await PatientService.CreateAsync(request);
             ToastService.ShowSuccess("Patient added.");
