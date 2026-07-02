@@ -70,6 +70,11 @@ public static class MauiProgram
         builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
         builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
         builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
+        builder.Services.AddScoped<IPatientChartStorageService>(sp =>
+        {
+            var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient");
+            return new PatientChartStorageApiService(httpClient);
+        });
 
         // Register HTTP-backed AI generation for the shared UI workspace.
         // Uses the authenticated ApiClient so generated requests carry the bearer token.

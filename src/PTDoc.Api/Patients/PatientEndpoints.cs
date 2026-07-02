@@ -499,6 +499,15 @@ public static class PatientEndpoints
     }
 
     private const int MaxPatientDocumentBytes = 10 * 1024 * 1024;
+    private const int MaxDocumentTypeLength = 80;
+    private const int MaxDocumentFileNameLength = 255;
+    private const int MaxDocumentContentTypeLength = 120;
+    private const int MaxDocumentNotesLength = 1000;
+    private const int MaxCommunicationChannelLength = 40;
+    private const int MaxCommunicationDirectionLength = 40;
+    private const int MaxCommunicationSummaryLength = 200;
+    private const int MaxCommunicationDetailsLength = 2000;
+    private const int MaxCommunicationContactNameLength = 120;
 
     private static async Task<IResult> ListDocuments(
         Guid id,
@@ -547,7 +556,7 @@ public static class PatientEndpoints
             PatientId = id,
             ClinicId = tenantContext.GetCurrentClinicId(),
             DocumentType = request.DocumentType.Trim(),
-            FileName = Path.GetFileName(request.FileName.Trim()),
+            FileName = SanitizeFileName(request.FileName),
             ContentType = string.IsNullOrWhiteSpace(request.ContentType)
                 ? "application/octet-stream"
                 : request.ContentType.Trim(),
@@ -679,11 +688,30 @@ public static class PatientEndpoints
         {
             errors[nameof(request.DocumentType)] = ["DocumentType is required."];
         }
+        else
+        {
+            AddMaxLengthError(errors, nameof(request.DocumentType), request.DocumentType.Trim(), MaxDocumentTypeLength);
+        }
 
         if (string.IsNullOrWhiteSpace(request.FileName))
         {
             errors[nameof(request.FileName)] = ["FileName is required."];
         }
+        else
+        {
+            var sanitizedFileName = SanitizeFileName(request.FileName);
+            if (string.IsNullOrWhiteSpace(sanitizedFileName))
+            {
+                errors[nameof(request.FileName)] = ["FileName must include a file name."];
+            }
+            else
+            {
+                AddMaxLengthError(errors, nameof(request.FileName), sanitizedFileName, MaxDocumentFileNameLength);
+            }
+        }
+
+        AddMaxLengthError(errors, nameof(request.ContentType), TrimOrNull(request.ContentType), MaxDocumentContentTypeLength);
+        AddMaxLengthError(errors, nameof(request.Notes), TrimOrNull(request.Notes), MaxDocumentNotesLength);
 
         if (string.IsNullOrWhiteSpace(request.Base64Content))
         {
@@ -721,18 +749,47 @@ public static class PatientEndpoints
         {
             errors[nameof(request.Channel)] = ["Channel is required."];
         }
+        else
+        {
+            AddMaxLengthError(errors, nameof(request.Channel), request.Channel.Trim(), MaxCommunicationChannelLength);
+        }
 
         if (string.IsNullOrWhiteSpace(request.Direction))
         {
             errors[nameof(request.Direction)] = ["Direction is required."];
+        }
+        else
+        {
+            AddMaxLengthError(errors, nameof(request.Direction), request.Direction.Trim(), MaxCommunicationDirectionLength);
         }
 
         if (string.IsNullOrWhiteSpace(request.Summary))
         {
             errors[nameof(request.Summary)] = ["Summary is required."];
         }
+        else
+        {
+            AddMaxLengthError(errors, nameof(request.Summary), request.Summary.Trim(), MaxCommunicationSummaryLength);
+        }
+
+        AddMaxLengthError(errors, nameof(request.Details), TrimOrNull(request.Details), MaxCommunicationDetailsLength);
+        AddMaxLengthError(errors, nameof(request.ContactName), TrimOrNull(request.ContactName), MaxCommunicationContactNameLength);
 
         return errors;
+    }
+
+    private static string SanitizeFileName(string? fileName) => Path.GetFileName(fileName?.Trim() ?? string.Empty);
+
+    private static void AddMaxLengthError(
+        Dictionary<string, string[]> errors,
+        string fieldName,
+        string? value,
+        int maxLength)
+    {
+        if (value is not null && value.Length > maxLength)
+        {
+            errors[fieldName] = [$"{fieldName} cannot exceed {maxLength} characters."];
+        }
     }
 
     private static string? TrimOrNull(string? value)
