@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient Info validation review follow-up** — Expanded panel-specific error routing to include every field key rendered by the payer, authorization settings, authorization details, utilization, and supporting-documentation panels. Reason: validated PR review feedback identified that future server-side field errors could be filtered out before reaching their panels.
 - **Patient authorization history accessibility follow-up** — Marked the authorization/referral history container and rows with list/listitem semantics. Reason: validated PR review feedback identified that assistive technologies should receive the repeated-entry structure.
 - **Patient payer display review follow-up** — Trimmed structured adjuster fax before deriving the read-only case-manager contact display. Reason: validated PR review feedback identified inconsistent whitespace handling in the `Fax:` segment.
+- **Patient payer and authorization normalization follow-up** — Blocked invalid non-parseable authorization dates, trimmed authorization/referral history keys and select values, and trimmed intake payer type before deciding whether adjuster fields are required. Reason: validated PR review feedback identified legacy whitespace and invalid-date edge cases.
 
 ### Changed - Dashboard alerts and appointment detail readiness
 

@@ -114,8 +114,14 @@
     [Parameter] public EventCallback<string?> AdjusterEmailChanged { get; set; }
     [Parameter] public EventCallback<string?> AdjusterFaxChanged { get; set; }
 
-    private bool RequiresAdjusterContact =>
-        string.Equals(PayerType, "Workers' Compensation", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(PayerType, "Motor Vehicle", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(PayerType, "Liability", StringComparison.OrdinalIgnoreCase);
+    private bool RequiresAdjusterContact
+    {
+        get
+        {
+            var payerType = PayerType?.Trim();
+            return string.Equals(payerType, "Workers' Compensation", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(payerType, "Motor Vehicle", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(payerType, "Liability", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

@@ -359,10 +359,10 @@
         return entries
             .Select(entry => new AuthorizationReferralHistoryEntryVm
             {
-                EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId,
-                RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType,
+                EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId.Trim(),
+                RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType.Trim(),
                 ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
-                Status = entry.Status ?? string.Empty,
+                Status = entry.Status?.Trim() ?? string.Empty,
                 StartDate = entry.StartDate ?? string.Empty,
                 EndDate = entry.EndDate ?? string.Empty,
                 VisitsOrUnitsAuthorized = entry.VisitsOrUnitsAuthorized ?? string.Empty,
@@ -699,6 +699,16 @@
             CultureInfo.InvariantCulture,
             DateTimeStyles.None,
             out var end);
+
+        if (!startParsed)
+        {
+            Vm.FieldErrors["authStart"] = "Use a valid date.";
+        }
+
+        if (!endParsed)
+        {
+            Vm.FieldErrors["authEnd"] = "Use a valid date.";
+        }
 
         if (!startParsed || !endParsed || start <= end)
         {

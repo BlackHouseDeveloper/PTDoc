@@ -126,14 +126,15 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
-    public void AuthorizationReferralHistoryPanel_ClonesBlankKeysAndTypesToStableDefaults()
+    public void AuthorizationReferralHistoryPanel_ClonesWhitespaceKeysAndTypesToStableDefaults()
     {
         var entries = new List<AuthorizationReferralHistoryEntryVm>
         {
             new()
             {
-                EntryId = " ",
-                RecordType = " ",
+                EntryId = " row-id ",
+                RecordType = " Authorization ",
+                Status = " Active ",
                 ReferenceNumber = "AUTH-123"
             }
         };
@@ -145,13 +146,15 @@ public sealed class PatientInfoRouteTests : TestContext
 
         cut.WaitForElement(".pi-history-entry");
         Assert.Equal("Authorization", cut.Find("#pi-auth-history-0-type").GetAttribute("value"));
+        Assert.Equal("Active", cut.Find("#pi-auth-history-0-status").GetAttribute("value"));
         Assert.Contains("AUTH-123", cut.Markup, StringComparison.Ordinal);
 
         cut.Find("#pi-auth-history-0-number").Input("AUTH-456");
 
         Assert.NotNull(updatedEntries);
-        Assert.False(string.IsNullOrWhiteSpace(updatedEntries![0].EntryId));
+        Assert.Equal("row-id", updatedEntries![0].EntryId);
         Assert.Equal("Authorization", updatedEntries[0].RecordType);
+        Assert.Equal("Active", updatedEntries[0].Status);
         Assert.Equal("AUTH-456", updatedEntries[0].ReferenceNumber);
     }
 
@@ -165,8 +168,9 @@ public sealed class PatientInfoRouteTests : TestContext
             {
                 new
                 {
-                    entryId = "blank-type-entry",
-                    recordType = "   ",
+                    entryId = " blank-type-entry ",
+                    recordType = " Authorization ",
+                    status = " Active ",
                     referenceNumber = "AUTH-123"
                 }
             }
@@ -194,6 +198,7 @@ public sealed class PatientInfoRouteTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Equal("Authorization", cut.Find("#pi-auth-history-0-type").GetAttribute("value"));
+            Assert.Equal("Active", cut.Find("#pi-auth-history-0-status").GetAttribute("value"));
             Assert.Contains("AUTH-123", cut.Markup, StringComparison.Ordinal);
         });
     }
@@ -498,6 +503,47 @@ public sealed class PatientInfoRouteTests : TestContext
                 "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
                 cut.Markup,
                 StringComparison.Ordinal);
+            Assert.True(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
+        });
+
+        patientService.Verify(
+            service => service.UpdateAsync(patientId, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void AuthorizationDateRangeValidation_DisablesSaveWhenDatesAreInvalid()
+    {
+        var patientId = Guid.NewGuid();
+        var patient = new PatientResponse
+        {
+            Id = patientId,
+            FirstName = "Beta",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = "{}"
+        };
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(patient);
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters
+            .Add(component => component.Id, patientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+
+        cut.Find("#pi-auth-required").Change("Yes");
+        cut.Find("#pi-auth-start").Input("not a date");
+        cut.Find("#pi-auth-end").Input("also invalid");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(2, cut.Markup.Split("Use a valid date.").Length - 1);
             Assert.True(cut.Find("button[aria-label='Save Changes']").HasAttribute("disabled"));
         });
 

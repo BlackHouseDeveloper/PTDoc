@@ -117,7 +117,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         string? adjusterFax = null;
 
         var cut = RenderComponent<InsurancePayerCard>(parameters => parameters
-            .Add(component => component.PayerType, "Workers' Compensation")
+            .Add(component => component.PayerType, " Workers' Compensation ")
             .Add(component => component.SecondaryInsuranceCompanyNameChanged, EventCallback.Factory.Create<string?>(this, value => secondaryInsuranceCompanyName = value))
             .Add(component => component.SecondaryMemberOrPolicyNumberChanged, EventCallback.Factory.Create<string?>(this, value => secondaryMemberOrPolicyNumber = value))
             .Add(component => component.SecondaryGroupNumberChanged, EventCallback.Factory.Create<string?>(this, value => secondaryGroupNumber = value))
