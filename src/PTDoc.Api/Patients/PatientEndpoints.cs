@@ -524,7 +524,18 @@ public static class PatientEndpoints
             .AsNoTracking()
             .Where(document => document.PatientId == id)
             .OrderByDescending(document => document.UploadedAtUtc)
-            .Select(document => ToPatientDocumentResponse(document))
+            .Select(document => new PatientDocumentResponse
+            {
+                Id = document.Id,
+                PatientId = document.PatientId,
+                DocumentType = document.DocumentType,
+                FileName = document.FileName,
+                ContentType = document.ContentType,
+                SizeBytes = document.SizeBytes,
+                Notes = document.Notes,
+                UploadedByUserId = document.UploadedByUserId,
+                UploadedAtUtc = document.UploadedAtUtc
+            })
             .ToListAsync(cancellationToken);
 
         return Results.Ok(documents);
@@ -610,7 +621,19 @@ public static class PatientEndpoints
             .Where(entry => entry.PatientId == id)
             .OrderByDescending(entry => entry.OccurredAtUtc)
             .ThenByDescending(entry => entry.CreatedAtUtc)
-            .Select(entry => ToPatientCommunicationLogEntryResponse(entry))
+            .Select(entry => new PatientCommunicationLogEntryResponse
+            {
+                Id = entry.Id,
+                PatientId = entry.PatientId,
+                Channel = entry.Channel,
+                Direction = entry.Direction,
+                Summary = entry.Summary,
+                Details = entry.Details,
+                ContactName = entry.ContactName,
+                OccurredAtUtc = entry.OccurredAtUtc,
+                CreatedAtUtc = entry.CreatedAtUtc,
+                CreatedByUserId = entry.CreatedByUserId
+            })
             .ToListAsync(cancellationToken);
 
         return Results.Ok(entries);

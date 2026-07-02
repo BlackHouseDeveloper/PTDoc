@@ -214,11 +214,9 @@
                                @bind:event="oninput"
                                disabled="@IsUploadingDocument" />
                     </label>
-                    <label class="patient-demographics-card-edit-btn patient-clinical-info-file-button" for="patient-document-file">
-                        Upload document
-                    </label>
                     <InputFile id="patient-document-file"
-                               class="patient-clinical-info-file-input"
+                               class="patient-demographics-card-edit-btn patient-clinical-info-file-button"
+                               aria-label="Upload document"
                                OnChange="HandleDocumentSelectedAsync"
                                disabled="@IsUploadingDocument" />
                 </div>

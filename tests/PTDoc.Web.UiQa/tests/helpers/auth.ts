@@ -43,6 +43,7 @@ export async function authenticateIfNeeded(page: Page) {
 }
 
 export async function expectNoRelevantConsoleErrors(page: Page) {
+  attachConsoleCapture(page);
   const messages = getConsoleCapture(page);
   expect(messages).toEqual([]);
 }
