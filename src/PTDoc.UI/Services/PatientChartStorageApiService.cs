@@ -18,7 +18,7 @@ public sealed class PatientChartStorageApiService(HttpClient httpClient) : IPati
         Guid patientId,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.GetAsync($"/api/v1/patients/{patientId:D}/documents", cancellationToken);
+        using var response = await httpClient.GetAsync($"/api/v1/patients/{patientId:D}/documents", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync<List<PatientDocumentResponse>>(SerializerOptions, cancellationToken)
@@ -47,7 +47,7 @@ public sealed class PatientChartStorageApiService(HttpClient httpClient) : IPati
             Notes = notes
         };
 
-        var response = await httpClient.PostAsJsonAsync(
+        using var response = await httpClient.PostAsJsonAsync(
             $"/api/v1/patients/{patientId:D}/documents",
             request,
             SerializerOptions,
@@ -62,7 +62,7 @@ public sealed class PatientChartStorageApiService(HttpClient httpClient) : IPati
         Guid patientId,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.GetAsync($"/api/v1/patients/{patientId:D}/communications", cancellationToken);
+        using var response = await httpClient.GetAsync($"/api/v1/patients/{patientId:D}/communications", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync<List<PatientCommunicationLogEntryResponse>>(SerializerOptions, cancellationToken)
@@ -74,7 +74,7 @@ public sealed class PatientChartStorageApiService(HttpClient httpClient) : IPati
         CreatePatientCommunicationLogEntryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsJsonAsync(
+        using var response = await httpClient.PostAsJsonAsync(
             $"/api/v1/patients/{patientId:D}/communications",
             request,
             SerializerOptions,

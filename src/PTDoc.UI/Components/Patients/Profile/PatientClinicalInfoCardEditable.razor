@@ -399,6 +399,7 @@
     private bool IsLoadingCommunications { get; set; }
     private bool IsSavingCommunication { get; set; }
     private bool HasLoadedCommunications { get; set; }
+    private string? CurrentPatientId { get; set; }
     private static readonly string[] PatientDocumentTypes = new[]
     {
         "Driver's license",
@@ -418,6 +419,36 @@
         "In person",
         "Other"
     };
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(CurrentPatientId, Patient.Id, StringComparison.Ordinal))
+        {
+            CurrentPatientId = Patient.Id;
+            ResetPatientScopedStorageState();
+        }
+    }
+
+    private void ResetPatientScopedStorageState()
+    {
+        selectedTab = "timeline";
+        Documents = Array.Empty<PatientDocumentResponse>();
+        CommunicationLogEntries = Array.Empty<PatientCommunicationLogEntryResponse>();
+        DocumentUploadNotes = string.Empty;
+        DocumentStatusMessage = null;
+        DocumentErrorMessage = null;
+        IsLoadingDocuments = false;
+        IsUploadingDocument = false;
+        HasLoadedDocuments = false;
+        CommunicationContactName = string.Empty;
+        CommunicationSummary = string.Empty;
+        CommunicationDetails = string.Empty;
+        CommunicationStatusMessage = null;
+        CommunicationErrorMessage = null;
+        IsLoadingCommunications = false;
+        IsSavingCommunication = false;
+        HasLoadedCommunications = false;
+    }
 
     private async Task SelectTabAsync(string tab)
     {

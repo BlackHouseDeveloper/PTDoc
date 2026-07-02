@@ -146,6 +146,48 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
+    public void PatientParameterChange_ClearsCachedChartStorageState()
+    {
+        var firstPatient = CreatePatient();
+        var secondPatient = CreatePatient();
+        var firstPatientId = Guid.Parse(firstPatient.Id);
+        chartStorageService.DocumentsByPatient[firstPatientId] =
+        [
+            new PatientDocumentResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = firstPatientId,
+                DocumentType = "Referral",
+                FileName = "first-patient-private-document.pdf",
+                ContentType = "application/pdf",
+                SizeBytes = 128,
+                UploadedAtUtc = DateTime.UtcNow
+            }
+        ];
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, firstPatient));
+
+        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal));
+
+        cut.SetParametersAndRender(parameters => parameters
+            .Add(component => component.Patient, secondPatient));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
+            Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No patient documents have been uploaded", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void CommunicationsTab_ShowsLoadingStateWhileCommunicationsLoad()
     {
         chartStorageService.PendingCommunicationList = new TaskCompletionSource<IReadOnlyList<PatientCommunicationLogEntryResponse>>(
@@ -343,6 +385,8 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         public IReadOnlyList<PatientCommunicationLogEntryResponse> CreatedCommunicationLogEntries => communicationLogEntries;
 
+        public Dictionary<Guid, IReadOnlyList<PatientDocumentResponse>> DocumentsByPatient { get; } = new();
+
         public bool FailDocumentList { get; set; }
 
         public bool FailCommunicationList { get; set; }
@@ -365,7 +409,11 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
                 throw new InvalidOperationException("Document list failed.");
             }
 
-            return Task.FromResult<IReadOnlyList<PatientDocumentResponse>>(Array.Empty<PatientDocumentResponse>());
+            var documents = DocumentsByPatient.TryGetValue(patientId, out var patientDocuments)
+                ? patientDocuments
+                : Array.Empty<PatientDocumentResponse>();
+
+            return Task.FromResult(documents);
         }
 
         public Task<PatientDocumentResponse> UploadDocumentAsync(
