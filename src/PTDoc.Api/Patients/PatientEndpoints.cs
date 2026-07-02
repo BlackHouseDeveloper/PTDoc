@@ -585,7 +585,7 @@ public static class PatientEndpoints
         patient.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
-        return Results.Created($"/api/v1/patients/{id:D}/documents/{document.Id:D}", ToPatientDocumentResponse(document));
+        return Results.Created($"/api/v1/patients/{id:D}/documents/{document.Id:D}/content", ToPatientDocumentResponse(document));
     }
 
     private static async Task<IResult> GetDocumentContent(
@@ -680,7 +680,7 @@ public static class PatientEndpoints
         patient.SyncState = SyncState.Pending;
 
         await db.SaveChangesAsync(cancellationToken);
-        return Results.Created($"/api/v1/patients/{id:D}/communications/{entry.Id:D}", ToPatientCommunicationLogEntryResponse(entry));
+        return Results.Created($"/api/v1/patients/{id:D}/communications", ToPatientCommunicationLogEntryResponse(entry));
     }
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────

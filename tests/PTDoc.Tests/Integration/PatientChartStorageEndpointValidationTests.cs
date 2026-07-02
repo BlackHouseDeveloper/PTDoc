@@ -70,6 +70,26 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
     }
 
     [Fact]
+    public async Task UploadDocument_WhenCreated_ReturnsLocationForContentRoute()
+    {
+        var patientId = await SeedPatientAsync();
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.PostAsJsonAsync($"/api/v1/patients/{patientId:D}/documents", new UploadPatientDocumentRequest
+        {
+            DocumentType = "Referral",
+            FileName = "referral.pdf",
+            ContentType = "application/pdf",
+            Base64Content = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var document = await response.Content.ReadFromJsonAsync<PatientDocumentResponse>();
+        Assert.NotNull(document);
+        Assert.Equal($"/api/v1/patients/{patientId:D}/documents/{document!.Id:D}/content", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
     public void UploadDocument_WhenEncodedPayloadIsTooLarge_RejectsBeforeDecoding()
     {
         const int maxPatientDocumentBytes = 10 * 1024 * 1024;
@@ -119,6 +139,23 @@ public sealed class PatientChartStorageEndpointValidationTests : IClassFixture<P
         Assert.True(errors.TryGetProperty(nameof(CreatePatientCommunicationLogEntryRequest.Summary), out _));
         Assert.True(errors.TryGetProperty(nameof(CreatePatientCommunicationLogEntryRequest.Details), out _));
         Assert.True(errors.TryGetProperty(nameof(CreatePatientCommunicationLogEntryRequest.ContactName), out _));
+    }
+
+    [Fact]
+    public async Task CreateCommunicationLogEntry_WhenCreated_ReturnsLocationForCollectionRoute()
+    {
+        var patientId = await SeedPatientAsync();
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+
+        using var response = await client.PostAsJsonAsync($"/api/v1/patients/{patientId:D}/communications", new CreatePatientCommunicationLogEntryRequest
+        {
+            Channel = "Phone",
+            Direction = "Outbound",
+            Summary = "Called patient about authorization."
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal($"/api/v1/patients/{patientId:D}/communications", response.Headers.Location?.OriginalString);
     }
 
     private async Task<Guid> SeedPatientAsync()
