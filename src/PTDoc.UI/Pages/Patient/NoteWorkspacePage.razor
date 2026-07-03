@@ -967,13 +967,25 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}", PatientId, _note.NoteId, next);
+            Logger.LogError(
+                ex,
+                "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}",
+                SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId),
+                next);
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to open that note section right now. Please retry."),
                 "error",
                 showToast: true,
                 toastTitle: "Section unavailable");
         }
+    }
+
+    private static string SanitizeForLog(object? value)
+    {
+        return value?.ToString()
+            ?.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal) ?? string.Empty;
     }
 
     private async Task HandleNoteTypeChanged(string value)
@@ -1424,7 +1436,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Manual draft save failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            Logger.LogError(
+                ex,
+                "Manual draft save failed for patient {PatientId}, note {NoteId}",
+                SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId));
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."),
@@ -1679,7 +1695,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Note submit action failed for patient {PatientId}, note {NoteId}", PatientId, _note.NoteId);
+            Logger.LogError(
+                ex,
+                "Note submit action failed for patient {PatientId}, note {NoteId}",
+                SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId));
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to submit note."),
