@@ -227,9 +227,11 @@
         await HandleChangedAsync();
     }
 
-    private Task HandleDocumentationModeChangedAsync() => HandleChangedAsync(preserveExplicitFlag: false);
+    private Task HandleDocumentationModeChangedAsync() => ApplyChangedAsync(preserveExplicitFlag: false);
 
-    private async Task HandleChangedAsync(bool preserveExplicitFlag = true)
+    private Task HandleChangedAsync() => ApplyChangedAsync(preserveExplicitFlag: true);
+
+    private async Task ApplyChangedAsync(bool preserveExplicitFlag)
     {
         EnsureDischargeDocumentationMode();
 
