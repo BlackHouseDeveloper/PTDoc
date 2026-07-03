@@ -1003,8 +1003,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note section change failed (patientId={PatientId}, noteType={NoteType}, noteIdPresent={HasNoteId}, section={Section})",
+                "Note section change failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId}, section={Section})",
                 SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId),
                 _note.NoteType,
                 _note.NoteId.HasValue,
                 next);
@@ -1482,8 +1483,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Manual draft save failed (patientId={PatientId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
+                "Manual draft save failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
                 SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId),
                 _note.NoteType,
                 _note.NoteId.HasValue);
             _note.MarkSaveError();
@@ -1742,8 +1744,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note submit action failed (patientId={PatientId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
+                "Note submit action failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
                 SanitizeForLog(PatientId),
+                SanitizeForLog(_note.NoteId),
                 _note.NoteType,
                 _note.NoteId.HasValue);
             _note.MarkSaveError();
