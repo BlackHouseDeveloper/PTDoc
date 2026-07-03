@@ -32,4 +32,33 @@ public sealed class DryNeedlingDocumentationComponentsTests : TestContext
             Assert.Contains("Billing Designation", cut.Markup, StringComparison.Ordinal);
         });
     }
+
+    [Fact]
+    public void DryNeedlingTreatmentDetails_NormalizesBlankBillingDesignationWithoutMutatingParameter()
+    {
+        var billingDesignation = string.Empty;
+        var changed = false;
+
+        var cut = RenderComponent<DryNeedlingTreatmentDetails>(parameters => parameters
+            .Add(component => component.BillingDesignation, billingDesignation)
+            .Add(component => component.BillingDesignationChanged, EventCallback.Factory.Create<string>(
+                this,
+                updated =>
+                {
+                    billingDesignation = updated;
+                    changed = true;
+                }))
+            .Add(component => component.ResponseDescription, string.Empty)
+            .Add(component => component.ResponseDescriptionChanged, EventCallback.Factory.Create<string>(this, _ => { }))
+            .Add(component => component.OnChanged, EventCallback.Factory.Create(this, () => { })));
+
+        cut.Find("#dry-response").Change("No adverse response.");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(changed);
+            Assert.Equal("Billable", billingDesignation);
+            Assert.Equal(string.Empty, cut.Instance.BillingDesignation);
+        });
+    }
 }

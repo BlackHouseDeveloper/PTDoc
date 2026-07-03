@@ -539,6 +539,94 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToV2Payload_NonEvaluationNotes_ReplaceCarryForwardCptsWithVisibleRowCpts()
+    {
+        var payload = new NoteWorkspacePayload
+        {
+            Objective = new ObjectiveVm
+            {
+                ExerciseRows =
+                [
+                    new ExerciseRowEntry
+                    {
+                        SuggestedExercise = "Rows",
+                        CptCode = "97110",
+                        CptDescription = "Therapeutic exercise",
+                        TimeMinutes = 12
+                    }
+                ]
+            },
+            Plan = new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = "97112",
+                        Description = "Stale carry-forward",
+                        Units = 3,
+                        Minutes = 45
+                    },
+                    new CptCodeEntry
+                    {
+                        Code = "97110",
+                        Description = "Therapeutic exercise",
+                        Units = 2,
+                        Minutes = 30,
+                        Modifiers = ["GP"],
+                        ModifierSource = "Commonly used CPT codes and modifiers.md"
+                    }
+                ],
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntry
+                    {
+                        Name = "Manual therapy",
+                        CptCode = "97140",
+                        CptDescription = "Manual therapy",
+                        TimeMinutes = 20
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToV2Payload(payload, NoteType.Daily);
+
+        Assert.DoesNotContain(result.Plan.SelectedCptCodes, code => code.Code == "97112");
+        Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97110" && code.Minutes == 12);
+        Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97140" && code.Minutes == 20);
+        Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97110" && code.Modifiers.Contains("GP"));
+    }
+
+    [Fact]
+    public void MapToV2Payload_EvaluationNotes_PreserveExplicitPlanCpts()
+    {
+        var payload = new NoteWorkspacePayload
+        {
+            Plan = new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = "97112",
+                        Description = "Neuromuscular re-education",
+                        Units = 2,
+                        Minutes = 30
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToV2Payload(payload, NoteType.Evaluation);
+
+        var code = Assert.Single(result.Plan.SelectedCptCodes);
+        Assert.Equal("97112", code.Code);
+        Assert.Equal(2, code.Units);
+        Assert.Equal(30, code.Minutes);
+    }
+
+    [Fact]
     public void MapToV2Payload_PersistsDischargeSpecificSubjectiveAndPlanFields()
     {
         var payload = new NoteWorkspacePayload

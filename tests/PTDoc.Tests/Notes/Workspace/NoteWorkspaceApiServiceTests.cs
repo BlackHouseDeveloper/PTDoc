@@ -473,7 +473,10 @@ public sealed class NoteWorkspaceApiServiceTests
                                 {
                                     Name = "Manual therapy",
                                     Category = "Manual",
-                                    IsSourceBacked = true
+                                    IsSourceBacked = true,
+                                    CptCode = "97110",
+                                    CptDescription = "Therapeutic exercise",
+                                    TimeMinutes = 30
                                 }
                             ],
                             SelectedCptCodes =

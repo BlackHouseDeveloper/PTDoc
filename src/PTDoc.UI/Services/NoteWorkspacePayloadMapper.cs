@@ -5,6 +5,7 @@ using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
+using PTDoc.UI.Components.Notes.Workspace.DischargeNote;
 
 using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry;
 
@@ -459,7 +460,7 @@ public sealed class NoteWorkspacePayloadMapper
             []);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
-            BuildVisibleCptCodes(payload.Plan, payload.Objective));
+            BuildVisibleCptCodes(payload.Plan, payload.Objective, noteType));
         preservedPayload.Plan.HomeExerciseProgramNotes = payload.Plan.HomeExerciseProgramNotes;
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
@@ -1013,16 +1014,19 @@ public sealed class NoteWorkspacePayloadMapper
             .ToList();
     }
 
-    private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective)
+    private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective, NoteType noteType)
     {
-        var selected = plan.SelectedCptCodes
-            .Select(code => CloneUiCptCode(code))
-            .ToList();
+        var selected = IsEvaluationLikeNoteType(noteType)
+            ? plan.SelectedCptCodes
+                .Select(code => CloneUiCptCode(code))
+                .ToList()
+            : new List<UiCptCodeEntry>();
 
         foreach (var row in objective.ExerciseRows)
         {
             AddRowCptCode(
                 selected,
+                plan.SelectedCptCodes,
                 row.CptCode,
                 row.CptDescription,
                 row.TimeMinutes);
@@ -1032,6 +1036,7 @@ public sealed class NoteWorkspacePayloadMapper
         {
             AddRowCptCode(
                 selected,
+                plan.SelectedCptCodes,
                 intervention.CptCode,
                 intervention.CptDescription,
                 intervention.TimeMinutes);
@@ -1039,6 +1044,9 @@ public sealed class NoteWorkspacePayloadMapper
 
         return selected;
     }
+
+    private static bool IsEvaluationLikeNoteType(NoteType noteType) =>
+        noteType is NoteType.Evaluation;
 
     private static UiCptCodeEntry CloneUiCptCode(UiCptCodeEntry code) => new()
     {
@@ -1052,15 +1060,21 @@ public sealed class NoteWorkspacePayloadMapper
         ModifierSource = code.ModifierSource
     };
 
-    private static void AddRowCptCode(List<UiCptCodeEntry> selected, string? code, string? description, int? minutes)
+    private static void AddRowCptCode(
+        List<UiCptCodeEntry> selected,
+        IReadOnlyCollection<UiCptCodeEntry> metadataSource,
+        string? code,
+        string? description,
+        int? minutes)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
             return;
         }
 
+        var normalizedCode = code.Trim();
         var existing = selected.FirstOrDefault(entry =>
-            string.Equals(entry.Code?.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
+            string.Equals(entry.Code?.Trim(), normalizedCode, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
             existing.Minutes ??= minutes;
@@ -1072,13 +1086,27 @@ public sealed class NoteWorkspacePayloadMapper
             return;
         }
 
-        selected.Add(new UiCptCodeEntry
+        var rowCode = metadataSource.FirstOrDefault(entry =>
+            string.Equals(entry.Code?.Trim(), normalizedCode, StringComparison.OrdinalIgnoreCase));
+        var entry = rowCode is null
+            ? new UiCptCodeEntry
+            {
+                Code = normalizedCode,
+                Units = minutes.HasValue && minutes.Value > 0 ? Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m)) : 1
+            }
+            : CloneUiCptCode(rowCode);
+
+        entry.Code = normalizedCode;
+        entry.Description = string.IsNullOrWhiteSpace(description)
+            ? entry.Description
+            : description.Trim();
+        entry.Minutes = minutes;
+        if (minutes.HasValue && minutes.Value > 0)
         {
-            Code = code.Trim(),
-            Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim(),
-            Units = minutes.HasValue && minutes.Value > 0 ? Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m)) : 1,
-            Minutes = minutes
-        });
+            entry.Units = Math.Max(1, (int)Math.Ceiling(minutes.Value / 15m));
+        }
+
+        selected.Add(entry);
     }
 
     private static bool? DeriveAppearsMotivated(string? motivationLevel)
@@ -1347,15 +1375,15 @@ public sealed class NoteWorkspacePayloadMapper
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return "Standard billable discharge";
+            return DischargeDocumentationOptions.StandardBillableMode;
         }
 
         return value.Trim() switch
         {
-            "Patient unreachable" => "Patient unreachable",
-            "Patient self-discharge" => "Patient self-discharge",
-            "MD/provider-initiated discharge" => "MD/provider-initiated discharge",
-            "Standard billable discharge" => "Standard billable discharge",
+            DischargeDocumentationOptions.PatientUnreachableMode => DischargeDocumentationOptions.PatientUnreachableMode,
+            DischargeDocumentationOptions.PatientSelfDischargeMode => DischargeDocumentationOptions.PatientSelfDischargeMode,
+            DischargeDocumentationOptions.ProviderInitiatedMode => DischargeDocumentationOptions.ProviderInitiatedMode,
+            DischargeDocumentationOptions.StandardBillableMode => DischargeDocumentationOptions.StandardBillableMode,
             _ => value.Trim()
         };
     }
@@ -1364,7 +1392,7 @@ public sealed class NoteWorkspacePayloadMapper
     {
         var normalizedMode = NormalizeDischargeDocumentationMode(mode);
         return explicitFlag
-            || !string.Equals(normalizedMode, "Standard billable discharge", StringComparison.OrdinalIgnoreCase);
+            || !string.Equals(normalizedMode, DischargeDocumentationOptions.StandardBillableMode, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeBillingDesignation(string? value) =>

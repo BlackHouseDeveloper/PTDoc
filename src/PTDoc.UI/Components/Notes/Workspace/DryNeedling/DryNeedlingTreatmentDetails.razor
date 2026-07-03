@@ -150,13 +150,12 @@
 
     private async Task NotifyChanged()
     {
-        if (string.IsNullOrWhiteSpace(BillingDesignation))
-        {
-            BillingDesignation = "Billable";
-        }
+        var billingDesignation = string.IsNullOrWhiteSpace(BillingDesignation)
+            ? "Billable"
+            : BillingDesignation;
 
         await DateOfTreatmentChanged.InvokeAsync(DateOfTreatment);
-        await BillingDesignationChanged.InvokeAsync(BillingDesignation);
+        await BillingDesignationChanged.InvokeAsync(billingDesignation);
         await LocationChanged.InvokeAsync(Location);
         await NeedlingTypeChanged.InvokeAsync(NeedlingType);
         await ResponseDescriptionChanged.InvokeAsync(ResponseDescription);

@@ -969,9 +969,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note section change failed for patient {PatientId}, note {NoteId}, section {Section}",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId),
+                "Note section change failed (noteType={NoteType}, noteIdPresent={HasNoteId}, section={Section})",
+                _note.NoteType,
+                _note.NoteId.HasValue,
                 next);
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to open that note section right now. Please retry."),
@@ -979,13 +979,6 @@ else
                 showToast: true,
                 toastTitle: "Section unavailable");
         }
-    }
-
-    private static string SanitizeForLog(object? value)
-    {
-        return value?.ToString()
-            ?.Replace("\r", string.Empty, StringComparison.Ordinal)
-            .Replace("\n", string.Empty, StringComparison.Ordinal) ?? string.Empty;
     }
 
     private async Task HandleNoteTypeChanged(string value)
@@ -1245,7 +1238,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Clinical summary regeneration failed for note {NoteId}", _note.NoteId);
+            Logger.LogError(
+                ex,
+                "Clinical summary regeneration failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             SetStatusMessage("Unable to generate a clinical summary.", "error", showToast: true, toastTitle: "AI generation failed");
         }
         finally
@@ -1288,7 +1285,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Clinical summary acceptance failed for note {NoteId}", _note.NoteId);
+            Logger.LogError(
+                ex,
+                "Clinical summary acceptance failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             SetStatusMessage("Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
         }
     }
@@ -1356,7 +1357,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "AI treatment goal regeneration failed for note {NoteId}", _note.NoteId);
+            Logger.LogError(
+                ex,
+                "AI treatment goal regeneration failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             SetStatusMessage("Unable to generate AI treatment goals.", "error", showToast: true, toastTitle: "AI generation failed");
         }
         finally
@@ -1394,7 +1399,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "PDF export failed for note {NoteId}", _note.NoteId);
+            Logger.LogError(
+                ex,
+                "PDF export failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             SetStatusMessage(GetUserFacingMessage(ex, "Unable to export the note as PDF."), "error", showToast: true, toastTitle: "PDF export failed");
         }
     }
@@ -1438,9 +1447,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Manual draft save failed for patient {PatientId}, note {NoteId}",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId));
+                "Manual draft save failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to save draft right now. Please retry."),
@@ -1697,9 +1706,9 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note submit action failed for patient {PatientId}, note {NoteId}",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId));
+                "Note submit action failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             _note.MarkSaveError();
             SetStatusMessage(
                 GetUserFacingMessage(ex, "Unable to submit note."),
@@ -1771,7 +1780,11 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Note submit failed for note {NoteId}", _note.NoteId);
+            Logger.LogError(
+                ex,
+                "Note submit failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
+                _note.NoteType,
+                _note.NoteId.HasValue);
             _note.MarkSaveError();
             SetStatusMessage(GetUserFacingMessage(ex, "Unable to submit note."), "error", showToast: true, toastTitle: "Submit failed");
         }
